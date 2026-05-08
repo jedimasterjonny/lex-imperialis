@@ -1,0 +1,26 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Ansible
+*.retry
+.ansible/
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.sw[a-p]
+*~
+
+# Molecule ephemeral state (only present with a custom ephemeral_directory; default lives in ~/.cache/molecule/)
+.molecule/
+
+# Local environment overrides
+.env
+*.local
+
+# Local design/planning notes (not committed)
+docs/superpowers/
