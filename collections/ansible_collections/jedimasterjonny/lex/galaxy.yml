@@ -1,0 +1,21 @@
+---
+namespace: jedimasterjonny
+name: lex
+version: 0.1.0
+readme: README.md
+authors:
+  - jedimasterjonny <46541898+jedimasterjonny@users.noreply.github.com>
+description: Lex Imperialis - Ansible roles for a SUSE-based home lab.
+license:
+  - GPL-3.0-or-later
+tags:
+  - infrastructure
+  - linux
+  - homelab
+  - suse
+  - tumbleweed
+repository: https://github.com/jedimasterjonny/lex-imperialis
+issues: https://github.com/jedimasterjonny/lex-imperialis/issues
+build_ignore:
+  - "*.tar.gz"
+  - .molecule

@@ -1,0 +1,10 @@
+ancestor: null
+releases:
+  0.1.0:
+    changes:
+      release_summary: "Initial scaffolding release of the ``jedimasterjonny.lex``
+        collection.\nNo roles or plugins ship in this version \u2014 subsequent releases
+        will introduce\nroles for the SUSE/Tumbleweed home lab.\n"
+    fragments:
+      - 0.1.0-release-summary.yml
+    release_date: '2026-05-09'
