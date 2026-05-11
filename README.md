@@ -27,4 +27,4 @@ See `make help` for all targets.
 
 ## License
 
-GPL-3.0-or-later. See [LICENSE](collections/ansible_collections/jedimasterjonny/lex/LICENSE).
+GPL-3.0-or-later. See [LICENSE](LICENSE).
