@@ -4,3 +4,4 @@ profile: production
 exclude_paths:
   - .venv/
   - .molecule/
+  - .claude/worktrees/

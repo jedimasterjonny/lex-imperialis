@@ -25,5 +25,8 @@ __pycache__/
 # Local design/planning notes (not committed)
 docs/superpowers/
 
+# Claude Code worktrees (transient, machine-local)
+.claude/worktrees/
+
 # Antsibull changelog plugin cache
 **/changelogs/.plugin-cache.yaml
