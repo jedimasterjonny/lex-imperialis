@@ -63,3 +63,12 @@ Test: "is this changing what ships to consumers of `jedimasterjonny.lex`, or is 
 
 - `changelog-fragments` — writes the antsibull-changelog fragment that must accompany every user-visible commit.
 - `pr-finalisation` — computes the version bump from accumulated fragments and writes the closing `release:` commit.
+
+## MCP servers
+
+The repo ships a project-scoped `.mcp.json` configuring the `ansible` MCP server.
+
+- **Linting is owned by the repo, not the MCP.** Always use `make lint-ansible` (or `ansible-lint` directly) for linting. Do not invoke the ansible MCP server's `ansible_lint` tool — `.ansible-lint.yml` in this repo is the source of truth, and the MCP tool may apply different rules or auto-fixes that bypass our config.
+- **Running plays requires explicit per-invocation permission.** The `ansible_navigator` tool runs playbooks against whatever inventory it can find, and its description encourages it to fire on any "run X" phrasing from the user. Never invoke it autonomously. Always confirm with the user before each run, and prefer check mode (`--check`) unless a real run was explicitly requested — `inventory/` may target real infrastructure.
+- **Do not let the MCP touch the dev environment or project scaffold.** The venv (`.venv` + direnv + `requirements-dev.txt`) and the collection layout under `collections/ansible_collections/jedimasterjonny/lex/` are hand-crafted. Do not call `ade_setup_environment`, `adt_check_env`, or `create_ansible_projects` — they install global tooling, create new venvs, or scaffold over existing structure. New roles go inside the existing collection following established conventions, not via the MCP.
+- **The hardcoded `node dist/cli.cjs` path in `.mcp.json` works around an upstream packaging bug.** See the `_comment` block at the top of `.mcp.json` for the diagnosis and the revert recipe.
