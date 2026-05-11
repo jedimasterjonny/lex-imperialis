@@ -1,7 +1,7 @@
 # Lex Imperialis — top-level Makefile.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup hooks lint lint-yaml lint-ansible
+.PHONY: help setup hooks lint lint-yaml lint-ansible lint-shell
 
 help: ## Show this help.
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_.-]+:.*?## / {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -15,10 +15,15 @@ setup: ## One-shot dev setup: venv, dev deps, pre-commit hooks.
 hooks: ## (Re)install pre-commit hooks (run after .pre-commit-config.yaml changes).
 	.venv/bin/pre-commit install
 
-lint: lint-yaml lint-ansible ## Run all linters.
+lint: lint-yaml lint-ansible lint-shell ## Run all linters.
 
 lint-yaml: ## Run yamllint across the repo.
 	yamllint .
 
 lint-ansible: ## Run ansible-lint across the repo.
 	ansible-lint
+
+lint-shell: ## Run shellcheck across the repo.
+	find . -type f \( -name '*.sh' -o -name '*.bash' \) \
+	  -not -path './.venv/*' -not -path './.git/*' -not -path './.ansible/*' \
+	  -print0 | xargs -0 -r shellcheck
