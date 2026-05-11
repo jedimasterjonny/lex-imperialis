@@ -14,14 +14,16 @@ As it is written in the Lex Imperialis, so shall it be deployed.
 After cloning, with Python 3.12+ and direnv installed:
 
 ```bash
-python -m venv .venv
-pip install -r requirements-dev.txt
+make setup
 direnv allow .
 ```
 
 ## Development
 
-`make lint` runs yamllint and ansible-lint. See `make help` for all targets.
+- `make lint` — runs yamllint and ansible-lint.
+- `make hooks` — reinstalls pre-commit hooks after `.pre-commit-config.yaml` changes.
+
+See `make help` for all targets.
 
 ## License
 
