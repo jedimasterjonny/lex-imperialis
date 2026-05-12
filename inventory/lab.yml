@@ -1,0 +1,10 @@
+---
+# Inventory for the lab box itself.
+# We SSH to localhost as the 'ansible' user (which has passwordless sudo via
+# wheel) so the play runs as 'ansible' regardless of who invokes ansible-playbook.
+
+all:
+  hosts:
+    scholam:
+      ansible_host: localhost
+      ansible_user: ansible
