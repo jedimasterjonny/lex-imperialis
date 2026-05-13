@@ -20,5 +20,6 @@ rules:
 ignore: |
   .venv/
   .molecule/
+  collections/ansible_collections/community*
   collections/ansible_collections/*/*/changelogs/.plugin-cache.yaml
   collections/ansible_collections/*/*/changelogs/changelog.yaml
