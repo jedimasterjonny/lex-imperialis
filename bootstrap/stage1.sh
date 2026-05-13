@@ -10,6 +10,9 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
+echo "==> Setting hostname to scholam"
+hostnamectl set-hostname scholam
+
 echo "==> Refreshing zypper repos and installing base packages"
 zypper --non-interactive refresh
 zypper --non-interactive install python3 python3-pip git sudo openssh
