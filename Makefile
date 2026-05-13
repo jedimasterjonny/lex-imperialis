@@ -1,7 +1,7 @@
 # Lex Imperialis — top-level Makefile.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup hooks lint lint-yaml lint-ansible lint-shell
+.PHONY: help setup hooks lint lint-yaml lint-ansible lint-shell lab-bootstrap
 
 help: ## Show this help.
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_.-]+:.*?## / {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -27,3 +27,6 @@ lint-shell: ## Run shellcheck across the repo.
 	find . -type f \( -name '*.sh' -o -name '*.bash' \) \
 	  -not -path './.venv/*' -not -path './.git/*' -not -path './.ansible/*' \
 	  -print0 | xargs -0 -r shellcheck
+
+lab-bootstrap: ## Run the lab bootstrap playbook (on-box; targets ansible@localhost).
+	ansible-playbook -i inventory/lab.yml playbooks/lab-bootstrap.yml $(ARGS)

@@ -1,0 +1,12 @@
+---
+- name: Lab box bootstrap
+  hosts: scholam
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Sanity — we're running on openSUSE
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] == 'openSUSE Tumbleweed'
+        fail_msg: "This playbook only supports openSUSE Tumbleweed."

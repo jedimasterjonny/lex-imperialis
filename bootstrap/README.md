@@ -2,7 +2,7 @@
 
 How to turn a fresh openSUSE Tumbleweed install into a working lab box.
 
-## Stage 1 — manual, one-time, ~5 minutes
+## Box prep — manual, one-time, ~5 minutes
 
 All steps run from your local machine. The box just needs a reachable sshd —
 if the installer didn't enable one, console in and run `systemctl enable --now sshd`.
@@ -34,3 +34,47 @@ if the installer didn't enable one, console in and run `systemctl enable --now s
     ```
 
     Expected: prints `ansible`, `OK`.
+
+## Dev loop setup — on-box, one-time, ~1 minute
+
+The `lab-bootstrap` Make target invokes `ansible-playbook` against
+`ansible@localhost`, so `jonny` on the box needs ansible in a venv, a key
+trusted by `ansible`, and an accepted host key for `localhost`.
+
+1.  From a checkout of this repo, create the venv (installs `ansible-core`
+    and the rest of the dev tooling) and put it on `PATH`:
+
+    ```sh
+    make setup
+    source .venv/bin/activate
+    ```
+
+2.  Generate an SSH key for `jonny` if you don't already have one:
+
+    ```sh
+    test -f ~/.ssh/id_ed25519 || ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519
+    ```
+
+3.  Append `jonny`'s pubkey to `ansible`'s `authorized_keys`:
+
+    ```sh
+    sudo tee -a /home/ansible/.ssh/authorized_keys < ~/.ssh/id_ed25519.pub > /dev/null
+    ```
+
+4.  Accept the host key so the first run isn't blocked by an interactive prompt:
+
+    ```sh
+    ssh -o StrictHostKeyChecking=accept-new ansible@localhost true
+    ```
+
+Verify:
+
+```sh
+make lab-bootstrap
+```
+
+Pass extra `ansible-playbook` flags via `ARGS`, e.g. for a dry run:
+
+```sh
+make lab-bootstrap ARGS='--check --diff'
+```
