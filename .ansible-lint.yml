@@ -6,3 +6,4 @@ exclude_paths:
   - .molecule/
   - .claude/worktrees/
   - collections/ansible_collections/community*
+  - collections/ansible_collections/ansible*

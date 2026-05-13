@@ -31,6 +31,7 @@ lint-shell: ## Run shellcheck across the repo.
 	find . -type f \( -name '*.sh' -o -name '*.bash' \) \
 	  -not -path './.venv/*' -not -path './.git/*' -not -path './.ansible/*' \
 	  -not -path './collections/ansible_collections/community*' \
+	  -not -path './collections/ansible_collections/ansible*' \
 	  -print0 | xargs -0 -r shellcheck
 
 lab-bootstrap: ## Run the lab bootstrap playbook (on-box; targets ansible@localhost).
