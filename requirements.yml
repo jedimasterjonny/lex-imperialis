@@ -4,3 +4,5 @@ collections:
     version: 12.6.0
   - name: ansible.posix
     version: 2.1.0
+  - name: community.libvirt
+    version: 2.2.0
