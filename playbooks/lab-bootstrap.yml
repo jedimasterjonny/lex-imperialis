@@ -5,6 +5,9 @@
   gather_facts: true
 
   vars:
+    lab_incus_images:
+      - alias: tumbleweed
+        source: images:opensuse/tumbleweed
     incus_preseed:
       config: {}
       networks:
@@ -86,3 +89,71 @@
         permanent: true
         immediate: true
         state: enabled
+
+    - name: Check which Incus images are already cached
+      ansible.builtin.command: "incus image show local:{{ item.alias }}"
+      register: incus_image_checks
+      loop: "{{ lab_incus_images }}"
+      loop_control:
+        label: "{{ item.alias }}"
+      changed_when: false
+      failed_when: false
+
+    - name: Pre-warm missing Incus images
+      ansible.builtin.command: >
+        incus image copy {{ item.item.source }} local:
+        --alias {{ item.item.alias }}
+      loop: "{{ incus_image_checks.results }}"
+      loop_control:
+        label: "{{ item.item.alias }}"
+      when: item.rc != 0
+      changed_when: true
+
+    - name: Install incus-image-refresh.service unit
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/incus-image-refresh.service
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Refresh cached Incus images
+          After=network-online.target incus.socket
+          Wants=network-online.target incus.socket
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/bin/incus image refresh{% for img in lab_incus_images %} local:{{ img.alias }}{% endfor %}
+      notify: Reload systemd
+
+    - name: Install incus-image-refresh.timer unit
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/incus-image-refresh.timer
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Weekly refresh of cached Incus images
+
+          [Timer]
+          OnCalendar=Sun *-*-* 03:00:00
+          Persistent=true
+
+          [Install]
+          WantedBy=timers.target
+      notify: Reload systemd
+
+    - name: Flush handlers so systemd loads the new units
+      ansible.builtin.meta: flush_handlers
+
+    - name: Enable and start incus-image-refresh.timer
+      ansible.builtin.systemd_service:
+        name: incus-image-refresh.timer
+        enabled: true
+        state: started
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd_service:
+        daemon_reload: true
