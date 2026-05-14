@@ -153,6 +153,50 @@
         enabled: true
         state: started
 
+    - name: Install libvirt and KVM tooling
+      community.general.zypper:
+        name:
+          - libvirt
+          - virt-install
+          - guestfs-tools
+          - libguestfs
+          - "python{{ ansible_facts['python']['version']['major'] }}{{ ansible_facts['python']['version']['minor'] }}-libvirt-python"
+          - "python{{ ansible_facts['python']['version']['major'] }}{{ ansible_facts['python']['version']['minor'] }}-lxml"
+        state: present
+
+    - name: Enable and start libvirt modular daemon sockets
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        enabled: true
+        state: started
+      loop:
+        - virtqemud.socket
+        - virtnetworkd.socket
+        - virtstoraged.socket
+        - virtnodedevd.socket
+        - virtsecretd.socket
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Ensure default libvirt network is active
+      community.libvirt.virt_net:
+        name: default
+        state: active
+
+    - name: Ensure default libvirt network autostarts
+      community.libvirt.virt_net:
+        name: default
+        autostart: true
+
+    - name: Grant operator access to libvirt
+      ansible.builtin.user:
+        name: "{{ item }}"
+        groups: libvirt
+        append: true
+      loop:
+        - jonny
+        - ansible
+
   handlers:
     - name: Reload systemd
       ansible.builtin.systemd_service:
