@@ -4,9 +4,85 @@
   become: true
   gather_facts: true
 
+  vars:
+    incus_preseed:
+      config: {}
+      networks:
+        - name: incusbr0
+          type: bridge
+          config:
+            ipv4.address: auto
+            ipv4.nat: "true"
+            ipv6.address: none
+      storage_pools:
+        - name: default
+          driver: btrfs
+          config:
+            source: /var/lib/incus/storage-pools/default
+      profiles:
+        - name: default
+          description: Default profile for Molecule containers
+          devices:
+            eth0:
+              name: eth0
+              nictype: bridged
+              parent: incusbr0
+              type: nic
+            root:
+              path: /
+              pool: default
+              type: disk
+      projects: []
+      cluster: null
+
   pre_tasks:
     - name: Sanity — we're running on openSUSE
       ansible.builtin.assert:
         that:
           - ansible_facts['distribution'] == 'openSUSE Tumbleweed'
         fail_msg: "This playbook only supports openSUSE Tumbleweed."
+
+  tasks:
+    - name: Install Incus packages
+      community.general.zypper:
+        name:
+          - incus
+          - incus-tools
+        state: present
+
+    - name: Enable and start the incus socket
+      ansible.builtin.systemd_service:
+        name: incus.socket
+        enabled: true
+        state: started
+
+    - name: Grant operator access to the incus socket
+      ansible.builtin.user:
+        name: "{{ item }}"
+        groups: incus-admin
+        append: true
+      loop:
+        - jonny
+        - ansible
+
+    # Proxy for "preseed ran"; a partial init leaves the 'default' pool and fools this — re-init by hand.
+    - name: Check whether Incus is already initialised
+      ansible.builtin.command: incus storage show default
+      register: incus_init_check
+      changed_when: false
+      failed_when: false
+
+    - name: Apply Incus preseed config (first init only)
+      ansible.builtin.command:
+        cmd: incus admin init --preseed
+        stdin: "{{ incus_preseed | to_nice_yaml }}"
+      when: incus_init_check.rc != 0
+      changed_when: true
+
+    - name: Trust the incus bridge in firewalld
+      ansible.posix.firewalld:
+        zone: trusted
+        interface: incusbr0
+        permanent: true
+        immediate: true
+        state: enabled
