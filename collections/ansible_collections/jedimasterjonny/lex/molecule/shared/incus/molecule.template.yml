@@ -1,0 +1,55 @@
+---
+# Reference Molecule scenario config for Tier 1 (Incus).
+# Copy this file to roles/<role>/molecule/default/molecule.yml and adjust
+# the platform 'name' (must be unique across roles to avoid container collisions).
+#
+# Prerequisites on the host running `molecule test`:
+#   - Incus daemon initialised (see roles/lab/bootstrap and `incus admin init`).
+#   - The image alias referenced by `image:` below must exist locally.
+#     The lab-bootstrap playbook pre-warms `tumbleweed`; for any other alias,
+#     pull it manually (e.g. `incus image copy images:opensuse/tumbleweed local: --alias <alias>`).
+
+# Collections are installed by `make setup` into ~/.ansible/collections, so we
+# omit molecule's `dependency:` stage to avoid the "Missing requirements file"
+# noise. The sequence overrides below list only the phases we ship playbooks
+# for — preventing molecule from warning about missing prepare/cleanup hooks.
+
+driver:
+  name: default          # Molecule's built-in 'delegated' driver, simplest path
+
+platforms:
+  - name: molecule-lex-ROLE_NAME-default          # MUST be unique per role
+    image: tumbleweed
+
+provisioner:
+  name: ansible
+  playbooks:
+    create: ../../../../molecule/shared/incus/create.yml
+    destroy: ../../../../molecule/shared/incus/destroy.yml
+    converge: converge.yml
+    verify: verify.yml
+  inventory:
+    host_vars:
+      molecule-lex-ROLE_NAME-default:
+        ansible_connection: community.general.incus
+        ansible_user: root
+
+verifier:
+  name: ansible
+
+scenario:
+  create_sequence:
+    - create
+  converge_sequence:
+    - create
+    - converge
+  destroy_sequence:
+    - destroy
+  test_sequence:
+    - destroy
+    - syntax
+    - create
+    - converge
+    - idempotence
+    - verify
+    - destroy
