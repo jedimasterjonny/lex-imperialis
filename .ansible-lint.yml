@@ -5,3 +5,5 @@ exclude_paths:
   - .venv/
   - .molecule/
   - .claude/worktrees/
+  - collections/ansible_collections/community*
+  - collections/ansible_collections/ansible*

@@ -9,7 +9,14 @@ As it is written in the Lex Imperialis, so shall it be deployed.
 - `collections/ansible_collections/jedimasterjonny/lex/` — the [`jedimasterjonny.lex`](collections/ansible_collections/jedimasterjonny/lex/README.md) Ansible collection (roles, playbooks).
 - `inventory/` — environment inventories (production homelab, lab box itself).
 
+## Hosts
+
+- **`scholam`** — lab box
+
 ## Quickstart
+
+> Fresh openSUSE box? Start with [`bootstrap/README.md`](bootstrap/README.md) for
+> the one-time stage-1 setup, then come back here.
 
 After cloning, with Python 3.12+ and direnv installed:
 
@@ -20,8 +27,10 @@ direnv allow .
 
 ## Development
 
-- `make lint` — runs yamllint and ansible-lint.
+- `make lint` — runs yamllint, ansible-lint, and shellcheck.
+- `make lab-bootstrap` — runs the bootstrap playbook against the lab box (`scholam`).
 - `make hooks` — reinstalls pre-commit hooks after `.pre-commit-config.yaml` changes.
+- `make collections` — reinstalls Galaxy collections after `requirements.yml` changes.
 
 See `make help` for all targets.
 
