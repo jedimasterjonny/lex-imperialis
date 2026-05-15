@@ -10,14 +10,14 @@ setup: ## One-shot dev setup: venv, dev deps, Galaxy collections, pre-commit hoo
 	test -d .venv || python3 -m venv .venv
 	.venv/bin/pip install --upgrade pip wheel
 	.venv/bin/pip install -r requirements-dev.txt
-	.venv/bin/ansible-galaxy collection install -r requirements.yml -p ./collections
+	.venv/bin/ansible-galaxy collection install -r requirements.yml -p ~/.ansible/collections
 	.venv/bin/pre-commit install
 
 hooks: ## (Re)install pre-commit hooks (run after .pre-commit-config.yaml changes).
 	.venv/bin/pre-commit install
 
 collections: ## (Re)install Galaxy collections (run after requirements.yml changes).
-	.venv/bin/ansible-galaxy collection install -r requirements.yml -p ./collections
+	.venv/bin/ansible-galaxy collection install -r requirements.yml -p ~/.ansible/collections
 
 lint: lint-yaml lint-ansible lint-shell ## Run all linters.
 
