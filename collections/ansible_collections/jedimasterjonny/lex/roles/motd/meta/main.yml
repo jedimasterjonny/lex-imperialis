@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  author: jedimasterjonny
+  description: Minimal role that manages /etc/motd, used as a baseline target for the Molecule test pipeline.
+  license: GPL-3.0-or-later
+  min_ansible_version: "2.19"
+  galaxy_tags:
+    - homelab
+    - suse
+    - motd
+dependencies: []

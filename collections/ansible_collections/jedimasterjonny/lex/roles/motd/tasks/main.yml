@@ -1,0 +1,8 @@
+---
+- name: Manage /etc/motd content
+  ansible.builtin.copy:
+    content: "{{ motd_text }}"
+    dest: /etc/motd
+    owner: root
+    group: root
+    mode: '0644'
