@@ -1,0 +1,11 @@
+---
+# Per-host overrides for scholam.
+#
+# In the 40K canon, a "Schola Progenium" is the Imperial academy that forges
+# orphans into the Imperium's most disciplined servants. That makes "scholam"
+# the right name for the lab box: where roles are trained, tested, and made
+# fit to deploy.
+
+motd_text: |
+  Schola Progenium — forge of the faithful.
+  Train hard. Fail safely. Deploy in His name.
