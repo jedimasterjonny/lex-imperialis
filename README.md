@@ -9,6 +9,10 @@ As it is written in the Lex Imperialis, so shall it be deployed.
 - `collections/ansible_collections/jedimasterjonny/lex/` — the [`jedimasterjonny.lex`](collections/ansible_collections/jedimasterjonny/lex/README.md) Ansible collection (roles, playbooks).
 - `inventory/` — environment inventories (production homelab, lab box itself).
 
+## Hosts
+
+- **`scholam`** — lab box
+
 ## Quickstart
 
 After cloning, with Python 3.12+ and direnv installed:
