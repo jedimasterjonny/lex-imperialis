@@ -24,8 +24,10 @@ direnv allow .
 
 ## Development
 
-- `make lint` — runs yamllint and ansible-lint.
+- `make lint` — runs yamllint, ansible-lint, and shellcheck.
+- `make lab-bootstrap` — runs the bootstrap playbook against the lab box (`scholam`).
 - `make hooks` — reinstalls pre-commit hooks after `.pre-commit-config.yaml` changes.
+- `make collections` — reinstalls Galaxy collections after `requirements.yml` changes.
 
 See `make help` for all targets.
 
