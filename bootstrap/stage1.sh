@@ -17,6 +17,10 @@ echo "==> Refreshing zypper repos and installing base packages"
 zypper --non-interactive refresh
 zypper --non-interactive install python3 python3-pip git sudo openssh
 
+echo "==> Ensuring 'wheel' group exists"
+# A minimal Tumbleweed install does not always ship wheel; useradd -G fails if it is missing.
+groupadd -f wheel
+
 echo "==> Ensuring 'ansible' user exists"
 if ! id ansible &>/dev/null; then
   # New user: -G sets the initial supplementary group list.
