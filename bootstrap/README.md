@@ -78,3 +78,18 @@ Pass extra `ansible-playbook` flags via `ARGS`, e.g. for a dry run:
 ```sh
 make lab-bootstrap ARGS='--check --diff'
 ```
+
+## After bootstrap
+
+The playbook configures Incus + libvirt with weekly image-refresh timers and
+caches both an Incus `tumbleweed` system-container image and a libvirt
+`tumbleweed-base.qcow2`. It is fully idempotent — safe to re-run any time.
+
+The bootstrap adds `jonny` and `ansible` to the `incus-admin` and `libvirt`
+groups, but **group membership only takes effect on the next login** — log
+out and back in (or `newgrp incus-admin && newgrp libvirt`) before:
+
+```sh
+incus list           # should succeed without sudo
+virsh list --all     # should succeed without sudo
+```

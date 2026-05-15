@@ -15,6 +15,9 @@ As it is written in the Lex Imperialis, so shall it be deployed.
 
 ## Quickstart
 
+> Fresh openSUSE box? Start with [`bootstrap/README.md`](bootstrap/README.md) for
+> the one-time stage-1 setup, then come back here.
+
 After cloning, with Python 3.12+ and direnv installed:
 
 ```bash
