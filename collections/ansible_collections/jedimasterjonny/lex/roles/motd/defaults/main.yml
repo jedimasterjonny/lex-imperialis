@@ -1,0 +1,6 @@
+---
+# Default vars for jedimasterjonny.lex.motd role.
+
+motd_text: |
+  This host is bound by the Lex Imperialis.
+  As it is written, so shall it be deployed.

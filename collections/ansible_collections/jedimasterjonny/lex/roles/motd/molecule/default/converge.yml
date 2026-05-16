@@ -1,0 +1,6 @@
+---
+- name: Converge — apply jedimasterjonny.lex.motd
+  hosts: all
+  gather_facts: false
+  roles:
+    - jedimasterjonny.lex.motd

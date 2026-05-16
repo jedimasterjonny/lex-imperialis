@@ -1,7 +1,7 @@
 ---
 namespace: jedimasterjonny
 name: lex
-version: 0.1.0
+version: 0.2.0
 readme: README.md
 authors:
   - jedimasterjonny <46541898+jedimasterjonny@users.noreply.github.com>
@@ -19,3 +19,5 @@ issues: https://github.com/jedimasterjonny/lex-imperialis/issues
 build_ignore:
   - "*.tar.gz"
   - .molecule
+  - molecule
+  - roles/*/molecule

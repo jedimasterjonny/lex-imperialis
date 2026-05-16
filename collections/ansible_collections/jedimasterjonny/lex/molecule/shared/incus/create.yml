@@ -1,0 +1,71 @@
+---
+- name: Create Incus container for Molecule
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    # 'molecule_yml' is automatically passed in by Molecule and contains
+    # the parsed scenario config including the platforms list.
+    platform: "{{ molecule_yml.platforms[0] }}"
+    container_name: "{{ platform.name }}"
+    container_image: "{{ platform.image | default('tumbleweed') }}"
+
+  tasks:
+    - name: Check whether the container already exists
+      ansible.builtin.command: incus info {{ container_name }}
+      register: incus_info
+      changed_when: false
+      failed_when: false
+
+    - name: Launch Incus container
+      ansible.builtin.command: >
+        incus launch {{ container_image }} {{ container_name }}
+      when: incus_info.rc != 0
+      changed_when: true
+
+    - name: Ensure existing container is started
+      ansible.builtin.command: incus start {{ container_name }}
+      when: incus_info.rc == 0
+      changed_when: false
+      failed_when: false
+
+    - name: Wait for container to accept incus exec
+      ansible.builtin.command: incus exec {{ container_name }} -- /bin/true
+      register: exec_probe
+      changed_when: false
+      retries: 30
+      delay: 2
+      until: exec_probe.rc == 0
+
+    - name: Wait for cloud-init / systemd to settle
+      ansible.builtin.command: >
+        incus exec {{ container_name }} -- systemctl is-system-running --wait
+      register: systemd_wait
+      changed_when: false
+      failed_when: false
+      retries: 30
+      delay: 2
+      until: "systemd_wait.stdout in ['running', 'degraded']"
+
+    - name: Install python3 inside container if missing
+      ansible.builtin.command: >
+        incus exec {{ container_name }} --
+        sh -c "command -v python3 || zypper --non-interactive install -y python3"
+      register: python3_install
+      changed_when: "'Installing' in python3_install.stdout"
+
+    - name: Build Molecule instance config entry
+      ansible.builtin.set_fact:
+        instance_conf_entry:
+          instance: "{{ container_name }}"
+          address: "{{ container_name }}"      # Molecule uses this as ansible_host
+          user: root
+          connection: community.general.incus
+          incus_remote: local
+
+    - name: Write Molecule instance config
+      ansible.builtin.copy:
+        content: "{{ [instance_conf_entry] | to_nice_yaml }}"
+        dest: "{{ molecule_instance_config }}"
+        mode: '0644'

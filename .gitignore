@@ -7,8 +7,6 @@ __pycache__/
 # Ansible
 *.retry
 .ansible/
-collections/ansible_collections/*
-!collections/ansible_collections/jedimasterjonny/
 
 # Editor / OS
 .DS_Store

@@ -1,0 +1,28 @@
+---
+- name: Verify — assert on motd role outcome
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Slurp /etc/motd
+      ansible.builtin.slurp:
+        src: /etc/motd
+      register: motd_file
+
+    - name: Assert MOTD content matches expected
+      ansible.builtin.assert:
+        that:
+          - "'bound by the Lex Imperialis' in (motd_file.content | b64decode)"
+          - "'As it is written, so shall it be deployed' in (motd_file.content | b64decode)"
+        fail_msg: "MOTD content does not match expected text."
+
+    - name: Stat /etc/motd
+      ansible.builtin.stat:
+        path: /etc/motd
+      register: motd_stat
+
+    - name: Assert MOTD file mode is 0644
+      ansible.builtin.assert:
+        that:
+          - motd_stat.stat.mode == '0644'
+          - motd_stat.stat.pw_name == 'root'
+          - motd_stat.stat.gr_name == 'root'
