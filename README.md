@@ -7,16 +7,22 @@ As it is written in the Lex Imperialis, so shall it be deployed.
 ## Repo layout
 
 - `collections/ansible_collections/jedimasterjonny/lex/` — the [`jedimasterjonny.lex`](collections/ansible_collections/jedimasterjonny/lex/README.md) Ansible collection (roles, playbooks).
+- `bootstrap/` — setup for a fresh openSUSE box.
+- `playbooks/` — top-level playbooks.
 - `inventory/` — environment inventories (production homelab, lab box itself).
 
 ## Hosts
 
 - **`scholam`** — lab box
 
-## Quickstart
+## Bringing up a lab box
 
-> Fresh openSUSE box? Start with [`bootstrap/README.md`](bootstrap/README.md) for
-> the one-time stage-1 setup, then come back here.
+See [`bootstrap/README.md`](bootstrap/README.md).
+
+1.  **Stage 1** — `bootstrap/stage1.sh`, off-box.
+2.  **Stage 2** — `playbooks/lab-bootstrap.yml`, on-box via `make lab-bootstrap`.
+
+## Quickstart
 
 After cloning, with Python 3.12+ and direnv installed:
 
@@ -28,7 +34,7 @@ direnv allow .
 ## Development
 
 - `make lint` — runs yamllint, ansible-lint, and shellcheck.
-- `make lab-bootstrap` — runs the bootstrap playbook against the lab box (`scholam`).
+- `make lab-bootstrap` — runs `playbooks/lab-bootstrap.yml` against `ansible@localhost`. Pass extra `ansible-playbook` flags via `ARGS`, e.g. `make lab-bootstrap ARGS='--check --diff'`.
 - `make hooks` — reinstalls pre-commit hooks after `.pre-commit-config.yaml` changes.
 - `make collections` — reinstalls Galaxy collections after `requirements.yml` changes.
 
