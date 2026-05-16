@@ -6,5 +6,22 @@ releases:
         collection.\nNo roles or plugins ship in this version \u2014 subsequent releases
         will introduce\nroles for the SUSE/Tumbleweed home lab.\n"
     fragments:
-      - 0.1.0-release-summary.yml
+    - 0.1.0-release-summary.yml
     release_date: '2026-05-09'
+  0.2.0:
+    changes:
+      minor_changes:
+      - expand the collection README with a requirements line, a roles table, a Galaxy
+        install snippet, and a pointer to the project repository.
+      - motd - add minimal role that manages /etc/motd content, intended as a baseline
+        target for the Molecule test pipeline.
+      release_summary: 'First role release: ships the motd role with a default Molecule
+
+        scenario backed by a Tier-1 (Incus) test pipeline.
+
+        '
+    fragments:
+    - 0.2.0-release-summary.yml
+    - add-motd-role.yml
+    - expand-collection-readme.yml
+    release_date: '2026-05-16'
