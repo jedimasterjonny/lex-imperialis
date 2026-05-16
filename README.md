@@ -34,6 +34,17 @@ direnv allow .
 
 See `make help` for all targets.
 
+### Testing
+
+All driven by Molecule with the `default` (delegated) driver:
+
+| Tier | Scenario | Backend | When |
+|------|----------|---------|------|
+| 1 | `default` | Incus containers on the lab box | dev loop |
+
+- `make test ROLE=<name>` — runs Tier 1 for one role.
+- `make test-all` — sweeps every role with a default scenario.
+
 ## License
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
