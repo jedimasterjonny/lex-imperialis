@@ -65,6 +65,8 @@ Test: "is this changing what ships to consumers of `jedimasterjonny.lex`, or is 
 - `pr-finalisation` — computes the version bump from accumulated fragments and writes the closing `release:` commit.
 - `ansible-authoring` — routes role/playbook authoring through the bundled Red Hat best-practice guidance and the Ansible design aphorisms (ansible MCP server).
 
+**Ansible gotchas reference:** [`.claude/ansible-good-practices.md`](.claude/ansible-good-practices.md) — distilled checklist of non-obvious items from the Red Hat Ansible good-practices guide that `ansible-lint` does not catch (variable-precedence traps, `register` persistence, host-group anti-pattern, etc.). Consult when reviewing or authoring role/playbook content.
+
 ## MCP servers
 
 The repo ships a project-scoped `.mcp.json` configuring the `ansible` MCP server.
