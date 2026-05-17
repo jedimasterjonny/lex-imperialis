@@ -26,8 +26,10 @@ provisioner:
   playbooks:
     create: ../../../../molecule/shared/libvirt/create.yml
     destroy: ../../../../molecule/shared/libvirt/destroy.yml
-    converge: converge.yml
-    verify: verify.yml
+    # converge.yml and verify.yml live one level up, at roles/<role>/molecule/,
+    # shared across all scenarios (default, full, …) for this role.
+    converge: ../converge.yml
+    verify: ../verify.yml
 
 verifier:
   name: ansible
