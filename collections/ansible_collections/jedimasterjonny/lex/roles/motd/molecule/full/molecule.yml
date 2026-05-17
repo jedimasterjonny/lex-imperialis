@@ -1,0 +1,35 @@
+---
+driver:
+  name: default
+
+platforms:
+  - name: molecule-lex-motd-full
+    image: tumbleweed
+
+provisioner:
+  name: ansible
+  playbooks:
+    create: ../../../../molecule/shared/libvirt/create.yml
+    destroy: ../../../../molecule/shared/libvirt/destroy.yml
+    converge: converge.yml
+    verify: verify.yml
+
+verifier:
+  name: ansible
+
+scenario:
+  create_sequence:
+    - create
+  converge_sequence:
+    - create
+    - converge
+  destroy_sequence:
+    - destroy
+  test_sequence:
+    - destroy
+    - syntax
+    - create
+    - converge
+    - idempotence
+    - verify
+    - destroy
