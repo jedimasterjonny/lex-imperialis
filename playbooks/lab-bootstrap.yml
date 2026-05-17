@@ -162,6 +162,7 @@
           - libguestfs
           - "python{{ ansible_facts['python']['version']['major'] }}{{ ansible_facts['python']['version']['minor'] }}-libvirt-python"
           - "python{{ ansible_facts['python']['version']['major'] }}{{ ansible_facts['python']['version']['minor'] }}-lxml"
+          - mkisofs
         state: present
 
     - name: Enable and start libvirt modular daemon sockets
@@ -196,6 +197,16 @@
       loop:
         - jonny
         - ansible
+
+    - name: Let the libvirt group write to /var/lib/libvirt/images
+      # setgid (2775) so files created here inherit the libvirt group,
+      # which qemu needs read access to once libvirt boots the guest.
+      ansible.builtin.file:
+        path: /var/lib/libvirt/images
+        owner: root
+        group: libvirt
+        mode: '2775'
+        state: directory
 
     - name: Install tumbleweed-image-refresh helper
       ansible.builtin.copy:

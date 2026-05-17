@@ -1,0 +1,20 @@
+#cloud-config
+# user-data for Molecule libvirt VMs.
+# Renders SSH key + minimal config so Ansible can SSH in.
+
+users:
+  - name: root
+    ssh_authorized_keys:
+      - "{{ ssh_public_key }}"
+
+# Ensure SSH starts and accepts root login.
+ssh_pwauth: false
+disable_root: false
+runcmd:
+  - sed -i 's/^#*PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
+  - systemctl restart sshd
+
+# Make sure python3 is present for Ansible.
+package_update: false
+packages:
+  - python3

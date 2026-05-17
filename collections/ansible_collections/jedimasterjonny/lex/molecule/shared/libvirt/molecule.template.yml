@@ -1,0 +1,50 @@
+---
+# Reference Molecule scenario config for Tier 2 (libvirt/KVM).
+# Copy this file to roles/<role>/molecule/full/molecule.yml and adjust
+# the platform 'name' (must be unique across roles to avoid VM name collisions).
+#
+# Prerequisites on the host running `molecule test`:
+#   - libvirt + KVM tooling installed with modular daemons running
+#     (see playbooks/lab-bootstrap.yml).
+#   - The backing image referenced by create.yml must exist locally
+#     (/var/lib/libvirt/images/tumbleweed-base.qcow2 — lab-bootstrap caches this).
+
+# Collections are installed by `make setup` into ~/.ansible/collections, so we
+# omit molecule's `dependency:` stage to avoid the "Missing requirements file"
+# noise. The sequence overrides below list only the phases we ship playbooks
+# for — preventing molecule from warning about missing prepare/cleanup hooks.
+
+driver:
+  name: default          # Molecule's built-in 'delegated' driver, simplest path
+
+platforms:
+  - name: molecule-lex-ROLE_NAME-full          # MUST be unique per role
+    image: tumbleweed
+
+provisioner:
+  name: ansible
+  playbooks:
+    create: ../../../../molecule/shared/libvirt/create.yml
+    destroy: ../../../../molecule/shared/libvirt/destroy.yml
+    converge: converge.yml
+    verify: verify.yml
+
+verifier:
+  name: ansible
+
+scenario:
+  create_sequence:
+    - create
+  converge_sequence:
+    - create
+    - converge
+  destroy_sequence:
+    - destroy
+  test_sequence:
+    - destroy
+    - syntax
+    - create
+    - converge
+    - idempotence
+    - verify
+    - destroy
