@@ -26,8 +26,8 @@ provisioner:
   playbooks:
     create: ../../../../molecule/shared/incus/create.yml
     destroy: ../../../../molecule/shared/incus/destroy.yml
-    converge: converge.yml
-    verify: verify.yml
+    converge: ../converge.yml
+    verify: ../verify.yml
   inventory:
     host_vars:
       molecule-lex-ROLE_NAME-default:

@@ -26,8 +26,8 @@ provisioner:
   playbooks:
     create: ../../../../molecule/shared/libvirt/create.yml
     destroy: ../../../../molecule/shared/libvirt/destroy.yml
-    converge: converge.yml
-    verify: verify.yml
+    converge: ../converge.yml
+    verify: ../verify.yml
 
 verifier:
   name: ansible
