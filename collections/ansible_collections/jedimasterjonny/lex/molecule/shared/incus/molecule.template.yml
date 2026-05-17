@@ -26,6 +26,8 @@ provisioner:
   playbooks:
     create: ../../../../molecule/shared/incus/create.yml
     destroy: ../../../../molecule/shared/incus/destroy.yml
+    # converge.yml and verify.yml live one level up, at roles/<role>/molecule/,
+    # shared across all scenarios (default, full, …) for this role.
     converge: ../converge.yml
     verify: ../verify.yml
   inventory:
