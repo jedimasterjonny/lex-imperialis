@@ -1,0 +1,51 @@
+---
+- name: Destroy libvirt VM
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    # community.libvirt needs the system libvirt-python bindings (installed by
+    # lab-bootstrap as python<ver>-libvirt-python); the dev venv doesn't see
+    # system site-packages, so run this play under the system interpreter.
+    ansible_python_interpreter: /usr/bin/python3
+    platform: "{{ molecule_yml.platforms[0] }}"
+    vm_name: "{{ platform.name }}"
+    vm_overlay: "/var/lib/libvirt/images/{{ vm_name }}.qcow2"
+    vm_seed_iso: "/var/lib/libvirt/images/{{ vm_name }}-seed.iso"
+
+  tasks:
+    - name: Get VM state (if defined)
+      community.libvirt.virt:
+        command: list_vms
+      register: defined_vms
+
+    - name: Force-stop VM if it exists
+      community.libvirt.virt:
+        name: "{{ vm_name }}"
+        state: destroyed
+      when: vm_name in defined_vms.list_vms
+      failed_when: false
+
+    - name: Undefine VM if it exists
+      community.libvirt.virt:
+        name: "{{ vm_name }}"
+        command: undefine
+      when: vm_name in defined_vms.list_vms
+      failed_when: false
+
+    - name: Remove overlay disk
+      ansible.builtin.file:
+        path: "{{ vm_overlay }}"
+        state: absent
+
+    - name: Remove cloud-init seed ISO
+      ansible.builtin.file:
+        path: "{{ vm_seed_iso }}"
+        state: absent
+
+    - name: Truncate Molecule instance config
+      ansible.builtin.copy:
+        content: "{{ [] | to_nice_yaml }}"
+        dest: "{{ molecule_instance_config }}"
+        mode: '0644'
