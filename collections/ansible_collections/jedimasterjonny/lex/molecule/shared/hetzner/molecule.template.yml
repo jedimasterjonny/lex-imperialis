@@ -1,0 +1,57 @@
+---
+# Reference Molecule scenario config for Tier 3 (Hetzner Cloud / CI).
+# Copy this file to roles/<role>/molecule/ci/molecule.yml and substitute
+# ROLE_NAME. The ${...} shell expansion in the platform name is intentional
+# — Molecule interpolates env vars in molecule.yml at scenario load time so
+# parallel CI runners create uniquely-named servers and don't collide.
+#
+# Prerequisites on the host running `molecule test -s ci`:
+#   - HCLOUD_TOKEN env var set to a Hetzner Cloud API token with
+#     read/write access to the project.
+#   - GITHUB_RUN_ID env var set when running in GitHub Actions; falls
+#     back to 'local' for developer runs.
+#   - hetzner.hcloud collection installed (pinned in requirements.yml).
+
+# Collections are installed by `make setup` into ~/.ansible/collections, so we
+# omit molecule's `dependency:` stage to avoid the "Missing requirements file"
+# noise. The sequence overrides below list only the phases we ship playbooks
+# for — preventing molecule from warning about missing prepare/cleanup hooks.
+
+driver:
+  name: default
+
+platforms:
+  - name: lex-ci-ROLE_NAME-${GITHUB_RUN_ID:-local}
+    server_type: cx23
+    image: opensuse-16
+    location: nbg1
+
+provisioner:
+  name: ansible
+  playbooks:
+    create: ../../../../molecule/shared/hetzner/create.yml
+    destroy: ../../../../molecule/shared/hetzner/destroy.yml
+    # converge.yml and verify.yml live one level up, at roles/<role>/molecule/,
+    # shared across all scenarios (default, full, ci, …) for this role.
+    converge: ../converge.yml
+    verify: ../verify.yml
+
+verifier:
+  name: ansible
+
+scenario:
+  create_sequence:
+    - create
+  converge_sequence:
+    - create
+    - converge
+  destroy_sequence:
+    - destroy
+  test_sequence:
+    - destroy
+    - syntax
+    - create
+    - converge
+    - idempotence
+    - verify
+    - destroy

@@ -1,0 +1,52 @@
+---
+# Called by GitHub Actions in an `if: always()` step. Deletes any Hetzner
+# server tagged with the current run_id, surviving even if molecule destroy
+# never ran (e.g. runner cancelled mid-converge).
+#
+# Run with `-e run_id=<id>`. Assumes a dedicated Hetzner project (or at
+# least no other workload using the `run_id` label key) — every server
+# carrying a matching run_id label will be deleted.
+
+- name: Cleanup orphaned Hetzner servers for a CI run
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: List all servers in the project
+      hetzner.hcloud.server_info:
+        api_token: "{{ lookup('env', 'HCLOUD_TOKEN') }}"
+      register: all_servers
+
+    - name: Identify servers tagged with this run_id
+      ansible.builtin.set_fact:
+        orphaned_servers: >-
+          {{ all_servers.hcloud_server_info
+             | selectattr('labels.run_id', 'defined')
+             | selectattr('labels.run_id', 'equalto', run_id)
+             | map(attribute='name')
+             | list }}
+
+    - name: Report orphaned servers
+      ansible.builtin.debug:
+        msg: "Deleting orphaned servers: {{ orphaned_servers }}"
+
+    - name: Delete orphaned servers
+      hetzner.hcloud.server:
+        api_token: "{{ lookup('env', 'HCLOUD_TOKEN') }}"
+        name: "{{ item }}"
+        state: absent
+      loop: "{{ orphaned_servers }}"
+
+    - name: Delete SSH keys paired with orphaned servers
+      # Each server has exactly one Hetzner-side SSH key named
+      # `<server_name>-key` (see create.yml). Derives keys from the
+      # already-collected orphan list rather than re-querying by label.
+      # Edge case: a key uploaded between create.yml's ssh_key task and the
+      # subsequent server task wouldn't be paired with any server and would
+      # leak. Hetzner SSH keys are free; prune manually if it ever happens.
+      hetzner.hcloud.ssh_key:
+        api_token: "{{ lookup('env', 'HCLOUD_TOKEN') }}"
+        name: "{{ item }}-key"
+        state: absent
+      loop: "{{ orphaned_servers }}"

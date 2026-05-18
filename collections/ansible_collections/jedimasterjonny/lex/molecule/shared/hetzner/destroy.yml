@@ -1,0 +1,28 @@
+---
+- name: Destroy Hetzner server
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    platform: "{{ molecule_yml.platforms[0] }}"
+    server_name: "{{ platform.name }}"
+
+  tasks:
+    - name: Delete Hetzner server if it exists
+      hetzner.hcloud.server:
+        api_token: "{{ lookup('env', 'HCLOUD_TOKEN') }}"
+        name: "{{ server_name }}"
+        state: absent
+
+    - name: Delete Hetzner SSH key if it exists
+      hetzner.hcloud.ssh_key:
+        api_token: "{{ lookup('env', 'HCLOUD_TOKEN') }}"
+        name: "{{ server_name }}-key"
+        state: absent
+
+    - name: Truncate Molecule instance config
+      ansible.builtin.copy:
+        content: "{{ [] | to_nice_yaml }}"
+        dest: "{{ molecule_instance_config }}"
+        mode: '0644'

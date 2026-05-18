@@ -1,0 +1,9 @@
+#cloud-config
+# user-data for Molecule Hetzner servers.
+# Root's SSH key is injected by the Hetzner API at provision time
+# (see the `ssh_keys` parameter in create.yml), so cloud-init only
+# needs to make sure Ansible's python interpreter is present.
+
+package_update: false
+packages:
+  - python3

@@ -1,7 +1,7 @@
 # Lex Imperialis — top-level Makefile.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup hooks collections lint lint-yaml lint-ansible lint-shell test test-full test-all lab-bootstrap
+.PHONY: help setup hooks collections lint lint-yaml lint-ansible lint-shell test test-full test-ci test-all lab-bootstrap
 
 ROLE ?=
 ROLE_PATH := collections/ansible_collections/jedimasterjonny/lex/roles/$(ROLE)
@@ -46,6 +46,12 @@ test-full: ## Run Tier 2 (libvirt) for ROLE=<name>. Example: make test-full ROLE
 	@if [ -z "$(ROLE)" ]; then echo "ERROR: pass ROLE=<name> (e.g. make test-full ROLE=motd)"; exit 2; fi
 	@if [ ! -d "$(ROLE_PATH)/molecule/full" ]; then echo "ERROR: 'full' scenario not found at $(ROLE_PATH)/molecule/full"; exit 2; fi
 	cd $(ROLE_PATH) && molecule test -s full
+
+test-ci: ## Run Tier 3 (Hetzner Cloud) for ROLE=<name>. Example: make test-ci ROLE=motd
+	@if [ -z "$(ROLE)" ]; then echo "ERROR: pass ROLE=<name> (e.g. make test-ci ROLE=motd)"; exit 2; fi
+	@if [ ! -d "$(ROLE_PATH)/molecule/ci" ]; then echo "ERROR: 'ci' scenario not found at $(ROLE_PATH)/molecule/ci"; exit 2; fi
+	@if [ -z "$$HCLOUD_TOKEN" ]; then echo "ERROR: HCLOUD_TOKEN is not set (see .envrc.local)"; exit 2; fi
+	cd $(ROLE_PATH) && molecule test -s ci
 
 test-all: ## Run Tier 1 across every role in the collection, sequentially.
 	@for role in $$(ls collections/ansible_collections/jedimasterjonny/lex/roles/); do \

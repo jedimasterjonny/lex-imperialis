@@ -1,0 +1,127 @@
+---
+- name: Create Hetzner server for Molecule
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    platform: "{{ molecule_yml.platforms[0] }}"
+    server_name: "{{ platform.name }}"
+    server_type: "{{ platform.server_type | default('cx23') }}"
+    server_image: "{{ platform.image | default('opensuse-16') }}"
+    server_location: "{{ platform.location | default('nbg1') }}"
+    run_id: "{{ lookup('env', 'GITHUB_RUN_ID') | default('local', true) }}"
+    ssh_key_path: "{{ molecule_ephemeral_directory }}/ssh_key"
+
+  tasks:
+    - name: Verify HCLOUD_TOKEN is set
+      ansible.builtin.assert:
+        that:
+          - lookup('env', 'HCLOUD_TOKEN') | length > 0
+        fail_msg: "HCLOUD_TOKEN env var is not set."
+
+    - name: Generate ephemeral SSH keypair for this scenario
+      community.crypto.openssh_keypair:
+        path: "{{ ssh_key_path }}"
+        type: ed25519
+        force: false
+
+    - name: Read public key
+      ansible.builtin.slurp:
+        src: "{{ ssh_key_path }}.pub"
+      register: ssh_pub
+
+    - name: Set ssh_public_key fact
+      ansible.builtin.set_fact:
+        ssh_public_key: "{{ ssh_pub.content | b64decode | trim }}"
+
+    - name: Upload public key to Hetzner for this scenario
+      # Hetzner's API-driven key injection runs before image bootstrap and
+      # primes /root/.ssh/authorized_keys directly, sidestepping cloud-init.
+      # On openSUSE Leap images this also avoids the expired-root-password
+      # PAM block that cloud-init key injection trips into. Labels mirror
+      # the server so cleanup-orphans.yml can sweep both by run_id.
+      hetzner.hcloud.ssh_key:
+        api_token: "{{ lookup('env', 'HCLOUD_TOKEN') }}"
+        name: "{{ server_name }}-key"
+        public_key: "{{ ssh_public_key }}"
+        labels:
+          purpose: molecule-ci
+          run_id: "{{ run_id }}"
+        state: present
+      register: hcloud_ssh_key
+
+    - name: Render cloud-init user-data
+      ansible.builtin.template:
+        src: templates/cloud-init-user-data.j2
+        dest: "{{ molecule_ephemeral_directory }}/user-data"
+        mode: '0644'
+
+    - name: Read rendered user-data
+      ansible.builtin.slurp:
+        src: "{{ molecule_ephemeral_directory }}/user-data"
+      register: user_data_blob
+
+    - name: Provision Hetzner server
+      hetzner.hcloud.server:
+        api_token: "{{ lookup('env', 'HCLOUD_TOKEN') }}"
+        name: "{{ server_name }}"
+        server_type: "{{ server_type }}"
+        image: "{{ server_image }}"
+        location: "{{ server_location }}"
+        ssh_keys:
+          - "{{ hcloud_ssh_key.hcloud_ssh_key.name }}"
+        user_data: "{{ user_data_blob.content | b64decode }}"
+        labels:
+          purpose: molecule-ci
+          run_id: "{{ run_id }}"
+        state: started
+      register: hcloud_server
+
+    - name: Wait for SSH on the server
+      ansible.builtin.wait_for:
+        host: "{{ hcloud_server.hcloud_server.ipv4_address }}"
+        port: 22
+        timeout: 180
+        state: started
+
+    - name: Add server to in-memory inventory for the wait tasks
+      ansible.builtin.add_host:
+        name: "{{ server_name }}"
+        ansible_host: "{{ hcloud_server.hcloud_server.ipv4_address }}"
+        ansible_user: root
+        ansible_ssh_private_key_file: "{{ ssh_key_path }}"
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+      changed_when: false
+
+    - name: Wait for Ansible connectivity to the server
+      ansible.builtin.wait_for_connection:
+        timeout: 180
+      delegate_to: "{{ server_name }}"
+      # delegate_to swaps the target host but not the play's connection plugin,
+      # so without this override these tasks would run via connection=local
+      # on the controller instead of SSHing into the server.
+      connection: ssh
+
+    - name: Wait for cloud-init boot-finished marker
+      ansible.builtin.wait_for:
+        path: /var/lib/cloud/instance/boot-finished
+        timeout: 180
+      delegate_to: "{{ server_name }}"
+      connection: ssh
+
+    - name: Build Molecule instance config entry
+      ansible.builtin.set_fact:
+        instance_conf_entry:
+          instance: "{{ server_name }}"
+          address: "{{ hcloud_server.hcloud_server.ipv4_address }}"
+          user: root
+          port: "22"
+          identity_file: "{{ ssh_key_path }}"
+          connection: ssh
+
+    - name: Write Molecule instance config
+      ansible.builtin.copy:
+        content: "{{ [instance_conf_entry] | to_nice_yaml }}"
+        dest: "{{ molecule_instance_config }}"
+        mode: '0644'
