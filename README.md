@@ -48,9 +48,11 @@ All driven by Molecule with the `default` (delegated) driver:
 |------|----------|---------|------|
 | 1 | `default` | Incus containers on the lab box | dev loop |
 | 2 | `full` | libvirt/KVM VMs on the lab box | VM-only behaviour |
+| 3 | `ci` | Hetzner Cloud servers | CI |
 
 - `make test ROLE=<name>` — runs Tier 1 for one role.
 - `make test-full ROLE=<name>` — runs Tier 2 for one role (requires a `full` scenario).
+- `make test-ci ROLE=<name>` — runs Tier 3 for one role (requires `HCLOUD_TOKEN`).
 - `make test-all` — sweeps every role with a default scenario.
 
 ## License
