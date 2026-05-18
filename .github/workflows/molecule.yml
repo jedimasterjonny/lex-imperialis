@@ -1,0 +1,59 @@
+---
+name: molecule
+
+# `on` is quoted so yamllint's truthy rule doesn't read it as a boolean;
+# GitHub Actions parses the string trigger key the same way.
+"on":
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  molecule:
+    name: Molecule (${{ matrix.role }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        role: [motd]    # Add roles here as they're built. Keep alphabetical.
+    # Cancelling on a follow-up push relies on the `if: always()` cleanup
+    # step running during GitHub's post-cancel grace period to delete the
+    # in-flight server. If that grace period is too short, the scheduled
+    # cleanup-stale.yml workflow is the backstop.
+    concurrency:
+      group: molecule-${{ matrix.role }}-${{ github.ref }}
+      cancel-in-progress: true
+    env:
+      HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+      ANSIBLE_FORCE_COLOR: "1"
+      PY_COLORS: "1"
+      # Scopes Hetzner `run_id` labels per matrix entry so concurrent entries
+      # don't clobber each other's servers when cleanup-orphans.yml runs.
+      MOLECULE_RUN_ID: ${{ github.run_id }}-${{ matrix.role }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: requirements-ci.txt
+      - run: pip install -r requirements-ci.txt
+      - run: ansible-galaxy collection install -r requirements.yml
+
+      - name: Run molecule test (ci scenario)
+        working-directory: collections/ansible_collections/jedimasterjonny/lex/roles/${{ matrix.role }}
+        env:
+          ANSIBLE_CONFIG: ${{ github.workspace }}/ansible.cfg
+        run: molecule test -s ci
+
+      - name: Cleanup orphaned Hetzner servers (always runs)
+        if: always()
+        run: >
+          ansible-playbook
+          collections/ansible_collections/jedimasterjonny/lex/molecule/shared/hetzner/cleanup-orphans.yml
+          -e run_id=$MOLECULE_RUN_ID

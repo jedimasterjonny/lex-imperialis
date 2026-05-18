@@ -10,7 +10,11 @@
     server_type: "{{ platform.server_type | default('cx23') }}"
     server_image: "{{ platform.image | default('opensuse-16') }}"
     server_location: "{{ platform.location | default('nbg1') }}"
-    run_id: "{{ lookup('env', 'GITHUB_RUN_ID') | default('local', true) }}"
+    # MOLECULE_RUN_ID (set by .github/workflows/molecule.yml) scopes labels
+    # per matrix entry so concurrent entries can't sweep each other's servers
+    # via cleanup-orphans.yml. Falls back to bare GITHUB_RUN_ID outside that
+    # workflow, or `local` for developer runs.
+    run_id: "{{ lookup('env', 'MOLECULE_RUN_ID') | default(lookup('env', 'GITHUB_RUN_ID'), true) | default('local', true) }}"
     ssh_key_path: "{{ molecule_ephemeral_directory }}/ssh_key"
 
   tasks:
