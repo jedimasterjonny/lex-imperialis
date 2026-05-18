@@ -1,0 +1,2 @@
+ansible-core==2.20.5
+hcloud==2.20.0

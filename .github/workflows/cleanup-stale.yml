@@ -1,0 +1,36 @@
+---
+name: cleanup-stale-hetzner
+
+# `on` is quoted so yamllint's truthy rule doesn't read it as a boolean;
+# GitHub Actions parses the string trigger key the same way.
+"on":
+  schedule:
+    - cron: '17 4,16 * * *'   # twice daily, 04:17 and 16:17 UTC
+  workflow_dispatch:          # allow manual triggering for testing
+
+permissions:
+  contents: read
+
+# Serialise overlapping runs (manual dispatch + scheduled tick) so they don't
+# race on the same deletes. We deliberately do not cancel-in-progress: a
+# half-finished cleanup is worse than the next tick waiting its turn.
+concurrency:
+  group: cleanup-stale-hetzner
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: '3.12'
+      # requirements-ci.txt is a thin pin file (ansible-core + hcloud) kept
+      # separate from requirements-dev.txt so Renovate can crawl and bump it.
+      - run: pip install -r requirements-ci.txt
+      - run: ansible-galaxy collection install -r requirements.yml
+      - run: ansible-playbook playbooks/cleanup-stale.yml
