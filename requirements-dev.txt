@@ -5,3 +5,4 @@ pre-commit==4.6.0
 antsibull-changelog==0.35.0
 shellcheck-py==0.11.0.1
 molecule==26.4.0
+hcloud==2.20.0
