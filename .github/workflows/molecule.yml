@@ -12,6 +12,16 @@ name: molecule
 permissions:
   contents: read
 
+# Hetzner Cloud caps this project at 9 concurrent servers, and GitHub Actions
+# concurrency groups are inherently "1 active per group" (no native max-N for
+# N > 1). Serialise every molecule run across the whole repo so we can never
+# spike past the cap; cancel-in-progress: false queues retries/cross-PR runs
+# instead of dropping them. Trade-off: a same-PR follow-up push waits for the
+# in-flight run rather than cancelling it (~2–3 min at the tip).
+concurrency:
+  group: hetzner-molecule
+  cancel-in-progress: false
+
 jobs:
   molecule:
     name: Molecule (${{ matrix.role }})
@@ -21,13 +31,6 @@ jobs:
       fail-fast: false
       matrix:
         role: [motd]    # Add roles here as they're built. Keep alphabetical.
-    # Cancelling on a follow-up push relies on the `if: always()` cleanup
-    # step running during GitHub's post-cancel grace period to delete the
-    # in-flight server. If that grace period is too short, the scheduled
-    # cleanup-stale.yml workflow is the backstop.
-    concurrency:
-      group: molecule-${{ matrix.role }}-${{ github.ref }}
-      cancel-in-progress: true
     env:
       HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
       ANSIBLE_FORCE_COLOR: "1"
