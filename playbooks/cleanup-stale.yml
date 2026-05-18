@@ -2,7 +2,7 @@
 - name: Cleanup stale Hetzner servers in lex-ci project
   hosts: localhost
   connection: local
-  gather_facts: true   # we need ansible_date_time
+  gather_facts: true   # we need ansible_facts['date_time']
 
   vars:
     max_age_hours: 2
@@ -22,7 +22,7 @@
       ansible.builtin.set_fact:
         cutoff_iso: >-
           {{ '%Y-%m-%dT%H:%M:%S+00:00'
-             | strftime((ansible_date_time.epoch | int) - (max_age_hours * 3600), true) }}
+             | strftime((ansible_facts['date_time']['epoch'] | int) - (max_age_hours * 3600), true) }}
 
     - name: List all servers in the project
       hetzner.hcloud.server_info:
