@@ -17,7 +17,7 @@
     {
       "matchUpdateTypes": ["major"],
       "reviewers": ["jedimasterjonny"],
-      "prBodyNotes": ["@claude please review this major update."]
+      "addLabels": ["claude-review"]
     }
   ]
 }
