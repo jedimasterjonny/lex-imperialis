@@ -1,0 +1,70 @@
+---
+- name: Cleanup stale Hetzner servers in lex-ci project
+  hosts: localhost
+  connection: local
+  gather_facts: true   # we need ansible_facts['date_time']
+
+  vars:
+    max_age_hours: 2
+
+  tasks:
+    - name: Verify HCLOUD_TOKEN is set
+      ansible.builtin.assert:
+        that:
+          - lookup('env', 'HCLOUD_TOKEN') | length > 0
+        fail_msg: "HCLOUD_TOKEN env var is not set."
+
+    - name: Compute cutoff timestamp for stale-server filter
+      # strftime is forced to UTC so a non-UTC controller can't shift the
+      # cutoff away from what the `+00:00` label claims. The hcloud API
+      # returns `created` in the same fixed `YYYY-MM-DDTHH:MM:SS+00:00` form,
+      # so lexicographic comparison against this string is order-correct.
+      ansible.builtin.set_fact:
+        cutoff_iso: >-
+          {{ '%Y-%m-%dT%H:%M:%S+00:00'
+             | strftime((ansible_facts['date_time']['epoch'] | int) - (max_age_hours * 3600), true) }}
+
+    - name: List all servers in the project
+      hetzner.hcloud.server_info:
+        api_token: "{{ lookup('env', 'HCLOUD_TOKEN') }}"
+      register: all_servers
+
+    - name: Identify stale CI servers past the cutoff
+      # Scope by the `purpose: molecule-ci` label that create.yml applies, so
+      # this never touches anything outside the Tier-3 fleet — even if other
+      # workloads share the project.
+      ansible.builtin.set_fact:
+        stale_servers: >-
+          {{ all_servers.hcloud_server_info
+             | selectattr('labels.purpose', 'defined')
+             | selectattr('labels.purpose', 'equalto', 'molecule-ci')
+             | selectattr('created', 'defined')
+             | rejectattr('created', 'none')
+             | selectattr('created', 'lt', cutoff_iso)
+             | map(attribute='name')
+             | list }}
+
+    - name: Report what will be deleted
+      ansible.builtin.debug:
+        msg: "Cutoff: {{ cutoff_iso }}. Servers to delete: {{ stale_servers }}"
+
+    - name: Delete stale servers
+      hetzner.hcloud.server:
+        api_token: "{{ lookup('env', 'HCLOUD_TOKEN') }}"
+        name: "{{ item }}"
+        state: absent
+      loop: "{{ stale_servers }}"
+
+    - name: Delete SSH keys paired with stale servers
+      # Each CI server has exactly one Hetzner-side SSH key named
+      # `<server_name>-key` (see molecule/shared/hetzner/create.yml). Derives
+      # key names from the already-collected stale list rather than re-querying
+      # by label, mirroring molecule/shared/hetzner/cleanup-orphans.yml.
+      # Edge case: a key uploaded by create.yml whose paired server task never
+      # ran wouldn't appear in stale_servers and would leak past the cutoff.
+      # Hetzner SSH keys are free; prune manually if it ever happens.
+      hetzner.hcloud.ssh_key:
+        api_token: "{{ lookup('env', 'HCLOUD_TOKEN') }}"
+        name: "{{ item }}-key"
+        state: absent
+      loop: "{{ stale_servers }}"
