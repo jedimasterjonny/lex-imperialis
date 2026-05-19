@@ -18,6 +18,11 @@
       "matchUpdateTypes": ["major"],
       "reviewers": ["jedimasterjonny"],
       "addLabels": ["claude-review"]
+    },
+    {
+      "matchDepNames": ["python"],
+      "matchUpdateTypes": ["minor"],
+      "automerge": false
     }
   ]
 }
