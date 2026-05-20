@@ -1,0 +1,46 @@
+---
+name: pre-commit
+
+# `on` is quoted so yamllint's truthy rule doesn't read it as a boolean;
+# GitHub Actions parses the string trigger key the same way.
+"on":
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Per-PR (or per-ref for push) — same-PR retries cancel the previous run,
+# cross-PR runs proceed in parallel. Pre-commit is fast and free of side
+# effects, so cancel-on-retry is fine and parallel cross-PR is unproblematic.
+concurrency:
+  group: pre-commit-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: '3.14'
+          cache: 'pip'
+          cache-dependency-path: requirements-ci.txt
+      # The ansible-lint pre-commit hook reads ansible.cfg
+      # (collections_path = ~/.ansible/collections) when validating FQCN
+      # references. Install both the Galaxy dependency collections AND the
+      # in-repo jedimasterjonny.lex collection there before pre-commit runs,
+      # so the hook can resolve community.libvirt / hetzner.hcloud / etc.
+      # AND the FQCN role reference `jedimasterjonny.lex.motd` that
+      # converge.yml uses. Locally molecule auto-installs the latter via
+      # ansible-compat; CI has to do it explicitly.
+      - run: pip install -r requirements-ci.txt
+      - run: ansible-galaxy collection install -r requirements.yml
+      - name: Install in-repo collection so ansible-lint resolves FQCN roles
+        working-directory: collections/ansible_collections/jedimasterjonny/lex
+        run: ansible-galaxy collection install . --force
+      - uses: pre-commit/action@v3.0.1
