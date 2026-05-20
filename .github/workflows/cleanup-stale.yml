@@ -28,7 +28,7 @@ jobs:
       - uses: actions/checkout@v6.0.2
       - uses: actions/setup-python@v6.2.0
         with:
-          python-version: '3.12'
+          python-version: '3.14'
       # requirements-ci.txt is a thin pin file (ansible-core + hcloud +
       # molecule) kept separate from requirements-dev.txt so Renovate can
       # crawl and bump it.
