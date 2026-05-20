@@ -1,10 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:best-practices",
-    ":semanticCommits",
-    ":automergeMinor"
-  ],
+  "extends": ["config:best-practices", ":semanticCommits", ":automergeMinor"],
   "pre-commit": {
     "enabled": true
   },
