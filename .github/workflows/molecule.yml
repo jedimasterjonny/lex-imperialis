@@ -3,24 +3,32 @@ name: molecule
 
 # `on` is quoted so yamllint's truthy rule doesn't read it as a boolean;
 # GitHub Actions parses the string trigger key the same way.
+#
+# Path filter: only fire when something CI actually exercises changes —
+# role content, the Tier-3 shared scaffolding, the Galaxy/PyPI deps the
+# workflow installs, or this workflow file itself. Renovate dep-bumps
+# outside these paths (e.g. yamllint, antsibull-changelog) skip the
+# workflow entirely, which keeps the Hetzner spend bounded.
 "on":
   pull_request:
     branches: [main]
+    paths:
+      - 'collections/ansible_collections/jedimasterjonny/lex/roles/**'
+      - 'collections/ansible_collections/jedimasterjonny/lex/molecule/shared/hetzner/**'
+      - 'requirements.yml'
+      - 'requirements-ci.txt'
+      - '.github/workflows/molecule.yml'
   push:
     branches: [main]
+    paths:
+      - 'collections/ansible_collections/jedimasterjonny/lex/roles/**'
+      - 'collections/ansible_collections/jedimasterjonny/lex/molecule/shared/hetzner/**'
+      - 'requirements.yml'
+      - 'requirements-ci.txt'
+      - '.github/workflows/molecule.yml'
 
 permissions:
   contents: read
-
-# Hetzner Cloud caps this project at 9 concurrent servers, and GitHub Actions
-# concurrency groups are inherently "1 active per group" (no native max-N for
-# N > 1). Serialise every molecule run across the whole repo so we can never
-# spike past the cap; cancel-in-progress: false queues retries/cross-PR runs
-# instead of dropping them. Trade-off: a same-PR follow-up push waits for the
-# in-flight run rather than cancelling it (~2–3 min at the tip).
-concurrency:
-  group: hetzner-molecule
-  cancel-in-progress: false
 
 jobs:
   molecule:
@@ -31,6 +39,14 @@ jobs:
       fail-fast: false
       matrix:
         role: [motd]    # Add roles here as they're built. Keep alphabetical.
+    # Per-PR (or per-ref for push events) concurrency: same-PR retries cancel
+    # the previous run; cross-PR runs proceed in parallel. Drops the previous
+    # repo-wide hetzner-molecule cap because that was discarding queued runs
+    # whenever Renovate opened a burst of PRs in quick succession (only one
+    # could ever be pending, the rest got cancelled before they ran).
+    concurrency:
+      group: molecule-${{ matrix.role }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
     env:
       HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
       ANSIBLE_FORCE_COLOR: "1"
