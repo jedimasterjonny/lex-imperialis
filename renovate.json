@@ -6,7 +6,7 @@
   },
   "packageRules": [
     {
-      "matchUpdateTypes": ["pin"],
+      "matchUpdateTypes": ["pin", "pinDigest"],
       "automerge": true,
       "automergeType": "branch"
     },
