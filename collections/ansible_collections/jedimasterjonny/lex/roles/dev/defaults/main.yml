@@ -38,3 +38,37 @@ dev_incus_packages:
 # incus-admin group. Empty by default — callers (e.g. lab-bootstrap) opt in.
 # Users must already exist; the role does not create them.
 dev_incus_admin_users: []
+
+# Preseed applied via `incus admin init --preseed` on first init. The default
+# reflects the Lex lab box (incusbr0 bridge, btrfs pool, Molecule-friendly
+# default profile) and is suitable for any single-node Incus host. Override
+# via host_vars for clustered or differently-laid-out hosts.
+dev_incus_preseed:
+  config: {}
+  networks:
+    - name: incusbr0
+      type: bridge
+      config:
+        ipv4.address: auto
+        ipv4.nat: "true"
+        ipv6.address: "none"
+  storage_pools:
+    - name: default
+      driver: btrfs
+      config:
+        source: /var/lib/incus/storage-pools/default
+  profiles:
+    - name: default
+      description: Default profile for Molecule containers
+      devices:
+        eth0:
+          name: eth0
+          nictype: bridged
+          parent: incusbr0
+          type: nic
+        root:
+          path: /
+          pool: default
+          type: disk
+  projects: []
+  cluster: null

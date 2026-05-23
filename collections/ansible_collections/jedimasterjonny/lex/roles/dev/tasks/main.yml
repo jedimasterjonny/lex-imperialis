@@ -58,3 +58,18 @@
       loop: "{{ dev_incus_admin_users }}"
       loop_control:
         label: "{{ item }}"
+
+    # Proxy for "preseed ran"; a partial init leaves the 'default' pool and
+    # fools this — re-init by hand.
+    - name: Check whether Incus is already initialised
+      ansible.builtin.command: incus storage show default
+      register: __dev_incus_init_check
+      changed_when: false
+      failed_when: false
+
+    - name: Apply Incus preseed config (first init only)
+      ansible.builtin.command:
+        cmd: incus admin init --preseed
+        stdin: "{{ dev_incus_preseed | to_nice_yaml }}"
+      when: __dev_incus_init_check.rc != 0
+      changed_when: true

@@ -57,3 +57,25 @@
           loop: "{{ dev_incus_admin_users }}"
           loop_control:
             label: "{{ item }}"
+
+        - name: Verify the default Incus storage pool exists
+          ansible.builtin.command: incus storage show default
+          changed_when: false
+
+        - name: Verify the incusbr0 Incus bridge exists
+          ansible.builtin.command: incus network show incusbr0
+          changed_when: false
+
+        - name: Capture default Incus profile for shape assertions
+          ansible.builtin.command: incus profile show default
+          register: __dev_incus_profile
+          changed_when: false
+
+        - name: Assert default profile is wired to incusbr0 and the default pool
+          ansible.builtin.assert:
+            that:
+              - "'parent: incusbr0' in __dev_incus_profile.stdout"
+              - "'pool: default' in __dev_incus_profile.stdout"
+            fail_msg: >-
+              Default profile is missing expected devices
+              (eth0 → incusbr0, root → default pool).

@@ -1,0 +1,8 @@
+---
+minor_changes:
+  - >-
+    dev - add ``dev_incus_preseed`` (default: lab-ready map with an
+    ``incusbr0`` bridge, btrfs storage pool, and Molecule-friendly
+    default profile). When ``dev_configure_incus_host`` is true and the
+    default storage pool does not exist, applies the preseed via
+    ``incus admin init --preseed``.
