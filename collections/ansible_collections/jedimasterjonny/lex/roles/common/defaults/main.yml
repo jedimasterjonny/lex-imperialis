@@ -1,0 +1,11 @@
+---
+# Default vars for jedimasterjonny.lex.common role.
+
+# Packages installed on every Lex Imperialis host.
+common_packages:
+  - htop
+  - openssh
+  - python3-rpm
+  - stow
+  - sudo
+  - vim

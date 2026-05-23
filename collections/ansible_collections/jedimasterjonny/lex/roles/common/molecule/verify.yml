@@ -1,0 +1,26 @@
+---
+- name: Verify — assert on common role outcome
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - ../defaults/main.yml
+  tasks:
+    # Verify by re-applying state in check mode and asserting nothing would
+    # change. The zypper module resolves virtual provides (e.g. python3 →
+    # python313) natively, which package_facts' actual-name keys do not.
+    - name: Verify baseline packages are installed
+      community.general.zypper:
+        name: "{{ common_packages }}"
+        state: present
+      check_mode: true
+      register: __common_packages_check
+      failed_when: __common_packages_check.changed
+
+    - name: Verify sshd is enabled and started
+      ansible.builtin.systemd_service:
+        name: sshd
+        state: started
+        enabled: true
+      check_mode: true
+      register: __common_sshd_check
+      failed_when: __common_sshd_check.changed
