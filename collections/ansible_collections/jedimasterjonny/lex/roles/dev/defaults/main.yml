@@ -30,9 +30,15 @@ dev_ansible_dev_packages:
 dev_configure_incus_host: false
 
 # Incus host packages — installed when dev_configure_incus_host is true.
+# firewalld + python3-firewall are runtime deps absent from fresh cloud
+# images: ansible.posix.firewalld (used to trust the bridge in firewalld)
+# imports python3-firewall on the target and needs the firewalld daemon
+# running.
 dev_incus_packages:
+  - firewalld
   - incus
   - incus-tools
+  - python3-firewall
 
 # Existing users to grant access to the Incus control socket via the
 # incus-admin group. Empty by default — callers (e.g. lab-bootstrap) opt in.
@@ -72,3 +78,9 @@ dev_incus_preseed:
           type: disk
   projects: []
   cluster: null
+
+# Interfaces to add to firewalld's `trusted` zone so Incus containers can
+# route through the host. Defaults to the bridge created by
+# dev_incus_preseed. Set to [] on hosts not running firewalld.
+dev_incus_firewalld_trusted_interfaces:
+  - incusbr0

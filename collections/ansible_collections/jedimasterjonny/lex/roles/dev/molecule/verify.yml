@@ -79,3 +79,27 @@
             fail_msg: >-
               Default profile is missing expected devices
               (eth0 → incusbr0, root → default pool).
+
+        - name: Verify firewalld is enabled and started
+          ansible.builtin.systemd_service:
+            name: firewalld
+            enabled: true
+            state: started
+          check_mode: true
+          register: __dev_firewalld_check
+          failed_when: __dev_firewalld_check.changed
+          when: dev_incus_firewalld_trusted_interfaces | length > 0
+
+        - name: Verify configured Incus bridges are trusted in firewalld
+          ansible.posix.firewalld:
+            zone: trusted
+            interface: "{{ item }}"
+            permanent: true
+            immediate: true
+            state: enabled
+          check_mode: true
+          register: __dev_incus_firewalld_check
+          failed_when: __dev_incus_firewalld_check.changed
+          loop: "{{ dev_incus_firewalld_trusted_interfaces }}"
+          loop_control:
+            label: "{{ item }}"

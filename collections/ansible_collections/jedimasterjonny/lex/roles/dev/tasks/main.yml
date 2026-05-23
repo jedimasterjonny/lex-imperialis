@@ -73,3 +73,22 @@
         stdin: "{{ dev_incus_preseed | to_nice_yaml }}"
       when: __dev_incus_init_check.rc != 0
       changed_when: true
+
+    # `immediate: true` on the trust task below needs a running daemon.
+    - name: Ensure firewalld is enabled and started
+      ansible.builtin.systemd_service:
+        name: firewalld
+        enabled: true
+        state: started
+      when: dev_incus_firewalld_trusted_interfaces | length > 0
+
+    - name: Trust configured Incus bridges in firewalld
+      ansible.posix.firewalld:
+        zone: trusted
+        interface: "{{ item }}"
+        permanent: true
+        immediate: true
+        state: enabled
+      loop: "{{ dev_incus_firewalld_trusted_interfaces }}"
+      loop_control:
+        label: "{{ item }}"

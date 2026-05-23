@@ -1,0 +1,9 @@
+---
+minor_changes:
+  - >-
+    dev - add ``dev_incus_firewalld_trusted_interfaces`` (default
+    ``[incusbr0]``). When ``dev_configure_incus_host`` is true, installs
+    ``firewalld`` + ``python3-firewall``, ensures the daemon is enabled
+    and started, and adds each interface to firewalld's ``trusted`` zone
+    so containers can route through the host. Pulls in ``ansible.posix``
+    as a collection dependency.
