@@ -1,0 +1,50 @@
+---
+# Tier-2 (libvirt) scenario — validates the full dev package set installs
+# cleanly on a real kernel. Exists because the tier-1 incus container can't
+# host libvirt's QEMU driver (dependency conflict with systemd-sysvcompat),
+# so the ansible-author install goes untested in tier 1.
+#
+# This scenario does NOT exercise libvirt functionality — the libvirt VM
+# created by molecule/shared/libvirt/create.yml has no CPU host-passthrough,
+# so nested KVM is unavailable. The role only installs packages and verify
+# only asserts installation; that's the surface tier 2 validates.
+#
+# No extra-vars override here: tier 2 runs the full set of packages
+# (dev_install_ansible_dev defaults to true in defaults/main.yml).
+
+driver:
+  name: default
+
+platforms:
+  - name: molecule-lex-dev-full
+    image: tumbleweed
+
+provisioner:
+  name: ansible
+  playbooks:
+    create: ../../../../molecule/shared/libvirt/create.yml
+    destroy: ../../../../molecule/shared/libvirt/destroy.yml
+    # converge.yml and verify.yml live one level up, at roles/<role>/molecule/,
+    # shared across all scenarios (default, full, ci, …) for this role.
+    converge: ../converge.yml
+    verify: ../verify.yml
+
+verifier:
+  name: ansible
+
+scenario:
+  create_sequence:
+    - create
+  converge_sequence:
+    - create
+    - converge
+  destroy_sequence:
+    - destroy
+  test_sequence:
+    - destroy
+    - syntax
+    - create
+    - converge
+    - idempotence
+    - verify
+    - destroy

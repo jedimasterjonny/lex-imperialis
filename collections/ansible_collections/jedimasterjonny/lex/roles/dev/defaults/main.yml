@@ -1,0 +1,27 @@
+---
+# Default vars for jedimasterjonny.lex.dev role.
+
+# General developer tooling — always installed.
+dev_packages:
+  - direnv
+  - gh
+  - git
+  - make
+  - neovim
+  - python3
+  - python3-pip
+
+# Whether to also install the Ansible-author tooling below. Set to false on
+# dev hosts that don't need to run the Lex test pyramid (Molecule, libvirt).
+dev_install_ansible_dev: true
+
+# Ansible-author tooling — installed when dev_install_ansible_dev is true.
+dev_ansible_dev_packages:
+  - guestfs-tools
+  - incus
+  - incus-tools
+  - libguestfs
+  - libvirt
+  - python3-libvirt-python
+  - python3-lxml
+  - virt-install

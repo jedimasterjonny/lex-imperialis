@@ -1,0 +1,27 @@
+---
+- name: Verify — assert on dev role outcome
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - ../defaults/main.yml
+  tasks:
+    # Verify by re-applying state in check mode and asserting nothing would
+    # change. The zypper module resolves virtual provides (e.g. python3-lxml
+    # → python313-lxml) natively, which package_facts' actual-name keys do
+    # not.
+    - name: Verify general developer packages are installed
+      community.general.zypper:
+        name: "{{ dev_packages }}"
+        state: present
+      check_mode: true
+      register: __dev_packages_check
+      failed_when: __dev_packages_check.changed
+
+    - name: Verify Ansible-author packages are installed
+      community.general.zypper:
+        name: "{{ dev_ansible_dev_packages }}"
+        state: present
+      check_mode: true
+      register: __dev_ansible_packages_check
+      failed_when: __dev_ansible_packages_check.changed
+      when: dev_install_ansible_dev | bool

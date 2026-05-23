@@ -1,0 +1,8 @@
+---
+minor_changes:
+  - >-
+    dev - new role installing developer and Ansible-author tooling.
+    ``dev_install_ansible_dev`` (default ``true``) toggles the
+    Ansible-author half. Depends on the ``common`` role. On openSUSE
+    Leap, sources ``incus`` and ``lego`` from OBS
+    ``Virtualization:containers`` and ``network:utilities``.

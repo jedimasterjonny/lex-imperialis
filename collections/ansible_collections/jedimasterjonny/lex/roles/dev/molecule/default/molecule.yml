@@ -1,0 +1,58 @@
+---
+# Collections are installed by `make setup` into ~/.ansible/collections, so we
+# omit molecule's `dependency:` stage to avoid the "Missing requirements file"
+# noise. The sequence overrides below list only the phases we ship playbooks
+# for — preventing molecule from warning about missing prepare/cleanup hooks.
+
+driver:
+  name: default
+
+platforms:
+  - name: molecule-lex-dev-default
+    image: tumbleweed
+
+provisioner:
+  name: ansible
+  playbooks:
+    create: ../../../../molecule/shared/incus/create.yml
+    destroy: ../../../../molecule/shared/incus/destroy.yml
+    # converge.yml and verify.yml live one level up, at roles/<role>/molecule/,
+    # shared across all scenarios (default, full, ci, …) for this role.
+    converge: ../converge.yml
+    verify: ../verify.yml
+  inventory:
+    host_vars:
+      molecule-lex-dev-default:
+        ansible_connection: community.general.incus
+        ansible_user: root
+  # libvirt + virt-install + libguestfs are virt-host packages with
+  # dependency conflicts inside a system container (e.g.,
+  # libvirt-daemon-driver-qemu vs. systemd-sysvcompat on Tumbleweed).
+  # Tier 1 only validates the general-dev half; the full set is
+  # exercised by the ci (Hetzner) scenario on a real VM.
+  #
+  # extra-vars precedence beats vars_files (the verify playbook loads
+  # role defaults via vars_files), so this override propagates to both
+  # converge and verify.
+  options:
+    extra-vars: '{"dev_install_ansible_dev": false}'
+
+verifier:
+  name: ansible
+
+scenario:
+  create_sequence:
+    - create
+  converge_sequence:
+    - create
+    - converge
+  destroy_sequence:
+    - destroy
+  test_sequence:
+    - destroy
+    - syntax
+    - create
+    - converge
+    - idempotence
+    - verify
+    - destroy

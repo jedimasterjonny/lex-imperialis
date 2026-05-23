@@ -1,0 +1,8 @@
+---
+- name: Converge — apply jedimasterjonny.lex.dev
+  hosts: all
+  # Facts are gathered because the role's first_found lookup keys on
+  # ansible_facts['distribution'] to pick the right vars/ file.
+  gather_facts: true
+  roles:
+    - jedimasterjonny.lex.dev

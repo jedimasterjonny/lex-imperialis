@@ -1,0 +1,36 @@
+---
+# Distribution-specific values (e.g. extra repos) live in vars/ — one file
+# per ansible_facts['distribution'] value, loaded via first_found. Anchoring
+# the path with role_path prevents Ansible from resolving a same-named file
+# in a calling role's vars search path.
+- name: Load distribution-specific variables
+  ansible.builtin.include_vars:
+    file: "{{ lookup('ansible.builtin.first_found', params) }}"
+  vars:
+    params:
+      files:
+        - "{{ ansible_facts['distribution'] | replace(' ', '_') }}.yml"
+        - default.yml
+      paths:
+        - "{{ role_path }}/vars"
+
+- name: Configure distribution-specific zypper repositories
+  community.general.zypper_repository:
+    name: "{{ item.name }}"
+    repo: "{{ item.url }}"
+    state: present
+    auto_import_keys: true
+  loop: "{{ dev_extra_repos }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Install general developer packages
+  community.general.zypper:
+    name: "{{ dev_packages }}"
+    state: present
+
+- name: Install Ansible-author packages
+  community.general.zypper:
+    name: "{{ dev_ansible_dev_packages }}"
+    state: present
+  when: dev_install_ansible_dev | bool

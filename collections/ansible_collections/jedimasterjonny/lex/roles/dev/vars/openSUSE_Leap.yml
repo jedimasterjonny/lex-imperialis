@@ -1,0 +1,16 @@
+---
+# Leap doesn't ship incus in the default OSS repo. Two OBS projects are
+# needed:
+#   * Virtualization:containers — the canonical Leap source for incus itself.
+#   * network:utilities — provides `lego` (the ACME/Let's Encrypt Go client),
+#     which the Leap incus packaging declares as a hard dependency. It is
+#     not in the default repos and not in Virtualization:containers either.
+#
+# Both URLs template on distribution_version. Leap 16 uses bare-version
+# paths under these projects (unlike the openSUSE_Leap_15.x prefix
+# convention used for 15.x).
+dev_extra_repos:
+  - name: virtualization_containers
+    url: "https://download.opensuse.org/repositories/Virtualization:/containers/{{ ansible_facts['distribution_version'] }}/"
+  - name: network_utilities
+    url: "https://download.opensuse.org/repositories/network:/utilities/{{ ansible_facts['distribution_version'] }}/"
