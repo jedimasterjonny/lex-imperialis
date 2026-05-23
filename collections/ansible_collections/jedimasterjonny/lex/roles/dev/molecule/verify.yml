@@ -103,3 +103,10 @@
           loop: "{{ dev_incus_firewalld_trusted_interfaces }}"
           loop_control:
             label: "{{ item }}"
+
+        - name: Verify configured Incus images are present in the local cache
+          ansible.builtin.command: "incus image show local:{{ item.alias }}"
+          changed_when: false
+          loop: "{{ dev_incus_images }}"
+          loop_control:
+            label: "{{ item.alias }}"

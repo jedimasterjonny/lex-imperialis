@@ -84,3 +84,11 @@ dev_incus_preseed:
 # dev_incus_preseed. Set to [] on hosts not running firewalld.
 dev_incus_firewalld_trusted_interfaces:
   - incusbr0
+
+# Incus images to pre-warm into the host's local image cache. Each entry:
+# an `alias` (local cache name) and a `source` (remote image, e.g.
+# `images:opensuse/tumbleweed`). Empty by default — callers opt in:
+#   dev_incus_images:
+#     - alias: tumbleweed
+#       source: images:opensuse/tumbleweed
+dev_incus_images: []

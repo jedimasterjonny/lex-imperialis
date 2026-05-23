@@ -92,3 +92,22 @@
       loop: "{{ dev_incus_firewalld_trusted_interfaces }}"
       loop_control:
         label: "{{ item }}"
+
+    - name: Check which Incus images are already cached
+      ansible.builtin.command: "incus image show local:{{ item.alias }}"
+      register: __dev_incus_image_checks
+      loop: "{{ dev_incus_images }}"
+      loop_control:
+        label: "{{ item.alias }}"
+      changed_when: false
+      failed_when: false
+
+    - name: Pre-warm missing Incus images
+      ansible.builtin.command: >-
+        incus image copy {{ item.item.source }} local:
+        --alias {{ item.item.alias }}
+      loop: "{{ __dev_incus_image_checks.results }}"
+      loop_control:
+        label: "{{ item.item.alias }}"
+      when: item.rc != 0
+      changed_when: true
