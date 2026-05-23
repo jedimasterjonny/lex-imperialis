@@ -45,3 +45,15 @@
           check_mode: true
           register: __dev_incus_socket_check
           failed_when: __dev_incus_socket_check.changed
+
+        - name: Verify operators have incus-admin group membership
+          ansible.builtin.user:
+            name: "{{ item }}"
+            groups: incus-admin
+            append: true
+          check_mode: true
+          register: __dev_incus_admin_check
+          failed_when: __dev_incus_admin_check.changed
+          loop: "{{ dev_incus_admin_users }}"
+          loop_control:
+            label: "{{ item }}"

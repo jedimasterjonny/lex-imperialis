@@ -33,3 +33,8 @@ dev_configure_incus_host: false
 dev_incus_packages:
   - incus
   - incus-tools
+
+# Existing users to grant access to the Incus control socket via the
+# incus-admin group. Empty by default — callers (e.g. lab-bootstrap) opt in.
+# Users must already exist; the role does not create them.
+dev_incus_admin_users: []

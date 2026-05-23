@@ -48,3 +48,13 @@
         name: incus.socket
         enabled: true
         state: started
+
+    # Group membership is inert until incus.socket (enabled above) is running.
+    - name: Grant operators access to the incus-admin group
+      ansible.builtin.user:
+        name: "{{ item }}"
+        groups: incus-admin
+        append: true
+      loop: "{{ dev_incus_admin_users }}"
+      loop_control:
+        label: "{{ item }}"
