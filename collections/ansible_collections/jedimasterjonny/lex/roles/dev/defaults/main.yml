@@ -18,10 +18,18 @@ dev_install_ansible_dev: true
 # Ansible-author tooling — installed when dev_install_ansible_dev is true.
 dev_ansible_dev_packages:
   - guestfs-tools
-  - incus
-  - incus-tools
   - libguestfs
   - libvirt
   - python3-libvirt-python
   - python3-lxml
   - virt-install
+
+# Whether to configure this host as an Incus server. When true, installs
+# dev_incus_packages and enables incus.socket. Independent of
+# dev_install_ansible_dev — a tooling-only dev box can leave this off.
+dev_configure_incus_host: false
+
+# Incus host packages — installed when dev_configure_incus_host is true.
+dev_incus_packages:
+  - incus
+  - incus-tools

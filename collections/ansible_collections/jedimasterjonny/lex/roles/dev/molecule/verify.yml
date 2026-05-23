@@ -25,3 +25,23 @@
       register: __dev_ansible_packages_check
       failed_when: __dev_ansible_packages_check.changed
       when: dev_install_ansible_dev | bool
+
+    - name: Verify Incus host configuration
+      when: dev_configure_incus_host | bool
+      block:
+        - name: Verify Incus packages are installed
+          community.general.zypper:
+            name: "{{ dev_incus_packages }}"
+            state: present
+          check_mode: true
+          register: __dev_incus_packages_check
+          failed_when: __dev_incus_packages_check.changed
+
+        - name: Verify the incus socket is enabled and started
+          ansible.builtin.systemd_service:
+            name: incus.socket
+            enabled: true
+            state: started
+          check_mode: true
+          register: __dev_incus_socket_check
+          failed_when: __dev_incus_socket_check.changed

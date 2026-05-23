@@ -34,3 +34,17 @@
     name: "{{ dev_ansible_dev_packages }}"
     state: present
   when: dev_install_ansible_dev | bool
+
+- name: Configure Incus host
+  when: dev_configure_incus_host | bool
+  block:
+    - name: Install Incus packages
+      community.general.zypper:
+        name: "{{ dev_incus_packages }}"
+        state: present
+
+    - name: Enable and start the incus socket
+      ansible.builtin.systemd_service:
+        name: incus.socket
+        enabled: true
+        state: started
