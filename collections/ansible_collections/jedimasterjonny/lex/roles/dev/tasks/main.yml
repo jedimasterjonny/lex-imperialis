@@ -145,3 +145,13 @@
         name: default
         autostart: true
       when: dev_libvirt_manage_default_network | bool
+
+    # Membership is inert until the virt*d sockets (enabled above) are running.
+    - name: Grant operators access to the libvirt group
+      ansible.builtin.user:
+        name: "{{ item }}"
+        groups: libvirt
+        append: true
+      loop: "{{ dev_libvirt_users }}"
+      loop_control:
+        label: "{{ item }}"

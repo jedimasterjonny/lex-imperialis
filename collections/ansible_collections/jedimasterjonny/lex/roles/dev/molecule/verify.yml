@@ -156,3 +156,15 @@
           register: __dev_libvirt_default_net_autostart_check
           failed_when: __dev_libvirt_default_net_autostart_check.changed
           when: dev_libvirt_manage_default_network | bool
+
+        - name: Verify operators have libvirt group membership
+          ansible.builtin.user:
+            name: "{{ item }}"
+            groups: libvirt
+            append: true
+          check_mode: true
+          register: __dev_libvirt_users_check
+          failed_when: __dev_libvirt_users_check.changed
+          loop: "{{ dev_libvirt_users }}"
+          loop_control:
+            label: "{{ item }}"

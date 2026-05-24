@@ -110,3 +110,8 @@ dev_libvirt_packages:
 # host's primary interface — e.g. inside a libvirt VM running on a host
 # that uses the same default network.
 dev_libvirt_manage_default_network: true
+
+# Existing users to grant access to the libvirt control sockets via the
+# libvirt group. Empty by default — callers (e.g. lab-bootstrap) opt in.
+# Users must already exist; the role does not create them.
+dev_libvirt_users: []
