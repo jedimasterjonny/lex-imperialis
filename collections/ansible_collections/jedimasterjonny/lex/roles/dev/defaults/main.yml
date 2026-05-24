@@ -104,3 +104,9 @@ dev_libvirt_packages:
   - libvirt
   - mkisofs
   - virt-install
+
+# Whether to activate + autostart libvirt's `default` network. Set to false
+# on hosts where the default subnet (192.168.122.0/24) conflicts with the
+# host's primary interface — e.g. inside a libvirt VM running on a host
+# that uses the same default network.
+dev_libvirt_manage_default_network: true

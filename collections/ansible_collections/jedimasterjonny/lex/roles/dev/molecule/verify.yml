@@ -138,3 +138,21 @@
             - virtsecretd.socket
           loop_control:
             label: "{{ item }}"
+
+        - name: Verify the default libvirt network is active
+          community.libvirt.virt_net:
+            name: default
+            state: active
+          check_mode: true
+          register: __dev_libvirt_default_net_active_check
+          failed_when: __dev_libvirt_default_net_active_check.changed
+          when: dev_libvirt_manage_default_network | bool
+
+        - name: Verify the default libvirt network autostarts
+          community.libvirt.virt_net:
+            name: default
+            autostart: true
+          check_mode: true
+          register: __dev_libvirt_default_net_autostart_check
+          failed_when: __dev_libvirt_default_net_autostart_check.changed
+          when: dev_libvirt_manage_default_network | bool

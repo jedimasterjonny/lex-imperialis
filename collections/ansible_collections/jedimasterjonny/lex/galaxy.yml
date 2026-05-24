@@ -16,6 +16,7 @@ tags:
   - tumbleweed
 dependencies:
   ansible.posix: ">=2.2.0"
+  community.libvirt: ">=2.2.0"
 repository: https://github.com/jedimasterjonny/lex-imperialis
 issues: https://github.com/jedimasterjonny/lex-imperialis/issues
 build_ignore:
