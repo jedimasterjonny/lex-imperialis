@@ -168,3 +168,14 @@
           loop: "{{ dev_libvirt_users }}"
           loop_control:
             label: "{{ item }}"
+
+        - name: Verify /var/lib/libvirt/images is libvirt-group-writable (setgid)
+          ansible.builtin.file:
+            path: /var/lib/libvirt/images
+            owner: root
+            group: libvirt
+            mode: "2775"
+            state: directory
+          check_mode: true
+          register: __dev_libvirt_images_dir_check
+          failed_when: __dev_libvirt_images_dir_check.changed
