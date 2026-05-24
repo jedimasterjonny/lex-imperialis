@@ -1,0 +1,9 @@
+---
+minor_changes:
+  - >-
+    dev - add ``dev_configure_libvirt_host`` flag (default ``false``)
+    gating libvirt package install and modular ``virt*d`` socket
+    enablement. Moves ``guestfs-tools``, ``libguestfs``, ``libvirt``,
+    and ``virt-install`` out of ``dev_ansible_dev_packages`` into the
+    new ``dev_libvirt_packages`` list and adds ``mkisofs`` (used for
+    cloud-init ISOs).

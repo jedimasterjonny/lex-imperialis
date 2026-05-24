@@ -17,12 +17,8 @@ dev_install_ansible_dev: true
 
 # Ansible-author tooling — installed when dev_install_ansible_dev is true.
 dev_ansible_dev_packages:
-  - guestfs-tools
-  - libguestfs
-  - libvirt
   - python3-libvirt-python
   - python3-lxml
-  - virt-install
 
 # Whether to configure this host as an Incus server. When true, installs
 # dev_incus_packages and enables incus.socket. Independent of
@@ -92,3 +88,19 @@ dev_incus_firewalld_trusted_interfaces:
 #     - alias: tumbleweed
 #       source: images:opensuse/tumbleweed
 dev_incus_images: []
+
+# Whether to configure this host as a libvirt/KVM hypervisor. When true,
+# installs dev_libvirt_packages and enables the modular virt*d sockets.
+# Independent of dev_install_ansible_dev — a tooling-only dev box can
+# leave this off.
+dev_configure_libvirt_host: false
+
+# libvirt host packages — installed when dev_configure_libvirt_host is true.
+# mkisofs is libvirt-adjacent: needed to build cloud-init ISOs that
+# provision libvirt guests.
+dev_libvirt_packages:
+  - guestfs-tools
+  - libguestfs
+  - libvirt
+  - mkisofs
+  - virt-install

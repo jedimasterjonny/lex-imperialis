@@ -111,3 +111,25 @@
         label: "{{ item.item.alias }}"
       when: item.rc != 0
       changed_when: true
+
+- name: Configure libvirt host
+  when: dev_configure_libvirt_host | bool
+  block:
+    - name: Install libvirt packages
+      community.general.zypper:
+        name: "{{ dev_libvirt_packages }}"
+        state: present
+
+    - name: Enable and start libvirt modular daemon sockets
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        enabled: true
+        state: started
+      loop:
+        - virtqemud.socket
+        - virtnetworkd.socket
+        - virtstoraged.socket
+        - virtnodedevd.socket
+        - virtsecretd.socket
+      loop_control:
+        label: "{{ item }}"

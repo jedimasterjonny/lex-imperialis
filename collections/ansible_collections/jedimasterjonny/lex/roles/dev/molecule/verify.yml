@@ -110,3 +110,31 @@
           loop: "{{ dev_incus_images }}"
           loop_control:
             label: "{{ item.alias }}"
+
+    - name: Verify libvirt host configuration
+      when: dev_configure_libvirt_host | bool
+      block:
+        - name: Verify libvirt packages are installed
+          community.general.zypper:
+            name: "{{ dev_libvirt_packages }}"
+            state: present
+          check_mode: true
+          register: __dev_libvirt_packages_check
+          failed_when: __dev_libvirt_packages_check.changed
+
+        - name: Verify libvirt modular daemon sockets are enabled and started
+          ansible.builtin.systemd_service:
+            name: "{{ item }}"
+            enabled: true
+            state: started
+          check_mode: true
+          register: __dev_libvirt_sockets_check
+          failed_when: __dev_libvirt_sockets_check.changed
+          loop:
+            - virtqemud.socket
+            - virtnetworkd.socket
+            - virtstoraged.socket
+            - virtnodedevd.socket
+            - virtsecretd.socket
+          loop_control:
+            label: "{{ item }}"
