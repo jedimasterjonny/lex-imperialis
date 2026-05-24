@@ -17,6 +17,12 @@ provisioner:
     # shared across all scenarios (default, full, ci, …) for this role.
     converge: ../converge.yml
     verify: ../verify.yml
+  # Tier-3 flips both host-config gates on to exercise the full role surface
+  # against real cloud infra on Leap 16, including the OBS repo path that
+  # sources incus + lego. Shared with the `full` scenario via
+  # roles/dev/molecule/host-config-vars.yml.
+  options:
+    extra-vars: "@../host-config-vars.yml"
 
 verifier:
   name: ansible

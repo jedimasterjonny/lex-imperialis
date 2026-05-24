@@ -1,0 +1,63 @@
+---
+# Extra-vars referenced via @../host-config-vars.yml from the `full` (tier 2,
+# libvirt VM) and `ci` (tier 3, Hetzner Leap 16) scenarios. Tier 1 leaves
+# both gates at their defaults because incus-in-incus can't enable virt-host
+# services.
+#
+# dev_incus_preseed overrides the role default's btrfs storage driver with
+# `dir`, which works on any filesystem (the tier 2/3 cloud images are xfs).
+# The Lex lab box stays on btrfs via host_vars.
+#
+# dev_libvirt_manage_default_network is disabled: the molecule VM itself
+# sits on libvirt's default subnet (192.168.122.0/24), so activating the
+# same network inside the VM conflicts with its own interface.
+#
+# dev_incus_packages includes iptables: tier-2/3 cloud images don't have
+# it pre-installed and `incus admin init --preseed` fails without it (the
+# bridge's NAT manager needs it). The lab box uses nftables and doesn't
+# need iptables, so it stays out of the role's default list.
+
+dev_configure_incus_host: true
+dev_configure_libvirt_host: true
+
+dev_libvirt_manage_default_network: false
+
+dev_incus_admin_users:
+  - root
+dev_libvirt_users:
+  - root
+
+dev_incus_packages:
+  - firewalld
+  - incus
+  - incus-tools
+  - iptables
+  - python3-firewall
+
+dev_incus_preseed:
+  config: {}
+  networks:
+    - name: incusbr0
+      type: bridge
+      config:
+        ipv4.address: auto
+        ipv4.nat: "true"
+        ipv6.address: "none"
+  storage_pools:
+    - name: default
+      driver: dir
+  profiles:
+    - name: default
+      description: Default profile for Molecule containers
+      devices:
+        eth0:
+          name: eth0
+          nictype: bridged
+          parent: incusbr0
+          type: nic
+        root:
+          path: /
+          pool: default
+          type: disk
+  projects: []
+  cluster: null

@@ -1,16 +1,21 @@
 ---
-# Tier-2 (libvirt) scenario — validates the full dev package set installs
-# cleanly on a real kernel. Exists because the tier-1 incus container can't
-# host libvirt's QEMU driver (dependency conflict with systemd-sysvcompat),
-# so the ansible-author install goes untested in tier 1.
+# Tier-2 (libvirt) scenario — validates the role end-to-end against a real
+# kernel by flipping both host-config gates on. Tier 1 (incus-in-incus)
+# can't run virt-host services so the gated paths go untested there; this
+# scenario covers them on a libvirt VM.
 #
-# This scenario does NOT exercise libvirt functionality — the libvirt VM
-# created by molecule/shared/libvirt/create.yml has no CPU host-passthrough,
-# so nested KVM is unavailable. The role only installs packages and verify
-# only asserts installation; that's the surface tier 2 validates.
+# The VM has no CPU host-passthrough, so nested KVM is unavailable — the
+# role itself doesn't boot guests, only installs/configures the host
+# surface (sockets, preseed, firewalld trust, group membership, perms,
+# helper drop), so the missing nested KVM doesn't reduce coverage.
 #
-# No extra-vars override here: tier 2 runs the full set of packages
-# (dev_install_ansible_dev defaults to true in defaults/main.yml).
+# dev_incus_images is left empty: pulling an Incus image in CI costs more
+# time than it pays back in coverage. Pre-warm is exercised on the real
+# lab box.
+#
+# extra-vars precedence beats vars_files (the verify playbook loads role
+# defaults via vars_files), so this override propagates to both converge
+# and verify.
 
 driver:
   name: default
@@ -28,6 +33,11 @@ provisioner:
     # shared across all scenarios (default, full, ci, …) for this role.
     converge: ../converge.yml
     verify: ../verify.yml
+  # Override role defaults to flip both host-config gates on; full vars
+  # (including a dir-driver preseed override for non-btrfs filesystems) live
+  # in roles/dev/molecule/host-config-vars.yml alongside this scenario.
+  options:
+    extra-vars: "@../host-config-vars.yml"
 
 verifier:
   name: ansible
