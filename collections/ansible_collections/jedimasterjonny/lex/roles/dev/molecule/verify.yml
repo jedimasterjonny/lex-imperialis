@@ -179,3 +179,37 @@
           check_mode: true
           register: __dev_libvirt_images_dir_check
           failed_when: __dev_libvirt_images_dir_check.changed
+
+        - name: Verify tumbleweed-image-refresh helper is installed
+          ansible.builtin.file:
+            path: /usr/local/sbin/tumbleweed-image-refresh
+            owner: root
+            group: root
+            mode: "0755"
+            state: file
+          check_mode: true
+          register: __dev_tumbleweed_image_refresh_check
+          failed_when: __dev_tumbleweed_image_refresh_check.changed
+
+        - name: Capture installed tumbleweed-image-refresh helper sha256
+          ansible.builtin.stat:
+            path: /usr/local/sbin/tumbleweed-image-refresh
+            checksum_algorithm: sha256
+          register: __dev_tumbleweed_image_refresh_installed_stat
+
+        - name: Capture shipped tumbleweed-image-refresh helper sha256
+          ansible.builtin.stat:
+            path: "{{ playbook_dir }}/../files/tumbleweed-image-refresh.sh"
+            checksum_algorithm: sha256
+          delegate_to: localhost
+          register: __dev_tumbleweed_image_refresh_shipped_stat
+
+        - name: Assert installed helper content matches the shipped file
+          ansible.builtin.assert:
+            that:
+              - >-
+                __dev_tumbleweed_image_refresh_installed_stat.stat.checksum
+                == __dev_tumbleweed_image_refresh_shipped_stat.stat.checksum
+            fail_msg: >-
+              Installed helper sha256 does not match the shipped file —
+              content drift detected.

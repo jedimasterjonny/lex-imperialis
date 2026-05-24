@@ -1,0 +1,9 @@
+---
+minor_changes:
+  - >-
+    dev - when ``dev_configure_libvirt_host`` is true, installs the
+    ``tumbleweed-image-refresh`` shell helper at
+    ``/usr/local/sbin/tumbleweed-image-refresh``. Fetches the openSUSE
+    Tumbleweed Minimal-VM qcow2 with sha256 verification and atomic
+    replace. Schedule (when to invoke, recurring timer) remains caller
+    policy.

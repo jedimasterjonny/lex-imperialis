@@ -165,3 +165,13 @@
         group: libvirt
         mode: "2775"
         state: directory
+
+    # Helper only; callers decide when to invoke and whether to schedule it
+    # (lab-bootstrap wires it to a weekly systemd timer).
+    - name: Install tumbleweed-image-refresh helper
+      ansible.builtin.copy:
+        src: tumbleweed-image-refresh.sh
+        dest: /usr/local/sbin/tumbleweed-image-refresh
+        owner: root
+        group: root
+        mode: "0755"
