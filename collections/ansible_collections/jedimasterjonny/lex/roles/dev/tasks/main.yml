@@ -64,6 +64,30 @@
 - name: Configure Incus host
   when: dev_configure_incus_host | bool
   block:
+    # The role indexes into networks[0], storage_pools[0], profiles[0],
+    # and the first nic/disk under profiles[0].devices. Validate the
+    # shape up front rather than letting a Jinja KeyError surface
+    # mid-play after `Install Incus packages` has already mutated host
+    # state. profiles[0].devices is asserted to contain at least one nic
+    # and one disk because both verify and the init probe key on them.
+    - name: Assert dev_incus_preseed has the keys the role indexes
+      ansible.builtin.assert:
+        that:
+          - dev_incus_preseed.networks | default([]) | length > 0
+          - dev_incus_preseed.storage_pools | default([]) | length > 0
+          - dev_incus_preseed.profiles | default([]) | length > 0
+          - dev_incus_preseed.profiles[0].devices | default({})
+            | dict2items | selectattr('value.type', 'eq', 'nic')
+            | list | length > 0
+          - dev_incus_preseed.profiles[0].devices | default({})
+            | dict2items | selectattr('value.type', 'eq', 'disk')
+            | list | length > 0
+        fail_msg: >-
+          dev_incus_preseed must define at least one network, one storage
+          pool, and one profile whose devices include a nic and a disk —
+          the role indexes into networks[0], storage_pools[0], and
+          profiles[0].devices.
+
     # Resolve the firewalld trust list once at task time: a null default
     # means "track the preseed", an explicit list (including []) is used
     # as-is. Doing this in a set_fact rather than a Jinja default in

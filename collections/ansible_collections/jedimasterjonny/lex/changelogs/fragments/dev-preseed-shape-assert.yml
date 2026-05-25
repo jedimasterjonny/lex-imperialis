@@ -1,0 +1,7 @@
+---
+minor_changes:
+  - "dev - assert dev_incus_preseed has the keys the role indexes
+    (networks[0], storage_pools[0], profiles[0], and at least one nic
+    and one disk under profiles[0].devices) at the top of the Incus
+    block. An under-specified preseed now fails loudly before any host
+    mutation rather than with a Jinja KeyError mid-play."
