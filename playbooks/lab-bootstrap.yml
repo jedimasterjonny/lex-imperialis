@@ -33,6 +33,23 @@
           - ansible_facts['distribution'] == 'openSUSE Tumbleweed'
         fail_msg: "This playbook only supports openSUSE Tumbleweed."
 
+    # The incus-image-refresh.service ExecStart below interpolates each
+    # alias into a systemd unit literal. systemd's exec parser splits
+    # ExecStart on whitespace (no shell) and expands `%X` specifiers and
+    # `${VAR}` env refs unconditionally — so an alias containing any of
+    # those would silently produce the wrong arg list. Reject up front.
+    - name: Sanity — Incus image aliases are systemd-ExecStart-safe
+      ansible.builtin.assert:
+        that:
+          - item.alias is match('^[A-Za-z0-9._:-]+$')
+        fail_msg: >-
+          dev_incus_images entry "{{ item.alias }}" contains a character
+          systemd's ExecStart parser treats specially (whitespace, %, $);
+          restrict aliases to [A-Za-z0-9._:-].
+      loop: "{{ dev_incus_images | default([]) }}"
+      loop_control:
+        label: "{{ item.alias }}"
+
     # Must run before the role: common's clone task becomes jonny, which
     # fails fast if the account is missing. Group memberships granted by
     # the dev role's Incus/libvirt blocks land on this account in the same
