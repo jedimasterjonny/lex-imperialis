@@ -1,9 +1,0 @@
----
-bugfixes:
-  - >-
-    common, dev - anchor the stow ``changed_when`` on stderr lines that
-    *start* with ``LINK:`` / ``UNLINK:`` rather than substring-matching
-    anywhere in stderr, and drop the dead ``* existing target`` disjunct
-    (stow with ``--adopt`` absorbs unmanaged targets silently and never
-    emits that warning). A future stow release that prints the ``LINK:``
-    keyword in a different position no longer trips a spurious change.

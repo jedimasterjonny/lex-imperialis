@@ -1,8 +1,0 @@
----
-bugfixes:
-  - "dev - derive the storage pool name in the ``Check whether Incus is
-    already initialised`` probe from
-    ``dev_incus_preseed.storage_pools[0].name`` rather than hardcoding
-    ``default``; overrides that rename the pool no longer make the probe
-    permanently report ``not initialised`` and re-apply the preseed on
-    every play."

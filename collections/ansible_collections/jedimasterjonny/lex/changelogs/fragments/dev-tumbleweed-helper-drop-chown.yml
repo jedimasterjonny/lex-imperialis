@@ -1,7 +1,0 @@
----
-bugfixes:
-  - "dev - drop the explicit ``chown root:root`` in tumbleweed-image-refresh
-    so the qcow2 inherits ``root:libvirt`` from the parent dir's setgid bit;
-    qemu now reads the image via group membership rather than the world-read
-    bit, which keeps it accessible if ``/var/lib/libvirt/images`` is ever
-    hardened to mode 2770."

@@ -183,3 +183,92 @@ releases:
     - resolve-stow-user-homes.yml
     - stow-adopt-restore.yml
     release_date: '2026-05-25'
+  0.4.0:
+    changes:
+      bugfixes:
+      - common, dev - anchor the stow ``changed_when`` on stderr lines that *start*
+        with ``LINK:`` / ``UNLINK:`` rather than substring-matching anywhere in stderr,
+        and drop the dead ``* existing target`` disjunct (stow with ``--adopt`` absorbs
+        unmanaged targets silently and never emits that warning). A future stow release
+        that prints the ``LINK:`` keyword in a different position no longer trips
+        a spurious change.
+      - "common, dev - assert that the stow targets (``~/.bashrc`` for bash-suse,
+        ``~/.config/nvim`` for nvim) are symlinks pointing into ``~/dots`` rather
+        than just checking they exist. A regression in the ``--adopt`` + ``git restore``
+        sequence \u2014 or a future stow that silently no-ops because ``changed_when``
+        misfired \u2014 would have left a real file or directory in place and still
+        passed the prior existence-only assertion."
+      - common, dev - move the molecule ``common_stow_users`` / ``dev_stow_users``
+        overrides for the default and ci scenarios from ``inventory.group_vars.all``
+        to ``options.extra-vars`` so they beat the role-defaults ``vars_files`` load
+        in the verify play. Previously converge stowed against root (group_vars in
+        scope) but verify saw ``common_stow_users == []`` (defaults shadowing group_vars),
+        the ``when:`` gate on the dotfile assertion block was false, and the dots-repo
+        / symlink assertions silently skipped.
+      - dev - derive the storage pool name in the ``Check whether Incus is already
+        initialised`` probe from ``dev_incus_preseed.storage_pools[0].name`` rather
+        than hardcoding ``default``; overrides that rename the pool no longer make
+        the probe permanently report ``not initialised`` and re-apply the preseed
+        on every play.
+      - dev - drop the explicit ``chown root:root`` in tumbleweed-image-refresh so
+        the qcow2 inherits ``root:libvirt`` from the parent dir's setgid bit; qemu
+        now reads the image via group membership rather than the world-read bit, which
+        keeps it accessible if ``/var/lib/libvirt/images`` is ever hardened to mode
+        2770.
+      - dev - pin ``LC_ALL=C`` on the Incus init probe and the image-cache probe so
+        their stderr substring matches are stable on non-English hosts, and gate the
+        preseed re-apply on ``'not found' in stderr`` rather than bare ``rc != 0``;
+        the previous gate could re-run ``incus admin init --preseed`` against a partially-initialised
+        daemon during a startup race against ``incus.socket``.
+      - dev - resolve the expected bridge and storage pool from ``dev_incus_preseed.profiles[0].devices``
+        by device type (``nic`` / ``disk``) rather than by hardcoded device keys ``eth0``
+        / ``root``; a profile that names its NIC ``enp0s3`` or its disk ``rootfs``
+        no longer crashes the molecule verify play with ``'dict object' has no attribute
+        'eth0'``.
+      - 'dev - set ``overwrite_multiple: true`` on the Leap OBS repositories so an
+        in-place distribution upgrade (e.g. Leap 16.0 to 16.1) updates the repo URL
+        in place instead of leaving the repo pinned to the previous release''s URL,
+        which made the next ``zypper refresh`` 404 and broke the role''s subsequent
+        ``Install Incus packages`` task.'
+      minor_changes:
+      - 'dev - document the always-quote-strings rule on ``dev_incus_preseed`` so
+        overrides like ``ipv4.dhcp: yes`` don''t get silently bool-coerced by ``to_nice_yaml``
+        and rejected (or misinterpreted) by ``incus admin init --preseed``.'
+      release_summary: 'Robustness pass on the common and dev roles, addressing follow-up
+        review
+
+        findings on the host-config and stow paths. The Incus init probe now
+
+        derives its pool name from the preseed and gates on locale-pinned
+
+        "not found" stderr, sidestepping a daemon-startup race against
+
+        ``incus.socket`` and overrides that rename the storage pool. The
+
+        molecule verify plays gain a real symlink-contract check on the stow
+
+        targets, iterate Incus devices by type rather than by hardcoded keys,
+
+        and reliably exercise the dotfile path by pinning stow-user overrides
+
+        at extra-vars precedence. Plus bugfixes for Leap OBS repo URL refresh
+
+        across distribution upgrades, the Tumbleweed qcow2 inheriting
+
+        ``root:libvirt`` from its parent dir''s setgid, and ``stow``''s
+
+        ``changed_when`` anchored on stderr line shape.
+
+        '
+    fragments:
+    - 0.4.0-release-summary.yml
+    - dev-document-preseed-quote-rule.yml
+    - dev-incus-probes-lc-all-not-found.yml
+    - dev-init-probe-derive-pool-name.yml
+    - dev-tumbleweed-helper-drop-chown.yml
+    - dev-verify-iterate-incus-devices-by-type.yml
+    - dev-zypper-repo-overwrite-multiple.yml
+    - molecule-assert-stow-symlinks.yml
+    - molecule-stow-vars-extra-vars-precedence.yml
+    - stow-changed-when-anchor.yml
+    release_date: '2026-05-25'

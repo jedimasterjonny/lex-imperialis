@@ -1,9 +1,0 @@
----
-bugfixes:
-  - >-
-    dev - resolve the expected bridge and storage pool from
-    ``dev_incus_preseed.profiles[0].devices`` by device type (``nic`` /
-    ``disk``) rather than by hardcoded device keys ``eth0`` / ``root``;
-    a profile that names its NIC ``enp0s3`` or its disk ``rootfs`` no
-    longer crashes the molecule verify play with
-    ``'dict object' has no attribute 'eth0'``.
