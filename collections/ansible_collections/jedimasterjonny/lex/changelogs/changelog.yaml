@@ -272,3 +272,71 @@ releases:
     - molecule-stow-vars-extra-vars-precedence.yml
     - stow-changed-when-anchor.yml
     release_date: '2026-05-25'
+  0.5.0:
+    changes:
+      breaking_changes:
+      - common - common_dots_repo no longer defaults to the maintainer's personal
+        dotfiles repository. Set it explicitly when common_stow_users is non-empty;
+        the role asserts the variable is set at task time.
+      bugfixes:
+      - common, dev - gate the post-stow `git restore .` task on `*_stow_packages
+        | length > 0`. With an empty packages list the stow loop absorbs nothing,
+        so the restore would only discard any uncommitted edits an operator made to
+        ~/dots by hand.
+      - dev - dev_incus_firewalld_trusted_interfaces now defaults to null and resolves
+        at task time from dev_incus_preseed.networks, so overriding the preseed bridge
+        propagates to firewalld trust without a matching override here. Set the variable
+        to an explicit list (or []) to opt out of the derivation.
+      - dev - dev_stow_users defaults to null and resolves at task time from common_stow_users
+        (rather than via a lazy-Jinja default in defaults/main.yml that could lose
+        to vars_files reads in downstream plays). Set the variable to an explicit
+        list to opt out of the derivation.
+      - 'dev - molecule verify anchors the `parent: <bridge>` / `pool: <pool>` assertions
+        on full-line matches via a multiline regex (with the expected names regex-escaped),
+        so a profile pointing at a prefix name (e.g. `incusbr0-stale`) no longer passes
+        by virtue of the substring `incusbr0` appearing as a prefix.'
+      - dev - molecule verify reads the Incus profile name to inspect from dev_incus_preseed.profiles[0].name
+        rather than hardcoding `default`, so preseed overrides that rename the profile
+        no longer make verify target the wrong (or non-existent) profile.
+      - dev - on openSUSE Leap, derive dev_libvirt_packages' python binding names
+        from the target python interpreter (python{X}{Y}-libvirt-python, python{X}{Y}-lxml).
+        Leap doesn't expose the unversioned python3-* virtual provides Tumbleweed
+        does, so the previous defaults raised 'no provider for python3-libvirt-python'
+        at zypper install.
+      minor_changes:
+      - common, dev - declare the openSUSE platform in galaxy_info.platforms so consumers
+        browsing Galaxy can filter by distro. The roles call community.general.zypper
+        unconditionally, so non-SUSE users can't consume them; the metadata now reflects
+        that.
+      - dev - assert dev_incus_preseed has the keys the role indexes (networks[0],
+        storage_pools[0], profiles[0], and at least one nic and one disk under profiles[0].devices)
+        at the top of the Incus block. An under-specified preseed now fails loudly
+        before any host mutation rather than with a Jinja KeyError mid-play.
+      release_summary: 'Review-driven hardening pass. Drops the maintainer-personal
+        default
+
+        for common_dots_repo (consumers stowing dotfiles must now set it
+
+        explicitly), fixes the openSUSE Leap libvirt python binding names,
+
+        derives Incus firewalld trust from the preseed, and tightens the
+
+        molecule verify path (preseed shape assert, boundary-anchored
+
+        profile checks, profile name read from preseed). Also adds
+
+        galaxy_info.platforms so Galaxy consumers can filter by distro.
+
+        '
+    fragments:
+    - 0.5.0-release-summary.yml
+    - common-dots-repo-no-default.yml
+    - dev-firewalld-trust-tracks-preseed.yml
+    - dev-leap-libvirt-versioned-python.yml
+    - dev-preseed-shape-assert.yml
+    - dev-stow-users-resolved-at-task-time.yml
+    - dev-verify-bridge-pool-anchored-match.yml
+    - dev-verify-profile-name-from-preseed.yml
+    - roles-galaxy-info-platforms.yml
+    - stow-restore-gated-on-packages.yml
+    release_date: '2026-05-25'

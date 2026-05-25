@@ -1,6 +1,0 @@
----
-bugfixes:
-  - "dev - molecule verify reads the Incus profile name to inspect from
-    dev_incus_preseed.profiles[0].name rather than hardcoding `default`,
-    so preseed overrides that rename the profile no longer make verify
-    target the wrong (or non-existent) profile."

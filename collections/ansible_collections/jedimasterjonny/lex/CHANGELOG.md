@@ -2,26 +2,66 @@
 
 **Topics**
 
-- <a href="#v0-4-0">v0\.4\.0</a>
+- <a href="#v0-5-0">v0\.5\.0</a>
     - <a href="#release-summary">Release Summary</a>
     - <a href="#minor-changes">Minor Changes</a>
+    - <a href="#breaking-changes--porting-guide">Breaking Changes / Porting Guide</a>
     - <a href="#bugfixes">Bugfixes</a>
-- <a href="#v0-3-1">v0\.3\.1</a>
+- <a href="#v0-4-0">v0\.4\.0</a>
     - <a href="#release-summary-1">Release Summary</a>
-    - <a href="#bugfixes-1">Bugfixes</a>
-- <a href="#v0-3-0">v0\.3\.0</a>
-    - <a href="#release-summary-2">Release Summary</a>
     - <a href="#minor-changes-1">Minor Changes</a>
-- <a href="#v0-2-0">v0\.2\.0</a>
+    - <a href="#bugfixes-1">Bugfixes</a>
+- <a href="#v0-3-1">v0\.3\.1</a>
+    - <a href="#release-summary-2">Release Summary</a>
+    - <a href="#bugfixes-2">Bugfixes</a>
+- <a href="#v0-3-0">v0\.3\.0</a>
     - <a href="#release-summary-3">Release Summary</a>
     - <a href="#minor-changes-2">Minor Changes</a>
-- <a href="#v0-1-0">v0\.1\.0</a>
+- <a href="#v0-2-0">v0\.2\.0</a>
     - <a href="#release-summary-4">Release Summary</a>
+    - <a href="#minor-changes-3">Minor Changes</a>
+- <a href="#v0-1-0">v0\.1\.0</a>
+    - <a href="#release-summary-5">Release Summary</a>
+
+<a id="v0-5-0"></a>
+## v0\.5\.0
+
+<a id="release-summary"></a>
+### Release Summary
+
+Review\-driven hardening pass\. Drops the maintainer\-personal default
+for common\_dots\_repo \(consumers stowing dotfiles must now set it
+explicitly\)\, fixes the openSUSE Leap libvirt python binding names\,
+derives Incus firewalld trust from the preseed\, and tightens the
+molecule verify path \(preseed shape assert\, boundary\-anchored
+profile checks\, profile name read from preseed\)\. Also adds
+galaxy\_info\.platforms so Galaxy consumers can filter by distro\.
+
+<a id="minor-changes"></a>
+### Minor Changes
+
+* common\, dev \- declare the openSUSE platform in galaxy\_info\.platforms so consumers browsing Galaxy can filter by distro\. The roles call community\.general\.zypper unconditionally\, so non\-SUSE users can\'t consume them\; the metadata now reflects that\.
+* dev \- assert dev\_incus\_preseed has the keys the role indexes \(networks\[0\]\, storage\_pools\[0\]\, profiles\[0\]\, and at least one nic and one disk under profiles\[0\]\.devices\) at the top of the Incus block\. An under\-specified preseed now fails loudly before any host mutation rather than with a Jinja KeyError mid\-play\.
+
+<a id="breaking-changes--porting-guide"></a>
+### Breaking Changes / Porting Guide
+
+* common \- common\_dots\_repo no longer defaults to the maintainer\'s personal dotfiles repository\. Set it explicitly when common\_stow\_users is non\-empty\; the role asserts the variable is set at task time\.
+
+<a id="bugfixes"></a>
+### Bugfixes
+
+* common\, dev \- gate the post\-stow <em class="title-reference">git restore \.</em> task on <em class="title-reference">\*\_stow\_packages \| length \> 0</em>\. With an empty packages list the stow loop absorbs nothing\, so the restore would only discard any uncommitted edits an operator made to \~/dots by hand\.
+* dev \- dev\_incus\_firewalld\_trusted\_interfaces now defaults to null and resolves at task time from dev\_incus\_preseed\.networks\, so overriding the preseed bridge propagates to firewalld trust without a matching override here\. Set the variable to an explicit list \(or \[\]\) to opt out of the derivation\.
+* dev \- dev\_stow\_users defaults to null and resolves at task time from common\_stow\_users \(rather than via a lazy\-Jinja default in defaults/main\.yml that could lose to vars\_files reads in downstream plays\)\. Set the variable to an explicit list to opt out of the derivation\.
+* dev \- molecule verify anchors the <em class="title-reference">parent\: \<bridge\></em> / <em class="title-reference">pool\: \<pool\></em> assertions on full\-line matches via a multiline regex \(with the expected names regex\-escaped\)\, so a profile pointing at a prefix name \(e\.g\. <em class="title-reference">incusbr0\-stale</em>\) no longer passes by virtue of the substring <em class="title-reference">incusbr0</em> appearing as a prefix\.
+* dev \- molecule verify reads the Incus profile name to inspect from dev\_incus\_preseed\.profiles\[0\]\.name rather than hardcoding <em class="title-reference">default</em>\, so preseed overrides that rename the profile no longer make verify target the wrong \(or non\-existent\) profile\.
+* dev \- on openSUSE Leap\, derive dev\_libvirt\_packages\' python binding names from the target python interpreter \(python\{X\}\{Y\}\-libvirt\-python\, python\{X\}\{Y\}\-lxml\)\. Leap doesn\'t expose the unversioned python3\-\* virtual provides Tumbleweed does\, so the previous defaults raised \'no provider for python3\-libvirt\-python\' at zypper install\.
 
 <a id="v0-4-0"></a>
 ## v0\.4\.0
 
-<a id="release-summary"></a>
+<a id="release-summary-1"></a>
 ### Release Summary
 
 Robustness pass on the common and dev roles\, addressing follow\-up review
@@ -37,12 +77,12 @@ across distribution upgrades\, the Tumbleweed qcow2 inheriting
 <code>root\:libvirt</code> from its parent dir\'s setgid\, and <code>stow</code>\'s
 <code>changed\_when</code> anchored on stderr line shape\.
 
-<a id="minor-changes"></a>
+<a id="minor-changes-1"></a>
 ### Minor Changes
 
 * dev \- document the always\-quote\-strings rule on <code>dev\_incus\_preseed</code> so overrides like <code>ipv4\.dhcp\: yes</code> don\'t get silently bool\-coerced by <code>to\_nice\_yaml</code> and rejected \(or misinterpreted\) by <code>incus admin init \-\-preseed</code>\.
 
-<a id="bugfixes"></a>
+<a id="bugfixes-1"></a>
 ### Bugfixes
 
 * common\, dev \- anchor the stow <code>changed\_when</code> on stderr lines that <em>start</em> with <code>LINK\:</code> / <code>UNLINK\:</code> rather than substring\-matching anywhere in stderr\, and drop the dead <code>\* existing target</code> disjunct \(stow with <code>\-\-adopt</code> absorbs unmanaged targets silently and never emits that warning\)\. A future stow release that prints the <code>LINK\:</code> keyword in a different position no longer trips a spurious change\.
@@ -57,7 +97,7 @@ across distribution upgrades\, the Tumbleweed qcow2 inheriting
 <a id="v0-3-1"></a>
 ## v0\.3\.1
 
-<a id="release-summary-1"></a>
+<a id="release-summary-2"></a>
 ### Release Summary
 
 Patch release driven by code\-review findings against 0\.3\.0\. Fixes the
@@ -70,7 +110,7 @@ that actually consume them\, hardens the Incus image pre\-warm against
 transient daemon errors\, and asserts that configured operators exist
 before granting privileged groups\.
 
-<a id="bugfixes-1"></a>
+<a id="bugfixes-2"></a>
 ### Bugfixes
 
 * common\, dev \- add <code>\-v</code> to <code>stow</code> invocations so the <code>changed\_when</code> substring match on stderr actually fires\. Without verbose output stow emits nothing on a successful link\, so the stow tasks were always reporting <code>changed\=0</code> even when they created symlinks\.
@@ -87,12 +127,12 @@ before granting privileged groups\.
 <a id="v0-3-0"></a>
 ## v0\.3\.0
 
-<a id="release-summary-2"></a>
+<a id="release-summary-3"></a>
 ### Release Summary
 
 Initial release of two roles\: <code>common</code> provides the baseline package set plus sshd\; <code>dev</code> adds developer and Ansible\-author tooling with gated Incus and libvirt/KVM host configuration \(<code>dev\_configure\_incus\_host</code>\, <code>dev\_configure\_libvirt\_host</code>\) and GNU stow dotfile management for configured users\.
 
-<a id="minor-changes-1"></a>
+<a id="minor-changes-2"></a>
 ### Minor Changes
 
 * common \- add <code>common\_stow\_users</code> \(default <code>\[\]</code>\)\. When non\-empty\, clones <code>common\_dots\_repo</code> \(default <code>https\://github\.com/jedimasterjonny/dots</code>\) to <code>\~/dots</code> for each user and stows <code>common\_stow\_packages</code> \(default <code>\[bash\-suse\]</code>\) via <code>stow \-\-override\=\'\.\*\'</code> \(overwriting any pre\-existing target files\)\.
@@ -113,13 +153,13 @@ Initial release of two roles\: <code>common</code> provides the baseline package
 <a id="v0-2-0"></a>
 ## v0\.2\.0
 
-<a id="release-summary-3"></a>
+<a id="release-summary-4"></a>
 ### Release Summary
 
 First role release\: ships the motd role with a default Molecule
 scenario backed by a Tier\-1 \(Incus\) test pipeline\.
 
-<a id="minor-changes-2"></a>
+<a id="minor-changes-3"></a>
 ### Minor Changes
 
 * expand the collection README with a requirements line\, a roles table\, a Galaxy install snippet\, and a pointer to the project repository\.
@@ -128,7 +168,7 @@ scenario backed by a Tier\-1 \(Incus\) test pipeline\.
 <a id="v0-1-0"></a>
 ## v0\.1\.0
 
-<a id="release-summary-4"></a>
+<a id="release-summary-5"></a>
 ### Release Summary
 
 Initial scaffolding release of the <code>jedimasterjonny\.lex</code> collection\.

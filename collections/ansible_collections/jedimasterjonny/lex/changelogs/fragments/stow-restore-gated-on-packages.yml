@@ -1,6 +1,0 @@
----
-bugfixes:
-  - "common, dev - gate the post-stow `git restore .` task on
-    `*_stow_packages | length > 0`. With an empty packages list the
-    stow loop absorbs nothing, so the restore would only discard any
-    uncommitted edits an operator made to ~/dots by hand."

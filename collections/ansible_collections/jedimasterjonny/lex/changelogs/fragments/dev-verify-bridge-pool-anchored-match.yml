@@ -1,7 +1,0 @@
----
-bugfixes:
-  - "dev - molecule verify anchors the `parent: <bridge>` / `pool: <pool>`
-    assertions on full-line matches via a multiline regex (with the
-    expected names regex-escaped), so a profile pointing at a prefix
-    name (e.g. `incusbr0-stale`) no longer passes by virtue of the
-    substring `incusbr0` appearing as a prefix."

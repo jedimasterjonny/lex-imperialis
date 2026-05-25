@@ -1,6 +1,0 @@
----
-minor_changes:
-  - "common, dev - declare the openSUSE platform in galaxy_info.platforms
-    so consumers browsing Galaxy can filter by distro. The roles call
-    community.general.zypper unconditionally, so non-SUSE users can't
-    consume them; the metadata now reflects that."

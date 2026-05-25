@@ -1,7 +1,0 @@
----
-bugfixes:
-  - "dev - on openSUSE Leap, derive dev_libvirt_packages' python binding
-    names from the target python interpreter (python{X}{Y}-libvirt-python,
-    python{X}{Y}-lxml). Leap doesn't expose the unversioned python3-*
-    virtual provides Tumbleweed does, so the previous defaults raised
-    'no provider for python3-libvirt-python' at zypper install."
