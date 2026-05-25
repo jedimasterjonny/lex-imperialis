@@ -9,3 +9,13 @@ common_packages:
   - stow
   - sudo
   - vim
+
+# GNU stow dotfiles. When common_stow_users is non-empty, clones
+# common_dots_repo to ~/dots for each user and stows the packages in
+# common_stow_packages from there. Stow runs with --override='.*' so
+# any pre-existing target files are replaced — destructive on first
+# apply.
+common_dots_repo: https://github.com/jedimasterjonny/dots
+common_stow_packages:
+  - bash-suse
+common_stow_users: []

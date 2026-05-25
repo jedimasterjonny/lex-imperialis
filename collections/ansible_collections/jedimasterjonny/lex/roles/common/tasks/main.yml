@@ -9,3 +9,43 @@
     name: sshd
     enabled: true
     state: started
+
+- name: Configure dotfiles for operators
+  when: common_stow_users | length > 0
+  block:
+    - name: Install git for cloning the dots repo
+      community.general.zypper:
+        name: git
+        state: present
+
+    # noqa: latest[git] — dotfiles intentionally track upstream HEAD.
+    # `update: false` is deliberate: don't clobber local dotfile changes on
+    # re-runs. Operators pull updates manually with `cd ~/dots && git pull`.
+    - name: Clone the dots repository for each user
+      ansible.builtin.git:  # noqa: latest[git]
+        repo: "{{ common_dots_repo }}"
+        dest: "/home/{{ item }}/dots"
+        version: HEAD
+        update: false
+      become: true
+      become_user: "{{ item }}"
+      loop: "{{ common_stow_users }}"
+      loop_control:
+        label: "{{ item }}"
+
+    # `--override='.*'` overwrites any pre-existing target files in $HOME.
+    # stow writes its verbose `LINK:`/`UNLINK:` lines to stderr, so
+    # changed_when checks that stream.
+    - name: Stow common dotfile packages
+      ansible.builtin.command:
+        cmd: "stow --override='.*' {{ item.1 }}"
+        chdir: "/home/{{ item.0 }}/dots"
+      register: __common_stow_result
+      changed_when: >-
+        'LINK:' in __common_stow_result.stderr
+        or 'UNLINK:' in __common_stow_result.stderr
+      become: true
+      become_user: "{{ item.0 }}"
+      loop: "{{ common_stow_users | product(common_stow_packages) | list }}"
+      loop_control:
+        label: "{{ item.0 }}/{{ item.1 }}"

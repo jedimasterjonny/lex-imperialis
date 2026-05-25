@@ -24,3 +24,23 @@
       check_mode: true
       register: __common_sshd_check
       failed_when: __common_sshd_check.changed
+
+    - name: Verify dotfiles for operators
+      when: common_stow_users | length > 0
+      block:
+        - name: Stat the dots repo for each user
+          ansible.builtin.stat:
+            path: "/home/{{ item }}/dots/.git"
+          register: __common_dots_stat
+          loop: "{{ common_stow_users }}"
+          loop_control:
+            label: "{{ item }}"
+
+        - name: Assert the dots repo is present for each user
+          ansible.builtin.assert:
+            that:
+              - item.stat.exists
+            fail_msg: "dots repo missing at /home/{{ item.item }}/dots"
+          loop: "{{ __common_dots_stat.results }}"
+          loop_control:
+            label: "{{ item.item }}"

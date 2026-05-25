@@ -1,0 +1,9 @@
+---
+minor_changes:
+  - >-
+    common - add ``common_stow_users`` (default ``[]``). When non-empty,
+    clones ``common_dots_repo`` (default
+    ``https://github.com/jedimasterjonny/dots``) to ``~/dots`` for each
+    user and stows ``common_stow_packages`` (default ``[bash-suse]``)
+    via ``stow --override='.*'`` (overwriting any pre-existing target
+    files).
