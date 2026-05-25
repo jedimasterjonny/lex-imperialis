@@ -23,6 +23,9 @@
         source: images:opensuse/tumbleweed
     # dev_stow_users tracks common_stow_users by default — just jonny
     # gets bash-suse + git + nvim dotfiles; ansible is a service account.
+    # common_dots_repo has no role default (would otherwise silently
+    # install the maintainer's dotfiles on every consumer) — pin it here.
+    common_dots_repo: https://github.com/jedimasterjonny/dots
     common_stow_users:
       - jonny
 

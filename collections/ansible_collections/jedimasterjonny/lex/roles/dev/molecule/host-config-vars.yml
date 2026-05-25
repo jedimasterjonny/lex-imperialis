@@ -29,6 +29,10 @@ dev_libvirt_manage_default_network: false
 # default substitution can race with verify's load order. Pinning
 # dev_stow_users explicitly keeps both the converge and verify reads
 # unambiguous.
+#
+# common_dots_repo has no role default; molecule uses the maintainer's
+# public repo as a test fixture.
+common_dots_repo: https://github.com/jedimasterjonny/dots
 common_stow_users:
   - root
 dev_stow_users:

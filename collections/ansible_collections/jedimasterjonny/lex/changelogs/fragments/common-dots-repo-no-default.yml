@@ -1,0 +1,5 @@
+---
+breaking_changes:
+  - "common - common_dots_repo no longer defaults to the maintainer's
+    personal dotfiles repository. Set it explicitly when common_stow_users
+    is non-empty; the role asserts the variable is set at task time."

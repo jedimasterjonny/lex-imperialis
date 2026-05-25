@@ -18,7 +18,13 @@ common_packages:
 # replaced by a symlink to upstream content. Any local edits to
 # ~/dots are wiped on re-run — the role treats the clone as a
 # read-only mirror.
-common_dots_repo: https://github.com/jedimasterjonny/dots
+#
+# common_dots_repo intentionally has no default — the role would
+# otherwise quietly install the maintainer's personal dotfiles on
+# any consumer who set common_stow_users without thinking about the
+# repo. The task layer asserts this is set when common_stow_users
+# is non-empty; leave it null otherwise and stow runs are skipped.
+common_dots_repo: null
 common_stow_packages:
   - bash-suse
 common_stow_users: []

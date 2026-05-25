@@ -13,6 +13,18 @@
 - name: Configure dotfiles for operators
   when: common_stow_users | length > 0
   block:
+    # common_dots_repo has no default — a default would silently install
+    # the maintainer's dotfiles on any consumer that opts into stow
+    # without setting the repo. Fail loudly here instead.
+    - name: Assert common_dots_repo is set when stowing
+      ansible.builtin.assert:
+        that:
+          - common_dots_repo is string
+          - common_dots_repo | length > 0
+        fail_msg: >-
+          common_dots_repo must be set to a clone URL when
+          common_stow_users is non-empty.
+
     - name: Install git for cloning the dots repo
       community.general.zypper:
         name: git

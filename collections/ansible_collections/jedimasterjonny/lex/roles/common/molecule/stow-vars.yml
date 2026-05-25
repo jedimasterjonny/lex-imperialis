@@ -13,6 +13,12 @@
 # root is used because root's home is /root (not /home/root), so the
 # role's getent-based home resolution is exercised end to end without
 # needing a synthetic user.
+#
+# common_dots_repo has no role default — the role asserts it's set when
+# common_stow_users is non-empty. Molecule uses the maintainer's public
+# repo as a test fixture; it satisfies the assert and provides the
+# bash-suse stow package.
 
+common_dots_repo: https://github.com/jedimasterjonny/dots
 common_stow_users:
   - root
