@@ -28,11 +28,9 @@ dev_libvirt_users:
   - root
 
 dev_incus_packages:
-  - firewalld
   - incus
   - incus-tools
   - iptables
-  - python3-firewall
 
 dev_incus_preseed:
   config: {}

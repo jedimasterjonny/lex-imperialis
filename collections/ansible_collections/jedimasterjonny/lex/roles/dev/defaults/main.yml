@@ -31,14 +31,18 @@ dev_ansible_dev_packages: []
 dev_configure_incus_host: false
 
 # Incus host packages — installed when dev_configure_incus_host is true.
-# firewalld + python3-firewall are runtime deps absent from fresh cloud
-# images: ansible.posix.firewalld (used to trust the bridge in firewalld)
-# imports python3-firewall on the target and needs the firewalld daemon
-# running.
 dev_incus_packages:
-  - firewalld
   - incus
   - incus-tools
+
+# firewalld bridge-trust packages — installed only when
+# dev_incus_firewalld_trusted_interfaces is non-empty. firewalld +
+# python3-firewall are runtime deps absent from fresh cloud images:
+# ansible.posix.firewalld imports python3-firewall on the target and needs
+# the firewalld daemon running. nftables hosts that opt out via
+# dev_incus_firewalld_trusted_interfaces=[] no longer pick these up.
+dev_incus_firewalld_packages:
+  - firewalld
   - python3-firewall
 
 # Existing users to grant access to the Incus control socket via the

@@ -81,6 +81,12 @@
       when: __dev_incus_init_check.rc != 0
       changed_when: true
 
+    - name: Install firewalld for Incus bridge trust
+      community.general.zypper:
+        name: "{{ dev_incus_firewalld_packages }}"
+        state: present
+      when: dev_incus_firewalld_trusted_interfaces | length > 0
+
     # `immediate: true` on the trust task below needs a running daemon.
     - name: Ensure firewalld is enabled and started
       ansible.builtin.systemd_service:

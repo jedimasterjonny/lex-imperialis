@@ -39,6 +39,15 @@
           register: __dev_incus_packages_check
           failed_when: __dev_incus_packages_check.changed
 
+        - name: Verify firewalld packages are installed
+          community.general.zypper:
+            name: "{{ dev_incus_firewalld_packages }}"
+            state: present
+          check_mode: true
+          register: __dev_incus_firewalld_packages_check
+          failed_when: __dev_incus_firewalld_packages_check.changed
+          when: dev_incus_firewalld_trusted_interfaces | length > 0
+
         - name: Verify the incus socket is enabled and started
           ansible.builtin.systemd_service:
             name: incus.socket
