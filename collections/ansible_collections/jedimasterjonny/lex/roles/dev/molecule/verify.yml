@@ -289,6 +289,16 @@
               Installed helper sha256 does not match the shipped file —
               content drift detected.
 
+    # Mirror the resolution that tasks/main.yml does: a null default
+    # means "track common_stow_users". Verify reads role defaults via
+    # vars_files, so without this it sees the unresolved null sentinel
+    # and the dotfile verify block skips silently when consumers rely on
+    # the derivation.
+    - name: Resolve dev_stow_users from common_stow_users when unset
+      ansible.builtin.set_fact:
+        dev_stow_users: "{{ common_stow_users | default([]) }}"
+      when: dev_stow_users is none
+
     - name: Verify dev dotfile stow for each user
       when: dev_stow_users | length > 0
       block:

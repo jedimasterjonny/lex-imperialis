@@ -9,10 +9,11 @@
 # otherwise shadow the override back to the empty default and silently
 # skip the dotfile verify block.
 #
-# dev_stow_users defaults to a Jinja reference to common_stow_users.
-# Pinning dev_stow_users explicitly keeps both converge and verify
-# reads unambiguous regardless of var load order.
-
+# dev_stow_users is pinned explicitly even though the role resolves a
+# null default from common_stow_users at task time — the converge and
+# verify plays each run the resolution in their own var scope, and an
+# explicit pin removes one moving piece from the test fixture.
+#
 # common_dots_repo has no role default; molecule uses the maintainer's
 # public repo as a test fixture.
 common_dots_repo: https://github.com/jedimasterjonny/dots

@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - "dev - dev_stow_users defaults to null and resolves at task time
+    from common_stow_users (rather than via a lazy-Jinja default in
+    defaults/main.yml that could lose to vars_files reads in
+    downstream plays). Set the variable to an explicit list to opt out
+    of the derivation."

@@ -22,13 +22,11 @@ dev_configure_libvirt_host: true
 
 dev_libvirt_manage_default_network: false
 
-# Exercise the dotfile stow path. Setting common_stow_users is what would
-# normally suffice (dev_stow_users defaults to track it), but dev's
-# defaults file lazy-evaluates that expression and the verify play loads
-# defaults via vars_files — so common_stow_users is in scope but the
-# default substitution can race with verify's load order. Pinning
-# dev_stow_users explicitly keeps both the converge and verify reads
-# unambiguous.
+# Exercise the dotfile stow path. Setting common_stow_users alone would
+# suffice — the role resolves a null dev_stow_users default to
+# common_stow_users at task time in each play — but pinning
+# dev_stow_users here too keeps the molecule fixture explicit and
+# removes one moving piece from the test setup.
 #
 # common_dots_repo has no role default; molecule uses the maintainer's
 # public repo as a test fixture.

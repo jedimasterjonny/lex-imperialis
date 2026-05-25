@@ -1,4 +1,16 @@
 ---
+# Resolve dev_stow_users at task time when the default null sentinel is
+# in effect, binding it to common_stow_users in this play's vars scope.
+# The previous lazy-Jinja default (`"{{ common_stow_users | default([]) }}"`
+# in defaults/main.yml) lost to vars_files reads further down the
+# precedence chain — a consumer setting common_stow_users via extra-vars
+# while including this role from a play that loaded dev's defaults via
+# vars_files would see dev_stow_users resolve to [] silently.
+- name: Resolve dev_stow_users from common_stow_users when unset
+  ansible.builtin.set_fact:
+    dev_stow_users: "{{ common_stow_users | default([]) }}"
+  when: dev_stow_users is none
+
 # common (this role's meta-dep) owns the ~/dots clone for each user in
 # common_stow_users. dev's stow loop chdirs into ~/dots, so any user in
 # dev_stow_users that common didn't clone for would fail with a confusing

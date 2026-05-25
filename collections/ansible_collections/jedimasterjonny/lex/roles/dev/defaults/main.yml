@@ -143,11 +143,17 @@ dev_libvirt_manage_default_network: true
 dev_libvirt_users: []
 
 # Dotfile packages to stow from ~/<user>/dots. The clone is owned by the
-# common role; this role only stows. dev_stow_users defaults to
-# common_stow_users so the two track. Stow runs with `--adopt` and the
+# common role; this role only stows. Stow runs with `--adopt` and the
 # role then git-restores ~/dots back to upstream HEAD — see the common
 # role for the rationale.
+#
+# dev_stow_users defaults to null, which the role resolves at task time
+# to common_stow_users — the two track without the lazy-Jinja-default
+# trap (a downstream vars_files load that re-reads this file would
+# otherwise pin dev_stow_users at the load-time value of
+# common_stow_users, which can lose to extra-vars set later). Set the
+# variable to an explicit list to opt out of the derivation.
 dev_stow_packages:
   - git
   - nvim
-dev_stow_users: "{{ common_stow_users | default([]) }}"
+dev_stow_users: null
