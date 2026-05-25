@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - "dev - set ``overwrite_multiple: true`` on the Leap OBS repositories so
+    an in-place distribution upgrade (e.g. Leap 16.0 to 16.1) updates the
+    repo URL in place instead of leaving the repo pinned to the previous
+    release's URL, which made the next ``zypper refresh`` 404 and broke
+    the role's subsequent ``Install Incus packages`` task."

@@ -31,13 +31,18 @@
 # dev_extra_repos exists only to source the incus packaging on Leap (the
 # Virtualization:containers and network:utilities OBS projects). Gate on the
 # Incus host flag so workstation-only adoptions don't pick up two OBS repos
-# they neither need nor consume.
+# they neither need nor consume. `overwrite_multiple: true` keeps the repo's
+# URL aligned with the current ansible_facts['distribution_version'] — Leap
+# in-place upgrades (e.g. 16.0 → 16.1) keep the repo name stable but flip
+# the URL, and without this flag the existing repo stays pinned to the old
+# URL and `zypper refresh` 404s on the stale path.
 - name: Configure distribution-specific zypper repositories
   community.general.zypper_repository:
     name: "{{ item.name }}"
     repo: "{{ item.url }}"
     state: present
     auto_import_keys: true
+    overwrite_multiple: true
   loop: "{{ dev_extra_repos }}"
   loop_control:
     label: "{{ item.name }}"
