@@ -99,16 +99,17 @@
           loop_control:
             label: "{{ item }}"
 
-        # The default profile (NIC → bridge, disk → pool) and the bridge
-        # and pool it points at are all derived from dev_incus_preseed,
-        # so the verify reads the expected names back out of the preseed
-        # rather than hardcoding "incusbr0"/"default" — overrides that
-        # rename either are valid and the role should still pass verify.
-        # Devices are iterated by `type` so a profile that names its NIC
-        # device `enp0s3` (or its disk `rootfs`) instead of `eth0`/`root`
-        # still resolves correctly.
+        # The default profile (NIC → bridge, disk → pool), its name, and
+        # the bridge and pool it points at are all derived from
+        # dev_incus_preseed, so the verify reads the expected names back
+        # out of the preseed rather than hardcoding "incusbr0"/"default"
+        # — overrides that rename any of them are valid and the role
+        # should still pass verify. Devices are iterated by `type` so a
+        # profile that names its NIC device `enp0s3` (or its disk
+        # `rootfs`) instead of `eth0`/`root` still resolves correctly.
         - name: Capture expected Incus shape from dev_incus_preseed
           ansible.builtin.set_fact:
+            __dev_incus_expected_profile: "{{ dev_incus_preseed.profiles[0].name }}"
             __dev_incus_expected_bridge: >-
               {{ dev_incus_preseed.profiles[0].devices.values()
                  | selectattr('type', 'eq', 'nic')
@@ -126,8 +127,8 @@
           ansible.builtin.command: "incus network show {{ __dev_incus_expected_bridge }}"
           changed_when: false
 
-        - name: Capture default Incus profile for shape assertions
-          ansible.builtin.command: incus profile show default
+        - name: Capture configured Incus profile for shape assertions
+          ansible.builtin.command: "incus profile show {{ __dev_incus_expected_profile }}"
           register: __dev_incus_profile
           changed_when: false
 
