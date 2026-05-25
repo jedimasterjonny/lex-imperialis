@@ -22,6 +22,18 @@ dev_configure_libvirt_host: true
 
 dev_libvirt_manage_default_network: false
 
+# Exercise the dotfile stow path. Setting common_stow_users is what would
+# normally suffice (dev_stow_users defaults to track it), but dev's
+# defaults file lazy-evaluates that expression and the verify play loads
+# defaults via vars_files — so common_stow_users is in scope but the
+# default substitution can race with verify's load order. Pinning
+# dev_stow_users explicitly keeps both the converge and verify reads
+# unambiguous.
+common_stow_users:
+  - root
+dev_stow_users:
+  - root
+
 dev_incus_admin_users:
   - root
 dev_libvirt_users:

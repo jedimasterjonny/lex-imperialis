@@ -17,6 +17,13 @@ provisioner:
     # shared across all scenarios (default, full, ci, …) for this role.
     converge: ../converge.yml
     verify: ../verify.yml
+  inventory:
+    group_vars:
+      all:
+        # See the default scenario for why we exercise the dotfile path
+        # via root rather than a synthetic user.
+        common_stow_users:
+          - root
 
 verifier:
   name: ansible

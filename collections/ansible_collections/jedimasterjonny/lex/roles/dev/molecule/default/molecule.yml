@@ -25,6 +25,13 @@ provisioner:
       molecule-lex-dev-default:
         ansible_connection: community.general.incus
         ansible_user: root
+    group_vars:
+      all:
+        # Exercise the dotfile stow path (common's clone + bash-suse, dev's
+        # git + nvim). dev_stow_users defaults to common_stow_users, so
+        # setting just the common side is enough.
+        common_stow_users:
+          - root
   # Tier 1 keeps both host-config gates at their defaults (false): an
   # incus-in-incus container can't enable virt-host services like
   # incus.socket or the virt*d sockets. The general-dev package set and
