@@ -69,15 +69,24 @@
           loop_control:
             label: "{{ item }}"
 
-        # The default profile (devices eth0 → bridge, root → pool) and the
-        # bridge/pool it points at are all derived from dev_incus_preseed,
+        # The default profile (NIC → bridge, disk → pool) and the bridge
+        # and pool it points at are all derived from dev_incus_preseed,
         # so the verify reads the expected names back out of the preseed
         # rather than hardcoding "incusbr0"/"default" — overrides that
         # rename either are valid and the role should still pass verify.
+        # Devices are iterated by `type` so a profile that names its NIC
+        # device `enp0s3` (or its disk `rootfs`) instead of `eth0`/`root`
+        # still resolves correctly.
         - name: Capture expected Incus shape from dev_incus_preseed
           ansible.builtin.set_fact:
-            __dev_incus_expected_bridge: "{{ dev_incus_preseed.profiles[0].devices.eth0.parent }}"
-            __dev_incus_expected_pool: "{{ dev_incus_preseed.profiles[0].devices.root.pool }}"
+            __dev_incus_expected_bridge: >-
+              {{ dev_incus_preseed.profiles[0].devices.values()
+                 | selectattr('type', 'eq', 'nic')
+                 | map(attribute='parent') | first }}
+            __dev_incus_expected_pool: >-
+              {{ dev_incus_preseed.profiles[0].devices.values()
+                 | selectattr('type', 'eq', 'disk')
+                 | map(attribute='pool') | first }}
 
         - name: Verify the default Incus storage pool exists
           ansible.builtin.command: "incus storage show {{ __dev_incus_expected_pool }}"
@@ -99,8 +108,8 @@
               - "'pool: ' ~ __dev_incus_expected_pool in __dev_incus_profile.stdout"
             fail_msg: >-
               Default profile is missing expected devices
-              (eth0 → {{ __dev_incus_expected_bridge }},
-              root → {{ __dev_incus_expected_pool }} pool).
+              (NIC parent={{ __dev_incus_expected_bridge }},
+              disk pool={{ __dev_incus_expected_pool }}).
 
         - name: Verify firewalld is enabled and started
           ansible.builtin.systemd_service:
