@@ -99,54 +99,63 @@
             enabled: true
             state: started
 
-    - name: Ensure Tumbleweed qcow2 base image is present and up to date
-      ansible.builtin.command: /usr/local/sbin/tumbleweed-image-refresh
-      register: tumbleweed_refresh
-      changed_when: "'Image refreshed' in tumbleweed_refresh.stdout"
+    # The tumbleweed-image-refresh helper at /usr/local/sbin/ is dropped
+    # by the dev role only when dev_configure_libvirt_host is true. The
+    # playbook's vars (at the top of this file) hardcode that gate true
+    # today, but gate the post_tasks defensively so a temporary
+    # `-e dev_configure_libvirt_host=false` doesn't try to invoke a
+    # helper the role just decided not to install.
+    - name: Schedule weekly refresh of the Tumbleweed qcow2 base image
+      when: dev_configure_libvirt_host | bool
+      block:
+        - name: Ensure Tumbleweed qcow2 base image is present and up to date
+          ansible.builtin.command: /usr/local/sbin/tumbleweed-image-refresh
+          register: tumbleweed_refresh
+          changed_when: "'Image refreshed' in tumbleweed_refresh.stdout"
 
-    - name: Install tumbleweed-image-refresh.service unit
-      ansible.builtin.copy:
-        dest: /etc/systemd/system/tumbleweed-image-refresh.service
-        owner: root
-        group: root
-        mode: "0644"
-        content: |
-          [Unit]
-          Description=Refresh Tumbleweed qcow2 base image
-          After=network-online.target
-          Wants=network-online.target
+        - name: Install tumbleweed-image-refresh.service unit
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/tumbleweed-image-refresh.service
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              [Unit]
+              Description=Refresh Tumbleweed qcow2 base image
+              After=network-online.target
+              Wants=network-online.target
 
-          [Service]
-          Type=oneshot
-          ExecStart=/usr/local/sbin/tumbleweed-image-refresh
-      notify: Reload systemd
+              [Service]
+              Type=oneshot
+              ExecStart=/usr/local/sbin/tumbleweed-image-refresh
+          notify: Reload systemd
 
-    - name: Install tumbleweed-image-refresh.timer unit
-      ansible.builtin.copy:
-        dest: /etc/systemd/system/tumbleweed-image-refresh.timer
-        owner: root
-        group: root
-        mode: "0644"
-        content: |
-          [Unit]
-          Description=Weekly refresh of Tumbleweed qcow2 base image
+        - name: Install tumbleweed-image-refresh.timer unit
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/tumbleweed-image-refresh.timer
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              [Unit]
+              Description=Weekly refresh of Tumbleweed qcow2 base image
 
-          [Timer]
-          OnCalendar=Sun *-*-* 03:30:00
-          Persistent=true
+              [Timer]
+              OnCalendar=Sun *-*-* 03:30:00
+              Persistent=true
 
-          [Install]
-          WantedBy=timers.target
-      notify: Reload systemd
+              [Install]
+              WantedBy=timers.target
+          notify: Reload systemd
 
-    - name: Flush handlers so systemd loads the tumbleweed-image-refresh units
-      ansible.builtin.meta: flush_handlers
+        - name: Flush handlers so systemd loads the tumbleweed-image-refresh units
+          ansible.builtin.meta: flush_handlers
 
-    - name: Enable and start tumbleweed-image-refresh.timer
-      ansible.builtin.systemd_service:
-        name: tumbleweed-image-refresh.timer
-        enabled: true
-        state: started
+        - name: Enable and start tumbleweed-image-refresh.timer
+          ansible.builtin.systemd_service:
+            name: tumbleweed-image-refresh.timer
+            enabled: true
+            state: started
 
   handlers:
     - name: Reload systemd
