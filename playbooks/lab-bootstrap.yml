@@ -54,9 +54,19 @@
     # fails fast if the account is missing. Group memberships granted by
     # the dev role's Incus/libvirt blocks land on this account in the same
     # play (append: true, so they're additive).
+    #
+    # uid/group/shell are pinned so re-imaging the lab box always lands
+    # on the same identity. Without that, a post-install scriptlet from
+    # some other package could race in and take uid 1000 first, leaving
+    # jonny at 1001 — and any btrfs snapshot or NFS-mounted home
+    # restored later would then show files owned by an orphan uid.
     - name: Ensure jonny account exists
       ansible.builtin.user:
         name: jonny
+        uid: 1000
+        group: users
+        shell: /bin/bash
+        create_home: true
         state: present
 
   roles:
