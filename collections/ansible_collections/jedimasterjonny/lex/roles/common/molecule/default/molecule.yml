@@ -25,13 +25,10 @@ provisioner:
       molecule-lex-common-default:
         ansible_connection: community.general.incus
         ansible_user: root
-    group_vars:
-      all:
-        # Exercise the dotfile stow path against root. Root's home is
-        # /root rather than /home/root, so this also exercises the
-        # role's getent-based home resolution end to end.
-        common_stow_users:
-          - root
+  # Stow user overrides live at extra-vars precedence so they beat the
+  # vars_files load in verify.yml — see stow-vars.yml for the rationale.
+  options:
+    extra-vars: "@../stow-vars.yml"
 
 verifier:
   name: ansible

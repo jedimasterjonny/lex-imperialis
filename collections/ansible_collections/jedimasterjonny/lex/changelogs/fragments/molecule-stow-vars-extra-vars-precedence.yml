@@ -1,0 +1,11 @@
+---
+bugfixes:
+  - >-
+    common, dev - move the molecule ``common_stow_users`` /
+    ``dev_stow_users`` overrides for the default and ci scenarios from
+    ``inventory.group_vars.all`` to ``options.extra-vars`` so they beat
+    the role-defaults ``vars_files`` load in the verify play. Previously
+    converge stowed against root (group_vars in scope) but verify saw
+    ``common_stow_users == []`` (defaults shadowing group_vars), the
+    ``when:`` gate on the dotfile assertion block was false, and the
+    dots-repo / symlink assertions silently skipped.

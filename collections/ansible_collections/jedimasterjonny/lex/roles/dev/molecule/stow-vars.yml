@@ -1,0 +1,19 @@
+---
+# Extra-vars referenced via @../stow-vars.yml from the default molecule
+# scenario for the dev role. The full and ci scenarios use
+# host-config-vars.yml instead, which already pins stow_users.
+#
+# Stow user overrides have to land at extra-vars precedence (22), not
+# inventory.group_vars (~5), because verify.yml loads role defaults via
+# `vars_files: - ../defaults/main.yml` (precedence ~14) which would
+# otherwise shadow the override back to the empty default and silently
+# skip the dotfile verify block.
+#
+# dev_stow_users defaults to a Jinja reference to common_stow_users.
+# Pinning dev_stow_users explicitly keeps both converge and verify
+# reads unambiguous regardless of var load order.
+
+common_stow_users:
+  - root
+dev_stow_users:
+  - root
