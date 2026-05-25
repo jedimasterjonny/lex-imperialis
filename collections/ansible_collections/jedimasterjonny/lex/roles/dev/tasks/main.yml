@@ -115,6 +115,9 @@
       changed_when: false
       failed_when: false
 
+    # Match specifically on "not found" stderr (e.g. "Error: Image not found")
+    # — bare rc != 0 also catches transient daemon errors and would re-copy a
+    # cached image on a daemon hiccup.
     - name: Pre-warm missing Incus images
       ansible.builtin.command: >-
         incus image copy {{ item.item.source }} local:
@@ -122,7 +125,9 @@
       loop: "{{ __dev_incus_image_checks.results }}"
       loop_control:
         label: "{{ item.item.alias }}"
-      when: item.rc != 0
+      when:
+        - item.rc != 0
+        - "'not found' in (item.stderr | default(''))"
       changed_when: true
 
 - name: Configure libvirt host
