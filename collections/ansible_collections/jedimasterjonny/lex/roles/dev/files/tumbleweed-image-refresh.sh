@@ -23,6 +23,10 @@ if [[ "$actual" != "$expected" ]]; then
   exit 1
 fi
 chmod 0644 "$tmp"
-chown root:root "$tmp"
+# Don't chown explicitly: /var/lib/libvirt/images is `2775 root:libvirt`
+# (setgid), so files created here inherit group `libvirt` — which qemu needs
+# to read the image. A literal `chown root:root` would defeat that, and any
+# future hardening of the parent dir (e.g. dropping world-read to mode 2770)
+# would silently lock qemu out of just this file.
 mv "$tmp" "$dest"
 echo "Image refreshed (sha256: $actual)"
