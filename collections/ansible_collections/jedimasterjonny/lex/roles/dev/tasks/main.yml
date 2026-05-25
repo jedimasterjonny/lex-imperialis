@@ -273,9 +273,9 @@
     LC_ALL: C
   register: __dev_stow_result
   changed_when: >-
-    'LINK:' in __dev_stow_result.stderr
-    or 'UNLINK:' in __dev_stow_result.stderr
-    or '* existing target' in __dev_stow_result.stderr
+    __dev_stow_result.stderr_lines
+    | select('match', '^(LINK|UNLINK): ')
+    | list | length > 0
   become: true
   become_user: "{{ item.0 }}"
   loop: "{{ dev_stow_users | product(dev_stow_packages) | list }}"

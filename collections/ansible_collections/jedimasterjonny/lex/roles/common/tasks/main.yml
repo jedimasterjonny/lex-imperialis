@@ -61,12 +61,17 @@
         label: "{{ item }}"
 
     # stow refuses to clobber real files (`--override` only re-takes
-    # already-stow-managed links). Use `--adopt` to absorb any pre-existing
-    # target file (e.g. an /etc/skel-seeded ~/.bashrc) into the stow
-    # package, then `git restore` the package back to upstream HEAD —
-    # leaving the target as a symlink pointing at the upstream content.
-    # `-v` makes stow emit LINK:/UNLINK:/`* existing target` lines on
-    # stderr; LC_ALL=C pins the locale so the substring match is stable.
+    # already-stow-managed links). `--adopt` is load-bearing: it absorbs
+    # any pre-existing target file (e.g. an /etc/skel-seeded ~/.bashrc)
+    # into the stow package, which the `git restore` task below then
+    # reverts to upstream HEAD — leaving the target as a symlink
+    # pointing at the upstream content. With --adopt, stow's only
+    # change-signalling lines are `LINK: ...` and `UNLINK: ...`; the
+    # `* existing target` warning only fires when --adopt is absent.
+    # `-v` makes stow emit those lines on stderr, LC_ALL=C pins the
+    # locale, and the match is anchored on line-leading shape so a
+    # future stow that emits e.g. `LINK:` mid-message doesn't trip a
+    # spurious change.
     - name: Stow common dotfile packages
       ansible.builtin.command:
         cmd: "stow -v --adopt {{ item.1 }}"
@@ -75,9 +80,9 @@
         LC_ALL: C
       register: __common_stow_result
       changed_when: >-
-        'LINK:' in __common_stow_result.stderr
-        or 'UNLINK:' in __common_stow_result.stderr
-        or '* existing target' in __common_stow_result.stderr
+        __common_stow_result.stderr_lines
+        | select('match', '^(LINK|UNLINK): ')
+        | list | length > 0
       become: true
       become_user: "{{ item.0 }}"
       loop: "{{ common_stow_users | product(common_stow_packages) | list }}"
