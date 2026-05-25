@@ -93,10 +93,12 @@ dev_incus_preseed:
   cluster: null
 
 # Interfaces to add to firewalld's `trusted` zone so Incus containers can
-# route through the host. Defaults to the bridge created by
-# dev_incus_preseed. Set to [] on hosts not running firewalld.
-dev_incus_firewalld_trusted_interfaces:
-  - incusbr0
+# route through the host. Defaults to null, which the role resolves at
+# task time to the list of bridge names defined in dev_incus_preseed.networks
+# — so renaming the bridge in the preseed propagates here without a
+# matching override. Set to an explicit list to trust a different set of
+# interfaces, or to [] on hosts not running firewalld.
+dev_incus_firewalld_trusted_interfaces: null
 
 # Incus images to pre-warm into the host's local image cache. Each entry:
 # an `alias` (local cache name) and a `source` (remote image, e.g.

@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - "dev - dev_incus_firewalld_trusted_interfaces now defaults to null
+    and resolves at task time from dev_incus_preseed.networks, so
+    overriding the preseed bridge propagates to firewalld trust without
+    a matching override here. Set the variable to an explicit list (or [])
+    to opt out of the derivation."

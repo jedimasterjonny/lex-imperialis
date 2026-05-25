@@ -64,6 +64,17 @@
 - name: Configure Incus host
   when: dev_configure_incus_host | bool
   block:
+    # Resolve the firewalld trust list once at task time: a null default
+    # means "track the preseed", an explicit list (including []) is used
+    # as-is. Doing this in a set_fact rather than a Jinja default in
+    # defaults/main.yml avoids the lazy-evaluation trap where a downstream
+    # vars_files load shadows the default back to null mid-play.
+    - name: Resolve effective Incus firewalld trust list from preseed
+      ansible.builtin.set_fact:
+        dev_incus_firewalld_trusted_interfaces: >-
+          {{ dev_incus_preseed.networks | map(attribute='name') | list }}
+      when: dev_incus_firewalld_trusted_interfaces is none
+
     - name: Install Incus packages
       community.general.zypper:
         name: "{{ dev_incus_packages }}"
@@ -142,6 +153,12 @@
         state: started
       when: dev_incus_firewalld_trusted_interfaces | length > 0
 
+    # `| default([], true)` guards the loop template against the null
+    # sentinel: Ansible templates `loop:` before the block-level `when`
+    # check, so even with `dev_configure_incus_host: false` the trust
+    # loop is templated and would fail on the unresolved null otherwise.
+    # The `true` flag is load-bearing — without it `default` substitutes
+    # only for undefined, not for explicitly-null values.
     - name: Trust configured Incus bridges in firewalld
       ansible.posix.firewalld:
         zone: trusted
@@ -149,7 +166,7 @@
         permanent: true
         immediate: true
         state: enabled
-      loop: "{{ dev_incus_firewalld_trusted_interfaces }}"
+      loop: "{{ dev_incus_firewalld_trusted_interfaces | default([], true) }}"
       loop_control:
         label: "{{ item }}"
 

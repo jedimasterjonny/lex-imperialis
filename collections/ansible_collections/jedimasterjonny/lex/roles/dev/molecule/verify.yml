@@ -31,6 +31,16 @@
     - name: Verify Incus host configuration
       when: dev_configure_incus_host | bool
       block:
+        # Mirror the resolution that tasks/main.yml does: a null default
+        # means "track the preseed". Verify reads role defaults via
+        # vars_files, so without this it sees the unresolved null sentinel
+        # and the gated firewalld checks below skip silently.
+        - name: Resolve effective Incus firewalld trust list from preseed
+          ansible.builtin.set_fact:
+            dev_incus_firewalld_trusted_interfaces: >-
+              {{ dev_incus_preseed.networks | map(attribute='name') | list }}
+          when: dev_incus_firewalld_trusted_interfaces is none
+
         - name: Verify Incus packages are installed
           community.general.zypper:
             name: "{{ dev_incus_packages }}"
@@ -121,6 +131,12 @@
           failed_when: __dev_firewalld_check.changed
           when: dev_incus_firewalld_trusted_interfaces | length > 0
 
+        # `| default([], true)` mirrors the guard in tasks/main.yml —
+        # Ansible templates `loop:` before the block-level `when`, so
+        # the trust loop would crash on the unresolved null sentinel
+        # when verify is run with `dev_configure_incus_host: false`.
+        # The `true` flag substitutes for explicitly-null values too,
+        # not just for undefined.
         - name: Verify configured Incus bridges are trusted in firewalld
           ansible.posix.firewalld:
             zone: trusted
@@ -131,7 +147,7 @@
           check_mode: true
           register: __dev_incus_firewalld_check
           failed_when: __dev_incus_firewalld_check.changed
-          loop: "{{ dev_incus_firewalld_trusted_interfaces }}"
+          loop: "{{ dev_incus_firewalld_trusted_interfaces | default([], true) }}"
           loop_control:
             label: "{{ item }}"
 
