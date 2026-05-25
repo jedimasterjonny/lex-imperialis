@@ -35,49 +35,55 @@
   # ships at /usr/local/sbin/tumbleweed-image-refresh is in place before the
   # one-shot invocation below.
   post_tasks:
-    - name: Install incus-image-refresh.service unit
-      ansible.builtin.copy:
-        dest: /etc/systemd/system/incus-image-refresh.service
-        owner: root
-        group: root
-        mode: "0644"
-        content: |
-          [Unit]
-          Description=Refresh cached Incus images
-          After=network-online.target incus.socket
-          Wants=network-online.target incus.socket
+    # Skip the entire unit pair when no images are pre-warmed: a bare
+    # `incus image refresh` (the template's degenerate case) refreshes every
+    # cached image, which broadens the unit's effect beyond the curated set.
+    - name: Schedule weekly refresh of pre-warmed Incus images
+      when: dev_incus_images | length > 0
+      block:
+        - name: Install incus-image-refresh.service unit
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/incus-image-refresh.service
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              [Unit]
+              Description=Refresh cached Incus images
+              After=network-online.target incus.socket
+              Wants=network-online.target incus.socket
 
-          [Service]
-          Type=oneshot
-          ExecStart=/usr/bin/incus image refresh{% for img in dev_incus_images %} local:{{ img.alias }}{% endfor %}
-      notify: Reload systemd
+              [Service]
+              Type=oneshot
+              ExecStart=/usr/bin/incus image refresh{% for img in dev_incus_images %} local:{{ img.alias }}{% endfor %}
+          notify: Reload systemd
 
-    - name: Install incus-image-refresh.timer unit
-      ansible.builtin.copy:
-        dest: /etc/systemd/system/incus-image-refresh.timer
-        owner: root
-        group: root
-        mode: "0644"
-        content: |
-          [Unit]
-          Description=Weekly refresh of cached Incus images
+        - name: Install incus-image-refresh.timer unit
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/incus-image-refresh.timer
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              [Unit]
+              Description=Weekly refresh of cached Incus images
 
-          [Timer]
-          OnCalendar=Sun *-*-* 03:00:00
-          Persistent=true
+              [Timer]
+              OnCalendar=Sun *-*-* 03:00:00
+              Persistent=true
 
-          [Install]
-          WantedBy=timers.target
-      notify: Reload systemd
+              [Install]
+              WantedBy=timers.target
+          notify: Reload systemd
 
-    - name: Flush handlers so systemd loads the incus-image-refresh units
-      ansible.builtin.meta: flush_handlers
+        - name: Flush handlers so systemd loads the incus-image-refresh units
+          ansible.builtin.meta: flush_handlers
 
-    - name: Enable and start incus-image-refresh.timer
-      ansible.builtin.systemd_service:
-        name: incus-image-refresh.timer
-        enabled: true
-        state: started
+        - name: Enable and start incus-image-refresh.timer
+          ansible.builtin.systemd_service:
+            name: incus-image-refresh.timer
+            enabled: true
+            state: started
 
     - name: Ensure Tumbleweed qcow2 base image is present and up to date
       ansible.builtin.command: /usr/local/sbin/tumbleweed-image-refresh
