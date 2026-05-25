@@ -16,6 +16,10 @@
     dev_incus_images:
       - alias: tumbleweed
         source: images:opensuse/tumbleweed
+    # dev_stow_users tracks common_stow_users by default — just jonny
+    # gets bash-suse + git + nvim dotfiles; ansible is a service account.
+    common_stow_users:
+      - jonny
 
   pre_tasks:
     - name: Sanity — we're running on openSUSE
