@@ -4,6 +4,16 @@ galaxy_info:
   description: Developer and Ansible-author tooling for Lex Imperialis lab hosts.
   license: GPL-3.0-or-later
   min_ansible_version: "2.19"
+  # The role calls community.general.zypper unconditionally, so non-SUSE
+  # consumers can't use it. Advertise the openSUSE platform so Galaxy
+  # users can filter by distro. `versions: [all]` is the schema's only
+  # current escape hatch: the Galaxy-accepted enum tops out at 15.5 and
+  # has no Tumbleweed or 16.0 entry, while the role's CI coverage is
+  # Tumbleweed (tier 1/2) plus Leap 16 (tier 3).
+  platforms:
+    - name: opensuse
+      versions:
+        - all
   galaxy_tags:
     - homelab
     - suse
