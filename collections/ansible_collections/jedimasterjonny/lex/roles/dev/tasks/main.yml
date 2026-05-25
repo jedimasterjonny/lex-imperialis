@@ -235,11 +235,14 @@
 # Dotfiles for dev workstations — common owns the clone, this role only
 # stows the dev-specific packages from ~/<user>/dots. See the matching
 # task in the common role for the rationale behind `--adopt` + `git
-# restore` and the `-v` flag for change detection.
+# restore` and the `-v` flag for change detection. The ~/dots prefix is
+# resolved from common_stow_user_homes, populated by the common role
+# via getent — dev_stow_users is a subset of common_stow_users (asserted
+# at the top of this file), so every entry is present in that dict.
 - name: Stow dev dotfile packages
   ansible.builtin.command:
     cmd: "stow -v --adopt {{ item.1 }}"
-    chdir: "/home/{{ item.0 }}/dots"
+    chdir: "{{ common_stow_user_homes[item.0] }}/dots"
   environment:
     LC_ALL: C
   register: __dev_stow_result
@@ -257,7 +260,7 @@
 - name: Restore the dots repo to upstream HEAD
   ansible.builtin.command:  # noqa: command-instead-of-module
     cmd: git restore .
-    chdir: "/home/{{ item }}/dots"
+    chdir: "{{ common_stow_user_homes[item] }}/dots"
   become: true
   become_user: "{{ item }}"
   loop: "{{ dev_stow_users }}"

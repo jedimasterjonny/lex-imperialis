@@ -27,11 +27,9 @@ provisioner:
         ansible_user: root
     group_vars:
       all:
-        # Exercise the dotfile stow path in CI. The role's
-        # /home/{{ user }}/dots layout doesn't match root's real $HOME
-        # (/root), so the symlinks land where verify expects them but
-        # bash won't read them — fine for path coverage, separate from
-        # the home-resolution bug.
+        # Exercise the dotfile stow path against root. Root's home is
+        # /root rather than /home/root, so this also exercises the
+        # role's getent-based home resolution end to end.
         common_stow_users:
           - root
 

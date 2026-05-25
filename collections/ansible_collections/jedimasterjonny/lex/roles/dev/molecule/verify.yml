@@ -239,9 +239,31 @@
     - name: Verify dev dotfile stow for each user
       when: dev_stow_users | length > 0
       block:
+        # verify runs as a separate play from converge, so the converge-time
+        # common_stow_user_homes fact is gone — re-resolve from passwd.
+        - name: Resolve home directory for each stow user
+          ansible.builtin.getent:
+            database: passwd
+            key: "{{ item }}"
+            fail_key: true
+          loop: "{{ dev_stow_users }}"
+          loop_control:
+            label: "{{ item }}"
+          register: __dev_stow_user_passwd
+
+        - name: Cache resolved home directories for verification
+          ansible.builtin.set_fact:
+            dev_stow_user_homes: >-
+              {{ dev_stow_user_homes | default({})
+                 | combine({item.item:
+                            item.ansible_facts.getent_passwd[item.item][4]}) }}
+          loop: "{{ __dev_stow_user_passwd.results }}"
+          loop_control:
+            label: "{{ item.item }}"
+
         - name: Stat nvim config dir for each user
           ansible.builtin.stat:
-            path: "/home/{{ item }}/.config/nvim"
+            path: "{{ dev_stow_user_homes[item] }}/.config/nvim"
           register: __dev_stow_nvim_stat
           loop: "{{ dev_stow_users }}"
           loop_control:
@@ -252,7 +274,8 @@
             that:
               - item.stat.exists
             fail_msg: >-
-              nvim config missing at /home/{{ item.item }}/.config/nvim
+              nvim config missing at
+              {{ dev_stow_user_homes[item.item] }}/.config/nvim
               — stow may have failed.
           loop: "{{ __dev_stow_nvim_stat.results }}"
           loop_control:

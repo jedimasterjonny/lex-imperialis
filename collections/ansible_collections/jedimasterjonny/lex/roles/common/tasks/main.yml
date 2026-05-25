@@ -18,13 +18,40 @@
         name: git
         state: present
 
+    # Resolve each stow user's real home from passwd rather than assuming
+    # /home/<user>. root's home is /root, and any operator with a
+    # non-standard home would otherwise have ~/dots and the stowed
+    # symlinks land in the wrong tree. `fail_key: true` turns a typo'd
+    # username into an immediate, loud failure. The resolved homes are
+    # cached in common_stow_user_homes so the dev role (which depends on
+    # common via meta) can reuse them without re-querying.
+    - name: Resolve home directory for each stow user
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ item }}"
+        fail_key: true
+      loop: "{{ common_stow_users }}"
+      loop_control:
+        label: "{{ item }}"
+      register: __common_stow_user_passwd
+
+    - name: Cache resolved home directories for reuse
+      ansible.builtin.set_fact:
+        common_stow_user_homes: >-
+          {{ common_stow_user_homes | default({})
+             | combine({item.item:
+                        item.ansible_facts.getent_passwd[item.item][4]}) }}
+      loop: "{{ __common_stow_user_passwd.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
     # noqa: latest[git] — dotfiles intentionally track upstream HEAD.
     # `update: false` is deliberate: don't clobber local dotfile changes on
     # re-runs. Operators pull updates manually with `cd ~/dots && git pull`.
     - name: Clone the dots repository for each user
       ansible.builtin.git:  # noqa: latest[git]
         repo: "{{ common_dots_repo }}"
-        dest: "/home/{{ item }}/dots"
+        dest: "{{ common_stow_user_homes[item] }}/dots"
         version: HEAD
         update: false
       become: true
@@ -43,7 +70,7 @@
     - name: Stow common dotfile packages
       ansible.builtin.command:
         cmd: "stow -v --adopt {{ item.1 }}"
-        chdir: "/home/{{ item.0 }}/dots"
+        chdir: "{{ common_stow_user_homes[item.0] }}/dots"
       environment:
         LC_ALL: C
       register: __common_stow_result
@@ -64,7 +91,7 @@
     - name: Restore the dots repo to upstream HEAD
       ansible.builtin.command:  # noqa: command-instead-of-module
         cmd: git restore .
-        chdir: "/home/{{ item }}/dots"
+        chdir: "{{ common_stow_user_homes[item] }}/dots"
       become: true
       become_user: "{{ item }}"
       loop: "{{ common_stow_users }}"

@@ -28,9 +28,31 @@
     - name: Verify dotfiles for operators
       when: common_stow_users | length > 0
       block:
+        # verify runs as a separate play from converge, so the converge-time
+        # common_stow_user_homes fact is gone — re-resolve from passwd.
+        - name: Resolve home directory for each stow user
+          ansible.builtin.getent:
+            database: passwd
+            key: "{{ item }}"
+            fail_key: true
+          loop: "{{ common_stow_users }}"
+          loop_control:
+            label: "{{ item }}"
+          register: __common_stow_user_passwd
+
+        - name: Cache resolved home directories for verification
+          ansible.builtin.set_fact:
+            common_stow_user_homes: >-
+              {{ common_stow_user_homes | default({})
+                 | combine({item.item:
+                            item.ansible_facts.getent_passwd[item.item][4]}) }}
+          loop: "{{ __common_stow_user_passwd.results }}"
+          loop_control:
+            label: "{{ item.item }}"
+
         - name: Stat the dots repo for each user
           ansible.builtin.stat:
-            path: "/home/{{ item }}/dots/.git"
+            path: "{{ common_stow_user_homes[item] }}/dots/.git"
           register: __common_dots_stat
           loop: "{{ common_stow_users }}"
           loop_control:
@@ -40,7 +62,7 @@
           ansible.builtin.assert:
             that:
               - item.stat.exists
-            fail_msg: "dots repo missing at /home/{{ item.item }}/dots"
+            fail_msg: "dots repo missing at {{ common_stow_user_homes[item.item] }}/dots"
           loop: "{{ __common_dots_stat.results }}"
           loop_control:
             label: "{{ item.item }}"
