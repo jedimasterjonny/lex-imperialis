@@ -1,0 +1,7 @@
+---
+minor_changes:
+  - >-
+    dev - add ``dev_stow_packages`` (default ``[git, nvim]``) and
+    ``dev_stow_users`` (defaults to ``common_stow_users``). When
+    non-empty, stows each package from ``~/<user>/dots`` (cloned by
+    common) via ``stow --override='.*'``.

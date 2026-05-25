@@ -115,3 +115,12 @@ dev_libvirt_manage_default_network: true
 # libvirt group. Empty by default — callers (e.g. lab-bootstrap) opt in.
 # Users must already exist; the role does not create them.
 dev_libvirt_users: []
+
+# Dotfile packages to stow from ~/<user>/dots. The clone is owned by the
+# common role; this role only stows. dev_stow_users defaults to
+# common_stow_users so the two track. Stow runs with --override='.*' so
+# pre-existing target files are replaced — destructive on first apply.
+dev_stow_packages:
+  - git
+  - nvim
+dev_stow_users: "{{ common_stow_users | default([]) }}"

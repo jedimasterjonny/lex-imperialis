@@ -213,3 +213,25 @@
             fail_msg: >-
               Installed helper sha256 does not match the shipped file —
               content drift detected.
+
+    - name: Verify dev dotfile stow for each user
+      when: dev_stow_users | length > 0
+      block:
+        - name: Stat nvim config dir for each user
+          ansible.builtin.stat:
+            path: "/home/{{ item }}/.config/nvim"
+          register: __dev_stow_nvim_stat
+          loop: "{{ dev_stow_users }}"
+          loop_control:
+            label: "{{ item }}"
+
+        - name: Assert nvim config dir is present for each user
+          ansible.builtin.assert:
+            that:
+              - item.stat.exists
+            fail_msg: >-
+              nvim config missing at /home/{{ item.item }}/.config/nvim
+              — stow may have failed.
+          loop: "{{ __dev_stow_nvim_stat.results }}"
+          loop_control:
+            label: "{{ item.item }}"

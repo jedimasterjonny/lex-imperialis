@@ -175,3 +175,22 @@
         owner: root
         group: root
         mode: "0755"
+
+# Dotfiles for dev workstations — common owns the clone, this role only
+# stows the dev-specific packages from ~/<user>/dots. stow writes its
+# verbose `LINK:`/`UNLINK:` lines to stderr, so changed_when checks that
+# stream.
+- name: Stow dev dotfile packages
+  ansible.builtin.command:
+    cmd: "stow --override='.*' {{ item.1 }}"
+    chdir: "/home/{{ item.0 }}/dots"
+  register: __dev_stow_result
+  changed_when: >-
+    'LINK:' in __dev_stow_result.stderr
+    or 'UNLINK:' in __dev_stow_result.stderr
+  become: true
+  become_user: "{{ item.0 }}"
+  loop: "{{ dev_stow_users | product(dev_stow_packages) | list }}"
+  loop_control:
+    label: "{{ item.0 }}/{{ item.1 }}"
+  when: dev_stow_users | length > 0
