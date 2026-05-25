@@ -1,7 +1,0 @@
----
-minor_changes:
-  - >-
-    dev - add ``dev_incus_images`` (default ``[]``). When
-    ``dev_configure_incus_host`` is true, pre-warms each configured
-    ``{alias, source}`` image into the host's local Incus image cache if
-    missing.

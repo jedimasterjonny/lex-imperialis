@@ -25,3 +25,78 @@ releases:
     - add-motd-role.yml
     - expand-collection-readme.yml
     release_date: '2026-05-16'
+  0.3.0:
+    changes:
+      minor_changes:
+      - common - add ``common_stow_users`` (default ``[]``). When non-empty, clones
+        ``common_dots_repo`` (default ``https://github.com/jedimasterjonny/dots``)
+        to ``~/dots`` for each user and stows ``common_stow_packages`` (default ``[bash-suse]``)
+        via ``stow --override='.*'`` (overwriting any pre-existing target files).
+      - common - new role that installs the baseline package set (htop, openssh, python3-rpm,
+        stow, sudo, vim) and ensures sshd is enabled and started.
+      - dev - add ``dev_configure_incus_host`` flag (default ``false``) gating incus
+        package install and ``incus.socket`` enablement. Moves ``incus``/``incus-tools``
+        out of ``dev_ansible_dev_packages`` into the new ``dev_incus_packages`` list.
+      - dev - add ``dev_configure_libvirt_host`` flag (default ``false``) gating libvirt
+        package install and modular ``virt*d`` socket enablement. Moves ``guestfs-tools``,
+        ``libguestfs``, ``libvirt``, and ``virt-install`` out of ``dev_ansible_dev_packages``
+        into the new ``dev_libvirt_packages`` list and adds ``mkisofs`` (used for
+        cloud-init ISOs).
+      - dev - add ``dev_incus_admin_users`` (default ``[]``). When ``dev_configure_incus_host``
+        is true, appends each existing user to the ``incus-admin`` group.
+      - dev - add ``dev_incus_firewalld_trusted_interfaces`` (default ``[incusbr0]``).
+        When ``dev_configure_incus_host`` is true, installs ``firewalld`` + ``python3-firewall``,
+        ensures the daemon is enabled and started, and adds each interface to firewalld's
+        ``trusted`` zone so containers can route through the host. Pulls in ``ansible.posix``
+        as a collection dependency.
+      - dev - add ``dev_incus_images`` (default ``[]``). When ``dev_configure_incus_host``
+        is true, pre-warms each configured ``{alias, source}`` image into the host's
+        local Incus image cache if missing.
+      - 'dev - add ``dev_incus_preseed`` (default: lab-ready map with an ``incusbr0``
+        bridge, btrfs storage pool, and Molecule-friendly default profile). When ``dev_configure_incus_host``
+        is true and the default storage pool does not exist, applies the preseed via
+        ``incus admin init --preseed``.'
+      - dev - add ``dev_libvirt_manage_default_network`` flag (default ``true``).
+        When ``dev_configure_libvirt_host`` is true and the new flag is on, ensures
+        libvirt's ``default`` network is active and autostarts on boot. Set the flag
+        to false on hosts where the default subnet (``192.168.122.0/24``) conflicts
+        with the host's primary interface. Pulls in ``community.libvirt`` as a collection
+        dependency.
+      - dev - add ``dev_libvirt_users`` (default ``[]``). When ``dev_configure_libvirt_host``
+        is true, appends each existing user to the ``libvirt`` group.
+      - dev - add ``dev_stow_packages`` (default ``[git, nvim]``) and ``dev_stow_users``
+        (defaults to ``common_stow_users``). When non-empty, stows each package from
+        ``~/<user>/dots`` (cloned by common) via ``stow --override='.*'``.
+      - dev - new role installing developer and Ansible-author tooling. ``dev_install_ansible_dev``
+        (default ``true``) toggles the Ansible-author half. Depends on the ``common``
+        role. On openSUSE Leap, sources ``incus`` and ``lego`` from OBS ``Virtualization:containers``
+        and ``network:utilities``.
+      - dev - when ``dev_configure_libvirt_host`` is true, installs the ``tumbleweed-image-refresh``
+        shell helper at ``/usr/local/sbin/tumbleweed-image-refresh``. Fetches the
+        openSUSE Tumbleweed Minimal-VM qcow2 with sha256 verification and atomic replace.
+        Schedule (when to invoke, recurring timer) remains caller policy.
+      - dev - when ``dev_configure_libvirt_host`` is true, make ``/var/lib/libvirt/images``
+        setgid + group-writable (2775) by the ``libvirt`` group so files created there
+        inherit the group qemu reads as.
+      release_summary: 'Initial release of two roles: ``common`` provides the baseline
+        package set plus sshd; ``dev`` adds developer and Ansible-author tooling with
+        gated Incus and libvirt/KVM host configuration (``dev_configure_incus_host``,
+        ``dev_configure_libvirt_host``) and GNU stow dotfile management for configured
+        users.'
+    fragments:
+    - 0.3.0-release-summary.yml
+    - add-common-role.yml
+    - add-dev-role.yml
+    - apply-incus-preseed.yml
+    - common-stow-dotfiles.yml
+    - dev-stow-dotfiles.yml
+    - firewalld-trust-incus-bridge.yml
+    - gate-incus-host-config.yml
+    - gate-libvirt-host-config.yml
+    - grant-incus-admin-group.yml
+    - grant-libvirt-group.yml
+    - install-tumbleweed-image-refresh.yml
+    - libvirt-default-network.yml
+    - libvirt-images-dir-perms.yml
+    - pre-warm-incus-images.yml
+    release_date: '2026-05-25'

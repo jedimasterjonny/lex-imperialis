@@ -1,7 +1,0 @@
----
-minor_changes:
-  - >-
-    dev - when ``dev_configure_libvirt_host`` is true, make
-    ``/var/lib/libvirt/images`` setgid + group-writable (2775) by the
-    ``libvirt`` group so files created there inherit the group qemu
-    reads as.

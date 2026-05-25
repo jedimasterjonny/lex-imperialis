@@ -1,7 +1,0 @@
----
-minor_changes:
-  - >-
-    dev - add ``dev_configure_incus_host`` flag (default ``false``) gating
-    incus package install and ``incus.socket`` enablement. Moves
-    ``incus``/``incus-tools`` out of ``dev_ansible_dev_packages`` into the
-    new ``dev_incus_packages`` list.

@@ -1,6 +1,0 @@
----
-minor_changes:
-  - >-
-    dev - add ``dev_incus_admin_users`` (default ``[]``). When
-    ``dev_configure_incus_host`` is true, appends each existing user to
-    the ``incus-admin`` group.

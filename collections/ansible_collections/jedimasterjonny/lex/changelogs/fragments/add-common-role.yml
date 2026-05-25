@@ -1,3 +1,0 @@
----
-minor_changes:
-  - "common - new role that installs the baseline package set (htop, openssh, python3-rpm, stow, sudo, vim) and ensures sshd is enabled and started."

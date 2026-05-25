@@ -1,6 +1,0 @@
----
-minor_changes:
-  - >-
-    dev - add ``dev_libvirt_users`` (default ``[]``). When
-    ``dev_configure_libvirt_host`` is true, appends each existing user
-    to the ``libvirt`` group.
