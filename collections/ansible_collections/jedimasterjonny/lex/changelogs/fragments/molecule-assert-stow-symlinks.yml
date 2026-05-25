@@ -1,0 +1,10 @@
+---
+bugfixes:
+  - >-
+    common, dev - assert that the stow targets (``~/.bashrc`` for
+    bash-suse, ``~/.config/nvim`` for nvim) are symlinks pointing into
+    ``~/dots`` rather than just checking they exist. A regression in the
+    ``--adopt`` + ``git restore`` sequence — or a future stow that
+    silently no-ops because ``changed_when`` misfired — would have left
+    a real file or directory in place and still passed the prior
+    existence-only assertion.

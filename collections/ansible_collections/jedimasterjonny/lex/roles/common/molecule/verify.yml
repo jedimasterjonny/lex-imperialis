@@ -66,3 +66,31 @@
           loop: "{{ __common_dots_stat.results }}"
           loop_control:
             label: "{{ item.item }}"
+
+        # The whole point of the stow path is to replace any pre-existing
+        # ~/.bashrc (e.g. one seeded from /etc/skel) with a symlink into
+        # ~/dots/bash-suse. Checking the dots clone exists is necessary
+        # but not sufficient — a regression in the `--adopt` + `git
+        # restore` sequence (or a future stow that no-ops because
+        # changed_when misfired) would still leave a real file in place.
+        - name: Stat ~/.bashrc for each stow user
+          ansible.builtin.stat:
+            path: "{{ common_stow_user_homes[item] }}/.bashrc"
+          register: __common_bashrc_stat
+          loop: "{{ common_stow_users }}"
+          loop_control:
+            label: "{{ item }}"
+
+        - name: Assert ~/.bashrc is a symlink into ~/dots/bash-suse
+          ansible.builtin.assert:
+            that:
+              - item.stat.islnk
+              - "'dots/bash-suse/.bashrc' in item.stat.lnk_target"
+            fail_msg: >-
+              ~/.bashrc for
+              {{ item.item }} is not a stow-managed symlink into
+              ~/dots/bash-suse (target:
+              {{ item.stat.lnk_target | default('<not a symlink>') }})
+          loop: "{{ __common_bashrc_stat.results }}"
+          loop_control:
+            label: "{{ item.item }}"
