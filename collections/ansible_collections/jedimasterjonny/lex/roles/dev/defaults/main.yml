@@ -117,6 +117,9 @@ dev_configure_libvirt_host: false
 # provision libvirt guests. python3-libvirt-python and python3-lxml are
 # imported by community.libvirt.virt_net (used by this role) — they live in
 # this list because they're only useful when libvirt itself is configured.
+# Tumbleweed resolves the unversioned python3-* names below via virtual
+# provides; Leap doesn't, and vars/openSUSE_Leap.yml shadows this list
+# with interpreter-versioned names (python311-* on Leap 16).
 dev_libvirt_packages:
   - guestfs-tools
   - libguestfs
