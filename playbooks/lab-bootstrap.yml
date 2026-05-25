@@ -1,4 +1,9 @@
 ---
+# Prerequisite: this play needs the `jonny` account in place — the common
+# role (a meta-dep of dev) clones ~/dots under become_user: jonny, which
+# fails fast with "user does not exist" if the account is missing. A
+# pre_task below creates the account if absent; the `ansible` account is
+# assumed pre-existing (provisioned out of band).
 - name: Lab box bootstrap
   hosts: scholam
   become: true
@@ -27,6 +32,15 @@
         that:
           - ansible_facts['distribution'] == 'openSUSE Tumbleweed'
         fail_msg: "This playbook only supports openSUSE Tumbleweed."
+
+    # Must run before the role: common's clone task becomes jonny, which
+    # fails fast if the account is missing. Group memberships granted by
+    # the dev role's Incus/libvirt blocks land on this account in the same
+    # play (append: true, so they're additive).
+    - name: Ensure jonny account exists
+      ansible.builtin.user:
+        name: jonny
+        state: present
 
   roles:
     - jedimasterjonny.lex.dev
