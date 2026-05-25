@@ -132,13 +132,20 @@
           register: __dev_incus_profile
           changed_when: false
 
-        - name: Assert default profile is wired to the expected bridge and pool
+        # Anchor on full-line matches via a multiline regex so a partially
+        # applied profile pointing at e.g. `incusbr0-stale` doesn't pass
+        # by virtue of `incusbr0` being a prefix. `\s*` accommodates the
+        # arbitrary leading indent incus uses under devices.<dev>.
+        - name: Assert configured profile is wired to the expected bridge and pool
           ansible.builtin.assert:
             that:
-              - "'parent: ' ~ __dev_incus_expected_bridge in __dev_incus_profile.stdout"
-              - "'pool: ' ~ __dev_incus_expected_pool in __dev_incus_profile.stdout"
+              - __dev_incus_profile.stdout is regex('(?m)^\s*parent:\s+'
+                ~ (__dev_incus_expected_bridge | regex_escape) ~ '\s*$')
+              - __dev_incus_profile.stdout is regex('(?m)^\s*pool:\s+'
+                ~ (__dev_incus_expected_pool | regex_escape) ~ '\s*$')
             fail_msg: >-
-              Default profile is missing expected devices
+              {{ __dev_incus_expected_profile }} profile is missing
+              expected devices
               (NIC parent={{ __dev_incus_expected_bridge }},
               disk pool={{ __dev_incus_expected_pool }}).
 
