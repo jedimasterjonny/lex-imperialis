@@ -1,0 +1,9 @@
+---
+bugfixes:
+  - >-
+    dev - pin ``LC_ALL=C`` on the Incus init probe and the image-cache
+    probe so their stderr substring matches are stable on non-English
+    hosts, and gate the preseed re-apply on ``'not found' in stderr``
+    rather than bare ``rc != 0``; the previous gate could re-run
+    ``incus admin init --preseed`` against a partially-initialised
+    daemon during a startup race against ``incus.socket``.

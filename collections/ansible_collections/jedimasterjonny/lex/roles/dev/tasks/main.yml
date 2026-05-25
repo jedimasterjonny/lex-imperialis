@@ -102,19 +102,30 @@
     # and fools this — re-init by hand. The pool name is read from the
     # preseed itself so an operator override (e.g. renaming the pool to
     # `lab-storage`) doesn't make the probe permanently false and re-apply
-    # the preseed on every run.
+    # the preseed on every run. `LC_ALL=C` pins the locale so the stderr
+    # substring match below is stable across system languages.
     - name: Check whether Incus is already initialised
       ansible.builtin.command: >-
         incus storage show {{ dev_incus_preseed.storage_pools[0].name }}
+      environment:
+        LC_ALL: C
       register: __dev_incus_init_check
       changed_when: false
       failed_when: false
 
+    # Apply the preseed only when the probe's stderr signals "pool not
+    # found" — bare `rc != 0` would also catch a daemon-startup race (e.g.
+    # incus.socket enabled one task earlier, daemon still warming up,
+    # stderr is `Error: Get "http://unix.socket/...": EOF`) and re-run
+    # `incus admin init --preseed` against a partially initialised
+    # daemon, which errors with a confusing 'already exists' message.
     - name: Apply Incus preseed config (first init only)
       ansible.builtin.command:
         cmd: incus admin init --preseed
         stdin: "{{ dev_incus_preseed | to_nice_yaml }}"
-      when: __dev_incus_init_check.rc != 0
+      when:
+        - __dev_incus_init_check.rc != 0
+        - "'not found' in (__dev_incus_init_check.stderr | default(''))"
       changed_when: true
 
     - name: Install firewalld for Incus bridge trust
@@ -142,8 +153,14 @@
       loop_control:
         label: "{{ item }}"
 
+    # `LC_ALL=C` pins the stderr language so the "not found" substring
+    # match below is stable on non-English hosts (otherwise the cached
+    # check above this, combined with `failed_when: false`, would
+    # silently skip pre-warm entirely on a host with LANG=de_DE.UTF-8).
     - name: Check which Incus images are already cached
       ansible.builtin.command: "incus image show local:{{ item.alias }}"
+      environment:
+        LC_ALL: C
       register: __dev_incus_image_checks
       loop: "{{ dev_incus_images }}"
       loop_control:
