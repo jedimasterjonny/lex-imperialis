@@ -104,7 +104,11 @@
     # Revert any files `stow --adopt` moved into ~/dots above, so the
     # package mirrors upstream HEAD and the symlinks resolve to upstream
     # content. ansible.builtin.git can't `restore` an already-cloned repo;
-    # the command module is the right fit here.
+    # the command module is the right fit here. The packages gate is
+    # load-bearing: with common_stow_packages == [], the stow loop above
+    # was empty and `--adopt` absorbed nothing, so a `git restore .`
+    # here would only discard uncommitted edits an operator made by
+    # hand to ~/dots.
     - name: Restore the dots repo to upstream HEAD
       ansible.builtin.command:  # noqa: command-instead-of-module
         cmd: git restore .
@@ -115,3 +119,4 @@
       loop_control:
         label: "{{ item }}"
       changed_when: false
+      when: common_stow_packages | length > 0

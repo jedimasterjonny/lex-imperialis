@@ -336,6 +336,10 @@
     label: "{{ item.0 }}/{{ item.1 }}"
   when: dev_stow_users | length > 0
 
+# See common/tasks/main.yml's matching task for the rationale on the
+# packages gate: with dev_stow_packages == [], the stow loop above was
+# empty and `git restore .` here would only discard uncommitted edits
+# an operator made by hand to ~/dots.
 - name: Restore the dots repo to upstream HEAD
   ansible.builtin.command:  # noqa: command-instead-of-module
     cmd: git restore .
@@ -346,4 +350,6 @@
   loop_control:
     label: "{{ item }}"
   changed_when: false
-  when: dev_stow_users | length > 0
+  when:
+    - dev_stow_users | length > 0
+    - dev_stow_packages | length > 0
