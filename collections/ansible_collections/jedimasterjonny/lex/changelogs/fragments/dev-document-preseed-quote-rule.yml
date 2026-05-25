@@ -1,0 +1,6 @@
+---
+minor_changes:
+  - "dev - document the always-quote-strings rule on ``dev_incus_preseed``
+    so overrides like ``ipv4.dhcp: yes`` don't get silently bool-coerced
+    by ``to_nice_yaml`` and rejected (or misinterpreted) by
+    ``incus admin init --preseed``."

@@ -54,6 +54,14 @@ dev_incus_admin_users: []
 # reflects the Lex lab box (incusbr0 bridge, btrfs pool, Molecule-friendly
 # default profile) and is suitable for any single-node Incus host. Override
 # via host_vars for clustered or differently-laid-out hosts.
+#
+# Always quote string-shaped values that look bool-ish or null-ish to YAML
+# — `yes`, `no`, `on`, `off`, `true`, `false`, `none`. PyYAML will coerce
+# unquoted forms to Python booleans/None, and `to_nice_yaml` then emits
+# them as YAML booleans/null, which incus may reject or interpret as a
+# different setting (e.g. `ipv4.dhcp: yes` becomes `true`, not the string
+# `"yes"`). The defaults below model the rule: `ipv4.nat: "true"`,
+# `ipv6.address: "none"`.
 dev_incus_preseed:
   config: {}
   networks:
