@@ -33,7 +33,9 @@
   community.general.zypper:
     name: "{{ dev_ansible_dev_packages }}"
     state: present
-  when: dev_install_ansible_dev | bool
+  when:
+    - dev_install_ansible_dev | bool
+    - dev_ansible_dev_packages | length > 0
 
 - name: Configure Incus host
   when: dev_configure_incus_host | bool

@@ -11,14 +11,19 @@ dev_packages:
   - python3
   - python3-pip
 
-# Whether to also install the Ansible-author tooling below. Set to false on
-# dev hosts that don't need to run the Lex test pyramid (Molecule, libvirt).
+# Whether to install the extra Ansible-author packages listed in
+# dev_ansible_dev_packages. Defaults to true so callers can opt out without
+# touching the list. The libvirt python bindings (python3-libvirt-python,
+# python3-lxml) deliberately live with dev_libvirt_packages — they're only
+# needed when libvirt host config is on, and dragging libvirt-libs onto every
+# dev workstation is too aggressive a default.
 dev_install_ansible_dev: true
 
-# Ansible-author tooling — installed when dev_install_ansible_dev is true.
-dev_ansible_dev_packages:
-  - python3-libvirt-python
-  - python3-lxml
+# Extra Ansible-author tooling — installed when dev_install_ansible_dev is
+# true. Empty by default: the role's libvirt-author bindings have moved into
+# dev_libvirt_packages. This list exists for consumers to add their own
+# controller-side packages without overriding dev_packages.
+dev_ansible_dev_packages: []
 
 # Whether to configure this host as an Incus server. When true, installs
 # dev_incus_packages and enables incus.socket. Independent of
@@ -97,12 +102,16 @@ dev_configure_libvirt_host: false
 
 # libvirt host packages — installed when dev_configure_libvirt_host is true.
 # mkisofs is libvirt-adjacent: needed to build cloud-init ISOs that
-# provision libvirt guests.
+# provision libvirt guests. python3-libvirt-python and python3-lxml are
+# imported by community.libvirt.virt_net (used by this role) — they live in
+# this list because they're only useful when libvirt itself is configured.
 dev_libvirt_packages:
   - guestfs-tools
   - libguestfs
   - libvirt
   - mkisofs
+  - python3-libvirt-python
+  - python3-lxml
   - virt-install
 
 # Whether to activate + autostart libvirt's `default` network. Set to false

@@ -24,7 +24,9 @@
       check_mode: true
       register: __dev_ansible_packages_check
       failed_when: __dev_ansible_packages_check.changed
-      when: dev_install_ansible_dev | bool
+      when:
+        - dev_install_ansible_dev | bool
+        - dev_ansible_dev_packages | length > 0
 
     - name: Verify Incus host configuration
       when: dev_configure_incus_host | bool
