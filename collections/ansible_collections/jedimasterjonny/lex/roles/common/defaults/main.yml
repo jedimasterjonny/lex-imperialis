@@ -12,9 +12,12 @@ common_packages:
 
 # GNU stow dotfiles. When common_stow_users is non-empty, clones
 # common_dots_repo to ~/dots for each user and stows the packages in
-# common_stow_packages from there. Stow runs with --override='.*' so
-# any pre-existing target files are replaced — destructive on first
-# apply.
+# common_stow_packages from there. Stow runs with `--adopt` and the
+# role then git-restores ~/dots back to upstream HEAD, so any
+# pre-existing target file (e.g. an /etc/skel-seeded ~/.bashrc) is
+# replaced by a symlink to upstream content. Any local edits to
+# ~/dots are wiped on re-run — the role treats the clone as a
+# read-only mirror.
 common_dots_repo: https://github.com/jedimasterjonny/dots
 common_stow_packages:
   - bash-suse

@@ -131,8 +131,9 @@ dev_libvirt_users: []
 
 # Dotfile packages to stow from ~/<user>/dots. The clone is owned by the
 # common role; this role only stows. dev_stow_users defaults to
-# common_stow_users so the two track. Stow runs with --override='.*' so
-# pre-existing target files are replaced — destructive on first apply.
+# common_stow_users so the two track. Stow runs with `--adopt` and the
+# role then git-restores ~/dots back to upstream HEAD — see the common
+# role for the rationale.
 dev_stow_packages:
   - git
   - nvim

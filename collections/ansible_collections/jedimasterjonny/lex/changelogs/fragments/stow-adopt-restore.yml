@@ -1,0 +1,14 @@
+---
+bugfixes:
+  - "common, dev - replace ``stow --override='.*'`` with ``stow --adopt``
+    followed by ``git restore`` in the package directory. ``--override``
+    only re-takes already-stow-managed symlinks; a real file at the target
+    (e.g. an ``/etc/skel``-seeded ``~/.bashrc``) made stow exit non-zero
+    and aborted the first apply. ``--adopt`` absorbs the existing file and
+    the restore reverts the package back to upstream HEAD, leaving the
+    target as a symlink to upstream content."
+  - "common, dev - add ``-v`` to ``stow`` invocations so the
+    ``changed_when`` substring match on stderr actually fires. Without
+    verbose output stow emits nothing on a successful link, so the stow
+    tasks were always reporting ``changed=0`` even when they created
+    symlinks."

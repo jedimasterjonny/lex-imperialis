@@ -33,19 +33,41 @@
       loop_control:
         label: "{{ item }}"
 
-    # `--override='.*'` overwrites any pre-existing target files in $HOME.
-    # stow writes its verbose `LINK:`/`UNLINK:` lines to stderr, so
-    # changed_when checks that stream.
+    # stow refuses to clobber real files (`--override` only re-takes
+    # already-stow-managed links). Use `--adopt` to absorb any pre-existing
+    # target file (e.g. an /etc/skel-seeded ~/.bashrc) into the stow
+    # package, then `git restore` the package back to upstream HEAD —
+    # leaving the target as a symlink pointing at the upstream content.
+    # `-v` makes stow emit LINK:/UNLINK:/`* existing target` lines on
+    # stderr; LC_ALL=C pins the locale so the substring match is stable.
     - name: Stow common dotfile packages
       ansible.builtin.command:
-        cmd: "stow --override='.*' {{ item.1 }}"
+        cmd: "stow -v --adopt {{ item.1 }}"
         chdir: "/home/{{ item.0 }}/dots"
+      environment:
+        LC_ALL: C
       register: __common_stow_result
       changed_when: >-
         'LINK:' in __common_stow_result.stderr
         or 'UNLINK:' in __common_stow_result.stderr
+        or '* existing target' in __common_stow_result.stderr
       become: true
       become_user: "{{ item.0 }}"
       loop: "{{ common_stow_users | product(common_stow_packages) | list }}"
       loop_control:
         label: "{{ item.0 }}/{{ item.1 }}"
+
+    # Revert any files `stow --adopt` moved into ~/dots above, so the
+    # package mirrors upstream HEAD and the symlinks resolve to upstream
+    # content. ansible.builtin.git can't `restore` an already-cloned repo;
+    # the command module is the right fit here.
+    - name: Restore the dots repo to upstream HEAD
+      ansible.builtin.command:  # noqa: command-instead-of-module
+        cmd: git restore .
+        chdir: "/home/{{ item }}/dots"
+      become: true
+      become_user: "{{ item }}"
+      loop: "{{ common_stow_users }}"
+      loop_control:
+        label: "{{ item }}"
+      changed_when: false
