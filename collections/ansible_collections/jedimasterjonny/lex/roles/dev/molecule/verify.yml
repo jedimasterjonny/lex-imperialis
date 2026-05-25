@@ -270,30 +270,34 @@
           loop_control:
             label: "{{ item.item }}"
 
-        # The contract of the dev role's stow path is that
-        # ~/.config/nvim becomes a symlink into ~/dots/nvim/.config/nvim.
-        # Existence alone is not enough: a regression where stow's
-        # `--adopt` absorbed a pre-existing real directory and `git
-        # restore` was skipped would leave a real dir in place and still
-        # pass an existence-only check.
-        - name: Stat nvim config dir for each user
-          ansible.builtin.stat:
-            path: "{{ dev_stow_user_homes[item] }}/.config/nvim"
-          register: __dev_stow_nvim_stat
+        # The contract of the dev role's stow path is that anything
+        # under ~/.config/nvim resolves into ~/dots/nvim/.config/nvim.
+        # Stow may achieve this two ways depending on the pre-existing
+        # state of the target:
+        #   (a) link ~/.config/nvim itself as a symlink (unfolded), or
+        #   (b) leave ~/.config/nvim as a real dir and link each leaf
+        #       file inside (tree-folded — the case `--adopt` produces
+        #       when stow absorbs files individually).
+        # Existence alone is not enough — a regression in the
+        # `--adopt` + `git restore` sequence (or a stow that no-ops
+        # because changed_when misfired) would leave a real dir with
+        # no symlinks inside, and still pass an existence-only check.
+        # The shell test below succeeds for both (a) and (b).
+        - name: Verify nvim is stow-linked into ~/dots/nvim for each user
+          ansible.builtin.shell: |
+            set -euo pipefail
+            target='{{ dev_stow_user_homes[item] }}/.config/nvim'
+            if [ -L "$target" ]; then
+              readlink "$target" | grep -q 'dots/nvim/.config/nvim'
+            elif [ -d "$target" ]; then
+              find "$target" -type l -lname '*dots/nvim*' \
+                -print -quit | grep -q .
+            else
+              echo "$target is neither a symlink nor a directory" >&2
+              exit 1
+            fi
+          register: __dev_stow_nvim_check
           loop: "{{ dev_stow_users }}"
           loop_control:
             label: "{{ item }}"
-
-        - name: Assert ~/.config/nvim is a symlink into ~/dots/nvim
-          ansible.builtin.assert:
-            that:
-              - item.stat.islnk
-              - "'dots/nvim/.config/nvim' in item.stat.lnk_target"
-            fail_msg: >-
-              ~/.config/nvim for
-              {{ item.item }} is not a stow-managed symlink into
-              ~/dots/nvim (target:
-              {{ item.stat.lnk_target | default('<not a symlink>') }})
-          loop: "{{ __dev_stow_nvim_stat.results }}"
-          loop_control:
-            label: "{{ item.item }}"
+          changed_when: false
