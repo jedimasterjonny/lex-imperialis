@@ -1,4 +1,18 @@
 ---
+# common (this role's meta-dep) owns the ~/dots clone for each user in
+# common_stow_users. dev's stow loop chdirs into ~/dots, so any user in
+# dev_stow_users that common didn't clone for would fail with a confusing
+# "No such file or directory". Catch the contract break up front.
+- name: Assert dev_stow_users is a subset of common_stow_users
+  ansible.builtin.assert:
+    that:
+      - dev_stow_users | difference(common_stow_users | default([])) | length == 0
+    fail_msg: >-
+      dev_stow_users must be a subset of common_stow_users — the common role
+      owns the ~/dots clone. Missing users:
+      {{ dev_stow_users | difference(common_stow_users | default([])) }}
+  when: dev_stow_users | length > 0
+
 # Distribution-specific values (e.g. extra repos) live in vars/ — one file
 # per ansible_facts['distribution'] value, loaded via first_found. Anchoring
 # the path with role_path prevents Ansible from resolving a same-named file
