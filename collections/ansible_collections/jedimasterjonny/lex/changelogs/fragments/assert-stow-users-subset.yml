@@ -1,8 +1,0 @@
----
-bugfixes:
-  - "dev - assert ``dev_stow_users`` is a subset of ``common_stow_users``.
-    The common role owns the ``~/dots`` clone for each user in
-    ``common_stow_users``; dev's stow loop ``chdir``s into ``~/dots``, so
-    explicit overrides that named extra users (without adding them to
-    ``common_stow_users``) failed with a confusing ``No such file or
-    directory``. The assertion now spells out the contract."

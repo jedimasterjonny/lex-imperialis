@@ -1,7 +1,0 @@
----
-bugfixes:
-  - galaxy.yml - declare ``community.general`` as a collection dependency.
-    Both shipped roles use ``community.general.zypper`` and
-    ``community.general.zypper_repository``; galaxy-installed consumers without
-    ``community.general`` already present would otherwise fail at the first
-    role task.

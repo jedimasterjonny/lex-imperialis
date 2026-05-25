@@ -1,7 +1,0 @@
----
-bugfixes:
-  - "dev - move ``firewalld`` and ``python3-firewall`` out of
-    ``dev_incus_packages`` into a new ``dev_incus_firewalld_packages`` list
-    installed only when ``dev_incus_firewalld_trusted_interfaces`` is
-    non-empty. nftables hosts that opt out of firewalld via the empty list
-    no longer get firewalld installed as a dormant artefact."

@@ -1,5 +1,0 @@
----
-bugfixes:
-  - "common, dev - resolve stow user home directories via ``getent`` so
-    users with non-``/home/<user>`` home paths (most notably ``root``)
-    are configured correctly."

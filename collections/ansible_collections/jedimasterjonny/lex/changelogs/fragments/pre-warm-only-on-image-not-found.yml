@@ -1,7 +1,0 @@
----
-bugfixes:
-  - "dev - narrow the pre-warm trigger for ``dev_incus_images`` to the
-    ``not found`` error shape. The upstream ``incus image show`` check had
-    ``failed_when: false``, so a bare ``rc != 0`` previously matched
-    transient daemon errors (e.g. ``EOF`` from a briefly-unreachable
-    socket) and would re-copy a cached image."
