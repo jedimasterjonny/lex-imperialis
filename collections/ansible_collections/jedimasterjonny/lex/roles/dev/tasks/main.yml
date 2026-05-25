@@ -98,10 +98,14 @@
       loop_control:
         label: "{{ item }}"
 
-    # Proxy for "preseed ran"; a partial init leaves the 'default' pool and
-    # fools this — re-init by hand.
+    # Proxy for "preseed ran"; a partial init leaves the configured pool
+    # and fools this — re-init by hand. The pool name is read from the
+    # preseed itself so an operator override (e.g. renaming the pool to
+    # `lab-storage`) doesn't make the probe permanently false and re-apply
+    # the preseed on every run.
     - name: Check whether Incus is already initialised
-      ansible.builtin.command: incus storage show default
+      ansible.builtin.command: >-
+        incus storage show {{ dev_incus_preseed.storage_pools[0].name }}
       register: __dev_incus_init_check
       changed_when: false
       failed_when: false
