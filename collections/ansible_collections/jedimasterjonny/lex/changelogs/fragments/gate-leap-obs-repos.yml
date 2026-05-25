@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - "dev - gate the distribution-specific zypper repository task behind
+    ``dev_configure_incus_host``. The two OBS projects in
+    ``dev_extra_repos`` on Leap (``Virtualization:containers`` and
+    ``network:utilities``) exist only to source incus and its ``lego``
+    dependency; a Leap workstation that adopts the role for general dev
+    tooling and leaves the Incus gate off no longer picks them up."

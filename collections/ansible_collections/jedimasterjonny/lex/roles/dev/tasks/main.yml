@@ -14,6 +14,10 @@
       paths:
         - "{{ role_path }}/vars"
 
+# dev_extra_repos exists only to source the incus packaging on Leap (the
+# Virtualization:containers and network:utilities OBS projects). Gate on the
+# Incus host flag so workstation-only adoptions don't pick up two OBS repos
+# they neither need nor consume.
 - name: Configure distribution-specific zypper repositories
   community.general.zypper_repository:
     name: "{{ item.name }}"
@@ -23,6 +27,7 @@
   loop: "{{ dev_extra_repos }}"
   loop_control:
     label: "{{ item.name }}"
+  when: dev_configure_incus_host | bool
 
 - name: Install general developer packages
   community.general.zypper:
