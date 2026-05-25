@@ -56,6 +56,19 @@
         enabled: true
         state: started
 
+    # ansible.builtin.user defaults to state=present, which silently creates
+    # missing users. Assert existence first so a typo in dev_incus_admin_users
+    # fails loudly instead of creating a phantom account with incus-admin
+    # privilege.
+    - name: Assert configured incus-admin operators exist
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ item }}"
+        fail_key: true
+      loop: "{{ dev_incus_admin_users }}"
+      loop_control:
+        label: "{{ item }}"
+
     # Group membership is inert until incus.socket (enabled above) is running.
     - name: Grant operators access to the incus-admin group
       ansible.builtin.user:
@@ -163,6 +176,17 @@
         name: default
         autostart: true
       when: dev_libvirt_manage_default_network | bool
+
+    # Same rationale as dev_incus_admin_users — assert before grant so typos
+    # don't silently create phantom libvirt-group accounts.
+    - name: Assert configured libvirt operators exist
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ item }}"
+        fail_key: true
+      loop: "{{ dev_libvirt_users }}"
+      loop_control:
+        label: "{{ item }}"
 
     # Membership is inert until the virt*d sockets (enabled above) are running.
     - name: Grant operators access to the libvirt group

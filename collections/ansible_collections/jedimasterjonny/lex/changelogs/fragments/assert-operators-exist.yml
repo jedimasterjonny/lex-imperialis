@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - "dev - assert ``dev_incus_admin_users`` and ``dev_libvirt_users``
+    already exist before granting group membership. ``ansible.builtin.user``
+    defaults to ``state: present`` and silently creates missing accounts,
+    contradicting the documented contract that the role does not create
+    users — a typo in either list would otherwise produce a phantom account
+    with privileged-group membership."
