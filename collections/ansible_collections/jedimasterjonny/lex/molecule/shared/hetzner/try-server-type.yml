@@ -1,0 +1,53 @@
+---
+# Per-server-type half of the placement walk: resolve the id, derive the
+# supported regions from the already-fetched datacenter list, honour an
+# explicit platform.location override, then include try-location.yml once
+# per region. Outer loop in create.yml passes the type via candidate_server_type.
+
+- name: "Resolve server_type id via Hetzner API: {{ candidate_server_type }}"
+  ansible.builtin.uri:
+    url: "{{ hcloud_api }}/server_types?name={{ candidate_server_type }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ lookup('env', 'HCLOUD_TOKEN') }}"
+    return_content: true
+  register: hcloud_server_type_lookup
+
+- name: "Assert server_type is known to Hetzner: {{ candidate_server_type }}"
+  ansible.builtin.assert:
+    that:
+      - hcloud_server_type_lookup.json.server_types | length > 0
+    fail_msg: "Hetzner API returned no server_type matching '{{ candidate_server_type }}'."
+
+- name: "Derive shuffled candidate locations supporting {{ candidate_server_type }}"
+  ansible.builtin.set_fact:
+    candidate_locations: >-
+      {{ hcloud_datacenters.json.datacenters
+         | selectattr('server_types.supported', 'contains',
+                      hcloud_server_type_lookup.json.server_types[0].id)
+         | map(attribute='location.name')
+         | unique
+         | list
+         | shuffle }}
+  when: explicit_location | length == 0
+
+- name: "Honour explicit platform.location override for {{ candidate_server_type }}"
+  ansible.builtin.set_fact:
+    candidate_locations:
+      - "{{ explicit_location }}"
+  when: explicit_location | length > 0
+
+- name: "Skip server_type when no region supports it: {{ candidate_server_type }}"
+  # Don't abort the outer loop: subsequent fallback types may still apply.
+  ansible.builtin.debug:
+    msg: "No Hetzner region supports {{ candidate_server_type }}; falling through to next fallback."
+  when: candidate_locations | length == 0
+
+- name: "Try each candidate location for {{ candidate_server_type }}"
+  ansible.builtin.include_tasks: try-location.yml
+  loop: "{{ candidate_locations }}"
+  loop_control:
+    loop_var: candidate_location
+  when:
+    - not placement_succeeded
+    - candidate_locations | length > 0

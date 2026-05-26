@@ -9,13 +9,27 @@
     server_name: "{{ platform.name }}"
     server_type: "{{ platform.server_type | default('cx23') }}"
     server_image: "{{ platform.image | default('opensuse-16') }}"
-    server_location: "{{ platform.location | default('nbg1') }}"
+    # An explicit platform.location pins every attempt to one region (useful
+    # for reproducing a region-specific failure). Empty/unset means "try every
+    # region where the server_type is supported" — derived from the Hetzner
+    # API below so new regions are picked up automatically.
+    explicit_location: "{{ platform.location | default('') }}"
+    # Fallback server_types are tried in order after `server_type` has been
+    # exhausted across every candidate region. The default chain — cx23 →
+    # cpx22 → ccx13 — walks shared-x86 cost_optimized → shared-x86
+    # regular_purpose (slightly pricier, larger disk) → dedicated-x86
+    # general_purpose (always in stock at time of writing). All three boot
+    # opensuse-16 and share the x86 architecture. Override per-scenario when
+    # a role needs a specific resource profile.
+    fallback_server_types: "{{ platform.fallback_server_types | default(['cpx22', 'ccx13']) }}"
+    attempt_server_types: "{{ ([server_type] + fallback_server_types) | unique }}"
     # MOLECULE_RUN_ID (set by .github/workflows/molecule.yml) scopes labels
     # per matrix entry so concurrent entries can't sweep each other's servers
     # via cleanup-orphans.yml. Falls back to bare GITHUB_RUN_ID outside that
     # workflow, or `local` for developer runs.
     run_id: "{{ lookup('env', 'MOLECULE_RUN_ID') | default(lookup('env', 'GITHUB_RUN_ID'), true) | default('local', true) }}"
     ssh_key_path: "{{ molecule_ephemeral_directory }}/ssh_key"
+    hcloud_api: "https://api.hetzner.cloud/v1"
 
   tasks:
     - name: Verify HCLOUD_TOKEN is set
@@ -66,21 +80,55 @@
         src: "{{ molecule_ephemeral_directory }}/user-data"
       register: user_data_blob
 
-    - name: Provision Hetzner server
-      hetzner.hcloud.server:
-        api_token: "{{ lookup('env', 'HCLOUD_TOKEN') }}"
-        name: "{{ server_name }}"
-        server_type: "{{ server_type }}"
-        image: "{{ server_image }}"
-        location: "{{ server_location }}"
-        ssh_keys:
-          - "{{ hcloud_ssh_key.hcloud_ssh_key.name }}"
-        user_data: "{{ user_data_blob.content | b64decode }}"
-        labels:
-          purpose: molecule-ci
-          run_id: "{{ run_id }}"
-        state: started
-      register: hcloud_server
+    # Placement walks two nested loops:
+    #   outer: server_type ∈ [server_type] + fallback_server_types
+    #   inner: location  ∈ regions supporting that server_type (shuffled)
+    # First success short-circuits both loops via placement_succeeded.
+    #
+    # Hetzner periodically runs out of capacity for the cost_optimized cx*
+    # line — sometimes globally — and the create-server call comes back with
+    # `resource_unavailable`. Cycling regions handles a single-region
+    # stockout; cycling server_types handles a whole-line stockout. Together
+    # CI no longer needs a human `gh run rerun`.
+    #
+    # We filter the datacenter list by `server_types.supported` rather than
+    # `server_types.available`. The latter tracks momentary stock and lags
+    # reality — during a stockout it is empty even in regions that accept
+    # provisioning seconds later. The per-attempt loop below treats Hetzner's
+    # create-server call as the authoritative real-time stock check.
+    - name: List Hetzner datacenters
+      ansible.builtin.uri:
+        url: "{{ hcloud_api }}/datacenters"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ lookup('env', 'HCLOUD_TOKEN') }}"
+        return_content: true
+      register: hcloud_datacenters
+
+    - name: Initialise placement sentinel and attempt log
+      ansible.builtin.set_fact:
+        placement_succeeded: false
+        placement_attempts: []
+
+    - name: Attempt provisioning across server_types until one succeeds
+      ansible.builtin.include_tasks: try-server-type.yml
+      loop: "{{ attempt_server_types }}"
+      loop_control:
+        loop_var: candidate_server_type
+      when: not placement_succeeded
+
+    - name: Assert placement succeeded somewhere
+      ansible.builtin.assert:
+        that:
+          - placement_succeeded
+        fail_msg: >-
+          Placement failed across every (server_type, location) pair attempted.
+          Attempts:
+          {{ placement_attempts | to_nice_yaml }}
+
+    - name: Report chosen placement
+      ansible.builtin.debug:
+        msg: "Provisioned {{ server_name }} as {{ chosen_server_type }} in {{ chosen_location }}."
 
     - name: Wait for SSH on the server
       ansible.builtin.wait_for:

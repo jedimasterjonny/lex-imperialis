@@ -6,7 +6,12 @@ platforms:
   - name: lex-ci-motd-${GITHUB_RUN_ID:-local}
     server_type: cx23
     image: opensuse-16
-    location: nbg1
+    # location omitted on purpose: create.yml derives the candidate list from
+    # Hetzner's API and tries each region until one accepts the placement.
+    # Set `location: <region>` here to pin a specific region for debugging.
+    # fallback_server_types defaults to [cpx22, ccx13] in create.yml; override
+    # here (e.g. `fallback_server_types: []`) if the role needs a specific
+    # resource profile or the defaults would surprise downstream assertions.
 
 provisioner:
   name: ansible
