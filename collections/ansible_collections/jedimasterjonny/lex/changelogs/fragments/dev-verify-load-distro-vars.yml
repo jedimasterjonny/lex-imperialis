@@ -1,9 +1,0 @@
----
-bugfixes:
-  - "dev - molecule verify now gathers facts and loads the same
-    distribution-specific vars file as the role itself, so the libvirt
-    package presence check resolves the Leap-versioned
-    `python{XY}-libvirt-python` / `python{XY}-lxml` names on Leap rather
-    than the Tumbleweed virtual-provide names `python3-libvirt-python` /
-    `python3-lxml` (which Leap does not expose and which previously
-    failed verify on the ci scenario)."

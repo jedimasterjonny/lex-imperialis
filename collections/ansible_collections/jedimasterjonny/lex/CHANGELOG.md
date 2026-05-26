@@ -2,31 +2,53 @@
 
 **Topics**
 
-- <a href="#v0-5-0">v0\.5\.0</a>
+- <a href="#v0-5-1">v0\.5\.1</a>
     - <a href="#release-summary">Release Summary</a>
+    - <a href="#bugfixes">Bugfixes</a>
+- <a href="#v0-5-0">v0\.5\.0</a>
+    - <a href="#release-summary-1">Release Summary</a>
     - <a href="#minor-changes">Minor Changes</a>
     - <a href="#breaking-changes--porting-guide">Breaking Changes / Porting Guide</a>
-    - <a href="#bugfixes">Bugfixes</a>
-- <a href="#v0-4-0">v0\.4\.0</a>
-    - <a href="#release-summary-1">Release Summary</a>
-    - <a href="#minor-changes-1">Minor Changes</a>
     - <a href="#bugfixes-1">Bugfixes</a>
-- <a href="#v0-3-1">v0\.3\.1</a>
+- <a href="#v0-4-0">v0\.4\.0</a>
     - <a href="#release-summary-2">Release Summary</a>
+    - <a href="#minor-changes-1">Minor Changes</a>
     - <a href="#bugfixes-2">Bugfixes</a>
-- <a href="#v0-3-0">v0\.3\.0</a>
+- <a href="#v0-3-1">v0\.3\.1</a>
     - <a href="#release-summary-3">Release Summary</a>
+    - <a href="#bugfixes-3">Bugfixes</a>
+- <a href="#v0-3-0">v0\.3\.0</a>
+    - <a href="#release-summary-4">Release Summary</a>
     - <a href="#minor-changes-2">Minor Changes</a>
 - <a href="#v0-2-0">v0\.2\.0</a>
-    - <a href="#release-summary-4">Release Summary</a>
+    - <a href="#release-summary-5">Release Summary</a>
     - <a href="#minor-changes-3">Minor Changes</a>
 - <a href="#v0-1-0">v0\.1\.0</a>
-    - <a href="#release-summary-5">Release Summary</a>
+    - <a href="#release-summary-6">Release Summary</a>
+
+<a id="v0-5-1"></a>
+## v0\.5\.1
+
+<a id="release-summary"></a>
+### Release Summary
+
+Patch release fixing the dev role\'s molecule verify on openSUSE Leap\.
+verify\.yml now gathers facts and loads the distribution\-specific vars
+file the same way tasks/main\.yml does\, so the libvirt package
+presence check resolves the Leap\-versioned python\{XY\}\-libvirt\-python
+/ python\{XY\}\-lxml names rather than the Tumbleweed virtual\-provide
+names from defaults \(which Leap does not expose\, so verify failed on
+the ci scenario\)\.
+
+<a id="bugfixes"></a>
+### Bugfixes
+
+* dev \- molecule verify now gathers facts and loads the same distribution\-specific vars file as the role itself\, so the libvirt package presence check resolves the Leap\-versioned <em class="title-reference">python\{XY\}\-libvirt\-python</em> / <em class="title-reference">python\{XY\}\-lxml</em> names on Leap rather than the Tumbleweed virtual\-provide names <em class="title-reference">python3\-libvirt\-python</em> / <em class="title-reference">python3\-lxml</em> \(which Leap does not expose and which previously failed verify on the ci scenario\)\.
 
 <a id="v0-5-0"></a>
 ## v0\.5\.0
 
-<a id="release-summary"></a>
+<a id="release-summary-1"></a>
 ### Release Summary
 
 Review\-driven hardening pass\. Drops the maintainer\-personal default
@@ -48,7 +70,7 @@ galaxy\_info\.platforms so Galaxy consumers can filter by distro\.
 
 * common \- common\_dots\_repo no longer defaults to the maintainer\'s personal dotfiles repository\. Set it explicitly when common\_stow\_users is non\-empty\; the role asserts the variable is set at task time\.
 
-<a id="bugfixes"></a>
+<a id="bugfixes-1"></a>
 ### Bugfixes
 
 * common\, dev \- gate the post\-stow <em class="title-reference">git restore \.</em> task on <em class="title-reference">\*\_stow\_packages \| length \> 0</em>\. With an empty packages list the stow loop absorbs nothing\, so the restore would only discard any uncommitted edits an operator made to \~/dots by hand\.
@@ -61,7 +83,7 @@ galaxy\_info\.platforms so Galaxy consumers can filter by distro\.
 <a id="v0-4-0"></a>
 ## v0\.4\.0
 
-<a id="release-summary-1"></a>
+<a id="release-summary-2"></a>
 ### Release Summary
 
 Robustness pass on the common and dev roles\, addressing follow\-up review
@@ -82,7 +104,7 @@ across distribution upgrades\, the Tumbleweed qcow2 inheriting
 
 * dev \- document the always\-quote\-strings rule on <code>dev\_incus\_preseed</code> so overrides like <code>ipv4\.dhcp\: yes</code> don\'t get silently bool\-coerced by <code>to\_nice\_yaml</code> and rejected \(or misinterpreted\) by <code>incus admin init \-\-preseed</code>\.
 
-<a id="bugfixes-1"></a>
+<a id="bugfixes-2"></a>
 ### Bugfixes
 
 * common\, dev \- anchor the stow <code>changed\_when</code> on stderr lines that <em>start</em> with <code>LINK\:</code> / <code>UNLINK\:</code> rather than substring\-matching anywhere in stderr\, and drop the dead <code>\* existing target</code> disjunct \(stow with <code>\-\-adopt</code> absorbs unmanaged targets silently and never emits that warning\)\. A future stow release that prints the <code>LINK\:</code> keyword in a different position no longer trips a spurious change\.
@@ -97,7 +119,7 @@ across distribution upgrades\, the Tumbleweed qcow2 inheriting
 <a id="v0-3-1"></a>
 ## v0\.3\.1
 
-<a id="release-summary-2"></a>
+<a id="release-summary-3"></a>
 ### Release Summary
 
 Patch release driven by code\-review findings against 0\.3\.0\. Fixes the
@@ -110,7 +132,7 @@ that actually consume them\, hardens the Incus image pre\-warm against
 transient daemon errors\, and asserts that configured operators exist
 before granting privileged groups\.
 
-<a id="bugfixes-2"></a>
+<a id="bugfixes-3"></a>
 ### Bugfixes
 
 * common\, dev \- add <code>\-v</code> to <code>stow</code> invocations so the <code>changed\_when</code> substring match on stderr actually fires\. Without verbose output stow emits nothing on a successful link\, so the stow tasks were always reporting <code>changed\=0</code> even when they created symlinks\.
@@ -127,7 +149,7 @@ before granting privileged groups\.
 <a id="v0-3-0"></a>
 ## v0\.3\.0
 
-<a id="release-summary-3"></a>
+<a id="release-summary-4"></a>
 ### Release Summary
 
 Initial release of two roles\: <code>common</code> provides the baseline package set plus sshd\; <code>dev</code> adds developer and Ansible\-author tooling with gated Incus and libvirt/KVM host configuration \(<code>dev\_configure\_incus\_host</code>\, <code>dev\_configure\_libvirt\_host</code>\) and GNU stow dotfile management for configured users\.
@@ -153,7 +175,7 @@ Initial release of two roles\: <code>common</code> provides the baseline package
 <a id="v0-2-0"></a>
 ## v0\.2\.0
 
-<a id="release-summary-4"></a>
+<a id="release-summary-5"></a>
 ### Release Summary
 
 First role release\: ships the motd role with a default Molecule
@@ -168,7 +190,7 @@ scenario backed by a Tier\-1 \(Incus\) test pipeline\.
 <a id="v0-1-0"></a>
 ## v0\.1\.0
 
-<a id="release-summary-5"></a>
+<a id="release-summary-6"></a>
 ### Release Summary
 
 Initial scaffolding release of the <code>jedimasterjonny\.lex</code> collection\.

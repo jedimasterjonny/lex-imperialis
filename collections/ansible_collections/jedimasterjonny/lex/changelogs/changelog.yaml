@@ -340,3 +340,32 @@ releases:
     - roles-galaxy-info-platforms.yml
     - stow-restore-gated-on-packages.yml
     release_date: '2026-05-25'
+  0.5.1:
+    changes:
+      bugfixes:
+      - dev - molecule verify now gathers facts and loads the same distribution-specific
+        vars file as the role itself, so the libvirt package presence check resolves
+        the Leap-versioned `python{XY}-libvirt-python` / `python{XY}-lxml` names on
+        Leap rather than the Tumbleweed virtual-provide names `python3-libvirt-python`
+        / `python3-lxml` (which Leap does not expose and which previously failed verify
+        on the ci scenario).
+      release_summary: 'Patch release fixing the dev role''s molecule verify on openSUSE
+        Leap.
+
+        verify.yml now gathers facts and loads the distribution-specific vars
+
+        file the same way tasks/main.yml does, so the libvirt package
+
+        presence check resolves the Leap-versioned python{XY}-libvirt-python
+
+        / python{XY}-lxml names rather than the Tumbleweed virtual-provide
+
+        names from defaults (which Leap does not expose, so verify failed on
+
+        the ci scenario).
+
+        '
+    fragments:
+    - 0.5.1-release-summary.yml
+    - dev-verify-load-distro-vars.yml
+    release_date: '2026-05-26'
