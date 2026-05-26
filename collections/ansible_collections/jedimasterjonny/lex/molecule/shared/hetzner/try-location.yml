@@ -1,0 +1,53 @@
+---
+# Single (server_type, location) placement attempt. Skips itself once
+# placement_succeeded flips so subsequent loop entries are cheap no-ops.
+# Non-capacity errors abort the whole play; only Hetzner's literal
+# `resource_unavailable` API error code is treated as a retryable signal.
+
+- name: "Attempt provisioning: {{ candidate_server_type ~ ' in ' ~ candidate_location }}"
+  hetzner.hcloud.server:
+    api_token: "{{ lookup('env', 'HCLOUD_TOKEN') }}"
+    name: "{{ server_name }}"
+    server_type: "{{ candidate_server_type }}"
+    image: "{{ server_image }}"
+    location: "{{ candidate_location }}"
+    ssh_keys:
+      - "{{ hcloud_ssh_key.hcloud_ssh_key.name }}"
+    user_data: "{{ user_data_blob.content | b64decode }}"
+    labels:
+      purpose: molecule-ci
+      run_id: "{{ run_id }}"
+    state: started
+  register: hcloud_server_attempt
+  ignore_errors: true
+
+- name: "Record placement attempt: {{ candidate_server_type ~ '/' ~ candidate_location }}"
+  ansible.builtin.set_fact:
+    placement_attempts: >-
+      {{ placement_attempts + [{
+        'server_type': candidate_server_type,
+        'location': candidate_location,
+        'failed': hcloud_server_attempt.failed | default(false),
+        'msg': hcloud_server_attempt.msg | default('')
+      }] }}
+
+- name: "Abort on non-capacity error: {{ candidate_server_type ~ '/' ~ candidate_location }}"
+  # Anything that isn't Hetzner's resource_unavailable code is a real failure
+  # (auth, quota, invalid image/server_type, network) — surface it immediately
+  # instead of cycling through every remaining (type, region) pair.
+  ansible.builtin.fail:
+    msg: >-
+      Hetzner placement of {{ candidate_server_type }} in {{ candidate_location }}
+      failed with a non-capacity error:
+      {{ hcloud_server_attempt.msg | default(hcloud_server_attempt) }}
+  when:
+    - hcloud_server_attempt.failed | default(false)
+    - "'resource_unavailable' not in (hcloud_server_attempt.msg | default(''))"
+
+- name: "Capture successful placement: {{ candidate_server_type ~ ' in ' ~ candidate_location }}"
+  ansible.builtin.set_fact:
+    hcloud_server: "{{ hcloud_server_attempt }}"
+    placement_succeeded: true
+    chosen_server_type: "{{ candidate_server_type }}"
+    chosen_location: "{{ candidate_location }}"
+  when: not (hcloud_server_attempt.failed | default(false))
