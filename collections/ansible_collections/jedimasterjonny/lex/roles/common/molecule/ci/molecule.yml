@@ -1,0 +1,44 @@
+---
+driver:
+  name: default
+
+platforms:
+  - name: lex-ci-common-${GITHUB_RUN_ID:-local}
+    server_type: cx23
+    image: opensuse-16
+    location: nbg1
+
+provisioner:
+  name: ansible
+  playbooks:
+    create: ../../../../molecule/shared/hetzner/create.yml
+    destroy: ../../../../molecule/shared/hetzner/destroy.yml
+    # converge.yml and verify.yml live one level up, at roles/<role>/molecule/,
+    # shared across all scenarios (default, full, ci, …) for this role.
+    converge: ../converge.yml
+    verify: ../verify.yml
+  # See the default scenario for why we exercise the dotfile path via
+  # root rather than a synthetic user, and stow-vars.yml for why this
+  # has to land at extra-vars precedence rather than inventory.group_vars.
+  options:
+    extra-vars: "@../stow-vars.yml"
+
+verifier:
+  name: ansible
+
+scenario:
+  create_sequence:
+    - create
+  converge_sequence:
+    - create
+    - converge
+  destroy_sequence:
+    - destroy
+  test_sequence:
+    - destroy
+    - syntax
+    - create
+    - converge
+    - idempotence
+    - verify
+    - destroy

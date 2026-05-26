@@ -1,0 +1,45 @@
+---
+driver:
+  name: default
+
+platforms:
+  - name: lex-ci-dev-${GITHUB_RUN_ID:-local}
+    server_type: cx23
+    image: opensuse-16
+    location: nbg1
+
+provisioner:
+  name: ansible
+  playbooks:
+    create: ../../../../molecule/shared/hetzner/create.yml
+    destroy: ../../../../molecule/shared/hetzner/destroy.yml
+    # converge.yml and verify.yml live one level up, at roles/<role>/molecule/,
+    # shared across all scenarios (default, full, ci, …) for this role.
+    converge: ../converge.yml
+    verify: ../verify.yml
+  # Tier-3 flips both host-config gates on to exercise the full role surface
+  # against real cloud infra on Leap 16, including the OBS repo path that
+  # sources incus + lego. Shared with the `full` scenario via
+  # roles/dev/molecule/host-config-vars.yml.
+  options:
+    extra-vars: "@../host-config-vars.yml"
+
+verifier:
+  name: ansible
+
+scenario:
+  create_sequence:
+    - create
+  converge_sequence:
+    - create
+    - converge
+  destroy_sequence:
+    - destroy
+  test_sequence:
+    - destroy
+    - syntax
+    - create
+    - converge
+    - idempotence
+    - verify
+    - destroy

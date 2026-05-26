@@ -1,0 +1,355 @@
+---
+# Resolve dev_stow_users at task time when the default null sentinel is
+# in effect, binding it to common_stow_users in this play's vars scope.
+# The previous lazy-Jinja default (`"{{ common_stow_users | default([]) }}"`
+# in defaults/main.yml) lost to vars_files reads further down the
+# precedence chain — a consumer setting common_stow_users via extra-vars
+# while including this role from a play that loaded dev's defaults via
+# vars_files would see dev_stow_users resolve to [] silently.
+- name: Resolve dev_stow_users from common_stow_users when unset
+  ansible.builtin.set_fact:
+    dev_stow_users: "{{ common_stow_users | default([]) }}"
+  when: dev_stow_users is none
+
+# common (this role's meta-dep) owns the ~/dots clone for each user in
+# common_stow_users. dev's stow loop chdirs into ~/dots, so any user in
+# dev_stow_users that common didn't clone for would fail with a confusing
+# "No such file or directory". Catch the contract break up front.
+- name: Assert dev_stow_users is a subset of common_stow_users
+  ansible.builtin.assert:
+    that:
+      - dev_stow_users | difference(common_stow_users | default([])) | length == 0
+    fail_msg: >-
+      dev_stow_users must be a subset of common_stow_users — the common role
+      owns the ~/dots clone. Missing users:
+      {{ dev_stow_users | difference(common_stow_users | default([])) }}
+  when: dev_stow_users | length > 0
+
+# Distribution-specific values (e.g. extra repos) live in vars/ — one file
+# per ansible_facts['distribution'] value, loaded via first_found. Anchoring
+# the path with role_path prevents Ansible from resolving a same-named file
+# in a calling role's vars search path.
+- name: Load distribution-specific variables
+  ansible.builtin.include_vars:
+    file: "{{ lookup('ansible.builtin.first_found', params) }}"
+  vars:
+    params:
+      files:
+        - "{{ ansible_facts['distribution'] | replace(' ', '_') }}.yml"
+        - default.yml
+      paths:
+        - "{{ role_path }}/vars"
+
+# dev_extra_repos exists only to source the incus packaging on Leap (the
+# Virtualization:containers and network:utilities OBS projects). Gate on the
+# Incus host flag so workstation-only adoptions don't pick up two OBS repos
+# they neither need nor consume. `overwrite_multiple: true` keeps the repo's
+# URL aligned with the current ansible_facts['distribution_version'] — Leap
+# in-place upgrades (e.g. 16.0 → 16.1) keep the repo name stable but flip
+# the URL, and without this flag the existing repo stays pinned to the old
+# URL and `zypper refresh` 404s on the stale path.
+- name: Configure distribution-specific zypper repositories
+  community.general.zypper_repository:
+    name: "{{ item.name }}"
+    repo: "{{ item.url }}"
+    state: present
+    auto_import_keys: true
+    overwrite_multiple: true
+  loop: "{{ dev_extra_repos }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: dev_configure_incus_host | bool
+
+- name: Install general developer packages
+  community.general.zypper:
+    name: "{{ dev_packages }}"
+    state: present
+
+- name: Install Ansible-author packages
+  community.general.zypper:
+    name: "{{ dev_ansible_dev_packages }}"
+    state: present
+  when:
+    - dev_install_ansible_dev | bool
+    - dev_ansible_dev_packages | length > 0
+
+- name: Configure Incus host
+  when: dev_configure_incus_host | bool
+  block:
+    # The role indexes into networks[0], storage_pools[0], profiles[0],
+    # and the first nic/disk under profiles[0].devices. Validate the
+    # shape up front rather than letting a Jinja KeyError surface
+    # mid-play after `Install Incus packages` has already mutated host
+    # state. profiles[0].devices is asserted to contain at least one nic
+    # and one disk because both verify and the init probe key on them.
+    - name: Assert dev_incus_preseed has the keys the role indexes
+      ansible.builtin.assert:
+        that:
+          - dev_incus_preseed.networks | default([]) | length > 0
+          - dev_incus_preseed.storage_pools | default([]) | length > 0
+          - dev_incus_preseed.profiles | default([]) | length > 0
+          - dev_incus_preseed.profiles[0].devices | default({})
+            | dict2items | selectattr('value.type', 'eq', 'nic')
+            | list | length > 0
+          - dev_incus_preseed.profiles[0].devices | default({})
+            | dict2items | selectattr('value.type', 'eq', 'disk')
+            | list | length > 0
+        fail_msg: >-
+          dev_incus_preseed must define at least one network, one storage
+          pool, and one profile whose devices include a nic and a disk —
+          the role indexes into networks[0], storage_pools[0], and
+          profiles[0].devices.
+
+    # Resolve the firewalld trust list once at task time: a null default
+    # means "track the preseed", an explicit list (including []) is used
+    # as-is. Doing this in a set_fact rather than a Jinja default in
+    # defaults/main.yml avoids the lazy-evaluation trap where a downstream
+    # vars_files load shadows the default back to null mid-play.
+    - name: Resolve effective Incus firewalld trust list from preseed
+      ansible.builtin.set_fact:
+        dev_incus_firewalld_trusted_interfaces: >-
+          {{ dev_incus_preseed.networks | map(attribute='name') | list }}
+      when: dev_incus_firewalld_trusted_interfaces is none
+
+    - name: Install Incus packages
+      community.general.zypper:
+        name: "{{ dev_incus_packages }}"
+        state: present
+
+    - name: Enable and start the incus socket
+      ansible.builtin.systemd_service:
+        name: incus.socket
+        enabled: true
+        state: started
+
+    # ansible.builtin.user defaults to state=present, which silently creates
+    # missing users. Assert existence first so a typo in dev_incus_admin_users
+    # fails loudly instead of creating a phantom account with incus-admin
+    # privilege.
+    - name: Assert configured incus-admin operators exist
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ item }}"
+        fail_key: true
+      loop: "{{ dev_incus_admin_users }}"
+      loop_control:
+        label: "{{ item }}"
+
+    # Group membership is inert until incus.socket (enabled above) is running.
+    - name: Grant operators access to the incus-admin group
+      ansible.builtin.user:
+        name: "{{ item }}"
+        groups: incus-admin
+        append: true
+      loop: "{{ dev_incus_admin_users }}"
+      loop_control:
+        label: "{{ item }}"
+
+    # Proxy for "preseed ran"; a partial init leaves the configured pool
+    # and fools this — re-init by hand. The pool name is read from the
+    # preseed itself so an operator override (e.g. renaming the pool to
+    # `lab-storage`) doesn't make the probe permanently false and re-apply
+    # the preseed on every run. `LC_ALL=C` pins the locale so the stderr
+    # substring match below is stable across system languages.
+    - name: Check whether Incus is already initialised
+      ansible.builtin.command: >-
+        incus storage show {{ dev_incus_preseed.storage_pools[0].name }}
+      environment:
+        LC_ALL: C
+      register: __dev_incus_init_check
+      changed_when: false
+      failed_when: false
+
+    # Apply the preseed only when the probe's stderr signals "pool not
+    # found" — bare `rc != 0` would also catch a daemon-startup race (e.g.
+    # incus.socket enabled one task earlier, daemon still warming up,
+    # stderr is `Error: Get "http://unix.socket/...": EOF`) and re-run
+    # `incus admin init --preseed` against a partially initialised
+    # daemon, which errors with a confusing 'already exists' message.
+    - name: Apply Incus preseed config (first init only)
+      ansible.builtin.command:
+        cmd: incus admin init --preseed
+        stdin: "{{ dev_incus_preseed | to_nice_yaml }}"
+      when:
+        - __dev_incus_init_check.rc != 0
+        - "'not found' in (__dev_incus_init_check.stderr | default(''))"
+      changed_when: true
+
+    - name: Install firewalld for Incus bridge trust
+      community.general.zypper:
+        name: "{{ dev_incus_firewalld_packages }}"
+        state: present
+      when: dev_incus_firewalld_trusted_interfaces | length > 0
+
+    # `immediate: true` on the trust task below needs a running daemon.
+    - name: Ensure firewalld is enabled and started
+      ansible.builtin.systemd_service:
+        name: firewalld
+        enabled: true
+        state: started
+      when: dev_incus_firewalld_trusted_interfaces | length > 0
+
+    # `| default([], true)` guards the loop template against the null
+    # sentinel: Ansible templates `loop:` before the block-level `when`
+    # check, so even with `dev_configure_incus_host: false` the trust
+    # loop is templated and would fail on the unresolved null otherwise.
+    # The `true` flag is load-bearing — without it `default` substitutes
+    # only for undefined, not for explicitly-null values.
+    - name: Trust configured Incus bridges in firewalld
+      ansible.posix.firewalld:
+        zone: trusted
+        interface: "{{ item }}"
+        permanent: true
+        immediate: true
+        state: enabled
+      loop: "{{ dev_incus_firewalld_trusted_interfaces | default([], true) }}"
+      loop_control:
+        label: "{{ item }}"
+
+    # `LC_ALL=C` pins the stderr language so the "not found" substring
+    # match below is stable on non-English hosts (otherwise the cached
+    # check above this, combined with `failed_when: false`, would
+    # silently skip pre-warm entirely on a host with LANG=de_DE.UTF-8).
+    - name: Check which Incus images are already cached
+      ansible.builtin.command: "incus image show local:{{ item.alias }}"
+      environment:
+        LC_ALL: C
+      register: __dev_incus_image_checks
+      loop: "{{ dev_incus_images }}"
+      loop_control:
+        label: "{{ item.alias }}"
+      changed_when: false
+      failed_when: false
+
+    # Match specifically on "not found" stderr (e.g. "Error: Image not found")
+    # — bare rc != 0 also catches transient daemon errors and would re-copy a
+    # cached image on a daemon hiccup.
+    - name: Pre-warm missing Incus images
+      ansible.builtin.command: >-
+        incus image copy {{ item.item.source }} local:
+        --alias {{ item.item.alias }}
+      loop: "{{ __dev_incus_image_checks.results }}"
+      loop_control:
+        label: "{{ item.item.alias }}"
+      when:
+        - item.rc != 0
+        - "'not found' in (item.stderr | default(''))"
+      changed_when: true
+
+- name: Configure libvirt host
+  when: dev_configure_libvirt_host | bool
+  block:
+    - name: Install libvirt packages
+      community.general.zypper:
+        name: "{{ dev_libvirt_packages }}"
+        state: present
+
+    - name: Enable and start libvirt modular daemon sockets
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        enabled: true
+        state: started
+      loop:
+        - virtqemud.socket
+        - virtnetworkd.socket
+        - virtstoraged.socket
+        - virtnodedevd.socket
+        - virtsecretd.socket
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Ensure the default libvirt network is active
+      community.libvirt.virt_net:
+        name: default
+        state: active
+      when: dev_libvirt_manage_default_network | bool
+
+    - name: Ensure the default libvirt network autostarts
+      community.libvirt.virt_net:
+        name: default
+        autostart: true
+      when: dev_libvirt_manage_default_network | bool
+
+    # Same rationale as dev_incus_admin_users — assert before grant so typos
+    # don't silently create phantom libvirt-group accounts.
+    - name: Assert configured libvirt operators exist
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ item }}"
+        fail_key: true
+      loop: "{{ dev_libvirt_users }}"
+      loop_control:
+        label: "{{ item }}"
+
+    # Membership is inert until the virt*d sockets (enabled above) are running.
+    - name: Grant operators access to the libvirt group
+      ansible.builtin.user:
+        name: "{{ item }}"
+        groups: libvirt
+        append: true
+      loop: "{{ dev_libvirt_users }}"
+      loop_control:
+        label: "{{ item }}"
+
+    # setgid (2775) so files created here inherit the libvirt group, which
+    # qemu needs read access to once libvirt boots the guest.
+    - name: Make /var/lib/libvirt/images writable by the libvirt group
+      ansible.builtin.file:
+        path: /var/lib/libvirt/images
+        owner: root
+        group: libvirt
+        mode: "2775"
+        state: directory
+
+    # Helper only; callers decide when to invoke and whether to schedule it
+    # (lab-bootstrap wires it to a weekly systemd timer).
+    - name: Install tumbleweed-image-refresh helper
+      ansible.builtin.copy:
+        src: tumbleweed-image-refresh.sh
+        dest: /usr/local/sbin/tumbleweed-image-refresh
+        owner: root
+        group: root
+        mode: "0755"
+
+# Dotfiles for dev workstations — common owns the clone, this role only
+# stows the dev-specific packages from ~/<user>/dots. See the matching
+# task in the common role for the rationale behind `--adopt` + `git
+# restore` and the `-v` flag for change detection. The ~/dots prefix is
+# resolved from common_stow_user_homes, populated by the common role
+# via getent — dev_stow_users is a subset of common_stow_users (asserted
+# at the top of this file), so every entry is present in that dict.
+- name: Stow dev dotfile packages
+  ansible.builtin.command:
+    cmd: "stow -v --adopt {{ item.1 }}"
+    chdir: "{{ common_stow_user_homes[item.0] }}/dots"
+  environment:
+    LC_ALL: C
+  register: __dev_stow_result
+  changed_when: >-
+    __dev_stow_result.stderr_lines
+    | select('match', '^(LINK|UNLINK): ')
+    | list | length > 0
+  become: true
+  become_user: "{{ item.0 }}"
+  loop: "{{ dev_stow_users | product(dev_stow_packages) | list }}"
+  loop_control:
+    label: "{{ item.0 }}/{{ item.1 }}"
+  when: dev_stow_users | length > 0
+
+# See common/tasks/main.yml's matching task for the rationale on the
+# packages gate: with dev_stow_packages == [], the stow loop above was
+# empty and `git restore .` here would only discard uncommitted edits
+# an operator made by hand to ~/dots.
+- name: Restore the dots repo to upstream HEAD
+  ansible.builtin.command:  # noqa: command-instead-of-module
+    cmd: git restore .
+    chdir: "{{ common_stow_user_homes[item] }}/dots"
+  become: true
+  become_user: "{{ item }}"
+  loop: "{{ dev_stow_users }}"
+  loop_control:
+    label: "{{ item }}"
+  changed_when: false
+  when:
+    - dev_stow_users | length > 0
+    - dev_stow_packages | length > 0

@@ -25,3 +25,347 @@ releases:
     - add-motd-role.yml
     - expand-collection-readme.yml
     release_date: '2026-05-16'
+  0.3.0:
+    changes:
+      minor_changes:
+      - common - add ``common_stow_users`` (default ``[]``). When non-empty, clones
+        ``common_dots_repo`` (default ``https://github.com/jedimasterjonny/dots``)
+        to ``~/dots`` for each user and stows ``common_stow_packages`` (default ``[bash-suse]``)
+        via ``stow --override='.*'`` (overwriting any pre-existing target files).
+      - common - new role that installs the baseline package set (htop, openssh, python3-rpm,
+        stow, sudo, vim) and ensures sshd is enabled and started.
+      - dev - add ``dev_configure_incus_host`` flag (default ``false``) gating incus
+        package install and ``incus.socket`` enablement. Moves ``incus``/``incus-tools``
+        out of ``dev_ansible_dev_packages`` into the new ``dev_incus_packages`` list.
+      - dev - add ``dev_configure_libvirt_host`` flag (default ``false``) gating libvirt
+        package install and modular ``virt*d`` socket enablement. Moves ``guestfs-tools``,
+        ``libguestfs``, ``libvirt``, and ``virt-install`` out of ``dev_ansible_dev_packages``
+        into the new ``dev_libvirt_packages`` list and adds ``mkisofs`` (used for
+        cloud-init ISOs).
+      - dev - add ``dev_incus_admin_users`` (default ``[]``). When ``dev_configure_incus_host``
+        is true, appends each existing user to the ``incus-admin`` group.
+      - dev - add ``dev_incus_firewalld_trusted_interfaces`` (default ``[incusbr0]``).
+        When ``dev_configure_incus_host`` is true, installs ``firewalld`` + ``python3-firewall``,
+        ensures the daemon is enabled and started, and adds each interface to firewalld's
+        ``trusted`` zone so containers can route through the host. Pulls in ``ansible.posix``
+        as a collection dependency.
+      - dev - add ``dev_incus_images`` (default ``[]``). When ``dev_configure_incus_host``
+        is true, pre-warms each configured ``{alias, source}`` image into the host's
+        local Incus image cache if missing.
+      - 'dev - add ``dev_incus_preseed`` (default: lab-ready map with an ``incusbr0``
+        bridge, btrfs storage pool, and Molecule-friendly default profile). When ``dev_configure_incus_host``
+        is true and the default storage pool does not exist, applies the preseed via
+        ``incus admin init --preseed``.'
+      - dev - add ``dev_libvirt_manage_default_network`` flag (default ``true``).
+        When ``dev_configure_libvirt_host`` is true and the new flag is on, ensures
+        libvirt's ``default`` network is active and autostarts on boot. Set the flag
+        to false on hosts where the default subnet (``192.168.122.0/24``) conflicts
+        with the host's primary interface. Pulls in ``community.libvirt`` as a collection
+        dependency.
+      - dev - add ``dev_libvirt_users`` (default ``[]``). When ``dev_configure_libvirt_host``
+        is true, appends each existing user to the ``libvirt`` group.
+      - dev - add ``dev_stow_packages`` (default ``[git, nvim]``) and ``dev_stow_users``
+        (defaults to ``common_stow_users``). When non-empty, stows each package from
+        ``~/<user>/dots`` (cloned by common) via ``stow --override='.*'``.
+      - dev - new role installing developer and Ansible-author tooling. ``dev_install_ansible_dev``
+        (default ``true``) toggles the Ansible-author half. Depends on the ``common``
+        role. On openSUSE Leap, sources ``incus`` and ``lego`` from OBS ``Virtualization:containers``
+        and ``network:utilities``.
+      - dev - when ``dev_configure_libvirt_host`` is true, installs the ``tumbleweed-image-refresh``
+        shell helper at ``/usr/local/sbin/tumbleweed-image-refresh``. Fetches the
+        openSUSE Tumbleweed Minimal-VM qcow2 with sha256 verification and atomic replace.
+        Schedule (when to invoke, recurring timer) remains caller policy.
+      - dev - when ``dev_configure_libvirt_host`` is true, make ``/var/lib/libvirt/images``
+        setgid + group-writable (2775) by the ``libvirt`` group so files created there
+        inherit the group qemu reads as.
+      release_summary: 'Initial release of two roles: ``common`` provides the baseline
+        package set plus sshd; ``dev`` adds developer and Ansible-author tooling with
+        gated Incus and libvirt/KVM host configuration (``dev_configure_incus_host``,
+        ``dev_configure_libvirt_host``) and GNU stow dotfile management for configured
+        users.'
+    fragments:
+    - 0.3.0-release-summary.yml
+    - add-common-role.yml
+    - add-dev-role.yml
+    - apply-incus-preseed.yml
+    - common-stow-dotfiles.yml
+    - dev-stow-dotfiles.yml
+    - firewalld-trust-incus-bridge.yml
+    - gate-incus-host-config.yml
+    - gate-libvirt-host-config.yml
+    - grant-incus-admin-group.yml
+    - grant-libvirt-group.yml
+    - install-tumbleweed-image-refresh.yml
+    - libvirt-default-network.yml
+    - libvirt-images-dir-perms.yml
+    - pre-warm-incus-images.yml
+    release_date: '2026-05-25'
+  0.3.1:
+    changes:
+      bugfixes:
+      - common, dev - add ``-v`` to ``stow`` invocations so the ``changed_when`` substring
+        match on stderr actually fires. Without verbose output stow emits nothing
+        on a successful link, so the stow tasks were always reporting ``changed=0``
+        even when they created symlinks.
+      - common, dev - replace ``stow --override='.*'`` with ``stow --adopt`` followed
+        by ``git restore`` in the package directory. ``--override`` only re-takes
+        already-stow-managed symlinks; a real file at the target (e.g. an ``/etc/skel``-seeded
+        ``~/.bashrc``) made stow exit non-zero and aborted the first apply. ``--adopt``
+        absorbs the existing file and the restore reverts the package back to upstream
+        HEAD, leaving the target as a symlink to upstream content.
+      - common, dev - resolve stow user home directories via ``getent`` so users with
+        non-``/home/<user>`` home paths (most notably ``root``) are configured correctly.
+      - "dev - assert ``dev_incus_admin_users`` and ``dev_libvirt_users`` already
+        exist before granting group membership. ``ansible.builtin.user`` defaults
+        to ``state: present`` and silently creates missing accounts, contradicting
+        the documented contract that the role does not create users \u2014 a typo
+        in either list would otherwise produce a phantom account with privileged-group
+        membership."
+      - dev - assert ``dev_stow_users`` is a subset of ``common_stow_users``. The
+        common role owns the ``~/dots`` clone for each user in ``common_stow_users``;
+        dev's stow loop ``chdir``s into ``~/dots``, so explicit overrides that named
+        extra users (without adding them to ``common_stow_users``) failed with a confusing
+        ``No such file or directory``. The assertion now spells out the contract.
+      - dev - gate the distribution-specific zypper repository task behind ``dev_configure_incus_host``.
+        The two OBS projects in ``dev_extra_repos`` on Leap (``Virtualization:containers``
+        and ``network:utilities``) exist only to source incus and its ``lego`` dependency;
+        a Leap workstation that adopts the role for general dev tooling and leaves
+        the Incus gate off no longer picks them up.
+      - dev - move ``firewalld`` and ``python3-firewall`` out of ``dev_incus_packages``
+        into a new ``dev_incus_firewalld_packages`` list installed only when ``dev_incus_firewalld_trusted_interfaces``
+        is non-empty. nftables hosts that opt out of firewalld via the empty list
+        no longer get firewalld installed as a dormant artefact.
+      - 'dev - move ``python3-libvirt-python`` and ``python3-lxml`` from ``dev_ansible_dev_packages``
+        into ``dev_libvirt_packages``. The bindings are imported by ``community.libvirt.virt_net``
+        (which this role uses), so they belong on the same gate as libvirt itself.
+        Setting ``dev_install_ansible_dev: false`` together with ``dev_configure_libvirt_host:
+        true`` previously failed with ``ModuleNotFoundError: No module named ''libvirt''``;
+        the same default combination also dragged ``libvirt-libs`` onto every plain
+        dev workstation. ``dev_ansible_dev_packages`` now defaults to ``[]`` and exists
+        for consumers to add their own controller-side packages.'
+      - 'dev - narrow the pre-warm trigger for ``dev_incus_images`` to the ``not found``
+        error shape. The upstream ``incus image show`` check had ``failed_when: false``,
+        so a bare ``rc != 0`` previously matched transient daemon errors (e.g. ``EOF``
+        from a briefly-unreachable socket) and would re-copy a cached image.'
+      - galaxy.yml - declare ``community.general`` as a collection dependency. Both
+        shipped roles use ``community.general.zypper`` and ``community.general.zypper_repository``;
+        galaxy-installed consumers without ``community.general`` already present would
+        otherwise fail at the first role task.
+      release_summary: 'Patch release driven by code-review findings against 0.3.0.
+        Fixes the
+
+        stow workflow (use ``--adopt`` + ``git restore`` so ``/etc/skel``-seeded
+
+        files are absorbed; ``-v`` so changes register; resolve user home
+
+        directories via ``getent`` so ``root`` and other non-``/home/<user>``
+
+        operators work), declares the missing ``community.general`` galaxy
+
+        dependency, narrows the firewalld and OBS-repo installs to the gates
+
+        that actually consume them, hardens the Incus image pre-warm against
+
+        transient daemon errors, and asserts that configured operators exist
+
+        before granting privileged groups.
+
+        '
+    fragments:
+    - 0.3.1-release-summary.yml
+    - assert-operators-exist.yml
+    - assert-stow-users-subset.yml
+    - declare-community-general-dependency.yml
+    - gate-firewalld-install-on-trusted-interfaces.yml
+    - gate-leap-obs-repos.yml
+    - move-libvirt-bindings-to-libvirt-packages.yml
+    - pre-warm-only-on-image-not-found.yml
+    - resolve-stow-user-homes.yml
+    - stow-adopt-restore.yml
+    release_date: '2026-05-25'
+  0.4.0:
+    changes:
+      bugfixes:
+      - common, dev - anchor the stow ``changed_when`` on stderr lines that *start*
+        with ``LINK:`` / ``UNLINK:`` rather than substring-matching anywhere in stderr,
+        and drop the dead ``* existing target`` disjunct (stow with ``--adopt`` absorbs
+        unmanaged targets silently and never emits that warning). A future stow release
+        that prints the ``LINK:`` keyword in a different position no longer trips
+        a spurious change.
+      - "common, dev - assert that the stow targets (``~/.bashrc`` for bash-suse,
+        ``~/.config/nvim`` for nvim) are symlinks pointing into ``~/dots`` rather
+        than just checking they exist. A regression in the ``--adopt`` + ``git restore``
+        sequence \u2014 or a future stow that silently no-ops because ``changed_when``
+        misfired \u2014 would have left a real file or directory in place and still
+        passed the prior existence-only assertion."
+      - common, dev - move the molecule ``common_stow_users`` / ``dev_stow_users``
+        overrides for the default and ci scenarios from ``inventory.group_vars.all``
+        to ``options.extra-vars`` so they beat the role-defaults ``vars_files`` load
+        in the verify play. Previously converge stowed against root (group_vars in
+        scope) but verify saw ``common_stow_users == []`` (defaults shadowing group_vars),
+        the ``when:`` gate on the dotfile assertion block was false, and the dots-repo
+        / symlink assertions silently skipped.
+      - dev - derive the storage pool name in the ``Check whether Incus is already
+        initialised`` probe from ``dev_incus_preseed.storage_pools[0].name`` rather
+        than hardcoding ``default``; overrides that rename the pool no longer make
+        the probe permanently report ``not initialised`` and re-apply the preseed
+        on every play.
+      - dev - drop the explicit ``chown root:root`` in tumbleweed-image-refresh so
+        the qcow2 inherits ``root:libvirt`` from the parent dir's setgid bit; qemu
+        now reads the image via group membership rather than the world-read bit, which
+        keeps it accessible if ``/var/lib/libvirt/images`` is ever hardened to mode
+        2770.
+      - dev - pin ``LC_ALL=C`` on the Incus init probe and the image-cache probe so
+        their stderr substring matches are stable on non-English hosts, and gate the
+        preseed re-apply on ``'not found' in stderr`` rather than bare ``rc != 0``;
+        the previous gate could re-run ``incus admin init --preseed`` against a partially-initialised
+        daemon during a startup race against ``incus.socket``.
+      - dev - resolve the expected bridge and storage pool from ``dev_incus_preseed.profiles[0].devices``
+        by device type (``nic`` / ``disk``) rather than by hardcoded device keys ``eth0``
+        / ``root``; a profile that names its NIC ``enp0s3`` or its disk ``rootfs``
+        no longer crashes the molecule verify play with ``'dict object' has no attribute
+        'eth0'``.
+      - 'dev - set ``overwrite_multiple: true`` on the Leap OBS repositories so an
+        in-place distribution upgrade (e.g. Leap 16.0 to 16.1) updates the repo URL
+        in place instead of leaving the repo pinned to the previous release''s URL,
+        which made the next ``zypper refresh`` 404 and broke the role''s subsequent
+        ``Install Incus packages`` task.'
+      minor_changes:
+      - 'dev - document the always-quote-strings rule on ``dev_incus_preseed`` so
+        overrides like ``ipv4.dhcp: yes`` don''t get silently bool-coerced by ``to_nice_yaml``
+        and rejected (or misinterpreted) by ``incus admin init --preseed``.'
+      release_summary: 'Robustness pass on the common and dev roles, addressing follow-up
+        review
+
+        findings on the host-config and stow paths. The Incus init probe now
+
+        derives its pool name from the preseed and gates on locale-pinned
+
+        "not found" stderr, sidestepping a daemon-startup race against
+
+        ``incus.socket`` and overrides that rename the storage pool. The
+
+        molecule verify plays gain a real symlink-contract check on the stow
+
+        targets, iterate Incus devices by type rather than by hardcoded keys,
+
+        and reliably exercise the dotfile path by pinning stow-user overrides
+
+        at extra-vars precedence. Plus bugfixes for Leap OBS repo URL refresh
+
+        across distribution upgrades, the Tumbleweed qcow2 inheriting
+
+        ``root:libvirt`` from its parent dir''s setgid, and ``stow``''s
+
+        ``changed_when`` anchored on stderr line shape.
+
+        '
+    fragments:
+    - 0.4.0-release-summary.yml
+    - dev-document-preseed-quote-rule.yml
+    - dev-incus-probes-lc-all-not-found.yml
+    - dev-init-probe-derive-pool-name.yml
+    - dev-tumbleweed-helper-drop-chown.yml
+    - dev-verify-iterate-incus-devices-by-type.yml
+    - dev-zypper-repo-overwrite-multiple.yml
+    - molecule-assert-stow-symlinks.yml
+    - molecule-stow-vars-extra-vars-precedence.yml
+    - stow-changed-when-anchor.yml
+    release_date: '2026-05-25'
+  0.5.0:
+    changes:
+      breaking_changes:
+      - common - common_dots_repo no longer defaults to the maintainer's personal
+        dotfiles repository. Set it explicitly when common_stow_users is non-empty;
+        the role asserts the variable is set at task time.
+      bugfixes:
+      - common, dev - gate the post-stow `git restore .` task on `*_stow_packages
+        | length > 0`. With an empty packages list the stow loop absorbs nothing,
+        so the restore would only discard any uncommitted edits an operator made to
+        ~/dots by hand.
+      - dev - dev_incus_firewalld_trusted_interfaces now defaults to null and resolves
+        at task time from dev_incus_preseed.networks, so overriding the preseed bridge
+        propagates to firewalld trust without a matching override here. Set the variable
+        to an explicit list (or []) to opt out of the derivation.
+      - dev - dev_stow_users defaults to null and resolves at task time from common_stow_users
+        (rather than via a lazy-Jinja default in defaults/main.yml that could lose
+        to vars_files reads in downstream plays). Set the variable to an explicit
+        list to opt out of the derivation.
+      - 'dev - molecule verify anchors the `parent: <bridge>` / `pool: <pool>` assertions
+        on full-line matches via a multiline regex (with the expected names regex-escaped),
+        so a profile pointing at a prefix name (e.g. `incusbr0-stale`) no longer passes
+        by virtue of the substring `incusbr0` appearing as a prefix.'
+      - dev - molecule verify reads the Incus profile name to inspect from dev_incus_preseed.profiles[0].name
+        rather than hardcoding `default`, so preseed overrides that rename the profile
+        no longer make verify target the wrong (or non-existent) profile.
+      - dev - on openSUSE Leap, derive dev_libvirt_packages' python binding names
+        from the target python interpreter (python{X}{Y}-libvirt-python, python{X}{Y}-lxml).
+        Leap doesn't expose the unversioned python3-* virtual provides Tumbleweed
+        does, so the previous defaults raised 'no provider for python3-libvirt-python'
+        at zypper install.
+      minor_changes:
+      - common, dev - declare the openSUSE platform in galaxy_info.platforms so consumers
+        browsing Galaxy can filter by distro. The roles call community.general.zypper
+        unconditionally, so non-SUSE users can't consume them; the metadata now reflects
+        that.
+      - dev - assert dev_incus_preseed has the keys the role indexes (networks[0],
+        storage_pools[0], profiles[0], and at least one nic and one disk under profiles[0].devices)
+        at the top of the Incus block. An under-specified preseed now fails loudly
+        before any host mutation rather than with a Jinja KeyError mid-play.
+      release_summary: 'Review-driven hardening pass. Drops the maintainer-personal
+        default
+
+        for common_dots_repo (consumers stowing dotfiles must now set it
+
+        explicitly), fixes the openSUSE Leap libvirt python binding names,
+
+        derives Incus firewalld trust from the preseed, and tightens the
+
+        molecule verify path (preseed shape assert, boundary-anchored
+
+        profile checks, profile name read from preseed). Also adds
+
+        galaxy_info.platforms so Galaxy consumers can filter by distro.
+
+        '
+    fragments:
+    - 0.5.0-release-summary.yml
+    - common-dots-repo-no-default.yml
+    - dev-firewalld-trust-tracks-preseed.yml
+    - dev-leap-libvirt-versioned-python.yml
+    - dev-preseed-shape-assert.yml
+    - dev-stow-users-resolved-at-task-time.yml
+    - dev-verify-bridge-pool-anchored-match.yml
+    - dev-verify-profile-name-from-preseed.yml
+    - roles-galaxy-info-platforms.yml
+    - stow-restore-gated-on-packages.yml
+    release_date: '2026-05-25'
+  0.5.1:
+    changes:
+      bugfixes:
+      - dev - molecule verify now gathers facts and loads the same distribution-specific
+        vars file as the role itself, so the libvirt package presence check resolves
+        the Leap-versioned `python{XY}-libvirt-python` / `python{XY}-lxml` names on
+        Leap rather than the Tumbleweed virtual-provide names `python3-libvirt-python`
+        / `python3-lxml` (which Leap does not expose and which previously failed verify
+        on the ci scenario).
+      release_summary: 'Patch release fixing the dev role''s molecule verify on openSUSE
+        Leap.
+
+        verify.yml now gathers facts and loads the distribution-specific vars
+
+        file the same way tasks/main.yml does, so the libvirt package
+
+        presence check resolves the Leap-versioned python{XY}-libvirt-python
+
+        / python{XY}-lxml names rather than the Tumbleweed virtual-provide
+
+        names from defaults (which Leap does not expose, so verify failed on
+
+        the ci scenario).
+
+        '
+    fragments:
+    - 0.5.1-release-summary.yml
+    - dev-verify-load-distro-vars.yml
+    release_date: '2026-05-26'

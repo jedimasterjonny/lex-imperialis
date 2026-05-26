@@ -1,0 +1,122 @@
+---
+- name: Install baseline packages
+  community.general.zypper:
+    name: "{{ common_packages }}"
+    state: present
+
+- name: Enable and start sshd
+  ansible.builtin.systemd_service:
+    name: sshd
+    enabled: true
+    state: started
+
+- name: Configure dotfiles for operators
+  when: common_stow_users | length > 0
+  block:
+    # common_dots_repo has no default — a default would silently install
+    # the maintainer's dotfiles on any consumer that opts into stow
+    # without setting the repo. Fail loudly here instead.
+    - name: Assert common_dots_repo is set when stowing
+      ansible.builtin.assert:
+        that:
+          - common_dots_repo is string
+          - common_dots_repo | length > 0
+        fail_msg: >-
+          common_dots_repo must be set to a clone URL when
+          common_stow_users is non-empty.
+
+    - name: Install git for cloning the dots repo
+      community.general.zypper:
+        name: git
+        state: present
+
+    # Resolve each stow user's real home from passwd rather than assuming
+    # /home/<user>. root's home is /root, and any operator with a
+    # non-standard home would otherwise have ~/dots and the stowed
+    # symlinks land in the wrong tree. `fail_key: true` turns a typo'd
+    # username into an immediate, loud failure. The resolved homes are
+    # cached in common_stow_user_homes so the dev role (which depends on
+    # common via meta) can reuse them without re-querying.
+    - name: Resolve home directory for each stow user
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ item }}"
+        fail_key: true
+      loop: "{{ common_stow_users }}"
+      loop_control:
+        label: "{{ item }}"
+      register: __common_stow_user_passwd
+
+    - name: Cache resolved home directories for reuse
+      ansible.builtin.set_fact:
+        common_stow_user_homes: >-
+          {{ common_stow_user_homes | default({})
+             | combine({item.item:
+                        item.ansible_facts.getent_passwd[item.item][4]}) }}
+      loop: "{{ __common_stow_user_passwd.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    # noqa: latest[git] — dotfiles intentionally track upstream HEAD.
+    # `update: false` is deliberate: don't clobber local dotfile changes on
+    # re-runs. Operators pull updates manually with `cd ~/dots && git pull`.
+    - name: Clone the dots repository for each user
+      ansible.builtin.git:  # noqa: latest[git]
+        repo: "{{ common_dots_repo }}"
+        dest: "{{ common_stow_user_homes[item] }}/dots"
+        version: HEAD
+        update: false
+      become: true
+      become_user: "{{ item }}"
+      loop: "{{ common_stow_users }}"
+      loop_control:
+        label: "{{ item }}"
+
+    # stow refuses to clobber real files (`--override` only re-takes
+    # already-stow-managed links). `--adopt` is load-bearing: it absorbs
+    # any pre-existing target file (e.g. an /etc/skel-seeded ~/.bashrc)
+    # into the stow package, which the `git restore` task below then
+    # reverts to upstream HEAD — leaving the target as a symlink
+    # pointing at the upstream content. With --adopt, stow's only
+    # change-signalling lines are `LINK: ...` and `UNLINK: ...`; the
+    # `* existing target` warning only fires when --adopt is absent.
+    # `-v` makes stow emit those lines on stderr, LC_ALL=C pins the
+    # locale, and the match is anchored on line-leading shape so a
+    # future stow that emits e.g. `LINK:` mid-message doesn't trip a
+    # spurious change.
+    - name: Stow common dotfile packages
+      ansible.builtin.command:
+        cmd: "stow -v --adopt {{ item.1 }}"
+        chdir: "{{ common_stow_user_homes[item.0] }}/dots"
+      environment:
+        LC_ALL: C
+      register: __common_stow_result
+      changed_when: >-
+        __common_stow_result.stderr_lines
+        | select('match', '^(LINK|UNLINK): ')
+        | list | length > 0
+      become: true
+      become_user: "{{ item.0 }}"
+      loop: "{{ common_stow_users | product(common_stow_packages) | list }}"
+      loop_control:
+        label: "{{ item.0 }}/{{ item.1 }}"
+
+    # Revert any files `stow --adopt` moved into ~/dots above, so the
+    # package mirrors upstream HEAD and the symlinks resolve to upstream
+    # content. ansible.builtin.git can't `restore` an already-cloned repo;
+    # the command module is the right fit here. The packages gate is
+    # load-bearing: with common_stow_packages == [], the stow loop above
+    # was empty and `--adopt` absorbed nothing, so a `git restore .`
+    # here would only discard uncommitted edits an operator made by
+    # hand to ~/dots.
+    - name: Restore the dots repo to upstream HEAD
+      ansible.builtin.command:  # noqa: command-instead-of-module
+        cmd: git restore .
+        chdir: "{{ common_stow_user_homes[item] }}/dots"
+      become: true
+      become_user: "{{ item }}"
+      loop: "{{ common_stow_users }}"
+      loop_control:
+        label: "{{ item }}"
+      changed_when: false
+      when: common_stow_packages | length > 0

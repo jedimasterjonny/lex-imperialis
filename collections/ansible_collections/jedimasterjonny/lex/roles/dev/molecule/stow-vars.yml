@@ -1,0 +1,23 @@
+---
+# Extra-vars referenced via @../stow-vars.yml from the default molecule
+# scenario for the dev role. The full and ci scenarios use
+# host-config-vars.yml instead, which already pins stow_users.
+#
+# Stow user overrides have to land at extra-vars precedence (22), not
+# inventory.group_vars (~5), because verify.yml loads role defaults via
+# `vars_files: - ../defaults/main.yml` (precedence ~14) which would
+# otherwise shadow the override back to the empty default and silently
+# skip the dotfile verify block.
+#
+# dev_stow_users is pinned explicitly even though the role resolves a
+# null default from common_stow_users at task time — the converge and
+# verify plays each run the resolution in their own var scope, and an
+# explicit pin removes one moving piece from the test fixture.
+#
+# common_dots_repo has no role default; molecule uses the maintainer's
+# public repo as a test fixture.
+common_dots_repo: https://github.com/jedimasterjonny/dots
+common_stow_users:
+  - root
+dev_stow_users:
+  - root

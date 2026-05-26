@@ -12,6 +12,8 @@ Ansible core >= 2.19.
 
 | Role | Description |
 |------|-------------|
+| [`common`](roles/common/) | Install baseline packages and enable sshd. |
+| [`dev`](roles/dev/) | Install developer and Ansible-author tooling; depends on `common`. |
 | [`motd`](roles/motd/) | Manage `/etc/motd` from a single overridable `motd_text` var. |
 
 ## Installation

@@ -1,42 +1,33 @@
 ---
+# Prerequisite: this play needs the `jonny` account in place — the common
+# role (a meta-dep of dev) clones ~/dots under become_user: jonny, which
+# fails fast with "user does not exist" if the account is missing. A
+# pre_task below creates the account if absent; the `ansible` account is
+# assumed pre-existing (provisioned out of band).
 - name: Lab box bootstrap
   hosts: scholam
   become: true
   gather_facts: true
 
   vars:
-    lab_incus_images:
+    dev_configure_incus_host: true
+    dev_configure_libvirt_host: true
+    dev_incus_admin_users:
+      - jonny
+      - ansible
+    dev_libvirt_users:
+      - jonny
+      - ansible
+    dev_incus_images:
       - alias: tumbleweed
         source: images:opensuse/tumbleweed
-    incus_preseed:
-      config: {}
-      networks:
-        - name: incusbr0
-          type: bridge
-          config:
-            ipv4.address: auto
-            ipv4.nat: "true"
-            ipv6.address: none
-      storage_pools:
-        - name: default
-          driver: btrfs
-          config:
-            source: /var/lib/incus/storage-pools/default
-      profiles:
-        - name: default
-          description: Default profile for Molecule containers
-          devices:
-            eth0:
-              name: eth0
-              nictype: bridged
-              parent: incusbr0
-              type: nic
-            root:
-              path: /
-              pool: default
-              type: disk
-      projects: []
-      cluster: null
+    # dev_stow_users tracks common_stow_users by default — just jonny
+    # gets bash-suse + git + nvim dotfiles; ansible is a service account.
+    # common_dots_repo has no role default (would otherwise silently
+    # install the maintainer's dotfiles on every consumer) — pin it here.
+    common_dots_repo: https://github.com/jedimasterjonny/dots
+    common_stow_users:
+      - jonny
 
   pre_tasks:
     - name: Sanity — we're running on openSUSE
@@ -45,253 +36,156 @@
           - ansible_facts['distribution'] == 'openSUSE Tumbleweed'
         fail_msg: "This playbook only supports openSUSE Tumbleweed."
 
-  tasks:
-    - name: Install Incus packages
-      community.general.zypper:
-        name:
-          - incus
-          - incus-tools
-        state: present
-
-    - name: Enable and start the incus socket
-      ansible.builtin.systemd_service:
-        name: incus.socket
-        enabled: true
-        state: started
-
-    - name: Grant operator access to the incus socket
-      ansible.builtin.user:
-        name: "{{ item }}"
-        groups: incus-admin
-        append: true
-      loop:
-        - jonny
-        - ansible
-
-    # Proxy for "preseed ran"; a partial init leaves the 'default' pool and fools this — re-init by hand.
-    - name: Check whether Incus is already initialised
-      ansible.builtin.command: incus storage show default
-      register: incus_init_check
-      changed_when: false
-      failed_when: false
-
-    - name: Apply Incus preseed config (first init only)
-      ansible.builtin.command:
-        cmd: incus admin init --preseed
-        stdin: "{{ incus_preseed | to_nice_yaml }}"
-      when: incus_init_check.rc != 0
-      changed_when: true
-
-    - name: Trust the incus bridge in firewalld
-      ansible.posix.firewalld:
-        zone: trusted
-        interface: incusbr0
-        permanent: true
-        immediate: true
-        state: enabled
-
-    - name: Check which Incus images are already cached
-      ansible.builtin.command: "incus image show local:{{ item.alias }}"
-      register: incus_image_checks
-      loop: "{{ lab_incus_images }}"
+    # The incus-image-refresh.service ExecStart below interpolates each
+    # alias into a systemd unit literal. systemd's exec parser splits
+    # ExecStart on whitespace (no shell) and expands `%X` specifiers and
+    # `${VAR}` env refs unconditionally — so an alias containing any of
+    # those would silently produce the wrong arg list. Reject up front.
+    - name: Sanity — Incus image aliases are systemd-ExecStart-safe
+      ansible.builtin.assert:
+        that:
+          - item.alias is match('^[A-Za-z0-9._:-]+$')
+        fail_msg: >-
+          dev_incus_images entry "{{ item.alias }}" contains a character
+          systemd's ExecStart parser treats specially (whitespace, %, $);
+          restrict aliases to [A-Za-z0-9._:-].
+      loop: "{{ dev_incus_images | default([]) }}"
       loop_control:
         label: "{{ item.alias }}"
-      changed_when: false
-      failed_when: false
 
-    - name: Pre-warm missing Incus images
-      ansible.builtin.command: >
-        incus image copy {{ item.item.source }} local:
-        --alias {{ item.item.alias }}
-      loop: "{{ incus_image_checks.results }}"
-      loop_control:
-        label: "{{ item.item.alias }}"
-      when: item.rc != 0
-      changed_when: true
-
-    - name: Install incus-image-refresh.service unit
-      ansible.builtin.copy:
-        dest: /etc/systemd/system/incus-image-refresh.service
-        owner: root
-        group: root
-        mode: "0644"
-        content: |
-          [Unit]
-          Description=Refresh cached Incus images
-          After=network-online.target incus.socket
-          Wants=network-online.target incus.socket
-
-          [Service]
-          Type=oneshot
-          ExecStart=/usr/bin/incus image refresh{% for img in lab_incus_images %} local:{{ img.alias }}{% endfor %}
-      notify: Reload systemd
-
-    - name: Install incus-image-refresh.timer unit
-      ansible.builtin.copy:
-        dest: /etc/systemd/system/incus-image-refresh.timer
-        owner: root
-        group: root
-        mode: "0644"
-        content: |
-          [Unit]
-          Description=Weekly refresh of cached Incus images
-
-          [Timer]
-          OnCalendar=Sun *-*-* 03:00:00
-          Persistent=true
-
-          [Install]
-          WantedBy=timers.target
-      notify: Reload systemd
-
-    - name: Flush handlers so systemd loads the new units
-      ansible.builtin.meta: flush_handlers
-
-    - name: Enable and start incus-image-refresh.timer
-      ansible.builtin.systemd_service:
-        name: incus-image-refresh.timer
-        enabled: true
-        state: started
-
-    - name: Install libvirt and KVM tooling
-      community.general.zypper:
-        name:
-          - libvirt
-          - virt-install
-          - guestfs-tools
-          - libguestfs
-          - "python{{ ansible_facts['python']['version']['major'] }}{{ ansible_facts['python']['version']['minor'] }}-libvirt-python"
-          - "python{{ ansible_facts['python']['version']['major'] }}{{ ansible_facts['python']['version']['minor'] }}-lxml"
-          - mkisofs
+    # Must run before the role: common's clone task becomes jonny, which
+    # fails fast if the account is missing. Group memberships granted by
+    # the dev role's Incus/libvirt blocks land on this account in the same
+    # play (append: true, so they're additive).
+    #
+    # uid/group/shell are pinned so re-imaging the lab box always lands
+    # on the same identity. Without that, a post-install scriptlet from
+    # some other package could race in and take uid 1000 first, leaving
+    # jonny at 1001 — and any btrfs snapshot or NFS-mounted home
+    # restored later would then show files owned by an orphan uid.
+    - name: Ensure jonny account exists
+      ansible.builtin.user:
+        name: jonny
+        uid: 1000
+        group: users
+        shell: /bin/bash
+        create_home: true
         state: present
 
-    - name: Enable and start libvirt modular daemon sockets
-      ansible.builtin.systemd_service:
-        name: "{{ item }}"
-        enabled: true
-        state: started
-      loop:
-        - virtqemud.socket
-        - virtnetworkd.socket
-        - virtstoraged.socket
-        - virtnodedevd.socket
-        - virtsecretd.socket
-      loop_control:
-        label: "{{ item }}"
+  roles:
+    - jedimasterjonny.lex.dev
 
-    - name: Ensure default libvirt network is active
-      community.libvirt.virt_net:
-        name: default
-        state: active
+  # post_tasks run after the role completes, so the helper script the role
+  # ships at /usr/local/sbin/tumbleweed-image-refresh is in place before the
+  # one-shot invocation below.
+  post_tasks:
+    # Skip the entire unit pair when no images are pre-warmed: a bare
+    # `incus image refresh` (the template's degenerate case) refreshes every
+    # cached image, which broadens the unit's effect beyond the curated set.
+    - name: Schedule weekly refresh of pre-warmed Incus images
+      when: dev_incus_images | length > 0
+      block:
+        - name: Install incus-image-refresh.service unit
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/incus-image-refresh.service
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              [Unit]
+              Description=Refresh cached Incus images
+              After=network-online.target incus.socket
+              Wants=network-online.target incus.socket
 
-    - name: Ensure default libvirt network autostarts
-      community.libvirt.virt_net:
-        name: default
-        autostart: true
+              [Service]
+              Type=oneshot
+              ExecStart=/usr/bin/incus image refresh{% for img in dev_incus_images %} local:{{ img.alias }}{% endfor %}
+          notify: Reload systemd
 
-    - name: Grant operator access to libvirt
-      ansible.builtin.user:
-        name: "{{ item }}"
-        groups: libvirt
-        append: true
-      loop:
-        - jonny
-        - ansible
+        - name: Install incus-image-refresh.timer unit
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/incus-image-refresh.timer
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              [Unit]
+              Description=Weekly refresh of cached Incus images
 
-    - name: Let the libvirt group write to /var/lib/libvirt/images
-      # setgid (2775) so files created here inherit the libvirt group,
-      # which qemu needs read access to once libvirt boots the guest.
-      ansible.builtin.file:
-        path: /var/lib/libvirt/images
-        owner: root
-        group: libvirt
-        mode: '2775'
-        state: directory
+              [Timer]
+              OnCalendar=Sun *-*-* 03:00:00
+              Persistent=true
 
-    - name: Install tumbleweed-image-refresh helper
-      ansible.builtin.copy:
-        dest: /usr/local/sbin/tumbleweed-image-refresh
-        owner: root
-        group: root
-        mode: "0755"
-        content: |
-          #!/usr/bin/env bash
-          set -euo pipefail
+              [Install]
+              WantedBy=timers.target
+          notify: Reload systemd
 
-          url="https://download.opensuse.org/tumbleweed/appliances/openSUSE-Tumbleweed-Minimal-VM.x86_64-Cloud.qcow2"
-          dest="/var/lib/libvirt/images/tumbleweed-base.qcow2"
+        - name: Flush handlers so systemd loads the incus-image-refresh units
+          ansible.builtin.meta: flush_handlers
 
-          expected=$(curl -fsSL "${url}.sha256" | awk '{print $1}')
+        - name: Enable and start incus-image-refresh.timer
+          ansible.builtin.systemd_service:
+            name: incus-image-refresh.timer
+            enabled: true
+            state: started
 
-          if [[ -f "$dest" ]]; then
-            actual=$(sha256sum "$dest" | awk '{print $1}')
-            if [[ "$actual" == "$expected" ]]; then
-              echo "Image already up to date (sha256: $actual)"
-              exit 0
-            fi
-          fi
+    # The tumbleweed-image-refresh helper at /usr/local/sbin/ is dropped
+    # by the dev role only when dev_configure_libvirt_host is true. The
+    # playbook's vars (at the top of this file) hardcode that gate true
+    # today, but gate the post_tasks defensively so a temporary
+    # `-e dev_configure_libvirt_host=false` doesn't try to invoke a
+    # helper the role just decided not to install.
+    - name: Schedule weekly refresh of the Tumbleweed qcow2 base image
+      when: dev_configure_libvirt_host | bool
+      block:
+        - name: Ensure Tumbleweed qcow2 base image is present and up to date
+          ansible.builtin.command: /usr/local/sbin/tumbleweed-image-refresh
+          register: tumbleweed_refresh
+          changed_when: "'Image refreshed' in tumbleweed_refresh.stdout"
 
-          tmp=$(mktemp "${dest}.XXXXXX")
-          trap 'rm -f "$tmp"' EXIT
-          curl -fsSL "$url" -o "$tmp"
-          actual=$(sha256sum "$tmp" | awk '{print $1}')
-          if [[ "$actual" != "$expected" ]]; then
-            echo "Checksum mismatch: expected $expected, got $actual" >&2
-            exit 1
-          fi
-          chmod 0644 "$tmp"
-          chown root:root "$tmp"
-          mv "$tmp" "$dest"
-          echo "Image refreshed (sha256: $actual)"
+        - name: Install tumbleweed-image-refresh.service unit
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/tumbleweed-image-refresh.service
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              [Unit]
+              Description=Refresh Tumbleweed qcow2 base image
+              After=network-online.target
+              Wants=network-online.target
 
-    - name: Ensure Tumbleweed qcow2 base image is present and up to date
-      ansible.builtin.command: /usr/local/sbin/tumbleweed-image-refresh
-      register: tumbleweed_refresh
-      changed_when: "'Image refreshed' in tumbleweed_refresh.stdout"
+              [Service]
+              Type=oneshot
+              ExecStart=/usr/local/sbin/tumbleweed-image-refresh
+          notify: Reload systemd
 
-    - name: Install tumbleweed-image-refresh.service unit
-      ansible.builtin.copy:
-        dest: /etc/systemd/system/tumbleweed-image-refresh.service
-        owner: root
-        group: root
-        mode: "0644"
-        content: |
-          [Unit]
-          Description=Refresh Tumbleweed qcow2 base image
-          After=network-online.target
-          Wants=network-online.target
+        - name: Install tumbleweed-image-refresh.timer unit
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/tumbleweed-image-refresh.timer
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              [Unit]
+              Description=Weekly refresh of Tumbleweed qcow2 base image
 
-          [Service]
-          Type=oneshot
-          ExecStart=/usr/local/sbin/tumbleweed-image-refresh
-      notify: Reload systemd
+              [Timer]
+              OnCalendar=Sun *-*-* 03:30:00
+              Persistent=true
 
-    - name: Install tumbleweed-image-refresh.timer unit
-      ansible.builtin.copy:
-        dest: /etc/systemd/system/tumbleweed-image-refresh.timer
-        owner: root
-        group: root
-        mode: "0644"
-        content: |
-          [Unit]
-          Description=Weekly refresh of Tumbleweed qcow2 base image
+              [Install]
+              WantedBy=timers.target
+          notify: Reload systemd
 
-          [Timer]
-          OnCalendar=Sun *-*-* 03:30:00
-          Persistent=true
+        - name: Flush handlers so systemd loads the tumbleweed-image-refresh units
+          ansible.builtin.meta: flush_handlers
 
-          [Install]
-          WantedBy=timers.target
-      notify: Reload systemd
-
-    - name: Flush handlers so systemd loads the tumbleweed-image-refresh units
-      ansible.builtin.meta: flush_handlers
-
-    - name: Enable and start tumbleweed-image-refresh.timer
-      ansible.builtin.systemd_service:
-        name: tumbleweed-image-refresh.timer
-        enabled: true
-        state: started
+        - name: Enable and start tumbleweed-image-refresh.timer
+          ansible.builtin.systemd_service:
+            name: tumbleweed-image-refresh.timer
+            enabled: true
+            state: started
 
   handlers:
     - name: Reload systemd

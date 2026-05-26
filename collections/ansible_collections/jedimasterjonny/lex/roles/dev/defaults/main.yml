@@ -1,0 +1,159 @@
+---
+# Default vars for jedimasterjonny.lex.dev role.
+
+# General developer tooling — always installed.
+dev_packages:
+  - direnv
+  - gh
+  - git
+  - make
+  - neovim
+  - python3
+  - python3-pip
+
+# Whether to install the extra Ansible-author packages listed in
+# dev_ansible_dev_packages. Defaults to true so callers can opt out without
+# touching the list. The libvirt python bindings (python3-libvirt-python,
+# python3-lxml) deliberately live with dev_libvirt_packages — they're only
+# needed when libvirt host config is on, and dragging libvirt-libs onto every
+# dev workstation is too aggressive a default.
+dev_install_ansible_dev: true
+
+# Extra Ansible-author tooling — installed when dev_install_ansible_dev is
+# true. Empty by default: the role's libvirt-author bindings have moved into
+# dev_libvirt_packages. This list exists for consumers to add their own
+# controller-side packages without overriding dev_packages.
+dev_ansible_dev_packages: []
+
+# Whether to configure this host as an Incus server. When true, installs
+# dev_incus_packages and enables incus.socket. Independent of
+# dev_install_ansible_dev — a tooling-only dev box can leave this off.
+dev_configure_incus_host: false
+
+# Incus host packages — installed when dev_configure_incus_host is true.
+dev_incus_packages:
+  - incus
+  - incus-tools
+
+# firewalld bridge-trust packages — installed only when
+# dev_incus_firewalld_trusted_interfaces is non-empty. firewalld +
+# python3-firewall are runtime deps absent from fresh cloud images:
+# ansible.posix.firewalld imports python3-firewall on the target and needs
+# the firewalld daemon running. nftables hosts that opt out via
+# dev_incus_firewalld_trusted_interfaces=[] no longer pick these up.
+dev_incus_firewalld_packages:
+  - firewalld
+  - python3-firewall
+
+# Existing users to grant access to the Incus control socket via the
+# incus-admin group. Empty by default — callers (e.g. lab-bootstrap) opt in.
+# Users must already exist; the role does not create them.
+dev_incus_admin_users: []
+
+# Preseed applied via `incus admin init --preseed` on first init. The default
+# reflects the Lex lab box (incusbr0 bridge, btrfs pool, Molecule-friendly
+# default profile) and is suitable for any single-node Incus host. Override
+# via host_vars for clustered or differently-laid-out hosts.
+#
+# Always quote string-shaped values that look bool-ish or null-ish to YAML
+# — `yes`, `no`, `on`, `off`, `true`, `false`, `none`. PyYAML will coerce
+# unquoted forms to Python booleans/None, and `to_nice_yaml` then emits
+# them as YAML booleans/null, which incus may reject or interpret as a
+# different setting (e.g. `ipv4.dhcp: yes` becomes `true`, not the string
+# `"yes"`). The defaults below model the rule: `ipv4.nat: "true"`,
+# `ipv6.address: "none"`.
+dev_incus_preseed:
+  config: {}
+  networks:
+    - name: incusbr0
+      type: bridge
+      config:
+        ipv4.address: auto
+        ipv4.nat: "true"
+        ipv6.address: "none"
+  storage_pools:
+    - name: default
+      driver: btrfs
+      config:
+        source: /var/lib/incus/storage-pools/default
+  profiles:
+    - name: default
+      description: Default profile for Molecule containers
+      devices:
+        eth0:
+          name: eth0
+          nictype: bridged
+          parent: incusbr0
+          type: nic
+        root:
+          path: /
+          pool: default
+          type: disk
+  projects: []
+  cluster: null
+
+# Interfaces to add to firewalld's `trusted` zone so Incus containers can
+# route through the host. Defaults to null, which the role resolves at
+# task time to the list of bridge names defined in dev_incus_preseed.networks
+# — so renaming the bridge in the preseed propagates here without a
+# matching override. Set to an explicit list to trust a different set of
+# interfaces, or to [] on hosts not running firewalld.
+dev_incus_firewalld_trusted_interfaces: null
+
+# Incus images to pre-warm into the host's local image cache. Each entry:
+# an `alias` (local cache name) and a `source` (remote image, e.g.
+# `images:opensuse/tumbleweed`). Empty by default — callers opt in:
+#   dev_incus_images:
+#     - alias: tumbleweed
+#       source: images:opensuse/tumbleweed
+dev_incus_images: []
+
+# Whether to configure this host as a libvirt/KVM hypervisor. When true,
+# installs dev_libvirt_packages and enables the modular virt*d sockets.
+# Independent of dev_install_ansible_dev — a tooling-only dev box can
+# leave this off.
+dev_configure_libvirt_host: false
+
+# libvirt host packages — installed when dev_configure_libvirt_host is true.
+# mkisofs is libvirt-adjacent: needed to build cloud-init ISOs that
+# provision libvirt guests. python3-libvirt-python and python3-lxml are
+# imported by community.libvirt.virt_net (used by this role) — they live in
+# this list because they're only useful when libvirt itself is configured.
+# Tumbleweed resolves the unversioned python3-* names below via virtual
+# provides; Leap doesn't, and vars/openSUSE_Leap.yml shadows this list
+# with interpreter-versioned names (python311-* on Leap 16).
+dev_libvirt_packages:
+  - guestfs-tools
+  - libguestfs
+  - libvirt
+  - mkisofs
+  - python3-libvirt-python
+  - python3-lxml
+  - virt-install
+
+# Whether to activate + autostart libvirt's `default` network. Set to false
+# on hosts where the default subnet (192.168.122.0/24) conflicts with the
+# host's primary interface — e.g. inside a libvirt VM running on a host
+# that uses the same default network.
+dev_libvirt_manage_default_network: true
+
+# Existing users to grant access to the libvirt control sockets via the
+# libvirt group. Empty by default — callers (e.g. lab-bootstrap) opt in.
+# Users must already exist; the role does not create them.
+dev_libvirt_users: []
+
+# Dotfile packages to stow from ~/<user>/dots. The clone is owned by the
+# common role; this role only stows. Stow runs with `--adopt` and the
+# role then git-restores ~/dots back to upstream HEAD — see the common
+# role for the rationale.
+#
+# dev_stow_users defaults to null, which the role resolves at task time
+# to common_stow_users — the two track without the lazy-Jinja-default
+# trap (a downstream vars_files load that re-reads this file would
+# otherwise pin dev_stow_users at the load-time value of
+# common_stow_users, which can lose to extra-vars set later). Set the
+# variable to an explicit list to opt out of the derivation.
+dev_stow_packages:
+  - git
+  - nvim
+dev_stow_users: null

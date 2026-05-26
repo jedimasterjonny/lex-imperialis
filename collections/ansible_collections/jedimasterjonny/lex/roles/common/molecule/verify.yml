@@ -1,0 +1,96 @@
+---
+- name: Verify — assert on common role outcome
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - ../defaults/main.yml
+  tasks:
+    # Verify by re-applying state in check mode and asserting nothing would
+    # change. The zypper module resolves virtual provides (e.g. python3 →
+    # python313) natively, which package_facts' actual-name keys do not.
+    - name: Verify baseline packages are installed
+      community.general.zypper:
+        name: "{{ common_packages }}"
+        state: present
+      check_mode: true
+      register: __common_packages_check
+      failed_when: __common_packages_check.changed
+
+    - name: Verify sshd is enabled and started
+      ansible.builtin.systemd_service:
+        name: sshd
+        state: started
+        enabled: true
+      check_mode: true
+      register: __common_sshd_check
+      failed_when: __common_sshd_check.changed
+
+    - name: Verify dotfiles for operators
+      when: common_stow_users | length > 0
+      block:
+        # verify runs as a separate play from converge, so the converge-time
+        # common_stow_user_homes fact is gone — re-resolve from passwd.
+        - name: Resolve home directory for each stow user
+          ansible.builtin.getent:
+            database: passwd
+            key: "{{ item }}"
+            fail_key: true
+          loop: "{{ common_stow_users }}"
+          loop_control:
+            label: "{{ item }}"
+          register: __common_stow_user_passwd
+
+        - name: Cache resolved home directories for verification
+          ansible.builtin.set_fact:
+            common_stow_user_homes: >-
+              {{ common_stow_user_homes | default({})
+                 | combine({item.item:
+                            item.ansible_facts.getent_passwd[item.item][4]}) }}
+          loop: "{{ __common_stow_user_passwd.results }}"
+          loop_control:
+            label: "{{ item.item }}"
+
+        - name: Stat the dots repo for each user
+          ansible.builtin.stat:
+            path: "{{ common_stow_user_homes[item] }}/dots/.git"
+          register: __common_dots_stat
+          loop: "{{ common_stow_users }}"
+          loop_control:
+            label: "{{ item }}"
+
+        - name: Assert the dots repo is present for each user
+          ansible.builtin.assert:
+            that:
+              - item.stat.exists
+            fail_msg: "dots repo missing at {{ common_stow_user_homes[item.item] }}/dots"
+          loop: "{{ __common_dots_stat.results }}"
+          loop_control:
+            label: "{{ item.item }}"
+
+        # The whole point of the stow path is to replace any pre-existing
+        # ~/.bashrc (e.g. one seeded from /etc/skel) with a symlink into
+        # ~/dots/bash-suse. Checking the dots clone exists is necessary
+        # but not sufficient — a regression in the `--adopt` + `git
+        # restore` sequence (or a future stow that no-ops because
+        # changed_when misfired) would still leave a real file in place.
+        - name: Stat ~/.bashrc for each stow user
+          ansible.builtin.stat:
+            path: "{{ common_stow_user_homes[item] }}/.bashrc"
+          register: __common_bashrc_stat
+          loop: "{{ common_stow_users }}"
+          loop_control:
+            label: "{{ item }}"
+
+        - name: Assert ~/.bashrc is a symlink into ~/dots/bash-suse
+          ansible.builtin.assert:
+            that:
+              - item.stat.islnk
+              - "'dots/bash-suse/.bashrc' in item.stat.lnk_target"
+            fail_msg: >-
+              ~/.bashrc for
+              {{ item.item }} is not a stow-managed symlink into
+              ~/dots/bash-suse (target:
+              {{ item.stat.lnk_target | default('<not a symlink>') }})
+          loop: "{{ __common_bashrc_stat.results }}"
+          loop_control:
+            label: "{{ item.item }}"

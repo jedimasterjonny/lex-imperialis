@@ -1,0 +1,378 @@
+---
+- name: Verify — assert on dev role outcome
+  hosts: all
+  # Facts are required so the include_vars below can key on
+  # ansible_facts['distribution']; without this, the libvirt package check
+  # below would see only the Tumbleweed virtual-provide names from
+  # defaults/ and fail on Leap (which exposes versioned names instead).
+  gather_facts: true
+  vars_files:
+    - ../defaults/main.yml
+  tasks:
+    # Mirror tasks/main.yml: load vars/<distribution>.yml so verify sees the
+    # same dev_libvirt_packages override the role itself installed (e.g.
+    # python311-libvirt-python on Leap). vars_files above only loads
+    # defaults; without this include_vars, verify would assert on
+    # Tumbleweed-only virtual-provide names that Leap doesn't expose, so
+    # zypper check_mode would report changed=true and verify would fail.
+    - name: Load distribution-specific variables
+      ansible.builtin.include_vars:
+        file: "{{ lookup('ansible.builtin.first_found', params) }}"
+      vars:
+        params:
+          files:
+            - "{{ ansible_facts['distribution'] | replace(' ', '_') }}.yml"
+            - default.yml
+          paths:
+            - "{{ playbook_dir }}/../vars"
+
+    # Verify by re-applying state in check mode and asserting nothing would
+    # change. The zypper module resolves virtual provides (e.g. python3-lxml
+    # → python313-lxml) natively, which package_facts' actual-name keys do
+    # not.
+    - name: Verify general developer packages are installed
+      community.general.zypper:
+        name: "{{ dev_packages }}"
+        state: present
+      check_mode: true
+      register: __dev_packages_check
+      failed_when: __dev_packages_check.changed
+
+    - name: Verify Ansible-author packages are installed
+      community.general.zypper:
+        name: "{{ dev_ansible_dev_packages }}"
+        state: present
+      check_mode: true
+      register: __dev_ansible_packages_check
+      failed_when: __dev_ansible_packages_check.changed
+      when:
+        - dev_install_ansible_dev | bool
+        - dev_ansible_dev_packages | length > 0
+
+    - name: Verify Incus host configuration
+      when: dev_configure_incus_host | bool
+      block:
+        # Mirror the shape assert from tasks/main.yml so verify fails
+        # loudly on an under-specified preseed rather than with a Jinja
+        # KeyError when the device-by-type filters below run.
+        - name: Assert dev_incus_preseed has the keys verify indexes
+          ansible.builtin.assert:
+            that:
+              - dev_incus_preseed.networks | default([]) | length > 0
+              - dev_incus_preseed.storage_pools | default([]) | length > 0
+              - dev_incus_preseed.profiles | default([]) | length > 0
+              - dev_incus_preseed.profiles[0].devices | default({})
+                | dict2items | selectattr('value.type', 'eq', 'nic')
+                | list | length > 0
+              - dev_incus_preseed.profiles[0].devices | default({})
+                | dict2items | selectattr('value.type', 'eq', 'disk')
+                | list | length > 0
+            fail_msg: >-
+              dev_incus_preseed must define at least one network, one
+              storage pool, and one profile whose devices include a nic
+              and a disk.
+
+        # Mirror the resolution that tasks/main.yml does: a null default
+        # means "track the preseed". Verify reads role defaults via
+        # vars_files, so without this it sees the unresolved null sentinel
+        # and the gated firewalld checks below skip silently.
+        - name: Resolve effective Incus firewalld trust list from preseed
+          ansible.builtin.set_fact:
+            dev_incus_firewalld_trusted_interfaces: >-
+              {{ dev_incus_preseed.networks | map(attribute='name') | list }}
+          when: dev_incus_firewalld_trusted_interfaces is none
+
+        - name: Verify Incus packages are installed
+          community.general.zypper:
+            name: "{{ dev_incus_packages }}"
+            state: present
+          check_mode: true
+          register: __dev_incus_packages_check
+          failed_when: __dev_incus_packages_check.changed
+
+        - name: Verify firewalld packages are installed
+          community.general.zypper:
+            name: "{{ dev_incus_firewalld_packages }}"
+            state: present
+          check_mode: true
+          register: __dev_incus_firewalld_packages_check
+          failed_when: __dev_incus_firewalld_packages_check.changed
+          when: dev_incus_firewalld_trusted_interfaces | length > 0
+
+        - name: Verify the incus socket is enabled and started
+          ansible.builtin.systemd_service:
+            name: incus.socket
+            enabled: true
+            state: started
+          check_mode: true
+          register: __dev_incus_socket_check
+          failed_when: __dev_incus_socket_check.changed
+
+        - name: Verify operators have incus-admin group membership
+          ansible.builtin.user:
+            name: "{{ item }}"
+            groups: incus-admin
+            append: true
+          check_mode: true
+          register: __dev_incus_admin_check
+          failed_when: __dev_incus_admin_check.changed
+          loop: "{{ dev_incus_admin_users }}"
+          loop_control:
+            label: "{{ item }}"
+
+        # The default profile (NIC → bridge, disk → pool), its name, and
+        # the bridge and pool it points at are all derived from
+        # dev_incus_preseed, so the verify reads the expected names back
+        # out of the preseed rather than hardcoding "incusbr0"/"default"
+        # — overrides that rename any of them are valid and the role
+        # should still pass verify. Devices are iterated by `type` so a
+        # profile that names its NIC device `enp0s3` (or its disk
+        # `rootfs`) instead of `eth0`/`root` still resolves correctly.
+        - name: Capture expected Incus shape from dev_incus_preseed
+          ansible.builtin.set_fact:
+            __dev_incus_expected_profile: "{{ dev_incus_preseed.profiles[0].name }}"
+            __dev_incus_expected_bridge: >-
+              {{ dev_incus_preseed.profiles[0].devices.values()
+                 | selectattr('type', 'eq', 'nic')
+                 | map(attribute='parent') | first }}
+            __dev_incus_expected_pool: >-
+              {{ dev_incus_preseed.profiles[0].devices.values()
+                 | selectattr('type', 'eq', 'disk')
+                 | map(attribute='pool') | first }}
+
+        - name: Verify the default Incus storage pool exists
+          ansible.builtin.command: "incus storage show {{ __dev_incus_expected_pool }}"
+          changed_when: false
+
+        - name: Verify the Incus bridge exists
+          ansible.builtin.command: "incus network show {{ __dev_incus_expected_bridge }}"
+          changed_when: false
+
+        - name: Capture configured Incus profile for shape assertions
+          ansible.builtin.command: "incus profile show {{ __dev_incus_expected_profile }}"
+          register: __dev_incus_profile
+          changed_when: false
+
+        # Anchor on full-line matches via a multiline regex so a partially
+        # applied profile pointing at e.g. `incusbr0-stale` doesn't pass
+        # by virtue of `incusbr0` being a prefix. `\s*` accommodates the
+        # arbitrary leading indent incus uses under devices.<dev>.
+        - name: Assert configured profile is wired to the expected bridge and pool
+          ansible.builtin.assert:
+            that:
+              - __dev_incus_profile.stdout is regex('(?m)^\s*parent:\s+'
+                ~ (__dev_incus_expected_bridge | regex_escape) ~ '\s*$')
+              - __dev_incus_profile.stdout is regex('(?m)^\s*pool:\s+'
+                ~ (__dev_incus_expected_pool | regex_escape) ~ '\s*$')
+            fail_msg: >-
+              {{ __dev_incus_expected_profile }} profile is missing
+              expected devices
+              (NIC parent={{ __dev_incus_expected_bridge }},
+              disk pool={{ __dev_incus_expected_pool }}).
+
+        - name: Verify firewalld is enabled and started
+          ansible.builtin.systemd_service:
+            name: firewalld
+            enabled: true
+            state: started
+          check_mode: true
+          register: __dev_firewalld_check
+          failed_when: __dev_firewalld_check.changed
+          when: dev_incus_firewalld_trusted_interfaces | length > 0
+
+        # `| default([], true)` mirrors the guard in tasks/main.yml —
+        # Ansible templates `loop:` before the block-level `when`, so
+        # the trust loop would crash on the unresolved null sentinel
+        # when verify is run with `dev_configure_incus_host: false`.
+        # The `true` flag substitutes for explicitly-null values too,
+        # not just for undefined.
+        - name: Verify configured Incus bridges are trusted in firewalld
+          ansible.posix.firewalld:
+            zone: trusted
+            interface: "{{ item }}"
+            permanent: true
+            immediate: true
+            state: enabled
+          check_mode: true
+          register: __dev_incus_firewalld_check
+          failed_when: __dev_incus_firewalld_check.changed
+          loop: "{{ dev_incus_firewalld_trusted_interfaces | default([], true) }}"
+          loop_control:
+            label: "{{ item }}"
+
+        - name: Verify configured Incus images are present in the local cache
+          ansible.builtin.command: "incus image show local:{{ item.alias }}"
+          changed_when: false
+          loop: "{{ dev_incus_images }}"
+          loop_control:
+            label: "{{ item.alias }}"
+
+    - name: Verify libvirt host configuration
+      when: dev_configure_libvirt_host | bool
+      block:
+        - name: Verify libvirt packages are installed
+          community.general.zypper:
+            name: "{{ dev_libvirt_packages }}"
+            state: present
+          check_mode: true
+          register: __dev_libvirt_packages_check
+          failed_when: __dev_libvirt_packages_check.changed
+
+        - name: Verify libvirt modular daemon sockets are enabled and started
+          ansible.builtin.systemd_service:
+            name: "{{ item }}"
+            enabled: true
+            state: started
+          check_mode: true
+          register: __dev_libvirt_sockets_check
+          failed_when: __dev_libvirt_sockets_check.changed
+          loop:
+            - virtqemud.socket
+            - virtnetworkd.socket
+            - virtstoraged.socket
+            - virtnodedevd.socket
+            - virtsecretd.socket
+          loop_control:
+            label: "{{ item }}"
+
+        - name: Verify the default libvirt network is active
+          community.libvirt.virt_net:
+            name: default
+            state: active
+          check_mode: true
+          register: __dev_libvirt_default_net_active_check
+          failed_when: __dev_libvirt_default_net_active_check.changed
+          when: dev_libvirt_manage_default_network | bool
+
+        - name: Verify the default libvirt network autostarts
+          community.libvirt.virt_net:
+            name: default
+            autostart: true
+          check_mode: true
+          register: __dev_libvirt_default_net_autostart_check
+          failed_when: __dev_libvirt_default_net_autostart_check.changed
+          when: dev_libvirt_manage_default_network | bool
+
+        - name: Verify operators have libvirt group membership
+          ansible.builtin.user:
+            name: "{{ item }}"
+            groups: libvirt
+            append: true
+          check_mode: true
+          register: __dev_libvirt_users_check
+          failed_when: __dev_libvirt_users_check.changed
+          loop: "{{ dev_libvirt_users }}"
+          loop_control:
+            label: "{{ item }}"
+
+        - name: Verify /var/lib/libvirt/images is libvirt-group-writable (setgid)
+          ansible.builtin.file:
+            path: /var/lib/libvirt/images
+            owner: root
+            group: libvirt
+            mode: "2775"
+            state: directory
+          check_mode: true
+          register: __dev_libvirt_images_dir_check
+          failed_when: __dev_libvirt_images_dir_check.changed
+
+        - name: Verify tumbleweed-image-refresh helper is installed
+          ansible.builtin.file:
+            path: /usr/local/sbin/tumbleweed-image-refresh
+            owner: root
+            group: root
+            mode: "0755"
+            state: file
+          check_mode: true
+          register: __dev_tumbleweed_image_refresh_check
+          failed_when: __dev_tumbleweed_image_refresh_check.changed
+
+        - name: Capture installed tumbleweed-image-refresh helper sha256
+          ansible.builtin.stat:
+            path: /usr/local/sbin/tumbleweed-image-refresh
+            checksum_algorithm: sha256
+          register: __dev_tumbleweed_image_refresh_installed_stat
+
+        - name: Capture shipped tumbleweed-image-refresh helper sha256
+          ansible.builtin.stat:
+            path: "{{ playbook_dir }}/../files/tumbleweed-image-refresh.sh"
+            checksum_algorithm: sha256
+          delegate_to: localhost
+          register: __dev_tumbleweed_image_refresh_shipped_stat
+
+        - name: Assert installed helper content matches the shipped file
+          ansible.builtin.assert:
+            that:
+              - >-
+                __dev_tumbleweed_image_refresh_installed_stat.stat.checksum
+                == __dev_tumbleweed_image_refresh_shipped_stat.stat.checksum
+            fail_msg: >-
+              Installed helper sha256 does not match the shipped file —
+              content drift detected.
+
+    # Mirror the resolution that tasks/main.yml does: a null default
+    # means "track common_stow_users". Verify reads role defaults via
+    # vars_files, so without this it sees the unresolved null sentinel
+    # and the dotfile verify block skips silently when consumers rely on
+    # the derivation.
+    - name: Resolve dev_stow_users from common_stow_users when unset
+      ansible.builtin.set_fact:
+        dev_stow_users: "{{ common_stow_users | default([]) }}"
+      when: dev_stow_users is none
+
+    - name: Verify dev dotfile stow for each user
+      when: dev_stow_users | length > 0
+      block:
+        # verify runs as a separate play from converge, so the converge-time
+        # common_stow_user_homes fact is gone — re-resolve from passwd.
+        - name: Resolve home directory for each stow user
+          ansible.builtin.getent:
+            database: passwd
+            key: "{{ item }}"
+            fail_key: true
+          loop: "{{ dev_stow_users }}"
+          loop_control:
+            label: "{{ item }}"
+          register: __dev_stow_user_passwd
+
+        - name: Cache resolved home directories for verification
+          ansible.builtin.set_fact:
+            dev_stow_user_homes: >-
+              {{ dev_stow_user_homes | default({})
+                 | combine({item.item:
+                            item.ansible_facts.getent_passwd[item.item][4]}) }}
+          loop: "{{ __dev_stow_user_passwd.results }}"
+          loop_control:
+            label: "{{ item.item }}"
+
+        # The contract of the dev role's stow path is that anything
+        # under ~/.config/nvim resolves into ~/dots/nvim/.config/nvim.
+        # Stow may achieve this two ways depending on the pre-existing
+        # state of the target:
+        #   (a) link ~/.config/nvim itself as a symlink (unfolded), or
+        #   (b) leave ~/.config/nvim as a real dir and link each leaf
+        #       file inside (tree-folded — the case `--adopt` produces
+        #       when stow absorbs files individually).
+        # Existence alone is not enough — a regression in the
+        # `--adopt` + `git restore` sequence (or a stow that no-ops
+        # because changed_when misfired) would leave a real dir with
+        # no symlinks inside, and still pass an existence-only check.
+        # The shell test below succeeds for both (a) and (b).
+        - name: Verify nvim is stow-linked into ~/dots/nvim for each user
+          ansible.builtin.shell: |
+            set -euo pipefail
+            target='{{ dev_stow_user_homes[item] }}/.config/nvim'
+            if [ -L "$target" ]; then
+              readlink "$target" | grep -q 'dots/nvim/.config/nvim'
+            elif [ -d "$target" ]; then
+              find "$target" -type l -lname '*dots/nvim*' \
+                -print -quit | grep -q .
+            else
+              echo "$target is neither a symlink nor a directory" >&2
+              exit 1
+            fi
+          register: __dev_stow_nvim_check
+          loop: "{{ dev_stow_users }}"
+          loop_control:
+            label: "{{ item }}"
+          changed_when: false

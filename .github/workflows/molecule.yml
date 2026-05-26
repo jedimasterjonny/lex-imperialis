@@ -38,7 +38,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        role: [motd]    # Add roles here as they're built. Keep alphabetical.
+        role: [common, dev, motd]    # Add roles here as they're built. Keep alphabetical.
     # Per-PR (or per-ref for push events) concurrency: same-PR retries cancel
     # the previous run; cross-PR runs proceed in parallel. Drops the previous
     # repo-wide hetzner-molecule cap because that was discarding queued runs

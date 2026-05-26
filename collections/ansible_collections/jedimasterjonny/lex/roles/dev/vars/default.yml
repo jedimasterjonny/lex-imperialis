@@ -1,0 +1,3 @@
+---
+# Fallback for distributions without a specific vars file. No extra repos.
+dev_extra_repos: []

@@ -1,0 +1,32 @@
+---
+# Leap doesn't ship incus in the default OSS repo. Two OBS projects are
+# needed:
+#   * Virtualization:containers — the canonical Leap source for incus itself.
+#   * network:utilities — provides `lego` (the ACME/Let's Encrypt Go client),
+#     which the Leap incus packaging declares as a hard dependency. It is
+#     not in the default repos and not in Virtualization:containers either.
+#
+# Both URLs template on distribution_version. Leap 16 uses bare-version
+# paths under these projects (unlike the openSUSE_Leap_15.x prefix
+# convention used for 15.x).
+dev_extra_repos:
+  - name: virtualization_containers
+    url: "https://download.opensuse.org/repositories/Virtualization:/containers/{{ ansible_facts['distribution_version'] }}/"
+  - name: network_utilities
+    url: "https://download.opensuse.org/repositories/network:/utilities/{{ ansible_facts['distribution_version'] }}/"
+
+# Leap ships its Python bindings under interpreter-versioned names
+# (python311-libvirt-python, python311-lxml on Leap 16) rather than the
+# unversioned `python3-*` names Tumbleweed exposes via virtual provides.
+# Template the names on the target's actual python interpreter so an
+# in-place Leap upgrade that flips the system python (e.g. 3.11 → 3.13)
+# stays resolvable without further editing here.
+__dev_libvirt_python_pkg_prefix: "python{{ ansible_facts['python']['version']['major'] }}{{ ansible_facts['python']['version']['minor'] }}"
+dev_libvirt_packages:
+  - guestfs-tools
+  - libguestfs
+  - libvirt
+  - mkisofs
+  - "{{ __dev_libvirt_python_pkg_prefix }}-libvirt-python"
+  - "{{ __dev_libvirt_python_pkg_prefix }}-lxml"
+  - virt-install

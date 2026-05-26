@@ -1,0 +1,24 @@
+---
+# Extra-vars referenced via @../stow-vars.yml from the default and ci
+# molecule scenarios for the common role.
+#
+# Stow user overrides have to land at extra-vars precedence (22), not
+# inventory.group_vars (~5), because verify.yml loads role defaults via
+# `vars_files: - ../defaults/main.yml` (precedence ~14) which would
+# otherwise shadow the override back to the empty default — the converge
+# play would stow against root, but the verify play would see
+# `common_stow_users == []`, the `when:` gate on the assertion block
+# would be false, and the dots-repo assertion would never run.
+#
+# root is used because root's home is /root (not /home/root), so the
+# role's getent-based home resolution is exercised end to end without
+# needing a synthetic user.
+#
+# common_dots_repo has no role default — the role asserts it's set when
+# common_stow_users is non-empty. Molecule uses the maintainer's public
+# repo as a test fixture; it satisfies the assert and provides the
+# bash-suse stow package.
+
+common_dots_repo: https://github.com/jedimasterjonny/dots
+common_stow_users:
+  - root
