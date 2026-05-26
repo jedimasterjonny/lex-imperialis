@@ -1,10 +1,31 @@
 ---
 - name: Verify — assert on dev role outcome
   hosts: all
-  gather_facts: false
+  # Facts are required so the include_vars below can key on
+  # ansible_facts['distribution']; without this, the libvirt package check
+  # below would see only the Tumbleweed virtual-provide names from
+  # defaults/ and fail on Leap (which exposes versioned names instead).
+  gather_facts: true
   vars_files:
     - ../defaults/main.yml
   tasks:
+    # Mirror tasks/main.yml: load vars/<distribution>.yml so verify sees the
+    # same dev_libvirt_packages override the role itself installed (e.g.
+    # python311-libvirt-python on Leap). vars_files above only loads
+    # defaults; without this include_vars, verify would assert on
+    # Tumbleweed-only virtual-provide names that Leap doesn't expose, so
+    # zypper check_mode would report changed=true and verify would fail.
+    - name: Load distribution-specific variables
+      ansible.builtin.include_vars:
+        file: "{{ lookup('ansible.builtin.first_found', params) }}"
+      vars:
+        params:
+          files:
+            - "{{ ansible_facts['distribution'] | replace(' ', '_') }}.yml"
+            - default.yml
+          paths:
+            - "{{ playbook_dir }}/../vars"
+
     # Verify by re-applying state in check mode and asserting nothing would
     # change. The zypper module resolves virtual provides (e.g. python3-lxml
     # → python313-lxml) natively, which package_facts' actual-name keys do
