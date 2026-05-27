@@ -1,7 +1,0 @@
----
-minor_changes:
-  - "common - add the ``common_users`` variable so the role ensures
-    the configured operator accounts exist on the host. Each entry
-    takes ``name`` (required) and optional ``uid``, ``group``, and
-    ``shell``. Empty by default — consumers that provision accounts
-    out of band keep their current behaviour."
