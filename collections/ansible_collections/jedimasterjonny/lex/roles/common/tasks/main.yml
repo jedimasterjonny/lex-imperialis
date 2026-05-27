@@ -1,4 +1,19 @@
 ---
+# Run first: any downstream task that becomes one of these users
+# would fail with "user does not exist" if the account hadn't been
+# created yet. Defaults to an empty list, so the task is a noop for
+# consumers that provision accounts out of band.
+- name: Ensure configured users exist
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    uid: "{{ item.uid | default(omit) }}"
+    group: "{{ item.group | default(omit) }}"
+    shell: "{{ item.shell | default(omit) }}"
+    state: present
+  loop: "{{ common_users }}"
+  loop_control:
+    label: "{{ item.name }}"
+
 - name: Install baseline packages
   community.general.zypper:
     name: "{{ common_packages }}"

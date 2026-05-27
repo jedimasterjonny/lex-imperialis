@@ -4,6 +4,9 @@
   gather_facts: false
   vars_files:
     - ../defaults/main.yml
+    # Loaded after the role defaults so its common_users value wins
+    # — see the file header for the precedence rationale.
+    - users-vars.yml
   tasks:
     # Verify by re-applying state in check mode and asserting nothing would
     # change. The zypper module resolves virtual provides (e.g. python3 →
@@ -24,6 +27,26 @@
       check_mode: true
       register: __common_sshd_check
       failed_when: __common_sshd_check.changed
+
+    # Same pattern as the package and sshd checks: re-apply state in
+    # check mode and treat any reported change as a verification
+    # failure. ansible.builtin.user returns changed=True when the
+    # account is missing or any of the requested attributes diverge,
+    # so this catches both "user never created" and "uid/group/shell
+    # silently differ" regressions.
+    - name: Verify configured users exist with the requested attributes
+      ansible.builtin.user:
+        name: "{{ item.name }}"
+        uid: "{{ item.uid | default(omit) }}"
+        group: "{{ item.group | default(omit) }}"
+        shell: "{{ item.shell | default(omit) }}"
+        state: present
+      check_mode: true
+      register: __common_users_check
+      failed_when: __common_users_check.changed
+      loop: "{{ common_users }}"
+      loop_control:
+        label: "{{ item.name }}"
 
     - name: Verify dotfiles for operators
       when: common_stow_users | length > 0
