@@ -1,6 +1,14 @@
 ---
 # Default vars for jedimasterjonny.lex.common role.
 
+# Operator accounts to ensure exist on the host. Empty by default —
+# many consumers provision their accounts out of band (cloud-init,
+# image baking, …). Each entry is a dict; `name` is required;
+# `uid`/`group`/`shell` are optional and forwarded to
+# ansible.builtin.user (omitted attributes fall back to the module's
+# defaults).
+common_users: []
+
 # Packages installed on every Lex Imperialis host.
 common_packages:
   - htop

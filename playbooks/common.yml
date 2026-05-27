@@ -1,0 +1,12 @@
+---
+# Apply the jedimasterjonny.lex.common baseline to every host in the
+# inventory. Roles that have common as a meta-dep (e.g. dev) still
+# pull it in transitively; this play exists so a fresh inventory entry
+# gets the baseline without having to wire up a role-specific play
+# first.
+- name: Apply common baseline
+  hosts: all
+  become: true
+  gather_facts: true
+  roles:
+    - jedimasterjonny.lex.common

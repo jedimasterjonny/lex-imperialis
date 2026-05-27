@@ -2,5 +2,10 @@
 - name: Converge — apply jedimasterjonny.lex.common
   hosts: all
   gather_facts: false
+  vars_files:
+    # Exercises common_users at converge time. See the file header for
+    # why this is loaded via vars_files rather than molecule's
+    # extra-vars option.
+    - users-vars.yml
   roles:
     - jedimasterjonny.lex.common

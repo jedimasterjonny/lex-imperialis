@@ -1,9 +1,7 @@
 ---
-# Prerequisite: this play needs the `jonny` account in place — the common
-# role (a meta-dep of dev) clones ~/dots under become_user: jonny, which
-# fails fast with "user does not exist" if the account is missing. A
-# pre_task below creates the account if absent; the `ansible` account is
-# assumed pre-existing (provisioned out of band).
+# The `ansible` account is assumed pre-existing (provisioned out of
+# band); `jonny` is created by the common role via common_users below
+# — see the role's defaults/main.yml for the contract.
 - name: Lab box bootstrap
   hosts: scholam
   become: true
@@ -28,6 +26,19 @@
     common_dots_repo: https://github.com/jedimasterjonny/dots
     common_stow_users:
       - jonny
+    # uid/group/shell are pinned so re-imaging the lab box always
+    # lands on the same identity. Without that, a post-install
+    # scriptlet from some other package could race in and take uid
+    # 1000 first, leaving jonny at 1001 — and any btrfs snapshot or
+    # NFS-mounted home restored later would then show files owned by
+    # an orphan uid. Group memberships granted by the dev role's
+    # Incus/libvirt blocks land on this account in the same play
+    # (append: true, so they're additive).
+    common_users:
+      - name: jonny
+        uid: 1000
+        group: users
+        shell: /bin/bash
 
   pre_tasks:
     - name: Sanity — we're running on openSUSE
@@ -52,25 +63,6 @@
       loop: "{{ dev_incus_images | default([]) }}"
       loop_control:
         label: "{{ item.alias }}"
-
-    # Must run before the role: common's clone task becomes jonny, which
-    # fails fast if the account is missing. Group memberships granted by
-    # the dev role's Incus/libvirt blocks land on this account in the same
-    # play (append: true, so they're additive).
-    #
-    # uid/group/shell are pinned so re-imaging the lab box always lands
-    # on the same identity. Without that, a post-install scriptlet from
-    # some other package could race in and take uid 1000 first, leaving
-    # jonny at 1001 — and any btrfs snapshot or NFS-mounted home
-    # restored later would then show files owned by an orphan uid.
-    - name: Ensure jonny account exists
-      ansible.builtin.user:
-        name: jonny
-        uid: 1000
-        group: users
-        shell: /bin/bash
-        create_home: true
-        state: present
 
   roles:
     - jedimasterjonny.lex.dev

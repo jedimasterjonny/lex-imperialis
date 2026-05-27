@@ -369,3 +369,18 @@ releases:
     - 0.5.1-release-summary.yml
     - dev-verify-load-distro-vars.yml
     release_date: '2026-05-26'
+  0.6.0:
+    changes:
+      minor_changes:
+      - "common - add the ``common_users`` variable so the role ensures the configured
+        operator accounts exist on the host. Each entry takes ``name`` (required)
+        and optional ``uid``, ``group``, and ``shell``. Empty by default \u2014 consumers
+        that provision accounts out of band keep their current behaviour."
+      release_summary: "Adds the ``common_users`` variable to the ``common`` role:
+        a list of\n``{name, uid?, group?, shell?}`` dicts, applied as the role's first\ntask
+        to ensure the configured operator accounts exist on the host.\nEmpty by default
+        \u2014 consumers that provision accounts out of band keep\ntheir current behaviour.\n"
+    fragments:
+    - 0.6.0-release-summary.yml
+    - common-users.yml
+    release_date: '2026-05-27'

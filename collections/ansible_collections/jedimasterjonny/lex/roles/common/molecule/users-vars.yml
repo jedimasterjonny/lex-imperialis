@@ -1,0 +1,21 @@
+---
+# Vars loaded by both converge.yml and verify.yml for the common
+# role's molecule scenarios. Held in its own file so common_users
+# stays decoupled from the stow fixtures in stow-vars.yml — the two
+# variables are independent features of the role.
+#
+# Loaded via play-level `vars_files:` (precedence 14) rather than
+# molecule's extra-vars option, because dict2args in molecule passes a
+# list value as a single subprocess argument and breaks the
+# multi-file form. In verify.yml this file is listed AFTER
+# defaults/main.yml so its common_users value wins the same-level
+# resolution.
+#
+# The uid is well above the default UID_MIN so it can't collide with
+# a baseline account in the test image.
+
+common_users:
+  - name: lex-test
+    uid: 4242
+    group: users
+    shell: /bin/bash
