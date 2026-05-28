@@ -31,14 +31,40 @@ permissions:
   contents: read
 
 jobs:
+  # Narrow the matrix to roles the PR actually touches (plus any role that
+  # transitively depends on a changed role via meta/main.yml). A change to a
+  # shared path (the workflow, shared Molecule scaffolding, dep manifests)
+  # forces every role to run. See .github/scripts/affected-roles.py.
+  detect:
+    name: Detect affected roles
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      matrix: ${{ steps.affected.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.14'
+      - run: pip install pyyaml
+      - id: affected
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python3 .github/scripts/affected-roles.py
+
   molecule:
     name: Molecule (${{ matrix.role }})
+    needs: detect
+    if: needs.detect.outputs.matrix != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        role: [common, dev, motd]    # Add roles here as they're built. Keep alphabetical.
+        role: ${{ fromJSON(needs.detect.outputs.matrix) }}
     # Per-PR (or per-ref for push events) concurrency: same-PR retries cancel
     # the previous run; cross-PR runs proceed in parallel. Drops the previous
     # repo-wide hetzner-molecule cap because that was discarding queued runs
