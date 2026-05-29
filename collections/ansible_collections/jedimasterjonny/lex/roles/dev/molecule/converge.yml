@@ -4,5 +4,12 @@
   # Facts are gathered because the role's first_found lookup keys on
   # ansible_facts['distribution'] to pick the right vars/ file.
   gather_facts: true
+  vars:
+    # dev meta-depends on common, which hardens sshd by default. dev's
+    # scenarios neither install ssh-audit nor assert on the sshd state, and
+    # the ci scenario provisions over root SSH — so leave the hardening
+    # (and its verification) to common's own scenarios and keep dev focused
+    # on dev's surface.
+    common_sshd_harden: false
   roles:
     - jedimasterjonny.lex.dev
