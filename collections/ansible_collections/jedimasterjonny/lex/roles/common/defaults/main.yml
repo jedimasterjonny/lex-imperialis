@@ -16,6 +16,7 @@ common_packages:
   - python3-rpm
   - stow
   - sudo
+  - tmux
   - vim
 
 # GNU stow dotfiles. When common_stow_users is non-empty, clones
