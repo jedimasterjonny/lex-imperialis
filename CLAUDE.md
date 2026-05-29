@@ -37,6 +37,8 @@ Pre-commit's `detect-private-key` and `check-added-large-files` are backstops, n
 
 ## Conventional commit prefixes
 
+Subjects use the scoped form **`type(scope): summary`**, where `scope` is the role or component the commit touches — e.g. `feat(common): add tmux to the baseline package set`, `fix(motd): …`, `chore(lint): …`. Omit the scope only for genuinely cross-cutting changes with no single subject (`chore: …`). The older two-colon `feat: common: …` form is retired.
+
 - **`feat:`** — anything that changes what ships in the collection (roles, playbooks, plugins, `galaxy.yml` content, `meta/runtime.yml`, antsibull config, collection README/LICENSE). Initial scaffolding of collection content is also `feat:`.
 - **`fix:`** — bug fix in collection content.
 - **`refactor:` / `docs:` / `test:`** — standard meanings, applied to collection content.
