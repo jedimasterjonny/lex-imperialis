@@ -1,0 +1,17 @@
+---
+# Internal to jedimasterjonny.lex.common — not part of the public API.
+# Preference-ordered KEX allowlist. tasks/main.yml intersects this with
+# `ssh -Q kex` at runtime, so OpenSSH builds silently drop algorithm
+# names they don't recognise instead of failing sshd_config validation.
+# Post-quantum hybrids first (mlkem768 / sntrup761), then modern ECDH;
+# classical DH is omitted. mlkem768x25519-sha256 is the only ML-KEM hybrid
+# OpenSSH ships (added in 9.9); there is no -sha512 ML-KEM spelling.
+# sntrup761 is listed under both names — the original @openssh.com-suffixed
+# spelling (OpenSSH 8.5+) and the unsuffixed spelling added later — so the
+# intersection picks up whichever the running build exposes.
+__common_sshd_kex_preferred:
+  - mlkem768x25519-sha256
+  - sntrup761x25519-sha512
+  - sntrup761x25519-sha512@openssh.com
+  - curve25519-sha256
+  - curve25519-sha256@libssh.org

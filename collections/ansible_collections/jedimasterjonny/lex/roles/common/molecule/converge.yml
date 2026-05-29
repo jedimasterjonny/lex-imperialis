@@ -7,5 +7,13 @@
     # why this is loaded via vars_files rather than molecule's
     # extra-vars option.
     - users-vars.yml
+  pre_tasks:
+    # ssh-audit is a test-time tool, not a runtime dependency of the
+    # role. Installing it here keeps the role itself unencumbered while
+    # giving verify.yml a binary to call.
+    - name: Install ssh-audit for verify step
+      community.general.zypper:
+        name: ssh-audit
+        state: present
   roles:
     - jedimasterjonny.lex.common

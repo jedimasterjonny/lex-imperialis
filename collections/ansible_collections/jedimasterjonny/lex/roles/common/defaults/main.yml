@@ -36,3 +36,12 @@ common_dots_repo: null
 common_stow_packages:
   - bash-suse
 common_stow_users: []
+
+# Apply the sshd hardening drop-in
+# (/etc/ssh/sshd_config.d/00-lex-hardening.conf): modern-only crypto
+# allowlists, key-only authentication, and key/cert-based root login
+# (PermitRootLogin prohibit-password). Because authentication is
+# publickey-only with no password fallback, every account reachable over
+# SSH must already have an ~/.ssh/authorized_keys before this is enabled —
+# a freshly created common_users account with no key will be locked out.
+common_sshd_harden: true

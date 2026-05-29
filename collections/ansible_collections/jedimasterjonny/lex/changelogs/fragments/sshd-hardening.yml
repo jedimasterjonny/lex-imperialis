@@ -1,0 +1,19 @@
+---
+minor_changes:
+  - >-
+    common - harden sshd via a managed drop-in at
+    /etc/ssh/sshd_config.d/00-lex-hardening.conf (named 00-* so it sorts
+    first in sshd_config.d/ and stays authoritative under sshd's
+    first-match-wins rule), gated by common_sshd_harden (default true).
+    Restricts KexAlgorithms, Ciphers, MACs, and the HostKey/Pubkey/CA
+    signature algorithms to modern AEAD / ETM / post-quantum-hybrid /
+    Ed25519 + RSA-SHA2 choices; enforces key-only authentication
+    (PasswordAuthentication no, KbdInteractiveAuthentication no,
+    AuthenticationMethods publickey) with key- or certificate-based root
+    login (PermitRootLogin prohibit-password); and sets LogLevel VERBOSE. The
+    effective KexAlgorithms list is computed at task time by intersecting a
+    preference allowlist with ``ssh -Q kex``, so older OpenSSH builds silently
+    drop algorithms they do not recognise. Generates any missing default host
+    keys first so the restricted HostKeyAlgorithms always has an Ed25519 key
+    to offer, ensures the drop-in's Include leads sshd_config, and asserts the
+    result against ``sshd -T``.

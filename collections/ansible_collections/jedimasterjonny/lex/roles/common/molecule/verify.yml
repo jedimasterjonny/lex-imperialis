@@ -48,6 +48,65 @@
       loop_control:
         label: "{{ item.name }}"
 
+    - name: Capture effective sshd config
+      ansible.builtin.command: sshd -T
+      register: __common_sshd_effective
+      changed_when: false
+
+    # sshd -T lower-cases its output, so the assertions normalise on lower.
+    # KEX is checked against the parsed algorithm list rather than the
+    # raw line so a future false-positive substring collision can't mask
+    # a regression.
+    - name: Assert effective sshd settings match the hardening profile
+      ansible.builtin.assert:
+        that:
+          # sshd -T renders prohibit-password as its deprecated alias
+          # 'without-password' on some builds (Leap 16); accept either.
+          - __common_sshd_lines | select('match', '^permitrootlogin (prohibit-password|without-password)$') | list | length > 0
+          - "'passwordauthentication no' in __common_sshd_lines"
+          - "'kbdinteractiveauthentication no' in __common_sshd_lines"
+          - "'authenticationmethods publickey' in __common_sshd_lines"
+          - "'permitemptypasswords no' in __common_sshd_lines"
+          - "'loglevel verbose' in __common_sshd_lines"
+          # At least one post-quantum hybrid is offered. The exact list
+          # differs per distro (Tumbleweed has both mlkem spellings; Leap
+          # may have only sntrup761), so we check the family.
+          - __common_sshd_kex_algs | select('match', '^(mlkem768|sntrup761)') | list | length > 0
+          # Family match so we accept both curve25519-sha256 and its
+          # @libssh.org-suffixed sibling.
+          - __common_sshd_kex_algs | select('match', '^curve25519-sha256') | list | length > 0
+          # Classical DH must be absent.
+          - __common_sshd_kex_algs | select('match', '^diffie-hellman-group') | list | length == 0
+          - >-
+            'ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com'
+            in __common_sshd_lines
+          - >-
+            'macs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,umac-128-etm@openssh.com'
+            in __common_sshd_lines
+          - "'hostkeyalgorithms ssh-ed25519,rsa-sha2-512,rsa-sha2-256' in __common_sshd_lines"
+      vars:
+        __common_sshd_lines: "{{ __common_sshd_effective.stdout_lines | map('lower') | list }}"
+        __common_sshd_kex_line: >-
+          {{ __common_sshd_lines | select('match', '^kexalgorithms ') | first }}
+        __common_sshd_kex_algs: "{{ __common_sshd_kex_line.split(' ', 1)[1].split(',') }}"
+
+    # ssh-audit exits non-zero when any finding is warn-tier or worse.
+    # Captured rather than gated via failed_when so the failure message
+    # carries the full report.
+    - name: Run ssh-audit against loopback sshd
+      ansible.builtin.command: ssh-audit --skip-rate-test 127.0.0.1
+      register: __common_ssh_audit
+      changed_when: false
+      failed_when: false
+
+    - name: Assert ssh-audit reports no fail/warn-tier findings
+      ansible.builtin.assert:
+        that:
+          - __common_ssh_audit.rc == 0
+        fail_msg: |
+          ssh-audit reported issues:
+          {{ __common_ssh_audit.stdout }}
+
     - name: Verify dotfiles for operators
       when: common_stow_users | length > 0
       block:
