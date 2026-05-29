@@ -2,37 +2,57 @@
 
 **Topics**
 
-- <a href="#v0-6-0">v0\.6\.0</a>
+- <a href="#v0-7-0">v0\.7\.0</a>
     - <a href="#release-summary">Release Summary</a>
     - <a href="#minor-changes">Minor Changes</a>
-- <a href="#v0-5-1">v0\.5\.1</a>
+- <a href="#v0-6-0">v0\.6\.0</a>
     - <a href="#release-summary-1">Release Summary</a>
+    - <a href="#minor-changes-1">Minor Changes</a>
+- <a href="#v0-5-1">v0\.5\.1</a>
+    - <a href="#release-summary-2">Release Summary</a>
     - <a href="#bugfixes">Bugfixes</a>
 - <a href="#v0-5-0">v0\.5\.0</a>
-    - <a href="#release-summary-2">Release Summary</a>
-    - <a href="#minor-changes-1">Minor Changes</a>
+    - <a href="#release-summary-3">Release Summary</a>
+    - <a href="#minor-changes-2">Minor Changes</a>
     - <a href="#breaking-changes--porting-guide">Breaking Changes / Porting Guide</a>
     - <a href="#bugfixes-1">Bugfixes</a>
 - <a href="#v0-4-0">v0\.4\.0</a>
-    - <a href="#release-summary-3">Release Summary</a>
-    - <a href="#minor-changes-2">Minor Changes</a>
+    - <a href="#release-summary-4">Release Summary</a>
+    - <a href="#minor-changes-3">Minor Changes</a>
     - <a href="#bugfixes-2">Bugfixes</a>
 - <a href="#v0-3-1">v0\.3\.1</a>
-    - <a href="#release-summary-4">Release Summary</a>
+    - <a href="#release-summary-5">Release Summary</a>
     - <a href="#bugfixes-3">Bugfixes</a>
 - <a href="#v0-3-0">v0\.3\.0</a>
-    - <a href="#release-summary-5">Release Summary</a>
-    - <a href="#minor-changes-3">Minor Changes</a>
-- <a href="#v0-2-0">v0\.2\.0</a>
     - <a href="#release-summary-6">Release Summary</a>
     - <a href="#minor-changes-4">Minor Changes</a>
-- <a href="#v0-1-0">v0\.1\.0</a>
+- <a href="#v0-2-0">v0\.2\.0</a>
     - <a href="#release-summary-7">Release Summary</a>
+    - <a href="#minor-changes-5">Minor Changes</a>
+- <a href="#v0-1-0">v0\.1\.0</a>
+    - <a href="#release-summary-8">Release Summary</a>
+
+<a id="v0-7-0"></a>
+## v0\.7\.0
+
+<a id="release-summary"></a>
+### Release Summary
+
+Adds sshd hardening to the common role\: a managed drop\-in that restricts
+SSH to modern post\-quantum\-hybrid / AEAD / ETM algorithms and Ed25519 \+
+RSA\-SHA2 keys\, enforces key\-only authentication with key\-based root login\,
+generates any missing host keys\, and verifies the result with <code>sshd \-T</code>\.
+Gated by common\_sshd\_harden \(default true\)\.
+
+<a id="minor-changes"></a>
+### Minor Changes
+
+* common \- harden sshd via a managed drop\-in at /etc/ssh/sshd\_config\.d/00\-lex\-hardening\.conf \(named 00\-\* so it sorts first in sshd\_config\.d/ and stays authoritative under sshd\'s first\-match\-wins rule\)\, gated by common\_sshd\_harden \(default true\)\. Restricts KexAlgorithms\, Ciphers\, MACs\, and the HostKey/Pubkey/CA signature algorithms to modern AEAD / ETM / post\-quantum\-hybrid / Ed25519 \+ RSA\-SHA2 choices\; enforces key\-only authentication \(PasswordAuthentication no\, KbdInteractiveAuthentication no\, AuthenticationMethods publickey\) with key\- or certificate\-based root login \(PermitRootLogin prohibit\-password\)\; and sets LogLevel VERBOSE\. The effective KexAlgorithms list is computed at task time by intersecting a preference allowlist with <code>ssh \-Q kex</code>\, so older OpenSSH builds silently drop algorithms they do not recognise\. Generates any missing default host keys first so the restricted HostKeyAlgorithms always has an Ed25519 key to offer\, ensures the drop\-in\'s Include leads sshd\_config\, and asserts the result against <code>sshd \-T</code>\.
 
 <a id="v0-6-0"></a>
 ## v0\.6\.0
 
-<a id="release-summary"></a>
+<a id="release-summary-1"></a>
 ### Release Summary
 
 Adds the <code>common\_users</code> variable to the <code>common</code> role\: a list of
@@ -41,7 +61,7 @@ task to ensure the configured operator accounts exist on the host\.
 Empty by default — consumers that provision accounts out of band keep
 their current behaviour\.
 
-<a id="minor-changes"></a>
+<a id="minor-changes-1"></a>
 ### Minor Changes
 
 * common \- add the <code>common\_users</code> variable so the role ensures the configured operator accounts exist on the host\. Each entry takes <code>name</code> \(required\) and optional <code>uid</code>\, <code>group</code>\, and <code>shell</code>\. Empty by default — consumers that provision accounts out of band keep their current behaviour\.
@@ -49,7 +69,7 @@ their current behaviour\.
 <a id="v0-5-1"></a>
 ## v0\.5\.1
 
-<a id="release-summary-1"></a>
+<a id="release-summary-2"></a>
 ### Release Summary
 
 Patch release fixing the dev role\'s molecule verify on openSUSE Leap\.
@@ -68,7 +88,7 @@ the ci scenario\)\.
 <a id="v0-5-0"></a>
 ## v0\.5\.0
 
-<a id="release-summary-2"></a>
+<a id="release-summary-3"></a>
 ### Release Summary
 
 Review\-driven hardening pass\. Drops the maintainer\-personal default
@@ -79,7 +99,7 @@ molecule verify path \(preseed shape assert\, boundary\-anchored
 profile checks\, profile name read from preseed\)\. Also adds
 galaxy\_info\.platforms so Galaxy consumers can filter by distro\.
 
-<a id="minor-changes-1"></a>
+<a id="minor-changes-2"></a>
 ### Minor Changes
 
 * common\, dev \- declare the openSUSE platform in galaxy\_info\.platforms so consumers browsing Galaxy can filter by distro\. The roles call community\.general\.zypper unconditionally\, so non\-SUSE users can\'t consume them\; the metadata now reflects that\.
@@ -103,7 +123,7 @@ galaxy\_info\.platforms so Galaxy consumers can filter by distro\.
 <a id="v0-4-0"></a>
 ## v0\.4\.0
 
-<a id="release-summary-3"></a>
+<a id="release-summary-4"></a>
 ### Release Summary
 
 Robustness pass on the common and dev roles\, addressing follow\-up review
@@ -119,7 +139,7 @@ across distribution upgrades\, the Tumbleweed qcow2 inheriting
 <code>root\:libvirt</code> from its parent dir\'s setgid\, and <code>stow</code>\'s
 <code>changed\_when</code> anchored on stderr line shape\.
 
-<a id="minor-changes-2"></a>
+<a id="minor-changes-3"></a>
 ### Minor Changes
 
 * dev \- document the always\-quote\-strings rule on <code>dev\_incus\_preseed</code> so overrides like <code>ipv4\.dhcp\: yes</code> don\'t get silently bool\-coerced by <code>to\_nice\_yaml</code> and rejected \(or misinterpreted\) by <code>incus admin init \-\-preseed</code>\.
@@ -139,7 +159,7 @@ across distribution upgrades\, the Tumbleweed qcow2 inheriting
 <a id="v0-3-1"></a>
 ## v0\.3\.1
 
-<a id="release-summary-4"></a>
+<a id="release-summary-5"></a>
 ### Release Summary
 
 Patch release driven by code\-review findings against 0\.3\.0\. Fixes the
@@ -169,12 +189,12 @@ before granting privileged groups\.
 <a id="v0-3-0"></a>
 ## v0\.3\.0
 
-<a id="release-summary-5"></a>
+<a id="release-summary-6"></a>
 ### Release Summary
 
 Initial release of two roles\: <code>common</code> provides the baseline package set plus sshd\; <code>dev</code> adds developer and Ansible\-author tooling with gated Incus and libvirt/KVM host configuration \(<code>dev\_configure\_incus\_host</code>\, <code>dev\_configure\_libvirt\_host</code>\) and GNU stow dotfile management for configured users\.
 
-<a id="minor-changes-3"></a>
+<a id="minor-changes-4"></a>
 ### Minor Changes
 
 * common \- add <code>common\_stow\_users</code> \(default <code>\[\]</code>\)\. When non\-empty\, clones <code>common\_dots\_repo</code> \(default <code>https\://github\.com/jedimasterjonny/dots</code>\) to <code>\~/dots</code> for each user and stows <code>common\_stow\_packages</code> \(default <code>\[bash\-suse\]</code>\) via <code>stow \-\-override\=\'\.\*\'</code> \(overwriting any pre\-existing target files\)\.
@@ -195,13 +215,13 @@ Initial release of two roles\: <code>common</code> provides the baseline package
 <a id="v0-2-0"></a>
 ## v0\.2\.0
 
-<a id="release-summary-6"></a>
+<a id="release-summary-7"></a>
 ### Release Summary
 
 First role release\: ships the motd role with a default Molecule
 scenario backed by a Tier\-1 \(Incus\) test pipeline\.
 
-<a id="minor-changes-4"></a>
+<a id="minor-changes-5"></a>
 ### Minor Changes
 
 * expand the collection README with a requirements line\, a roles table\, a Galaxy install snippet\, and a pointer to the project repository\.
@@ -210,7 +230,7 @@ scenario backed by a Tier\-1 \(Incus\) test pipeline\.
 <a id="v0-1-0"></a>
 ## v0\.1\.0
 
-<a id="release-summary-7"></a>
+<a id="release-summary-8"></a>
 ### Release Summary
 
 Initial scaffolding release of the <code>jedimasterjonny\.lex</code> collection\.

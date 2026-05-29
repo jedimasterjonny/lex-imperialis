@@ -48,6 +48,100 @@
       loop_control:
         label: "{{ item.name }}"
 
+    - name: Capture effective sshd config
+      ansible.builtin.command: sshd -T
+      register: __common_sshd_effective
+      changed_when: false
+
+    # Re-discover what this OpenSSH build supports so the post-quantum
+    # assertions can be capability-gated rather than distro-guessed: if the
+    # build offers a PQ family, the hardened config must offer it too.
+    - name: Discover OpenSSH-supported KEX algorithms
+      ansible.builtin.command: ssh -Q kex
+      register: __common_supported_kex
+      changed_when: false
+
+    # sshd -T lower-cases its output, so the assertions normalise on lower.
+    # Crypto lists are parsed into ordered lists and compared element-wise:
+    # a reorder or truncation surfaces as a list diff rather than a bare
+    # "string not found", while order — which is negotiation preference —
+    # stays load-bearing.
+    - name: Assert effective sshd settings match the hardening profile
+      ansible.builtin.assert:
+        that:
+          # sshd -T renders prohibit-password as its deprecated alias
+          # 'without-password' on some builds (Leap 16); accept either.
+          - __common_sshd_lines | select('match', '^permitrootlogin (prohibit-password|without-password)$') | list | length > 0
+          - "'passwordauthentication no' in __common_sshd_lines"
+          - "'kbdinteractiveauthentication no' in __common_sshd_lines"
+          - "'authenticationmethods publickey' in __common_sshd_lines"
+          - "'permitemptypasswords no' in __common_sshd_lines"
+          - "'loglevel verbose' in __common_sshd_lines"
+          # Capability-gated: if the build supports a PQ family it must be
+          # offered (catches a regression that stops offering a still-
+          # supported algorithm), but a build that genuinely lacks one (an
+          # older Leap OpenSSH without mlkem) is not penalised.
+          - >-
+            ('mlkem768x25519-sha256' not in __common_supported_kex.stdout_lines)
+            or ('mlkem768x25519-sha256' in __common_sshd_kex_algs)
+          - >-
+            (__common_supported_kex.stdout_lines | select('match', '^sntrup761') | list | length == 0)
+            or (__common_sshd_kex_algs | select('match', '^sntrup761') | list | length > 0)
+          # ...and at least one PQ hybrid is actually in force.
+          - __common_sshd_kex_algs | select('match', '^(mlkem768|sntrup761)') | list | length > 0
+          # curve25519 (either spelling) present; classical DH absent.
+          - __common_sshd_kex_algs | select('match', '^curve25519-sha256') | list | length > 0
+          - __common_sshd_kex_algs | select('match', '^diffie-hellman-group') | list | length == 0
+          - __common_sshd_ciphers == ['chacha20-poly1305@openssh.com', 'aes256-gcm@openssh.com', 'aes128-gcm@openssh.com']
+          - >-
+            __common_sshd_macs == ['hmac-sha2-512-etm@openssh.com', 'hmac-sha2-256-etm@openssh.com',
+                                   'umac-128-etm@openssh.com']
+          - __common_sshd_hostkeyalgs == ['ssh-ed25519', 'rsa-sha2-512', 'rsa-sha2-256']
+      vars:
+        __common_sshd_lines: "{{ __common_sshd_effective.stdout_lines | map('lower') | list }}"
+        # Each crypto list is parsed from its sshd -T line; `| list | first
+        # | default('')` keeps a missing line from raising "sequence was
+        # empty" before the assert can report it cleanly.
+        __common_sshd_kex_line: >-
+          {{ __common_sshd_lines | select('match', '^kexalgorithms ') | list | first | default('') }}
+        __common_sshd_kex_algs: >-
+          {{ __common_sshd_kex_line.split(' ', 1)[1].split(',') if __common_sshd_kex_line else [] }}
+        __common_sshd_ciphers_line: >-
+          {{ __common_sshd_lines | select('match', '^ciphers ') | list | first | default('') }}
+        __common_sshd_ciphers: >-
+          {{ __common_sshd_ciphers_line.split(' ', 1)[1].split(',') if __common_sshd_ciphers_line else [] }}
+        __common_sshd_macs_line: >-
+          {{ __common_sshd_lines | select('match', '^macs ') | list | first | default('') }}
+        __common_sshd_macs: >-
+          {{ __common_sshd_macs_line.split(' ', 1)[1].split(',') if __common_sshd_macs_line else [] }}
+        __common_sshd_hostkeyalgs_line: >-
+          {{ __common_sshd_lines | select('match', '^hostkeyalgorithms ') | list | first | default('') }}
+        __common_sshd_hostkeyalgs: >-
+          {{ __common_sshd_hostkeyalgs_line.split(' ', 1)[1].split(',') if __common_sshd_hostkeyalgs_line else [] }}
+
+    # ssh-audit exit codes: 0 good, 2 warning, 3 failure (1 is a connection
+    # error). Warn-tier findings flag properties this role does not manage —
+    # RSA host-key bit-size, /etc/ssh/moduli age — so an otherwise-clean
+    # image with, say, a 2048-bit host key would trip a strict rc == 0 gate
+    # for reasons outside the hardening profile. Gate on FAILURE-tier only:
+    # rc 0 or 2 passes, a broken algorithm (rc 3) or a connection error
+    # fails. The explicit sshd -T assertions above already pin the managed
+    # algorithm policy precisely. Captured rather than gated via failed_when
+    # so the message carries the full report.
+    - name: Run ssh-audit against loopback sshd
+      ansible.builtin.command: ssh-audit --skip-rate-test 127.0.0.1
+      register: __common_ssh_audit
+      changed_when: false
+      failed_when: false
+
+    - name: Assert ssh-audit reports no failure-tier findings
+      ansible.builtin.assert:
+        that:
+          - __common_ssh_audit.rc in [0, 2]
+        fail_msg: |
+          ssh-audit reported a failure-tier finding (rc={{ __common_ssh_audit.rc }}):
+          {{ __common_ssh_audit.stdout }}
+
     - name: Verify dotfiles for operators
       when: common_stow_users | length > 0
       block:

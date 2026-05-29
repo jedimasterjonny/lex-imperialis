@@ -25,6 +25,190 @@
     enabled: true
     state: started
 
+- name: Apply sshd hardening
+  when: common_sshd_harden
+  block:
+    # HostKeyAlgorithms in the drop-in offers only Ed25519 and RSA. On an
+    # image whose only host key is ECDSA — or one with no host keys yet (a
+    # cloud image that defers key generation) — sshd would have nothing to
+    # offer and the next connection would fail host-key negotiation: a green
+    # run that bricks SSH. ssh-keygen -A generates any missing default host
+    # keys (Ed25519 included) and `creates:` keeps it idempotent; this also
+    # guarantees the sshd -t/-T checks below have a key to load.
+    - name: Ensure default host keys exist (Ed25519 for the hardened algorithms)
+      ansible.builtin.command:
+        cmd: ssh-keygen -A
+        creates: /etc/ssh/ssh_host_ed25519_key
+      notify: Reload sshd
+
+    # The drop-in is only honoured if some sshd_config Includes the
+    # directory. openSUSE's stock layout depends on the OpenSSH build:
+    # vendor configs at /usr/etc/ssh/sshd_config (Tumbleweed 10.x) ship
+    # the Include directive already; Leap 16's /etc/ssh/sshd_config
+    # override does not. Touch only the /etc copy when it exists — never
+    # the /usr/etc vendor file — and insert at BOF so first-match-wins
+    # makes our drop-in beat anything later in the main config.
+    - name: Probe for an /etc-level sshd_config override
+      ansible.builtin.stat:
+        path: /etc/ssh/sshd_config
+      register: __common_sshd_config_stat
+
+    # The drop-in only wins if its Include is the FIRST occurrence in the
+    # resolved config: sshd is first-match-wins, so an Include that lands
+    # after a directive in the main file lets the main file win. A plain
+    # lineinfile is not enough — when its regexp matches an existing Include
+    # anywhere (e.g. one a previous admin appended at EOF) it edits that line
+    # IN PLACE and ignores insertbefore, so the drop-in would be read last
+    # and silently lose. Slurp the file and only rewrite when the canonical
+    # Include is not already the leading directive.
+    - name: Read /etc/ssh/sshd_config to check Include placement
+      ansible.builtin.slurp:
+        src: /etc/ssh/sshd_config
+      register: __common_sshd_config_raw
+      when: __common_sshd_config_stat.stat.exists
+
+    # Reduce to the first directive (skipping comments and blanks); the
+    # block below keys its when: on this, so it stays a plain string rather
+    # than a templated bool that could stringify to a truthy "False".
+    - name: Find the first directive in /etc/ssh/sshd_config
+      ansible.builtin.set_fact:
+        __common_sshd_first_directive: >-
+          {{ (__common_sshd_config_raw.content | b64decode).splitlines()
+             | map('trim') | reject('match', '^#') | reject('match', '^$')
+             | list | first | default('') }}
+      when: __common_sshd_config_stat.stat.exists
+
+    # Gated on misplacement so re-runs are a no-op (idempotence): strip any
+    # existing Include of the drop-in dir — wherever it sits, whatever its
+    # glob — then insert the canonical `*.conf` Include at BOF. Splitting the
+    # remove from the add is what lets insertbefore actually fire: the add's
+    # line no longer matches anything, so lineinfile honours BOF.
+    - name: Lead /etc/ssh/sshd_config with the drop-in Include
+      when:
+        - __common_sshd_config_stat.stat.exists
+        - not (__common_sshd_first_directive is match('Include\s+/etc/ssh/sshd_config\.d/\*\.conf$'))
+      block:
+        - name: Strip any stray drop-in Include
+          ansible.builtin.lineinfile:
+            path: /etc/ssh/sshd_config
+            regexp: '^\s*Include\s+/etc/ssh/sshd_config\.d/'
+            state: absent
+            validate: 'sshd -t -f %s'
+          notify: Reload sshd
+
+        - name: Insert the drop-in Include at the top
+          ansible.builtin.lineinfile:
+            path: /etc/ssh/sshd_config
+            line: 'Include /etc/ssh/sshd_config.d/*.conf'
+            insertbefore: BOF
+            validate: 'sshd -t -f %s'
+          notify: Reload sshd
+
+    # Intersect the preferred KEX allowlist with what the running sshd
+    # actually supports. Older OpenSSH (e.g. pre-9.9, no mlkem) simply
+    # drops algorithms it doesn't recognise; newer OpenSSH picks them up
+    # the next time __common_sshd_kex_preferred widens. Avoids the
+    # per-distro hardcoded lists that go stale with image snapshots.
+    # `ssh -Q kex` rather than `sshd -Q kex` because sshd dropped `-Q` in
+    # OpenSSH 10. The client and server share the crypto code, so the
+    # client's list is the same as what sshd will accept.
+    - name: Discover OpenSSH-supported KEX algorithms
+      ansible.builtin.command: ssh -Q kex
+      register: __common_sshd_supported_kex
+      changed_when: false
+      check_mode: false
+
+    # `select('in', …)` rather than `intersect`: intersect reduces to
+    # `list(set(a) & set(b))`, whose ordering is hash-randomised, so the
+    # rendered KexAlgorithms line would shuffle on every run and the
+    # template would never settle. select preserves the order of
+    # __common_sshd_kex_preferred so output is stable. Set as a fact so
+    # the assert below and the template task see the same value.
+    - name: Compute the effective KEX allowlist
+      ansible.builtin.set_fact:
+        __common_sshd_kex_effective: >-
+          {{ __common_sshd_kex_preferred
+             | select('in', __common_sshd_supported_kex.stdout_lines)
+             | list }}
+
+    # Empty intersection means none of our preferred algorithms are in
+    # the running OpenSSH. The template would render `KexAlgorithms `
+    # (empty value) and `sshd -t` would reject it during validate, but
+    # the failure message would be terse. Fail here with a clear pointer
+    # back to vars/main.yml instead.
+    - name: Assert at least one preferred KEX algorithm is supported
+      ansible.builtin.assert:
+        that:
+          - __common_sshd_kex_effective | length > 0
+        fail_msg: >-
+          None of the algorithms in __common_sshd_kex_preferred
+          (roles/common/vars/main.yml) are supported by this host's
+          OpenSSH build. Widen the allowlist or update the host.
+
+    # Named 00-* so it sorts first in sshd_config.d/ and wins under sshd's
+    # first-match-wins rule — otherwise a cloud-init drop-in
+    # (50-cloud-init.conf, sorts before 50-*) would set PermitRootLogin /
+    # PasswordAuthentication ahead of us and our hardening would silently
+    # lose. validate runs `sshd -t -f` against the candidate file before
+    # ansible swaps it into place, so a typo or unknown algo fails the task
+    # without ever touching the live config.
+    - name: Install hardened sshd drop-in
+      ansible.builtin.template:
+        src: 00-lex-hardening.conf.j2
+        dest: /etc/ssh/sshd_config.d/00-lex-hardening.conf
+        owner: root
+        group: root
+        mode: '0644'
+        validate: 'sshd -t -f %s'
+      notify: Reload sshd
+
+    # `sshd -t` accepted the file in isolation, but that does not prove the
+    # drop-in is actually winning. `sshd -T` re-resolves the whole Include
+    # chain (from /etc and /usr/etc) and prints the effective directives, so
+    # we assert that our load-bearing values are the ones in force.
+    - name: Capture the resolved sshd config to confirm the drop-in is loaded
+      ansible.builtin.command: sshd -T
+      register: __common_sshd_resolved
+      changed_when: false
+      check_mode: false
+
+    # Assert on the values the drop-in is meant to enforce — not a passive
+    # canary. This fails loudly in both silent-failure modes: no file in the
+    # chain Includes /etc/ssh/sshd_config.d/ (the values fall back to sshd
+    # defaults), or a higher-precedence directive shadows the drop-in (the
+    # main file set these before our Include is read). Comparing the full
+    # KexAlgorithms list to the computed allowlist catches a reordered or
+    # truncated negotiation that a substring check would miss.
+    - name: Assert the hardening drop-in is the effective sshd config
+      ansible.builtin.assert:
+        that:
+          # sshd -T renders prohibit-password as its deprecated-but-identical
+          # alias 'without-password' on some builds (e.g. Leap 16) and as
+          # 'prohibit-password' on newer ones (Tumbleweed); accept either.
+          - __common_sshd_resolved_lines | select('match', '^permitrootlogin (prohibit-password|without-password)$') | list | length > 0
+          - "'passwordauthentication no' in __common_sshd_resolved_lines"
+          - "'kbdinteractiveauthentication no' in __common_sshd_resolved_lines"
+          - __common_sshd_resolved_kex == __common_sshd_kex_effective
+        fail_msg: >-
+          Installed /etc/ssh/sshd_config.d/00-lex-hardening.conf but the
+          effective sshd config does not reflect it. Either no file in the
+          sshd_config chain Includes /etc/ssh/sshd_config.d/, or a
+          higher-precedence directive shadows the drop-in (an earlier-sorting
+          file in sshd_config.d/, or a directive ahead of the Include in the
+          main config). Resolved load-bearing values were:
+          {{ __common_sshd_resolved_lines
+             | select('match', '^(permitrootlogin|passwordauthentication|kbdinteractiveauthentication|kexalgorithms) ')
+             | list }}
+      vars:
+        __common_sshd_resolved_lines: >-
+          {{ __common_sshd_resolved.stdout_lines | map('lower') | list }}
+        __common_sshd_resolved_kex_line: >-
+          {{ __common_sshd_resolved_lines
+             | select('match', '^kexalgorithms ') | list | first | default('') }}
+        __common_sshd_resolved_kex: >-
+          {{ __common_sshd_resolved_kex_line.split(' ', 1)[1].split(',')
+             if __common_sshd_resolved_kex_line else [] }}
+
 - name: Configure dotfiles for operators
   when: common_stow_users | length > 0
   block:

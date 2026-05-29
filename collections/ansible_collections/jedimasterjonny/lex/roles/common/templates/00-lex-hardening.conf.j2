@@ -1,0 +1,42 @@
+# Managed by jedimasterjonny.lex.common (sshd hardening).
+# DO NOT EDIT — local changes will be overwritten on next ansible run.
+# sshd uses first-occurrence-wins and reads sshd_config.d/ in lexical order.
+# This file is named 00-* so it is read FIRST, making its values
+# authoritative — in particular they beat a cloud-init drop-in
+# (50-cloud-init.conf) that would otherwise set PermitRootLogin /
+# PasswordAuthentication. A higher-numbered drop-in therefore CANNOT
+# override a value set here; to deviate on a host, replace this file or drop
+# the specific directive from it.
+
+# --- Crypto allowlists ----------------------------------------------------
+# Post-quantum hybrid KEX first, then modern ECDH. Classical DH is dropped.
+# The list is intersected with `sshd -Q kex` at task time so older OpenSSH
+# builds don't see algorithm names they'd reject during config validation.
+KexAlgorithms {{ __common_sshd_kex_effective | join(',') }}
+# AEAD ciphers only. CTR modes dropped — they require a separate MAC and
+# carry no advantage over AES-GCM / ChaCha20-Poly1305 on modern OpenSSH.
+Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com
+# ETM HMACs only. SHA-1 and non-ETM variants are dropped.
+MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,umac-128-etm@openssh.com
+# Ed25519 and RSA only. ECDSA dropped (NIST curve provenance, and we don't
+# need it). The host's existing ECDSA key file is left in place; the
+# allowlist just stops sshd from offering it.
+HostKeyAlgorithms ssh-ed25519,rsa-sha2-512,rsa-sha2-256
+PubkeyAcceptedAlgorithms ssh-ed25519,rsa-sha2-512,rsa-sha2-256
+CASignatureAlgorithms ssh-ed25519,rsa-sha2-512,rsa-sha2-256
+
+# --- Access policy --------------------------------------------------------
+# prohibit-password permits key/cert-based root login but refuses passwords.
+# Plain `no` would sever the key-only root SSH path that host provisioning
+# and the Hetzner CI scenario depend on — a reload would make the box
+# unreachable. PasswordAuthentication no below already blocks password root.
+PermitRootLogin prohibit-password
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+# publickey is the only accepted method — there is no password or
+# keyboard-interactive fallback. Every account reachable over SSH (including
+# operators created by common_users) must already carry an
+# ~/.ssh/authorized_keys before hardening is enabled, or it is locked out.
+AuthenticationMethods publickey
+PermitEmptyPasswords no
+LogLevel VERBOSE
