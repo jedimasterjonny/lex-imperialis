@@ -10,6 +10,9 @@
   vars:
     dev_configure_incus_host: true
     dev_configure_libvirt_host: true
+    # The lab box runs the Ansible MCP server (see .mcp.json), so install the
+    # Node runtime its `npx` launcher needs.
+    dev_install_node: true
     dev_incus_admin_users:
       - jonny
       - ansible
