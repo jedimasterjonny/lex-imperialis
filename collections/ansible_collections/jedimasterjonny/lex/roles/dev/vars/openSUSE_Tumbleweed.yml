@@ -1,3 +1,7 @@
 ---
 # Tumbleweed ships incus in the main OSS repo, so no extra repos are needed.
 dev_extra_repos: []
+
+# Tumbleweed's npm-default already pulls Node >= 24 from the OSS repo, so no
+# node repo is needed (dev_node_packages keeps its npm-default default).
+dev_node_repos: []

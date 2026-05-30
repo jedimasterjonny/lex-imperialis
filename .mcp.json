@@ -1,24 +1,18 @@
 {
   "_comment": [
-    "Why this server uses a hardcoded `node dist/cli.cjs` path instead of `npx @ansible/ansible-mcp-server`:",
+    "Runs via `npx`, which resolves @ansible/ansible-mcp-server from the npm",
+    "cache/registry — no OS-specific path, so this works on Linux and macOS.",
+    "Requires Node >= 24 on PATH (the package's `engines` constraint); the lab",
+    "box gets it from the dev role's `dev_install_node` gate.",
     "",
-    "The published `@ansible/ansible-mcp-server` npm package has a packaging bug — its `bin` field points at",
-    "an ESM bundle (`dist/cli.js`) that throws `Dynamic require of \"process\" is not supported` on Node >= 22.",
-    "The shipped CJS build (`dist/cli.cjs`) works.",
-    "",
-    "Once upstream points `bin` at the CJS file (or fixes the ESM bundle), revert the `command`/`args` below to:",
-    "  \"command\": \"npx\", \"args\": [\"-y\", \"@ansible/ansible-mcp-server\", \"--stdio\"]",
-    "",
-    "The hardcoded path above is the npx cache copy of v26.4.6. To refresh and update the path if the hash",
-    "changes, rerun: npx -y @ansible/ansible-mcp-server"
+    "Until v26.5.0 the package shipped a broken `bin` (ESM bundle, threw on",
+    "Node >= 22), which forced a hardcoded `node .../dist/cli.cjs` workaround",
+    "here; upstream now points `bin` at the CJS build, so plain `npx` is fine."
   ],
   "mcpServers": {
     "ansible": {
-      "command": "node",
-      "args": [
-        "/Users/jonny/.npm/_npx/849c5d445c440378/node_modules/@ansible/ansible-mcp-server/dist/cli.cjs",
-        "--stdio"
-      ]
+      "command": "npx",
+      "args": ["-y", "@ansible/ansible-mcp-server", "--stdio"]
     }
   }
 }

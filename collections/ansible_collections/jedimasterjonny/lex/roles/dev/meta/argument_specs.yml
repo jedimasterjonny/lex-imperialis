@@ -34,6 +34,19 @@ argument_specs:
         required: false
         description:
           - Extra Ansible-author tooling, installed when C(dev_install_ansible_dev) is true.
+      dev_install_node:
+        type: bool
+        required: false
+        description:
+          - Whether to install the Node.js runtime in C(dev_node_packages).
+      dev_node_packages:
+        type: list
+        elements: str
+        required: false
+        description:
+          - >-
+            Node.js runtime packages, installed when C(dev_install_node) is
+            true. Provides the C(npx) launcher the Ansible MCP server runs under.
       dev_configure_incus_host:
         type: bool
         required: false

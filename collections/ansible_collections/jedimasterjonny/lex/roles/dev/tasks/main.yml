@@ -73,6 +73,34 @@
     - dev_install_ansible_dev | bool
     - dev_ansible_dev_packages | length > 0
 
+# Node is the runtime for the Ansible MCP server (.mcp.json runs it via npx).
+# Off by default; lab-bootstrap opts the lab box in.
+#
+# dev_node_repos is empty on Tumbleweed (npm-default pulls Node >= 24 from the
+# OSS repo) and points at the devel:languages:nodejs OBS project on Leap,
+# whose OSS Node (22) is older than the server's >= 24 requirement. Same
+# overwrite_multiple rationale as the incus repos above — keep the URL aligned
+# with distribution_version across in-place Leap upgrades.
+- name: Configure Node.js zypper repositories
+  community.general.zypper_repository:
+    name: "{{ item.name }}"
+    repo: "{{ item.url }}"
+    state: present
+    auto_import_keys: true
+    overwrite_multiple: true
+  loop: "{{ dev_node_repos }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: dev_install_node | bool
+
+- name: Install Node.js runtime
+  community.general.zypper:
+    name: "{{ dev_node_packages }}"
+    state: present
+  when:
+    - dev_install_node | bool
+    - dev_node_packages | length > 0
+
 - name: Configure Incus host
   when: dev_configure_incus_host | bool
   block:

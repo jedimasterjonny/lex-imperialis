@@ -25,6 +25,22 @@ dev_install_ansible_dev: true
 # controller-side packages without overriding dev_packages.
 dev_ansible_dev_packages: []
 
+# Whether to install the Node.js runtime listed in dev_node_packages. Node is
+# the runtime for the @ansible/ansible-mcp-server MCP server, which this repo's
+# .mcp.json launches via `npx`. Default false — only hosts that actually run
+# the MCP server (e.g. the lab box) need it; a plain dev or Ansible-author box
+# does not. Independent of dev_install_ansible_dev.
+dev_install_node: false
+
+# Node.js runtime packages — installed when dev_install_node is true. On
+# Tumbleweed the npm-default meta-package pulls the recommended Node major
+# (nodejs-default → nodejs24) plus npm, which ships the `npx` launcher at
+# /usr/bin/npx that the MCP server (Node >= 24) needs. Leap's default Node is
+# 22 — too old — so vars/openSUSE_Leap.yml overrides this with an explicit
+# nodejs24 sourced from the devel:languages:nodejs OBS repo (dev_node_repos).
+dev_node_packages:
+  - npm-default
+
 # Whether to configure this host as an Incus server. When true, installs
 # dev_incus_packages and enables incus.socket. Independent of
 # dev_install_ansible_dev — a tooling-only dev box can leave this off.
