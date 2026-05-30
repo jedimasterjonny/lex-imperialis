@@ -49,6 +49,17 @@
         - dev_install_ansible_dev | bool
         - dev_ansible_dev_packages | length > 0
 
+    - name: Verify Node.js runtime packages are installed
+      community.general.zypper:
+        name: "{{ dev_node_packages }}"
+        state: present
+      check_mode: true
+      register: __dev_node_packages_check
+      failed_when: __dev_node_packages_check.changed
+      when:
+        - dev_install_node | bool
+        - dev_node_packages | length > 0
+
     - name: Verify Incus host configuration
       when: dev_configure_incus_host | bool
       block:

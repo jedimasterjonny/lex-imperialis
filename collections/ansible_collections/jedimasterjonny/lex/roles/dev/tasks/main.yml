@@ -73,6 +73,16 @@
     - dev_install_ansible_dev | bool
     - dev_ansible_dev_packages | length > 0
 
+# Node is the runtime for the Ansible MCP server (.mcp.json runs it via npx).
+# Off by default; lab-bootstrap opts the lab box in.
+- name: Install Node.js runtime
+  community.general.zypper:
+    name: "{{ dev_node_packages }}"
+    state: present
+  when:
+    - dev_install_node | bool
+    - dev_node_packages | length > 0
+
 - name: Configure Incus host
   when: dev_configure_incus_host | bool
   block:

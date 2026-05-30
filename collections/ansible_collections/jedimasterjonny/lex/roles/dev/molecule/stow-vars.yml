@@ -1,13 +1,14 @@
 ---
 # Extra-vars referenced via @../stow-vars.yml from the default molecule
-# scenario for the dev role. The full and ci scenarios use
-# host-config-vars.yml instead, which already pins stow_users.
+# scenario for the dev role — the default scenario's override bundle. The
+# full and ci scenarios use host-config-vars.yml instead, which already pins
+# stow_users.
 #
-# Stow user overrides have to land at extra-vars precedence (22), not
+# Overrides here have to land at extra-vars precedence (22), not
 # inventory.group_vars (~5), because verify.yml loads role defaults via
 # `vars_files: - ../defaults/main.yml` (precedence ~14) which would
-# otherwise shadow the override back to the empty default and silently
-# skip the dotfile verify block.
+# otherwise shadow them back to their defaults and silently skip the
+# matching verify blocks (the dotfile checks, and the node check below).
 #
 # dev_stow_users is pinned explicitly even though the role resolves a
 # null default from common_stow_users at task time — the converge and
@@ -21,3 +22,8 @@ common_stow_users:
   - root
 dev_stow_users:
   - root
+
+# Exercise the Node runtime path in tier 1: installing npm-default needs no
+# host services, so the incus-in-incus container covers it cleanly (the ci
+# Leap tier is left out to avoid Leap node-packaging assumptions).
+dev_install_node: true
