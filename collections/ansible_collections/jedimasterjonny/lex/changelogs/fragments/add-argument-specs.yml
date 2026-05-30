@@ -1,0 +1,5 @@
+---
+minor_changes:
+  - common - add an argument spec (``meta/argument_specs.yml``) so role inputs are type-validated and documented at role entry.
+  - dev - add an argument spec (``meta/argument_specs.yml``) so role inputs are type-validated and documented at role entry.
+  - motd - add an argument spec (``meta/argument_specs.yml``) so ``motd_text`` is type-validated and documented at role entry.

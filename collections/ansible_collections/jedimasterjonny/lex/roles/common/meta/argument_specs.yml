@@ -1,0 +1,82 @@
+---
+argument_specs:
+  main:
+    short_description: Baseline packages, sshd, operator accounts, and dotfiles for every Lex Imperialis host.
+    description:
+      - >-
+        Declares the public input contract for the role and validates it at
+        role entry. Concrete default values stay in C(defaults/main.yml) — the
+        single source of truth — so this spec pins each input's type and
+        structure rather than restating its default.
+      - >-
+        Semantic rules a type contract can't express remain enforced by asserts
+        in C(tasks/main.yml): C(common_dots_repo) is required only when
+        C(common_stow_users) is non-empty, and the sshd drop-in Include must
+        lead the resolved config.
+    author:
+      - jedimasterjonny
+    options:
+      common_users:
+        type: list
+        elements: dict
+        required: false
+        description:
+          - Operator accounts to ensure exist on the host. Empty by default.
+          - >-
+            With C(common_sshd_harden) enabled, an account created here that
+            has no C(~/.ssh/authorized_keys) is locked out of SSH, which is
+            publickey-only.
+        options:
+          name:
+            type: str
+            required: true
+            description: Account name.
+          uid:
+            type: int
+            required: false
+            description: Numeric UID; omitted attributes fall back to the user module's defaults.
+          group:
+            type: str
+            required: false
+            description: Primary group.
+          shell:
+            type: str
+            required: false
+            description: Login shell.
+      common_packages:
+        type: list
+        elements: str
+        required: false
+        description:
+          - Baseline packages installed on every host via zypper.
+      common_dots_repo:
+        type: str
+        required: false
+        description:
+          - Clone URL for the GNU stow dotfiles repository.
+          - >-
+            Has no default on purpose; C(tasks/main.yml) asserts it is set when
+            C(common_stow_users) is non-empty so a consumer can't silently
+            inherit the maintainer's dotfiles.
+      common_stow_packages:
+        type: list
+        elements: str
+        required: false
+        description:
+          - Stow packages to link from C(~/dots) for each user in C(common_stow_users).
+      common_stow_users:
+        type: list
+        elements: str
+        required: false
+        description:
+          - >-
+            Users to clone C(common_dots_repo) and stow C(common_stow_packages)
+            for. Empty by default, which skips the dotfile path entirely.
+      common_sshd_harden:
+        type: bool
+        required: false
+        description:
+          - >-
+            Whether to install the sshd hardening drop-in: modern-only crypto
+            allowlists, publickey-only authentication, and
+            C(PermitRootLogin prohibit-password).

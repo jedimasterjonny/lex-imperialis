@@ -1,0 +1,18 @@
+---
+argument_specs:
+  main:
+    short_description: Manage /etc/motd from a single overridable variable.
+    description:
+      - >-
+        Declares the public input contract for the role and validates it at
+        role entry. The concrete default lives in C(defaults/main.yml) — the
+        single source of truth — so this spec pins the type rather than
+        restating the default.
+    author:
+      - jedimasterjonny
+    options:
+      motd_text:
+        type: str
+        required: false
+        description:
+          - Content written to C(/etc/motd).
