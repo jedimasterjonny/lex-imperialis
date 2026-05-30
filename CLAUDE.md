@@ -65,6 +65,12 @@ Breaking changes are recorded via `breaking_changes` changelog fragments — tha
 
 **Environment:** `.envrc` (direnv) activates `.venv` and exports `ANSIBLE_COLLECTIONS_PATH` and `ANSIBLE_CONFIG`. `ansible.cfg` sets repo-wide defaults.
 
+**Collections install path:** All collections — third-party deps *and* the built `jedimasterjonny.lex` — install to `~/.ansible/collections`, the sole entry in `ANSIBLE_COLLECTIONS_PATH` (set by `.envrc`). The repo's `collections/` dir holds **only** the tracked `ansible_collections/jedimasterjonny/lex/` source; nothing else belongs there.
+
+- **Never point `ANSIBLE_COLLECTIONS_PATH` at `$PWD/collections`.** `ansible-compat` (under both `ansible-lint` and `molecule`) installs the collection-under-test's dependencies into the var's first writable path. If that is `$PWD/collections`, the deps (`ansible/`, `community/`, `hetzner/`, the `*.info` dirs) land in the repo tree as untracked clutter that breaks repo-wide `make lint` — and it can wipe the source. In a shell without direnv, export the `.envrc` value explicitly: `export ANSIBLE_COLLECTIONS_PATH="$HOME/.ansible/collections"`.
+- **Re-sync before `molecule`.** The home-installed collection is a *copy*, not a symlink, so a new or changed role is invisible until reinstalled: `ansible-galaxy collection install ./collections/ansible_collections/jedimasterjonny/lex -p ~/.ansible/collections --force`.
+- **Clean leaked deps by name — never a blanket `git clean collections/`,** which would also delete a brand-new untracked role/fragment: `rm -rf collections/ansible_collections/{ansible,community,hetzner} collections/ansible_collections/*.info`.
+
 **Project skills:** see `.claude/skills/`.
 
 - `changelog-fragments` — writes the antsibull-changelog fragment that must accompany every user-visible commit.
