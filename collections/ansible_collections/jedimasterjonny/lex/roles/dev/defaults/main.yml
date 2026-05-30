@@ -32,12 +32,12 @@ dev_ansible_dev_packages: []
 # does not. Independent of dev_install_ansible_dev.
 dev_install_node: false
 
-# Node.js runtime packages — installed when dev_install_node is true. The
-# npm-default meta-package pulls the recommended Node major for the codestream
-# (nodejs-default → nodejs24 on current Tumbleweed) plus npm, which ships the
-# `npx` launcher at /usr/bin/npx. The MCP server requires Node >= 24.
-# npm-default exists on both Tumbleweed and Leap, so this stays in defaults/
-# rather than needing a vars/ override.
+# Node.js runtime packages — installed when dev_install_node is true. On
+# Tumbleweed the npm-default meta-package pulls the recommended Node major
+# (nodejs-default → nodejs24) plus npm, which ships the `npx` launcher at
+# /usr/bin/npx that the MCP server (Node >= 24) needs. Leap's default Node is
+# 22 — too old — so vars/openSUSE_Leap.yml overrides this with an explicit
+# nodejs24 sourced from the devel:languages:nodejs OBS repo (dev_node_repos).
 dev_node_packages:
   - npm-default
 

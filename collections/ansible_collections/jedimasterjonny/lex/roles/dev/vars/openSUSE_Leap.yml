@@ -15,6 +15,18 @@ dev_extra_repos:
   - name: network_utilities
     url: "https://download.opensuse.org/repositories/network:/utilities/{{ ansible_facts['distribution_version'] }}/"
 
+# Leap's default Node (npm-default → nodejs22) is older than the Ansible MCP
+# server's Node >= 24 requirement, and Leap 16's OSS repo carries no nodejs24.
+# Source it from the devel:languages:nodejs OBS project — same bare-version
+# path convention as the repos above — and pin the versioned packages (npm24
+# pulls nodejs24 and provides the npx launcher).
+dev_node_repos:
+  - name: devel_languages_nodejs
+    url: "https://download.opensuse.org/repositories/devel:/languages:/nodejs/{{ ansible_facts['distribution_version'] }}/"
+dev_node_packages:
+  - nodejs24
+  - npm24
+
 # Leap ships its Python bindings under interpreter-versioned names
 # (python311-libvirt-python, python311-lxml on Leap 16) rather than the
 # unversioned `python3-*` names Tumbleweed exposes via virtual provides.
