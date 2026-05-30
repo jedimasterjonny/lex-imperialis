@@ -20,6 +20,13 @@
 dev_configure_incus_host: true
 dev_configure_libvirt_host: true
 
+# The lab box runs the Ansible MCP server, so the dev role installs the Node
+# runtime its `npx` launcher needs. Both full (tier 2, Tumbleweed) and ci
+# (tier 3, Leap) load this file, so enabling it here exercises npm-default
+# resolution — and the node >= 24 / npx contract verify asserts — on both
+# codestreams, not just the tier-1 Tumbleweed container.
+dev_install_node: true
+
 dev_libvirt_manage_default_network: false
 
 # Exercise the dotfile stow path. Setting common_stow_users alone would

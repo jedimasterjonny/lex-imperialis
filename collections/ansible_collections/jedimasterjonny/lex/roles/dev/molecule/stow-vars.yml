@@ -23,7 +23,8 @@ common_stow_users:
 dev_stow_users:
   - root
 
-# Exercise the Node runtime path in tier 1: installing npm-default needs no
-# host services, so the incus-in-incus container covers it cleanly (the ci
-# Leap tier is left out to avoid Leap node-packaging assumptions).
+# Exercise the Node runtime path in tier 1 too — installing npm-default needs
+# no host services, so the incus-in-incus container covers it cleanly. Tiers 2
+# and 3 also enable it via host-config-vars.yml, so npm-default resolution and
+# the node >= 24 / npx contract are covered on both Tumbleweed and Leap.
 dev_install_node: true

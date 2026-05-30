@@ -60,6 +60,38 @@
         - dev_install_node | bool
         - dev_node_packages | length > 0
 
+    # The package check above only proves the npm-default meta-package
+    # resolved. The contract dev_install_node exists to satisfy is the
+    # runtime the Ansible MCP server's `npx` launcher needs — node >= 24
+    # (the server's `engines` constraint) reachable with `npx` on PATH —
+    # so assert that outcome directly, the way the nvim stow check below
+    # asserts the link rather than mere package presence.
+    - name: Verify the Node.js runtime satisfies the MCP server contract
+      when:
+        - dev_install_node | bool
+        - dev_node_packages | length > 0
+      block:
+        - name: Capture the installed node version
+          ansible.builtin.command: node --version
+          register: __dev_node_version
+          changed_when: false
+
+        - name: Verify npx is on PATH and runnable
+          ansible.builtin.command: npx --version
+          changed_when: false
+
+        - name: Assert node meets the MCP server's minimum major version
+          ansible.builtin.assert:
+            that:
+              - >-
+                __dev_node_version.stdout | regex_replace('^v', '')
+                is version('24.0.0', '>=')
+            fail_msg: >-
+              Installed node ({{ __dev_node_version.stdout }}) is older than
+              the Ansible MCP server's required major (>= 24) — npm-default
+              resolves to too old a Node on this codestream; pin
+              dev_node_packages in vars/ for this distribution.
+
     - name: Verify Incus host configuration
       when: dev_configure_incus_host | bool
       block:
