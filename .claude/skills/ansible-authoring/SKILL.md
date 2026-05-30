@@ -7,6 +7,8 @@ description: Use whenever authoring, modifying, or restructuring Ansible role or
 
 Before writing or restructuring content for `jedimasterjonny.lex`, consult the guidance the ansible MCP server bundles. Two tools, two purposes — use the one that fits the moment, both if the change spans both.
 
+The repo also ships [`.claude/ansible-good-practices.md`](../../ansible-good-practices.md) — a terse checklist of the high-leverage gotchas `ansible-lint` doesn't catch (variable precedence, multi-distribution layout, the `meta/argument_specs.yml` convention, …). It's always available, including when the MCP tools below can't be reached, so skim the relevant section whenever you author or review role/playbook content.
+
 ## ansible_content_best_practices — concrete conventions
 
 What it is: topic-keyed Red Hat guidance covering how roles, playbooks, variables, jinja2 templates, naming, and YAML formatting should be structured. The bundled guidance is authoritative for this repo; if your draft disagrees with it, fix the draft (or be ready to explain the deviation).
@@ -43,7 +45,7 @@ Skip it for line-level edits — it's for the design moments, not routine work.
 
 ## Workflow
 
-1. Identify what the change is: content add/edit, structural design choice, or both.
+1. Identify what the change is: content add/edit, structural design choice, or both. Skim the relevant section of `.claude/ansible-good-practices.md` — the always-available baseline.
 2. **Content add/edit** → call `ansible_content_best_practices` first. Enumerate topics with `{}`, then pull the topic(s) that match what you're writing.
 3. **Structural design choice** → call `zen_of_ansible` and weigh the alternatives against it.
 4. Write the change. If your draft disagrees with the guidance, prefer the guidance; an explicit deviation needs an explicit reason.

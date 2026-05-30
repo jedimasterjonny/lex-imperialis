@@ -55,7 +55,9 @@ This is a checklist of the items that are **easy to get wrong even when you know
 ## Role README and argument validation
 
 - **The role README declares idempotency and (where applicable) atomicity** explicitly as True/False, alongside inputs, outputs, and a worked example playbook.
-- **Use `meta/argument_specs.yml`** to validate role arguments. The role then fails fast at start rather than at task N with a confusing error.
+- **Every role with caller-settable variables ships `meta/argument_specs.yml`.** Inputs are validated at role entry, so a wrong type or a misspelled key fails fast instead of surfacing as a confusing error at task N. `ansible-lint` validates a spec it finds but does not require one to exist — a new role won't be flagged for missing it.
+- **Declare the contract — type, structure, requiredness — not default values.** `defaults/main.yml` stays the single source of truth; restating defaults in the spec is a second copy to drift. The trade-off is that `ansible-doc` shows types and descriptions but not concrete defaults.
+- **Leave semantic rules to gated asserts in `tasks/main.yml`.** Conditional-required (X only when Y is set), subset relationships, and "this shape only when the feature is enabled" aren't expressible as a type contract. `argument_specs` is the type layer beneath those asserts, not a replacement.
 
 ## YAML / Jinja2 niceties
 

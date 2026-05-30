@@ -1,0 +1,141 @@
+---
+argument_specs:
+  main:
+    short_description: Developer and Ansible-author tooling, with optional Incus and libvirt host configuration.
+    description:
+      - >-
+        Declares the public input contract for the role and validates it at
+        role entry. Concrete default values stay in C(defaults/main.yml) (with
+        the distribution overrides in C(vars/)) — the single source of truth —
+        so this spec pins each input's type and structure rather than restating
+        its default.
+      - >-
+        Semantic rules a type contract can't express remain enforced by asserts
+        in C(tasks/main.yml), gated on the relevant C(dev_configure_*) flag: the
+        C(dev_incus_preseed) shape and non-emptiness when Incus is enabled, and
+        C(dev_stow_users) being a subset of C(common_stow_users).
+    author:
+      - jedimasterjonny
+    options:
+      dev_packages:
+        type: list
+        elements: str
+        required: false
+        description:
+          - General developer tooling, always installed.
+      dev_install_ansible_dev:
+        type: bool
+        required: false
+        description:
+          - Whether to install the extra Ansible-author packages in C(dev_ansible_dev_packages).
+      dev_ansible_dev_packages:
+        type: list
+        elements: str
+        required: false
+        description:
+          - Extra Ansible-author tooling, installed when C(dev_install_ansible_dev) is true.
+      dev_configure_incus_host:
+        type: bool
+        required: false
+        description:
+          - Whether to configure this host as an Incus server.
+      dev_incus_packages:
+        type: list
+        elements: str
+        required: false
+        description:
+          - Incus host packages, installed when C(dev_configure_incus_host) is true.
+      dev_incus_firewalld_packages:
+        type: list
+        elements: str
+        required: false
+        description:
+          - >-
+            firewalld bridge-trust packages, installed when
+            C(dev_incus_firewalld_trusted_interfaces) resolves non-empty.
+      dev_incus_admin_users:
+        type: list
+        elements: str
+        required: false
+        description:
+          - Existing users to grant Incus control-socket access via the C(incus-admin) group.
+      dev_incus_preseed:
+        type: dict
+        required: false
+        description:
+          - >-
+            Configuration fed to C(incus admin init --preseed) on first init,
+            consumed only when C(dev_configure_incus_host) is true.
+          - >-
+            The role indexes into C(networks[0]), C(storage_pools[0]), and
+            C(profiles[0].devices); C(tasks/main.yml) asserts that shape — at
+            least one network, one pool, and a profile whose devices include a
+            nic and a disk — when Incus is enabled.
+          - >-
+            Validated only as a dict: the full preseed schema (and its set of
+            top-level keys, e.g. C(storage_volumes), C(certificates),
+            C(cluster_groups)) is owned by Incus and passed through verbatim,
+            so pinning sub-options here would reject valid keys the role does
+            not itself read.
+      dev_incus_firewalld_trusted_interfaces:
+        type: list
+        elements: str
+        required: false
+        description:
+          - >-
+            Interfaces to add to firewalld's C(trusted) zone. Null by default,
+            which the role resolves at task time to the bridge names in
+            C(dev_incus_preseed.networks). Set an explicit list (including the
+            empty list) to override the derivation.
+      dev_incus_images:
+        type: list
+        elements: dict
+        required: false
+        description:
+          - Incus images to pre-warm into the host's local image cache.
+        options:
+          alias:
+            type: str
+            required: true
+            description: Local cache alias.
+          source:
+            type: str
+            required: true
+            description: Remote image reference, e.g. C(images:opensuse/tumbleweed).
+      dev_configure_libvirt_host:
+        type: bool
+        required: false
+        description:
+          - Whether to configure this host as a libvirt/KVM hypervisor.
+      dev_libvirt_packages:
+        type: list
+        elements: str
+        required: false
+        description:
+          - libvirt host packages, installed when C(dev_configure_libvirt_host) is true.
+      dev_libvirt_manage_default_network:
+        type: bool
+        required: false
+        description:
+          - Whether to activate and autostart libvirt's C(default) network.
+      dev_libvirt_users:
+        type: list
+        elements: str
+        required: false
+        description:
+          - Existing users to grant libvirt control-socket access via the C(libvirt) group.
+      dev_stow_packages:
+        type: list
+        elements: str
+        required: false
+        description:
+          - Dotfile packages to stow from C(~/<user>/dots); the C(common) role owns the clone.
+      dev_stow_users:
+        type: list
+        elements: str
+        required: false
+        description:
+          - >-
+            Users to stow C(dev_stow_packages) for. Null by default, which the
+            role resolves at task time to C(common_stow_users). Must be a subset
+            of C(common_stow_users), asserted in C(tasks/main.yml).
