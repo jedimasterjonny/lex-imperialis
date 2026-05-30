@@ -1,0 +1,44 @@
+---
+name: changelog-fragment
+
+# `on` is quoted so yamllint's truthy rule doesn't read it as a boolean;
+# GitHub Actions parses the string trigger key the same way.
+#
+# PR-only by design. A fragment must accompany each user-visible change as it
+# lands, so we gate on the PR. We deliberately do NOT run on push to main: the
+# release flow consumes fragments (keep_fragments: false in changelogs/
+# config.yaml), so a freshly merged main legitimately carries none.
+"on":
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Per-PR concurrency — a new push to the PR cancels the previous check. The
+# gate is read-only and side-effect-free, so cancel-on-retry is safe.
+concurrency:
+  group: changelog-fragment-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  require-fragment:
+    name: Require changelog fragment
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      # fetch-depth: 0 so the script can diff BASE...HEAD against the merge base.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.14'
+      # Pure-stdlib script — no pip install needed. See
+      # .github/scripts/require-changelog-fragment.py for the skip conditions
+      # (no user-visible change / release PR / fragment present).
+      - name: Require a changelog fragment for user-visible changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 .github/scripts/require-changelog-fragment.py
