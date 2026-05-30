@@ -1,6 +1,0 @@
----
-minor_changes:
-  - >-
-    dev - add ``dev_install_node`` (default ``false``) and
-    ``dev_node_packages`` to install the Node.js runtime, providing the
-    ``npx`` launcher the Ansible MCP server runs under.

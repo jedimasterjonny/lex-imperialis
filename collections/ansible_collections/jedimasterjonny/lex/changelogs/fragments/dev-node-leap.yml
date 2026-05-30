@@ -1,8 +1,0 @@
----
-minor_changes:
-  - >-
-    dev - on openSUSE Leap, source the Node.js runtime for
-    ``dev_install_node`` from the ``devel:languages:nodejs`` OBS repository
-    and pin ``nodejs24``/``npm24`` so the installed Node satisfies the Ansible
-    MCP server's Node >= 24 requirement (Leap's default Node is 22, too old).
-    Tumbleweed is unchanged — its ``npm-default`` already pulls Node >= 24.

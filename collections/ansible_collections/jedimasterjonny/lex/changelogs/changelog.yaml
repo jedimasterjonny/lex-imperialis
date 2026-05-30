@@ -416,3 +416,35 @@ releases:
     - 0.7.0-release-summary.yml
     - sshd-hardening.yml
     release_date: '2026-05-29'
+  0.8.0:
+    changes:
+      minor_changes:
+      - common - add ``tmux`` to the baseline package set installed on every host.
+      - common - add an argument spec (``meta/argument_specs.yml``) so role inputs
+        are type-validated and documented at role entry.
+      - dev - add ``dev_install_node`` (default ``false``) and ``dev_node_packages``
+        to install the Node.js runtime, providing the ``npx`` launcher the Ansible
+        MCP server runs under.
+      - dev - add an argument spec (``meta/argument_specs.yml``) so role inputs are
+        type-validated and documented at role entry.
+      - "dev - on openSUSE Leap, source the Node.js runtime for ``dev_install_node``
+        from the ``devel:languages:nodejs`` OBS repository and pin ``nodejs24``/``npm24``
+        so the installed Node satisfies the Ansible MCP server's Node >= 24 requirement
+        (Leap's default Node is 22, too old). Tumbleweed is unchanged \u2014 its ``npm-default``
+        already pulls Node >= 24."
+      - motd - add an argument spec (``meta/argument_specs.yml``) so ``motd_text``
+        is type-validated and documented at role entry.
+      release_summary: "Adds argument specs (``meta/argument_specs.yml``) to every
+        role, so inputs\nare type-validated and documented at role entry. The dev
+        role gains a\n``dev_install_node`` gate that installs the Node.js runtime
+        the Ansible MCP\nserver's ``npx`` launcher needs \u2014 sourcing a Node >=
+        24 from the\ndevel:languages:nodejs OBS repo on Leap, whose default Node is
+        too old \u2014 and\nthe common role adds ``tmux`` to the baseline package
+        set.\n"
+    fragments:
+    - 0.8.0-release-summary.yml
+    - add-argument-specs.yml
+    - common-add-tmux.yml
+    - dev-install-node.yml
+    - dev-node-leap.yml
+    release_date: '2026-05-30'

@@ -1,3 +1,0 @@
----
-minor_changes:
-  - common - add ``tmux`` to the baseline package set installed on every host.
