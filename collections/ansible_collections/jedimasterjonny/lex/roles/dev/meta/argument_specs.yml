@@ -71,35 +71,12 @@ argument_specs:
             C(profiles[0].devices); C(tasks/main.yml) asserts that shape — at
             least one network, one pool, and a profile whose devices include a
             nic and a disk — when Incus is enabled.
-        options:
-          config:
-            type: dict
-            required: false
-            description: Server-level Incus configuration.
-          networks:
-            type: list
-            elements: dict
-            required: false
-            description: Managed networks; the role trusts each bridge name in firewalld.
-          storage_pools:
-            type: list
-            elements: dict
-            required: false
-            description: Storage pools.
-          profiles:
-            type: list
-            elements: dict
-            required: false
-            description: Profiles; the role verifies the C(profiles[0]) nic/disk wiring.
-          projects:
-            type: list
-            elements: dict
-            required: false
-            description: Projects.
-          cluster:
-            type: dict
-            required: false
-            description: Cluster configuration; null on a single-node host.
+          - >-
+            Validated only as a dict: the full preseed schema (and its set of
+            top-level keys, e.g. C(storage_volumes), C(certificates),
+            C(cluster_groups)) is owned by Incus and passed through verbatim,
+            so pinning sub-options here would reject valid keys the role does
+            not itself read.
       dev_incus_firewalld_trusted_interfaces:
         type: list
         elements: str
