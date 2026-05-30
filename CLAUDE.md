@@ -37,15 +37,19 @@ Pre-commit's `detect-private-key` and `check-added-large-files` are backstops, n
 
 ## Conventional commit prefixes
 
-Subjects use the scoped form **`type(scope): summary`**, where `scope` is the role or component the commit touches — e.g. `feat(common): add tmux to the baseline package set`, `fix(motd): …`, `chore(lint): …`. Omit the scope only for genuinely cross-cutting changes with no single subject (`chore: …`). The older two-colon `feat: common: …` form is retired.
+Subjects use the scoped form **`type(scope): summary`**, where `scope` is the role or component the commit touches — e.g. `feat(common): add tmux to the baseline package set`, `fix(motd): …`, `chore(lint): …`. Omit the scope only for genuinely cross-cutting changes with no single subject (`chore: …`); never use an issue identifier as the scope. The older two-colon `feat: common: …` form is retired.
 
 - **`feat:`** — anything that changes what ships in the collection (roles, playbooks, plugins, `galaxy.yml` content, `meta/runtime.yml`, antsibull config, collection README/LICENSE). Initial scaffolding of collection content is also `feat:`.
 - **`fix:`** — bug fix in collection content.
-- **`refactor:` / `docs:` / `test:`** — standard meanings, applied to collection content.
+- **`docs:`** — any documentation change, inside or outside the collection (collection READMEs, top-level `README`, `CLAUDE.md`, `.claude/` guidance).
+- **`refactor:` / `test:`** — standard meanings. `refactor:` applies inside or outside the collection; `test:` to collection content.
+- **`ci:`** — anything that touches CI (workflow definitions, CI config, pipeline scripts).
 - **`chore:`** — dev-tooling and repo plumbing only: lint configs, pre-commit, Makefile, `.editorconfig`, `.envrc`, `.gitignore`, `requirements-dev.txt`, top-level `ansible.cfg`.
 - **`release:`** — version bump + regenerated changelog. Used only by the single release commit at PR end.
 
-Test: "is this changing what ships to consumers of `jedimasterjonny.lex`, or is this changing how we develop on the repo?" Ships → `feat:` family. Develop → `chore:`.
+Test: "is this changing what ships to consumers of `jedimasterjonny.lex`, or is this changing how we develop on the repo?" Ships → `feat:` family. Develop → `chore:`. Documentation, CI, and refactors take their own noun (`docs:` / `ci:` / `refactor:`) by what the change touches, regardless of which side of that split it falls on.
+
+Breaking changes are recorded via `breaking_changes` changelog fragments — that fragment is what `pr-finalisation` reads to compute the major bump, and is the source of truth. A `!` before the colon (`feat(common)!: …`) or a `BREAKING CHANGE:` footer is optional subject-level signalling, not a substitute for the fragment.
 
 ## Reference
 
