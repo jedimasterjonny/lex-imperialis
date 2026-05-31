@@ -14,6 +14,27 @@
   loop_control:
     label: "{{ item.name }}"
 
+# Idempotent by nature: the module only acts when the live hostname differs
+# from common_hostname, so on a correctly-provisioned host this is a no-op
+# that doubles as an assertion the name is right. Defaults to the short
+# inventory_hostname — the DNS search domain below supplies the FQDN.
+- name: Set the system hostname
+  ansible.builtin.hostname:
+    name: "{{ common_hostname }}"
+
+# netconfig — not this role — owns the merge into /etc/resolv.conf, so we only
+# set the static searchlist and let `netconfig update` (the handler) regenerate
+# resolv.conf. This stays correct whether wicked, NetworkManager, or nothing is
+# the active manager. Joined with spaces because NETCONFIG_DNS_STATIC_SEARCHLIST
+# is a space-separated list; order is the resolver's search-suffix preference.
+- name: Configure DNS search domains via netconfig
+  when: common_search_domains | length > 0
+  ansible.builtin.lineinfile:
+    path: /etc/sysconfig/network/config
+    regexp: '^NETCONFIG_DNS_STATIC_SEARCHLIST='
+    line: 'NETCONFIG_DNS_STATIC_SEARCHLIST="{{ common_search_domains | join(" ") }}"'
+  notify: Apply netconfig
+
 - name: Install baseline packages
   community.general.zypper:
     name: "{{ common_packages }}"
