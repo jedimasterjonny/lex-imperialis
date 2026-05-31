@@ -1,0 +1,52 @@
+---
+# Tier-2 (libvirt) scenario — validates the role end-to-end against a real
+# kernel. Tier 1 (incus-in-incus) can render and enable the units but can't
+# perform a live NFS mount, so this scenario stands up a loopback kernel NFS
+# export in prepare.yml and points the shares at 127.0.0.1. verify.yml's gated
+# live block then accesses each mount point (triggering the automount) and
+# asserts the mount table shows an active NFS mount.
+#
+# extra-vars precedence beats vars_files (verify loads role defaults via
+# vars_files), so full-vars.yml propagates to prepare, converge, and verify.
+
+driver:
+  name: default
+
+platforms:
+  - name: molecule-lex-nfs-client-full
+    image: tumbleweed
+
+provisioner:
+  name: ansible
+  playbooks:
+    create: ../../../../molecule/shared/libvirt/create.yml
+    destroy: ../../../../molecule/shared/libvirt/destroy.yml
+    # prepare is scenario-specific (the loopback NFS server); converge.yml and
+    # verify.yml are shared one level up at roles/<role>/molecule/.
+    prepare: ./prepare.yml
+    converge: ../converge.yml
+    verify: ../verify.yml
+  options:
+    extra-vars: "@../full-vars.yml"
+
+verifier:
+  name: ansible
+
+scenario:
+  create_sequence:
+    - create
+  converge_sequence:
+    - create
+    - prepare
+    - converge
+  destroy_sequence:
+    - destroy
+  test_sequence:
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy

@@ -1,0 +1,52 @@
+---
+# Tier-3 (Hetzner Cloud) scenario — the live end-to-end test CI runs. A
+# real-kernel cloud VM (Leap 16) can host the autofs trigger and perform a
+# real NFS mount, which the incus tier-1 can't; it mirrors the `full` libvirt
+# scenario on cloud infra and adds Leap 16 coverage on top of Tumbleweed.
+#
+# It reuses the `full` scenario's loopback NFS-server prepare and its
+# 127.0.0.1 shares (full-vars.yml) — the live-mount setup is identical, only
+# the infrastructure driver differs.
+
+driver:
+  name: default
+
+platforms:
+  # ${GITHUB_RUN_ID:-local}: Molecule interpolates env at load time so parallel
+  # CI runners create uniquely-named servers; falls back to 'local' off-CI.
+  - name: lex-ci-nfs-client-${GITHUB_RUN_ID:-local}
+    server_type: cx23
+    image: opensuse-16
+
+provisioner:
+  name: ansible
+  playbooks:
+    create: ../../../../molecule/shared/hetzner/create.yml
+    destroy: ../../../../molecule/shared/hetzner/destroy.yml
+    prepare: ../full/prepare.yml
+    converge: ../converge.yml
+    verify: ../verify.yml
+  options:
+    extra-vars: "@../full-vars.yml"
+
+verifier:
+  name: ansible
+
+scenario:
+  create_sequence:
+    - create
+  converge_sequence:
+    - create
+    - prepare
+    - converge
+  destroy_sequence:
+    - destroy
+  test_sequence:
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy

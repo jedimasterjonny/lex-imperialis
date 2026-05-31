@@ -1,0 +1,83 @@
+---
+# Default vars for jedimasterjonny.lex.nfs_client role.
+
+# NFS client userspace — provides mount.nfs(8) and the idmapd/rpc helpers the
+# in-kernel client needs. `nfs-client` is the correct name across openSUSE
+# Leap and Tumbleweed; exposed as a list so a consumer on a different package
+# set can override without touching tasks.
+nfs_client_packages:
+  - nfs-client
+
+# Default NFS server every share inherits unless it sets its own `server`.
+# A hostname/IP is site-specific, so there is no safe default — it ships null
+# and tasks/main.yml asserts each share resolves a server. Set it here for the
+# common single-NAS case, or per-share for a mixed estate.
+nfs_client_server: null
+
+# Filesystem root each share is mounted under: a share named `media` lands at
+# /nfs/media unless it overrides `path`.
+nfs_client_base: /nfs
+
+# NFS protocol version, rendered as the vers= mount option. 4.1 is the floor
+# most consumer NAS support and uses plain AUTH_SYS POSIX permissions (no
+# Kerberos). Raise to "4.2" on servers that offer it (server-side copy,
+# sparse-file support). A share may override with `version`.
+nfs_client_nfs_version: "4.1"
+
+# Mount options applied to every share (a share may replace the whole list via
+# `options`). vers= is composed separately from nfs_client_nfs_version and must
+# NOT be repeated here.
+#
+# Deliberately absent versus a classic fstab line: _netdev and nofail. Under
+# the .automount units this role writes they are structural, not options — the
+# automount never blocks boot (nothing mounts until first access) and the
+# .mount unit orders itself After=network-online.target. In a unit's Options=
+# they would be no-ops the mount helper strips.
+#
+#   rsize/wsize=1048576  1 MiB transfers — the practical NFS/TCP maximum,
+#                        negotiated down if the server cannot match.
+#   hard                 retry indefinitely rather than return I/O errors
+#                        mid-write (never use soft on a NAS you write to).
+#   noatime              suppress atime write-back to the server.
+#   timeo=600            60s (deciseconds) per-RPC major timeout — the TCP
+#                        default, stated explicitly.
+#   retrans=2            the TCP default; with hard it only governs when the
+#                        "server not responding" message is logged.
+nfs_client_mount_options:
+  - rsize=1048576
+  - wsize=1048576
+  - hard
+  - noatime
+  - timeo=600
+  - retrans=2
+
+# Seconds a share may sit idle before systemd unmounts it. 0 disables idle
+# unmount — once accessed the share stays mounted until shutdown. Raise to e.g.
+# 600 to release shares after ten minutes idle. A share may override with
+# `idle_timeout`.
+nfs_client_automount_idle_timeout: 0
+
+# Whether to enable and start the .automount units after rendering them. True
+# activates each share immediately and at every boot. Set false to render and
+# register the units without activating — to stage mount config for a later
+# manual activation, or when applying inside a build/CI container that can't
+# host the kernel autofs trigger (an unprivileged container rejects starting
+# an .automount unit).
+nfs_client_activate: true
+
+# Shares to mount. Each entry:
+#   name           required. Mount-point leaf under nfs_client_base.
+#   export         required. Server-side export path, e.g. /volume1/media.
+#   server         optional. Overrides nfs_client_server for this share.
+#   path           optional. Overrides {{ nfs_client_base }}/{{ name }}.
+#   options        optional. Replaces nfs_client_mount_options for this share.
+#   version        optional. Replaces nfs_client_nfs_version for this share.
+#   idle_timeout   optional. Replaces nfs_client_automount_idle_timeout.
+# Empty by default — the role no-ops until a consumer declares shares:
+#   nfs_client_shares:
+#     - name: media
+#       export: /volume1/media
+#     - name: backups
+#       export: /volume1/backups
+#       server: nas2.lan
+nfs_client_shares: []

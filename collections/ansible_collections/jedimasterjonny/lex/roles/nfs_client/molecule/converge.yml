@@ -1,0 +1,7 @@
+---
+- name: Converge — apply jedimasterjonny.lex.nfs_client
+  hosts: all
+  # The role keys on no facts, so skip the gather (matches common, motd).
+  gather_facts: false
+  roles:
+    - jedimasterjonny.lex.nfs_client

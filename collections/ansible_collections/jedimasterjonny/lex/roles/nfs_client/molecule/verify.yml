@@ -1,0 +1,152 @@
+---
+- name: Verify — assert on nfs_client role outcome
+  hosts: all
+  gather_facts: true
+  vars_files:
+    # Pull role defaults so the re-derivation below sees the same
+    # nfs_client_base / version / options the role used. The scenario's
+    # shares come in at extra-vars precedence, above this load.
+    - ../defaults/main.yml
+  tasks:
+    # Re-derive the resolved units exactly as tasks/main.yml does, so the
+    # assertions key on what the role actually rendered rather than on
+    # hardcoded strings. Mirrors the resolve → escape → zip sequence.
+    - name: Initialise resolved-share accumulators
+      ansible.builtin.set_fact:
+        __nfs_client_resolved: []
+        __nfs_client_units: []
+
+    - name: Resolve share definitions
+      ansible.builtin.set_fact:
+        __nfs_client_resolved: >-
+          {{ __nfs_client_resolved + [{
+               'name': item.name,
+               'what': (item.server | default(nfs_client_server)) ~ ':' ~ item.export,
+               'where': item.path | default(nfs_client_base ~ '/' ~ item.name),
+               'options': (['vers=' ~ (item.version | default(nfs_client_nfs_version))]
+                           + (item.options | default(nfs_client_mount_options)))
+                          | join(','),
+               'idle_timeout': item.idle_timeout
+                               | default(nfs_client_automount_idle_timeout)
+             }] }}
+      loop: "{{ nfs_client_shares }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Derive systemd unit-name stems from the mount points
+      ansible.builtin.command:
+        argv: >-
+          {{ ['systemd-escape', '--path']
+             + (__nfs_client_resolved | map(attribute='where') | list) }}
+      register: __nfs_client_stems
+      changed_when: false
+      check_mode: false
+      when: __nfs_client_resolved | length > 0
+
+    - name: Attach unit-name stems to the resolved shares
+      ansible.builtin.set_fact:
+        __nfs_client_units: >-
+          {{ __nfs_client_units
+             + [item | combine({'stem': __nfs_client_stems.stdout.split()[idx]})] }}
+      loop: "{{ __nfs_client_resolved }}"
+      loop_control:
+        index_var: idx
+        label: "{{ item.where }}"
+      when: __nfs_client_resolved | length > 0
+
+    - name: Verify NFS client packages are installed
+      community.general.zypper:
+        name: "{{ nfs_client_packages }}"
+        state: present
+      check_mode: true
+      register: __nfs_client_pkg_check
+      failed_when: __nfs_client_pkg_check.changed
+
+    - name: Read rendered .mount units
+      ansible.builtin.slurp:
+        src: "/etc/systemd/system/{{ item.stem }}.mount"
+      loop: "{{ __nfs_client_units }}"
+      loop_control:
+        label: "{{ item.where }}"
+      register: __nfs_client_mount_files
+
+    - name: Assert each .mount unit carries the expected directives
+      ansible.builtin.assert:
+        that:
+          - (('What=' ~ item.item.what) in (item.content | b64decode))
+          - (('Where=' ~ item.item.where) in (item.content | b64decode))
+          - "'Type=nfs' in (item.content | b64decode)"
+          - (('Options=' ~ item.item.options) in (item.content | b64decode))
+        fail_msg: >-
+          .mount unit for {{ item.item.where }} is missing expected directives.
+      loop: "{{ __nfs_client_mount_files.results }}"
+      loop_control:
+        label: "{{ item.item.where }}"
+
+    - name: Read rendered .automount units
+      ansible.builtin.slurp:
+        src: "/etc/systemd/system/{{ item.stem }}.automount"
+      loop: "{{ __nfs_client_units }}"
+      loop_control:
+        label: "{{ item.where }}"
+      register: __nfs_client_automount_files
+
+    - name: Assert each .automount unit carries the expected directives
+      ansible.builtin.assert:
+        that:
+          - (('Where=' ~ item.item.where) in (item.content | b64decode))
+          - >-
+            ('TimeoutIdleSec=' ~ item.item.idle_timeout)
+            in (item.content | b64decode)
+          - "'WantedBy=multi-user.target' in (item.content | b64decode)"
+        fail_msg: >-
+          .automount unit for {{ item.item.where }} is missing expected
+          directives.
+      loop: "{{ __nfs_client_automount_files.results }}"
+      loop_control:
+        label: "{{ item.item.where }}"
+
+    - name: Verify each automount unit is enabled
+      ansible.builtin.systemd_service:
+        name: "{{ item.stem }}.automount"
+        enabled: true
+      check_mode: true
+      register: __nfs_client_automount_check
+      failed_when: __nfs_client_automount_check.changed
+      loop: "{{ __nfs_client_units }}"
+      loop_control:
+        label: "{{ item.where }}"
+      when: nfs_client_activate | default(true) | bool
+
+    # Live end-to-end check, enabled only by the full scenario (which stands up
+    # a loopback NFS export in prepare.yml). Accessing the mount point triggers
+    # the automount; findmnt then confirms a real NFS mount backs the path
+    # (more reliable than ansible_facts.mounts, which can't disambiguate the
+    # NFS mount from the autofs trigger it overlays), and the export's sentinel
+    # is read back through the mount to prove the data path.
+    - name: Verify live NFS mounts
+      when: nfs_client_verify_live | default(false) | bool
+      block:
+        - name: Trigger the automount for each share
+          ansible.builtin.command: "ls -a {{ item.where }}"
+          changed_when: false
+          loop: "{{ __nfs_client_units }}"
+          loop_control:
+            label: "{{ item.where }}"
+
+        - name: Assert an NFS filesystem backs each mount point
+          ansible.builtin.command: >-
+            findmnt --types nfs,nfs4 --noheadings {{ item.where }}
+          changed_when: false
+          loop: "{{ __nfs_client_units }}"
+          loop_control:
+            label: "{{ item.where }}"
+
+        - name: Assert the export's sentinel is readable through each mount
+          ansible.builtin.stat:
+            path: "{{ item.where }}/SENTINEL"
+          register: __nfs_client_sentinel
+          failed_when: not __nfs_client_sentinel.stat.exists
+          loop: "{{ __nfs_client_units }}"
+          loop_control:
+            label: "{{ item.where }}"

@@ -448,3 +448,15 @@ releases:
     - dev-install-node.yml
     - dev-node-leap.yml
     release_date: '2026-05-30'
+  0.9.0:
+    changes:
+      minor_changes:
+      - nfs_client - new role mounting NFS shares as systemd .mount/.automount units,
+        with per-share overrides and a configurable NFS version.
+      release_summary: Adds the nfs_client role, which mounts NFS shares as systemd
+        .mount/.automount units (lazy automount) with per-share overrides and a configurable
+        NFS version.
+    fragments:
+    - 0.9.0-release-summary.yml
+    - add-nfs-client-role.yml
+    release_date: '2026-05-31'

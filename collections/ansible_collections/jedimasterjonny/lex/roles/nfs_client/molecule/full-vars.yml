@@ -1,0 +1,12 @@
+---
+# Tier-2 shares, pointed at the loopback NFS server prepare.yml stands up.
+# nfs_client_verify_live flips on verify.yml's live-mount block. `my-backups`
+# keeps the dash so the live path also covers systemd-escape's \x2d handling.
+nfs_client_server: 127.0.0.1
+nfs_client_verify_live: true
+nfs_client_shares:
+  - name: media
+    export: /export/media
+  - name: my-backups
+    export: /export/backups
+    idle_timeout: 600

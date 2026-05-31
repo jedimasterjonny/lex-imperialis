@@ -1,0 +1,60 @@
+---
+# Collections are installed by `make setup` into ~/.ansible/collections, so we
+# omit molecule's `dependency:` stage to avoid the "Missing requirements file"
+# noise. The sequence overrides below list only the phases we ship playbooks
+# for — preventing molecule from warning about missing prepare/cleanup hooks.
+#
+# Tier-1 (incus-in-incus) scenario. nfs_client_activate is off (see
+# shares-vars.yml): an unprivileged container can't host an autofs trigger, so
+# the units are rendered and registered but never enabled or started — nothing
+# is mounted and the TEST-NET server in shares-vars.yml is never contacted.
+# This covers the role's deterministic surface: package install, rendered
+# .mount/.automount unit content, the dash-escaped unit name, and idempotence.
+# Live activation and the real NFS mount are exercised by the `full` scenario
+# on a libvirt VM (a real kernel), which Tier 1 can't provide.
+
+driver:
+  name: default
+
+platforms:
+  - name: molecule-lex-nfs-client-default
+    image: tumbleweed
+
+provisioner:
+  name: ansible
+  playbooks:
+    create: ../../../../molecule/shared/incus/create.yml
+    destroy: ../../../../molecule/shared/incus/destroy.yml
+    # converge.yml and verify.yml live one level up, at roles/<role>/molecule/,
+    # shared across all scenarios (default, full, …) for this role.
+    converge: ../converge.yml
+    verify: ../verify.yml
+  inventory:
+    host_vars:
+      molecule-lex-nfs-client-default:
+        ansible_connection: community.general.incus
+        ansible_user: root
+  # Sample shares (including a dash-in-name share to exercise systemd-escape)
+  # land at extra-vars precedence so they reach both converge and verify.
+  options:
+    extra-vars: "@../shares-vars.yml"
+
+verifier:
+  name: ansible
+
+scenario:
+  create_sequence:
+    - create
+  converge_sequence:
+    - create
+    - converge
+  destroy_sequence:
+    - destroy
+  test_sequence:
+    - destroy
+    - syntax
+    - create
+    - converge
+    - idempotence
+    - verify
+    - destroy
