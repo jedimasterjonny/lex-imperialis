@@ -1,0 +1,11 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=NFS mount for {{ item.where }}
+After=network-online.target
+Wants=network-online.target
+
+[Mount]
+What={{ item.what }}
+Where={{ item.where }}
+Type=nfs
+Options={{ item.options }}

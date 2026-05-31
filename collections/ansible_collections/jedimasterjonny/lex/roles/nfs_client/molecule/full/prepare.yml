@@ -1,0 +1,49 @@
+---
+- name: Prepare — loopback NFS export for the live-mount test
+  hosts: all
+  gather_facts: true
+  vars:
+    # Derive the server-side exports from the same nfs_client_shares the role
+    # mounts (in scope here at extra-vars precedence), so adding a share to
+    # full-vars.yml can't leave the test server without a matching export.
+    nfs_client_test_exports: "{{ nfs_client_shares | map(attribute='export') | list }}"
+  tasks:
+    - name: Install the NFS kernel server
+      community.general.zypper:
+        name: nfs-kernel-server
+        state: present
+
+    - name: Create export directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      loop: "{{ nfs_client_test_exports }}"
+
+    - name: Drop a sentinel file into each export
+      ansible.builtin.copy:
+        content: "lex nfs_client molecule sentinel\n"
+        dest: "{{ item }}/SENTINEL"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: "{{ nfs_client_test_exports }}"
+
+    - name: Write /etc/exports
+      ansible.builtin.copy:
+        dest: /etc/exports
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          {% for export in nfs_client_test_exports %}
+          {{ export }} 127.0.0.1/32(rw,sync,no_subtree_check,no_root_squash)
+          {% endfor %}
+
+    - name: Enable and (re)start the NFS server to apply the exports
+      ansible.builtin.systemd_service:
+        name: nfs-server
+        enabled: true
+        state: restarted

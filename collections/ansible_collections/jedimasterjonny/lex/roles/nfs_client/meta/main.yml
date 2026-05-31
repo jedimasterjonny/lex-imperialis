@@ -1,0 +1,20 @@
+---
+galaxy_info:
+  author: jedimasterjonny
+  description: Mount NFS shares as systemd .mount/.automount units.
+  license: GPL-3.0-or-later
+  min_ansible_version: "2.19"
+  # The role calls community.general.zypper to install the NFS client, so
+  # non-SUSE consumers can't use it. `versions: [all]` is the schema's only
+  # escape hatch — the Galaxy-accepted enum has no Tumbleweed or 16.x entry,
+  # while CI covers Tumbleweed (tier 1/2) plus Leap 16 (tier 3).
+  platforms:
+    - name: opensuse
+      versions:
+        - all
+  galaxy_tags:
+    - homelab
+    - suse
+    - nfs
+    - storage
+dependencies: []

@@ -1,0 +1,20 @@
+---
+# Tier-1 sample shares. The server is a TEST-NET address (RFC 5737) that is
+# never contacted — the automount is lazy and the scenario never accesses the
+# mount points. `my-backups` deliberately carries a dash so the run exercises
+# systemd-escape's \x2d escaping; the per-share server and idle_timeout
+# exercise the override paths.
+#
+# nfs_client_activate is off because an unprivileged incus container can't host
+# the kernel autofs trigger (starting an .automount unit is rejected). Tier 1
+# therefore covers package + rendering + idempotence; the live activation and
+# mount are exercised by the `full` scenario on a libvirt VM.
+nfs_client_activate: false
+nfs_client_server: 192.0.2.10
+nfs_client_shares:
+  - name: media
+    export: /export/media
+  - name: my-backups
+    export: /export/backups
+    server: 192.0.2.20
+    idle_timeout: 600

@@ -1,0 +1,114 @@
+---
+argument_specs:
+  main:
+    short_description: Mount NFS shares as systemd .mount/.automount units.
+    description:
+      - >-
+        Declares the public input contract for the role and validates it at
+        role entry. Concrete default values stay in C(defaults/main.yml) — the
+        single source of truth — so this spec pins each input's type and
+        structure rather than restating its default.
+      - >-
+        Semantic rules a type contract can't express remain enforced by asserts
+        in C(tasks/main.yml): every share must resolve a server (its own
+        C(server) or the global C(nfs_client_server)); share names must be
+        unique; and the resolved mount points must be unique, since each is
+        escaped into one systemd unit name.
+    author:
+      - jedimasterjonny
+    options:
+      nfs_client_packages:
+        type: list
+        elements: str
+        required: false
+        description:
+          - NFS client userspace packages providing C(mount.nfs).
+      nfs_client_server:
+        type: str
+        required: false
+        description:
+          - >-
+            Default NFS server (hostname or IP) every share inherits unless it
+            sets its own C(server). Null by default; C(tasks/main.yml) asserts
+            each share resolves a server from this or its own C(server) key.
+      nfs_client_base:
+        type: str
+        required: false
+        description:
+          - Filesystem root each share is mounted under, e.g. C(/nfs/<name>).
+      nfs_client_nfs_version:
+        type: str
+        required: false
+        description:
+          - >-
+            NFS protocol version rendered as the C(vers=) mount option, e.g.
+            C("4.1") or C("4.2"). Quoted so YAML keeps it a string.
+      nfs_client_mount_options:
+        type: list
+        elements: str
+        required: false
+        description:
+          - >-
+            Mount options applied to every share. C(vers=) is composed from
+            C(nfs_client_nfs_version) and must not be repeated here.
+      nfs_client_automount_idle_timeout:
+        type: int
+        required: false
+        description:
+          - >-
+            Seconds a share may sit idle before systemd unmounts it; 0 disables
+            idle unmount. Rendered as C(TimeoutIdleSec) in the .automount unit.
+      nfs_client_activate:
+        type: bool
+        required: false
+        description:
+          - >-
+            Whether to enable and start the .automount units. False renders and
+            registers the units without activating them.
+      nfs_client_shares:
+        type: list
+        elements: dict
+        required: false
+        description:
+          - The shares to mount. Empty by default.
+        options:
+          name:
+            type: str
+            required: true
+            description:
+              - >-
+                Mount-point leaf; the default mount point is C(nfs_client_base)
+                joined with this name.
+          export:
+            type: str
+            required: true
+            description:
+              - Server-side export path, e.g. C(/volume1/media).
+          server:
+            type: str
+            required: false
+            description:
+              - Overrides C(nfs_client_server) for this share.
+          path:
+            type: str
+            required: false
+            description:
+              - >-
+                Absolute mount point. Overrides the default of
+                C(nfs_client_base) joined with the share C(name).
+          options:
+            type: list
+            elements: str
+            required: false
+            description:
+              - Replaces C(nfs_client_mount_options) for this share.
+          version:
+            type: str
+            required: false
+            description:
+              - Replaces C(nfs_client_nfs_version) for this share.
+          idle_timeout:
+            type: int
+            required: false
+            description:
+              - Replaces C(nfs_client_automount_idle_timeout) for this share.

@@ -1,0 +1,167 @@
+---
+# Reset the internal accumulators unconditionally. set_fact persists for the
+# whole play, so a role applied twice (e.g. two servers in one play) would
+# otherwise append to the previous pass's list rather than start clean.
+- name: Initialise resolved-share accumulators
+  ansible.builtin.set_fact:
+    __nfs_client_resolved: []
+    __nfs_client_units: []
+
+# A share with neither its own `server` nor a global nfs_client_server has no
+# target — fail loudly here rather than render a unit with `None:` for What=.
+# Checks the resolved value so an explicit `server: null` is caught too, not
+# just an absent key.
+- name: Assert every share resolves a server
+  ansible.builtin.assert:
+    that:
+      - (item.server | default(nfs_client_server)) is not none
+      - (item.server | default(nfs_client_server)) | string | length > 0
+    fail_msg: >-
+      Share '{{ item.name }}' has no server — set nfs_client_server globally or
+      `server` on the share.
+  loop: "{{ nfs_client_shares }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# A share name is the default mount-point leaf (base/<name>), so duplicate
+# names would collide on the same mount point — and a repeated name is a
+# config error regardless. The unit-name stem itself comes from the escaped
+# mount path (checked below); catch duplicate names here, before any write.
+- name: Assert share names are unique
+  ansible.builtin.assert:
+    that:
+      - nfs_client_shares | map(attribute='name') | list | length
+        == nfs_client_shares | map(attribute='name') | unique | list | length
+    fail_msg: >-
+      nfs_client_shares has duplicate names; each share name must be unique.
+
+- name: Install NFS client packages
+  community.general.zypper:
+    name: "{{ nfs_client_packages }}"
+    state: present
+
+# Normalise each share into the fields the units need: What= (server:export),
+# Where= (mount point), the comma-joined Options= string with vers= composed
+# from the version knob, and the idle timeout. Per-share keys override the
+# role-level defaults; `default()` substitutes only for absent keys, so an
+# explicit value (including an empty options list) is honoured.
+- name: Resolve share definitions
+  ansible.builtin.set_fact:
+    __nfs_client_resolved: >-
+      {{ __nfs_client_resolved + [{
+           'name': item.name,
+           'what': (item.server | default(nfs_client_server)) ~ ':' ~ item.export,
+           'where': item.path | default(nfs_client_base ~ '/' ~ item.name),
+           'options': (['vers=' ~ (item.version | default(nfs_client_nfs_version))]
+                       + (item.options | default(nfs_client_mount_options)))
+                      | join(','),
+           'idle_timeout': item.idle_timeout
+                           | default(nfs_client_automount_idle_timeout)
+         }] }}
+  loop: "{{ nfs_client_shares }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# Two differently-named shares pointed at the same mount point would generate
+# conflicting units (systemd refuses two units with the same Where=).
+- name: Assert mount points are unique
+  ansible.builtin.assert:
+    that:
+      - __nfs_client_resolved | map(attribute='where') | list | length
+        == __nfs_client_resolved | map(attribute='where') | unique | list | length
+    fail_msg: >-
+      Two shares resolve to the same mount point; give each a distinct path.
+
+# systemd unit filenames are the escaped form of the mount path, and the
+# escaping is not a plain '/'->'-' swap: a dash in the path becomes \x2d
+# (so /nfs/my-share -> nfs-my\x2dshare). Shell out to systemd-escape rather
+# than reimplement that mapping in Jinja and get it subtly wrong. One call
+# escapes every path; the results come back space-separated on a single line.
+# check_mode: false so the names are available under --check too.
+- name: Derive systemd unit-name stems from the mount points
+  ansible.builtin.command:
+    argv: >-
+      {{ ['systemd-escape', '--path']
+         + (__nfs_client_resolved | map(attribute='where') | list) }}
+  register: __nfs_client_stems
+  changed_when: false
+  check_mode: false
+  when: __nfs_client_resolved | length > 0
+
+- name: Assert a unit-name stem was derived for every share
+  ansible.builtin.assert:
+    that:
+      - __nfs_client_stems.stdout.split() | length
+        == __nfs_client_resolved | length
+    fail_msg: systemd-escape returned an unexpected number of unit-name stems.
+  when: __nfs_client_resolved | length > 0
+
+- name: Attach unit-name stems to the resolved shares
+  ansible.builtin.set_fact:
+    __nfs_client_units: >-
+      {{ __nfs_client_units
+         + [item | combine({'stem': __nfs_client_stems.stdout.split()[idx]})] }}
+  loop: "{{ __nfs_client_resolved }}"
+  loop_control:
+    index_var: idx
+    label: "{{ item.where }}"
+  when: __nfs_client_resolved | length > 0
+
+# state=directory creates intermediate parents, so the base (e.g. /nfs) is
+# made implicitly. The automount overlays on first access; the directory must
+# already exist for the .mount unit's Where= to be valid.
+- name: Ensure each mount point exists
+  ansible.builtin.file:
+    path: "{{ item.where }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: "{{ __nfs_client_units }}"
+  loop_control:
+    label: "{{ item.where }}"
+
+- name: Render the .mount unit for each share
+  ansible.builtin.template:
+    src: nfs-share.mount.j2
+    dest: "/etc/systemd/system/{{ item.stem }}.mount"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ __nfs_client_units }}"
+  loop_control:
+    label: "{{ item.where }}"
+  notify: Reload systemd daemon
+
+- name: Render the .automount unit for each share
+  ansible.builtin.template:
+    src: nfs-share.automount.j2
+    dest: "/etc/systemd/system/{{ item.stem }}.automount"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ __nfs_client_units }}"
+  loop_control:
+    label: "{{ item.where }}"
+  notify: Reload systemd daemon
+
+# Run the reload now, not at end of play: the automount units enabled below
+# must be known to systemd before `systemctl enable` can resolve them.
+- name: Reload systemd so the new units are known before activation
+  ansible.builtin.meta: flush_handlers
+
+# Enable + start the .automount, not the .mount: the automount installs the
+# kernel autofs trigger (no server contact, no boot blocking) and the actual
+# NFS mount happens lazily on first access to the mount point. Gated on
+# nfs_client_activate so the units can be staged without activation — and so
+# the tier-1 (unprivileged container) Molecule scenario, which can't host an
+# autofs trigger, still exercises the rendering path.
+- name: Enable and start the automount unit for each share
+  ansible.builtin.systemd_service:
+    name: "{{ item.stem }}.automount"
+    enabled: true
+    state: started
+  loop: "{{ __nfs_client_units }}"
+  loop_control:
+    label: "{{ item.where }}"
+  when: nfs_client_activate | bool
