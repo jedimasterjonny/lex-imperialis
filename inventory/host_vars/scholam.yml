@@ -6,6 +6,10 @@
 # the right name for the lab box: where roles are trained, tested, and made
 # fit to deploy.
 
+# Pin the system hostname the common role enforces. Matches the inventory
+# key, so it's the short name scholam carries on the network.
+common_hostname: scholam
+
 motd_text: |
   Schola Progenium — forge of the faithful.
   Train hard. Fail safely. Deploy in His name.
