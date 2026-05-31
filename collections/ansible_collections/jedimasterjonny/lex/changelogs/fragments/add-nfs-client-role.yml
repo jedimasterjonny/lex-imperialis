@@ -1,3 +1,0 @@
----
-minor_changes:
-  - "nfs_client - new role mounting NFS shares as systemd .mount/.automount units, with per-share overrides and a configurable NFS version."
