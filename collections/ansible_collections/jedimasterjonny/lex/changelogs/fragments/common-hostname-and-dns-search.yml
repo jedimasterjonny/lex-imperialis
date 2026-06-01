@@ -1,0 +1,9 @@
+---
+minor_changes:
+  - "common - enforce the system hostname via the new ``common_hostname``
+    variable, defaulting to the inventory hostname; the role now manages the
+    hostname where it previously left it untouched."
+  - "common - configure DNS search domains via the new ``common_search_domains``
+    variable, applied through whichever resolver owns ``/etc/resolv.conf``
+    (netconfig, systemd-resolved, or NetworkManager); empty by default which
+    skips the path."

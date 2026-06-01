@@ -1,6 +1,20 @@
 ---
 # Default vars for jedimasterjonny.lex.common role.
 
+# Static hostname enforced via ansible.builtin.hostname. Defaults to the
+# inventory hostname; the module is idempotent, so this is a no-op when the
+# host already carries the expected name and corrects drift otherwise. Set
+# the short name here — the DNS search domain (common_search_domains) supplies
+# the rest of the FQDN.
+common_hostname: "{{ inventory_hostname }}"
+
+# DNS search domains merged into /etc/resolv.conf by openSUSE's netconfig
+# (NETCONFIG_DNS_STATIC_SEARCHLIST). Empty by default, which skips the
+# netconfig path entirely. Order is significant — the first entry is the
+# primary search suffix. Assumes NETCONFIG_DNS_POLICY includes static
+# settings (the stock "auto" does).
+common_search_domains: []
+
 # Operator accounts to ensure exist on the host. Empty by default —
 # many consumers provision their accounts out of band (cloud-init,
 # image baking, …). Each entry is a dict; `name` is required;

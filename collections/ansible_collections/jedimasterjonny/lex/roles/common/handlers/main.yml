@@ -6,3 +6,19 @@
   ansible.builtin.systemd_service:
     name: sshd
     state: reloaded
+
+# `-f` forces resolv.conf regeneration so the new searchlist takes effect the
+# moment the static config changes. Only fires when the lineinfile reported a
+# change, so re-runs stay quiet; a triggered run is, by definition, applying a
+# change, hence changed_when: true.
+- name: Apply netconfig
+  ansible.builtin.command:
+    cmd: netconfig update -f
+  changed_when: true
+
+# restart, not reload: resolved only re-reads Domains= reliably on restart. The
+# stub resolver is down for a sub-second blip, acceptable for a config apply.
+- name: Restart systemd-resolved
+  ansible.builtin.systemd_service:
+    name: systemd-resolved
+    state: restarted

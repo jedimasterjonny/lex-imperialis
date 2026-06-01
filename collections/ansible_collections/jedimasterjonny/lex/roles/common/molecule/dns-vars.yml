@@ -1,0 +1,18 @@
+---
+# Vars loaded by both converge.yml and verify.yml for the common role's
+# molecule scenarios. Held in its own file so the DNS search-domain fixture
+# stays decoupled from the user and stow fixtures — independent features of
+# the role.
+#
+# Loaded via play-level `vars_files:` (precedence 14) for the same reason as
+# users-vars.yml: molecule's extra-vars dict2args passes a list as a single
+# subprocess argument and breaks the multi-file form. In verify.yml this file
+# is listed AFTER defaults/main.yml so its common_search_domains value wins the
+# same-level resolution over the empty role default.
+#
+# home.arpa is the RFC 8375 reserved suffix for residential networks — apt for
+# a home lab and guaranteed never to resolve to real infrastructure, so it is
+# safe to commit to this public repo.
+
+common_search_domains:
+  - home.arpa

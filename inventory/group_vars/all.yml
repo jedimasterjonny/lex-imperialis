@@ -1,0 +1,7 @@
+---
+# Repo-wide defaults applied to every host in the lab inventory.
+
+# DNS search domain, applied by the common role via netconfig. Set
+# repo-wide so every host shares a single search suffix.
+common_search_domains:
+  - localdomain

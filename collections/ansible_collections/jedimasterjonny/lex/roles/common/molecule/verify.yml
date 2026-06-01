@@ -4,9 +4,10 @@
   gather_facts: false
   vars_files:
     - ../defaults/main.yml
-    # Loaded after the role defaults so its common_users value wins
-    # — see the file header for the precedence rationale.
+    # Loaded after the role defaults so their values win over the empty
+    # defaults — see each file's header for the precedence rationale.
     - users-vars.yml
+    - dns-vars.yml
   tasks:
     # Verify by re-applying state in check mode and asserting nothing would
     # change. The zypper module resolves virtual provides (e.g. python3 →
@@ -47,6 +48,48 @@
       loop: "{{ common_users }}"
       loop_control:
         label: "{{ item.name }}"
+
+    # Same check-mode idiom as the package/sshd/user checks above: re-apply
+    # the hostname in check mode and treat a reported change as "the live
+    # hostname does not match common_hostname".
+    - name: Verify the hostname matches common_hostname
+      ansible.builtin.hostname:
+        name: "{{ common_hostname }}"
+      check_mode: true
+      register: __common_hostname_check
+      failed_when: __common_hostname_check.changed
+
+    - name: Verify DNS search domains are in effect
+      when: common_search_domains | length > 0
+      block:
+        # Assert the rendered effect in /etc/resolv.conf, not just the
+        # netconfig input — a regression in `netconfig update` would leave the
+        # static config correct but resolv.conf stale. slurp rather than
+        # `command: cat` keeps the read idempotent.
+        - name: Read /etc/resolv.conf
+          ansible.builtin.slurp:
+            src: /etc/resolv.conf
+          register: __common_resolv_conf
+
+        # Subset check: every configured domain must appear in the resolved
+        # search line, but netconfig may also merge interface-provided domains,
+        # so exact equality would be too strict. The search line lists domains
+        # space-separated after the `search` keyword.
+        - name: Assert each configured search domain is present
+          ansible.builtin.assert:
+            that:
+              - common_search_domains | difference(__common_resolv_search) | length == 0
+            fail_msg: >-
+              /etc/resolv.conf search list {{ __common_resolv_search }} is
+              missing one or more configured domains {{ common_search_domains }}.
+          vars:
+            __common_resolv_search_line: >-
+              {{ (__common_resolv_conf.content | b64decode).splitlines()
+                 | map('trim') | select('match', '^search ')
+                 | list | first | default('') }}
+            __common_resolv_search: >-
+              {{ __common_resolv_search_line.split()[1:]
+                 if __common_resolv_search_line else [] }}
 
     - name: Capture effective sshd config
       ansible.builtin.command: sshd -T

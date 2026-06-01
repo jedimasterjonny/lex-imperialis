@@ -16,6 +16,24 @@ argument_specs:
     author:
       - jedimasterjonny
     options:
+      common_hostname:
+        type: str
+        required: false
+        description:
+          - >-
+            Static hostname enforced via M(ansible.builtin.hostname). Defaults to
+            C(inventory_hostname); the module is idempotent, so applying it is a
+            no-op when the host already matches and corrects drift otherwise.
+      common_search_domains:
+        type: list
+        elements: str
+        required: false
+        description:
+          - >-
+            DNS search domains written to C(NETCONFIG_DNS_STATIC_SEARCHLIST) in
+            C(/etc/sysconfig/network/config) and applied with C(netconfig update).
+            Empty by default, which skips the netconfig path. Order is
+            significant — the first entry is the primary search suffix.
       common_users:
         type: list
         elements: dict

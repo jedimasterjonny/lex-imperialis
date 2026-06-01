@@ -7,6 +7,9 @@
     # why this is loaded via vars_files rather than molecule's
     # extra-vars option.
     - users-vars.yml
+    # Exercises the netconfig search-domain path (home.arpa). Same
+    # vars_files-not-extra-vars rationale as users-vars.yml.
+    - dns-vars.yml
   pre_tasks:
     # ssh-audit is a test-time tool, not a runtime dependency of the
     # role. Installing it here keeps the role itself unencumbered while
