@@ -15,3 +15,10 @@
   ansible.builtin.command:
     cmd: netconfig update -f
   changed_when: true
+
+# restart, not reload: resolved only re-reads Domains= reliably on restart. The
+# stub resolver is down for a sub-second blip, acceptable for a config apply.
+- name: Restart systemd-resolved
+  ansible.builtin.systemd_service:
+    name: systemd-resolved
+    state: restarted

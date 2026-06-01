@@ -22,43 +22,75 @@
   ansible.builtin.hostname:
     name: "{{ common_hostname }}"
 
-# netconfig — not this role — owns the merge into /etc/resolv.conf, so we only
-# set the static searchlist and let `netconfig update` (the handler) regenerate
-# resolv.conf. This stays correct whether wicked, NetworkManager, or nothing is
-# the active manager. Joined with spaces because NETCONFIG_DNS_STATIC_SEARCHLIST
-# is a space-separated list; order is the resolver's search-suffix preference.
-- name: Configure DNS search domains via netconfig
+# The search domain must be applied through whatever owns /etc/resolv.conf, and
+# that differs across the fleet: netconfig on Tumbleweed (resolv.conf ->
+# /run/netconfig/resolv.conf), systemd-resolved on Leap 16 (-> /run/systemd/
+# resolve/stub-resolv.conf). Resolve the symlink and dispatch on its target
+# rather than guessing from the distribution — a Leap 16 host carrying a
+# leftover /etc/sysconfig/network/config but no netconfig binary would fool a
+# name- or file-presence check and then crash the `netconfig update` handler.
+- name: Configure DNS search domains
   when: common_search_domains | length > 0
   block:
-    # /etc/sysconfig/network/config ships with the `sysconfig` package on every
-    # netconfig-managed host. lineinfile defaults to create: false and would
-    # abort with a terse "file not found" if it is absent; create: true is the
-    # wrong fix, since a file holding only NETCONFIG_DNS_STATIC_SEARCHLIST (and
-    # none of netconfig's other settings, e.g. NETCONFIG_DNS_POLICY) is not a
-    # usable config and `netconfig update` would have no policy permitting the
-    # static list. Probe and fail loudly instead: an absent file means the host
-    # has no netconfig setup, which the operator must resolve.
-    - name: Probe for the netconfig config file
+    - name: Stat /etc/resolv.conf to find the active resolver
       ansible.builtin.stat:
-        path: /etc/sysconfig/network/config
-      register: __common_netconfig_stat
+        path: /etc/resolv.conf
+      register: __common_resolv_stat
 
-    - name: Assert the netconfig config file exists
+    - name: Select the DNS search-domain mechanism from the resolv.conf owner
+      ansible.builtin.set_fact:
+        __common_dns_mechanism: >-
+          {{ 'systemd-resolved' if 'systemd' in __common_resolv_link
+             else 'netconfig' if 'netconfig' in __common_resolv_link
+             else 'unknown' }}
+      vars:
+        __common_resolv_link: "{{ __common_resolv_stat.stat.lnk_target | default('') }}"
+
+    - name: Assert a supported resolver manages /etc/resolv.conf
       ansible.builtin.assert:
         that:
-          - __common_netconfig_stat.stat.exists
+          - __common_dns_mechanism != 'unknown'
         fail_msg: >-
-          common_search_domains is set but /etc/sysconfig/network/config is
-          absent — this host has no netconfig configuration. Install the
-          `sysconfig` package, or unset common_search_domains on hosts that do
-          not use netconfig to manage /etc/resolv.conf.
+          common_search_domains is set but /etc/resolv.conf is managed by
+          neither netconfig nor systemd-resolved (symlink target:
+          {{ __common_resolv_stat.stat.lnk_target | default('<not a symlink>') }}).
+          Apply the search domain through the host's active resolver, or unset
+          common_search_domains here.
 
-    - name: Set the static DNS searchlist
+    # Tumbleweed / netconfig: set the static searchlist and let `netconfig
+    # update` (handler) regenerate resolv.conf. NETCONFIG_DNS_POLICY=auto merges
+    # the static list with interface-provided domains. The config file is
+    # guaranteed present here — resolv.conf already points into netconfig's tree.
+    - name: Set the netconfig static search list
+      when: __common_dns_mechanism == 'netconfig'
       ansible.builtin.lineinfile:
         path: /etc/sysconfig/network/config
         regexp: '^NETCONFIG_DNS_STATIC_SEARCHLIST='
         line: 'NETCONFIG_DNS_STATIC_SEARCHLIST="{{ common_search_domains | join(" ") }}"'
       notify: Apply netconfig
+
+    # Leap 16 / systemd-resolved: a resolved.conf.d drop-in. The 00- prefix
+    # sorts first; resolved merges Domains= across drop-ins, so this adds our
+    # suffixes alongside any interface-provided ones rather than replacing them.
+    - name: Apply search domains via systemd-resolved
+      when: __common_dns_mechanism == 'systemd-resolved'
+      block:
+        - name: Ensure the systemd-resolved drop-in directory exists
+          ansible.builtin.file:
+            path: /etc/systemd/resolved.conf.d
+            state: directory
+            owner: root
+            group: root
+            mode: '0755'
+
+        - name: Install the systemd-resolved search-domain drop-in
+          ansible.builtin.template:
+            src: lex-search.conf.j2
+            dest: /etc/systemd/resolved.conf.d/00-lex-search.conf
+            owner: root
+            group: root
+            mode: '0644'
+          notify: Restart systemd-resolved
 
 - name: Install baseline packages
   community.general.zypper:
