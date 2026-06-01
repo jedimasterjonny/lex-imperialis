@@ -18,27 +18,5 @@
       community.general.zypper:
         name: ssh-audit
         state: present
-
-    # TEMP DIAGNOSTIC — remove once the Leap 16 (Hetzner) resolver is known.
-    - name: Dump the resolver state for diagnosis
-      ansible.builtin.shell: |
-        set -o pipefail
-        echo "### ls -l /etc/resolv.conf"; ls -l /etc/resolv.conf
-        echo "### readlink -f"; readlink -f /etc/resolv.conf
-        echo "### content"; cat /etc/resolv.conf
-        echo "### services"
-        for s in systemd-resolved systemd-networkd NetworkManager wicked; do
-          printf '%s=' "$s"; systemctl is-active "$s" 2>/dev/null
-        done
-        echo "### netconfig bin"; command -v netconfig || echo none
-        echo "### resolvectl"; command -v resolvectl >/dev/null && resolvectl status || echo "no resolvectl"
-        echo "### sysconfig dns"; grep -E '^NETCONFIG_DNS_(POLICY|STATIC_SEARCHLIST)=' /etc/sysconfig/network/config 2>/dev/null || echo "no sysconfig file"
-      register: __common_diag
-      changed_when: false
-      failed_when: false
-
-    - name: Show the resolver state
-      ansible.builtin.debug:
-        var: __common_diag.stdout_lines
   roles:
     - jedimasterjonny.lex.common

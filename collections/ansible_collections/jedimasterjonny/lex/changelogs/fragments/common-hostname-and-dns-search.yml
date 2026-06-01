@@ -5,5 +5,5 @@ minor_changes:
     hostname where it previously left it untouched."
   - "common - configure DNS search domains via the new ``common_search_domains``
     variable, applied through whichever resolver owns ``/etc/resolv.conf``
-    (netconfig on Tumbleweed, systemd-resolved on Leap 16); empty by default
-    which skips the path."
+    (netconfig, systemd-resolved, or NetworkManager); empty by default which
+    skips the path."

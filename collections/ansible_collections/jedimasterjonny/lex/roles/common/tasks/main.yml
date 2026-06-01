@@ -47,6 +47,16 @@
         path: /run/systemd/resolve/stub-resolv.conf
       register: __common_resolved_stub
 
+    # NetworkManager (the Hetzner Leap 16 image) writes /etc/resolv.conf as a
+    # plain file with no symlink and no resolved stub, so neither probe above
+    # catches it. A running NM always creates /run/NetworkManager/; checked last,
+    # after netconfig and resolved, so a host where NM defers DNS to one of those
+    # is classified by the actual resolv.conf owner rather than by NM's presence.
+    - name: Probe whether NetworkManager is running
+      ansible.builtin.stat:
+        path: /run/NetworkManager
+      register: __common_nm_run
+
     - name: Select the DNS search-domain mechanism
       ansible.builtin.set_fact:
         __common_dns_mechanism: >-
@@ -54,6 +64,7 @@
              else 'systemd-resolved'
              if ('systemd' in __common_resolv_link
                  or __common_resolved_stub.stat.exists)
+             else 'networkmanager' if __common_nm_run.stat.exists
              else 'unknown' }}
       vars:
         __common_resolv_link: "{{ __common_resolv_stat.stat.lnk_target | default('') }}"
@@ -103,6 +114,58 @@
             group: root
             mode: '0644'
           notify: Restart systemd-resolved
+
+    # Hetzner / NetworkManager: NM writes /etc/resolv.conf directly from the
+    # active connection's settings, so the search domains go on the connection
+    # as ipv4.dns-search and the connection is reactivated to regenerate the
+    # file. Applied to every active non-loopback connection so the search holds
+    # regardless of which one provides DNS. Plain nmcli (not the module) keeps
+    # this surgical — it touches only dns-search, never re-templates the whole
+    # connection. UUIDs are colon-free, so the terse output parses cleanly.
+    - name: Apply search domains via NetworkManager
+      when: __common_dns_mechanism == 'networkmanager'
+      block:
+        - name: List active NetworkManager connections
+          ansible.builtin.command:
+            cmd: nmcli --terse --fields UUID,TYPE connection show --active
+          register: __common_nm_active
+          changed_when: false
+
+        - name: Read the current search list for each connection
+          ansible.builtin.command:
+            cmd: nmcli --get-values ipv4.dns-search connection show {{ item }}
+          loop: "{{ __common_nm_conns }}"
+          register: __common_nm_current
+          changed_when: false
+          vars:
+            __common_nm_conns: >-
+              {{ __common_nm_active.stdout_lines | reject('search', ':loopback')
+                 | map('regex_replace', ':.*$', '') | select | list }}
+
+        # Compare against the exact CSV we would write: nmcli preserves the order
+        # it is given, so a plain string compare suffices and a connection that
+        # already matches contributes nothing to __common_nm_to_set — that is the
+        # idempotence gate for the two command tasks below.
+        - name: Determine which connections need the search domains set
+          ansible.builtin.set_fact:
+            __common_nm_to_set: >-
+              {{ __common_nm_current.results
+                 | rejectattr('stdout', 'eq', common_search_domains | join(','))
+                 | map(attribute='item') | list }}
+
+        - name: Set the search domains on connections that differ
+          ansible.builtin.command:
+            cmd: >-
+              nmcli connection modify {{ item }}
+              ipv4.dns-search "{{ common_search_domains | join(',') }}"
+          loop: "{{ __common_nm_to_set }}"
+          changed_when: true
+
+        - name: Reactivate those connections to regenerate resolv.conf
+          ansible.builtin.command:
+            cmd: nmcli connection up {{ item }}
+          loop: "{{ __common_nm_to_set }}"
+          changed_when: true
 
 - name: Install baseline packages
   community.general.zypper:
