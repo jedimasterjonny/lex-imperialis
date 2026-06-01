@@ -29,11 +29,36 @@
 # is a space-separated list; order is the resolver's search-suffix preference.
 - name: Configure DNS search domains via netconfig
   when: common_search_domains | length > 0
-  ansible.builtin.lineinfile:
-    path: /etc/sysconfig/network/config
-    regexp: '^NETCONFIG_DNS_STATIC_SEARCHLIST='
-    line: 'NETCONFIG_DNS_STATIC_SEARCHLIST="{{ common_search_domains | join(" ") }}"'
-  notify: Apply netconfig
+  block:
+    # /etc/sysconfig/network/config ships with the `sysconfig` package on every
+    # netconfig-managed host. lineinfile defaults to create: false and would
+    # abort with a terse "file not found" if it is absent; create: true is the
+    # wrong fix, since a file holding only NETCONFIG_DNS_STATIC_SEARCHLIST (and
+    # none of netconfig's other settings, e.g. NETCONFIG_DNS_POLICY) is not a
+    # usable config and `netconfig update` would have no policy permitting the
+    # static list. Probe and fail loudly instead: an absent file means the host
+    # has no netconfig setup, which the operator must resolve.
+    - name: Probe for the netconfig config file
+      ansible.builtin.stat:
+        path: /etc/sysconfig/network/config
+      register: __common_netconfig_stat
+
+    - name: Assert the netconfig config file exists
+      ansible.builtin.assert:
+        that:
+          - __common_netconfig_stat.stat.exists
+        fail_msg: >-
+          common_search_domains is set but /etc/sysconfig/network/config is
+          absent — this host has no netconfig configuration. Install the
+          `sysconfig` package, or unset common_search_domains on hosts that do
+          not use netconfig to manage /etc/resolv.conf.
+
+    - name: Set the static DNS searchlist
+      ansible.builtin.lineinfile:
+        path: /etc/sysconfig/network/config
+        regexp: '^NETCONFIG_DNS_STATIC_SEARCHLIST='
+        line: 'NETCONFIG_DNS_STATIC_SEARCHLIST="{{ common_search_domains | join(" ") }}"'
+      notify: Apply netconfig
 
 - name: Install baseline packages
   community.general.zypper:
