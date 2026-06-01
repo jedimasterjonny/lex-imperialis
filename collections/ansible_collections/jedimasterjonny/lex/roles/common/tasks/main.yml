@@ -37,11 +37,23 @@
         path: /etc/resolv.conf
       register: __common_resolv_stat
 
-    - name: Select the DNS search-domain mechanism from the resolv.conf owner
+    # systemd-resolved does not always own resolv.conf via a symlink: some Leap
+    # 16 cloud images ship it as a regular file while resolved still runs and is
+    # the intended resolver. A running resolved always maintains its stub under
+    # /run/systemd/resolve/, so stat that as the capability probe rather than
+    # relying on the symlink alone — and without shelling out to systemctl.
+    - name: Probe whether systemd-resolved is running
+      ansible.builtin.stat:
+        path: /run/systemd/resolve/stub-resolv.conf
+      register: __common_resolved_stub
+
+    - name: Select the DNS search-domain mechanism
       ansible.builtin.set_fact:
         __common_dns_mechanism: >-
-          {{ 'systemd-resolved' if 'systemd' in __common_resolv_link
-             else 'netconfig' if 'netconfig' in __common_resolv_link
+          {{ 'netconfig' if 'netconfig' in __common_resolv_link
+             else 'systemd-resolved'
+             if ('systemd' in __common_resolv_link
+                 or __common_resolved_stub.stat.exists)
              else 'unknown' }}
       vars:
         __common_resolv_link: "{{ __common_resolv_stat.stat.lnk_target | default('') }}"
