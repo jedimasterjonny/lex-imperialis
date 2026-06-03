@@ -55,7 +55,7 @@ The git tree MUST be bisect-safe at all times: every commit — on every branch,
 
 Run the gates yourself before presenting or committing — never hand back unverified work.
 
-- `pre-commit run --all-files` for lint; `molecule test` for the role(s) you touched.
+- `make lint` for lint (pre-commit not yet configured); `molecule test` for the role(s) you touched.
 - Every task must be idempotent — molecule's idempotence check (a second converge reporting zero changed) enforces it.
 - Fix failures at the root, don't suppress them. Show the command output as evidence.
 - Formatting is owned by the linters — don't hand-format or override them.
