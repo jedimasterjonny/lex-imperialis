@@ -1,0 +1,12 @@
+# Python virtualenv
+.venv/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Ansible retry files (can leak hostnames)
+*.retry
+
+# Vault password file
+.vault_pass
