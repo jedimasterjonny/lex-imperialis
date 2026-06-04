@@ -1,0 +1,21 @@
+---
+# Mirrors ansible-lint's bundled yamllint config so standalone yamllint agrees
+# with ansible-lint's internal checks. Keep in sync with the pinned ansible-lint.
+extends: default
+
+# Skip the venv and other artefacts; ansible-lint is already git-aware.
+ignore-from-file: .gitignore
+
+rules:
+  braces:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: false
+  document-start: disable
+  line-length:
+    max: 160
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
