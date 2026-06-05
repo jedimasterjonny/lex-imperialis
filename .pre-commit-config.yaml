@@ -1,7 +1,7 @@
 ---
-# pre-commit-hooks stay remote (no venv equivalent to call); yamllint and
-# ansible-lint run as local hooks against the venv-pinned tools, so their
-# versions live in exactly one place — requirements-dev.txt.
+# pre-commit-hooks stay remote (no venv equivalent to call); yamllint,
+# ansible-lint, and shellcheck run as local hooks against the venv-pinned
+# tools, so their versions live in exactly one place — requirements-dev.txt.
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -28,3 +28,8 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      - id: shellcheck
+        name: shellcheck
+        entry: shellcheck
+        language: system
+        types: [shell]
