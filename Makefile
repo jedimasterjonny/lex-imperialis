@@ -1,4 +1,4 @@
-.PHONY: lint ansible-lint yamllint
+.PHONY: lint ansible-lint yamllint hooks pre-commit
 
 lint: yamllint ansible-lint
 
@@ -7,3 +7,9 @@ yamllint:
 
 ansible-lint:
 	. .venv/bin/activate && ansible-lint
+
+hooks:
+	. .venv/bin/activate && pre-commit install
+
+pre-commit:
+	. .venv/bin/activate && pre-commit run --all-files
