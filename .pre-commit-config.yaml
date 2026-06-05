@@ -1,0 +1,30 @@
+---
+# pre-commit-hooks stay remote (no venv equivalent to call); yamllint and
+# ansible-lint run as local hooks against the venv-pinned tools, so their
+# versions live in exactly one place — requirements-dev.txt.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      - id: check-json
+      - id: check-executables-have-shebangs
+      - id: detect-private-key
+  - repo: local
+    hooks:
+      - id: yamllint
+        name: yamllint
+        entry: yamllint
+        language: system
+        types: [yaml]
+      - id: ansible-lint
+        name: ansible-lint
+        entry: ansible-lint
+        language: system
+        pass_filenames: false
+        always_run: true
