@@ -1,4 +1,4 @@
-.PHONY: lint ansible-lint yamllint hooks pre-commit test
+.PHONY: lint ansible-lint yamllint hooks pre-commit test test-vm
 
 lint: yamllint ansible-lint
 
@@ -16,3 +16,6 @@ pre-commit:
 
 test:
 	. .venv/bin/activate && cd roles/motd && molecule test
+
+test-vm:
+	. .venv/bin/activate && cd roles/motd && molecule test -s libvirt
