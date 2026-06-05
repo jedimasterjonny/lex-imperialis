@@ -1,4 +1,4 @@
-.PHONY: lint ansible-lint yamllint hooks pre-commit
+.PHONY: lint ansible-lint yamllint hooks pre-commit test
 
 lint: yamllint ansible-lint
 
@@ -13,3 +13,6 @@ hooks:
 
 pre-commit:
 	. .venv/bin/activate && pre-commit run --all-files
+
+test:
+	. .venv/bin/activate && cd roles/motd && molecule test

@@ -1,0 +1,14 @@
+---
+platforms:
+  - name: motd-tumbleweed
+    image: images:opensuse/tumbleweed/cloud
+provisioner:
+  name: ansible
+  config_options:
+    defaults:
+      roles_path: "${MOLECULE_SCENARIO_DIRECTORY}/../../.."
+  inventory:
+    group_vars:
+      all:
+        ansible_connection: community.general.incus
+        ansible_incus_remote: local
