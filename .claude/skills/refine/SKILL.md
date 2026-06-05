@@ -23,7 +23,7 @@ have nothing left to say. The flow, in order:
    should be? Repeat with a fresh reviewer until one is satisfied cold.
 3. **Phase 2 — simplify + code-review loop:** line-level quality and
    correctness. Cycle until a full pass changes nothing.
-4. **Lint** (`pre-commit`) after every editing round in Phase 1 or 2; **test**
+4. **Lint** (`make pre-commit`) after every editing round in Phase 1 or 2; **test**
    (`molecule`) once after Phase 2 converges — and if it fails, fix at root and
    re-run Phase 2 (not the whole flow).
 5. **Phase 3 — documentation:** update the READMEs up the tree and `CLAUDE.md`
@@ -128,7 +128,7 @@ Guards:
 ## Verification
 
 **Lint, every editing round.** After any round that changes the tree — a design
-round or a simplify/review cycle — run `pre-commit run --all-files`. It is
+round or a simplify/review cycle — run `make pre-commit`. It is
 cheap, so keeping it green continuously means the only thing left to surprise
 you at the end is behaviour. Fix any lint failure at its root before the next
 round; never carry red forward.
