@@ -1,0 +1,7 @@
+---
+- name: Converge
+  hosts: all
+  tasks:
+    - name: Apply the motd role
+      ansible.builtin.include_role:
+        name: motd

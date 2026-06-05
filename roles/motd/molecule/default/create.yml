@@ -1,0 +1,27 @@
+---
+- name: Create
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Launch instances
+      ansible.builtin.command: "incus launch {{ item.image }} {{ item.name }}"
+      loop: "{{ molecule_yml.platforms }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: motd_launch
+      changed_when: motd_launch.rc == 0
+      failed_when:
+        - motd_launch.rc != 0
+        - "'already exists' not in motd_launch.stderr"
+
+    - name: Wait until instances respond to exec
+      ansible.builtin.command: "incus exec {{ item.name }} -- true"
+      loop: "{{ molecule_yml.platforms }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: motd_ping
+      until: motd_ping.rc == 0
+      retries: 30
+      delay: 2
+      changed_when: false
