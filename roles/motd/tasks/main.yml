@@ -1,0 +1,8 @@
+---
+- name: Deploy /etc/motd
+  ansible.builtin.copy:
+    content: "{{ motd_message }}"
+    dest: /etc/motd
+    owner: root
+    group: root
+    mode: "0644"
