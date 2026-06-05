@@ -22,7 +22,7 @@ pass — getting the first draft right — not the review loop. The flow, in ord
    the MCP server and the guide for anything situational.
 3. **Scaffold or locate** the target structure.
 4. **Write** the content to the checklist, matching any surrounding idiom.
-5. **Lint** (`ansible_lint`) until clean.
+5. **Lint** until clean — `ansible_lint` while writing, `make lint` before handoff.
 6. **Hand off to `refine`** and report.
 
 ## Scope
@@ -66,8 +66,9 @@ back to the equivalent CLIs noted below.
   `roles/`. **Do not** use `ansible_create_collection`: this repo is loose
   `roles/` at the root with no collection wrapper (CLAUDE.md), and a role does
   not justify wrapping the repo in one.
-- **`ansible_lint`** (`filePath`, optional `fix`) — the lint gate; fix findings
-  at their root, never silence a rule. CLI fallback: `ansible-lint`.
+- **`ansible_lint`** (`filePath`, optional `fix`) — per-file linting while
+  writing; fix findings at their root, never silence a rule. CLI fallback:
+  `ansible-lint`. The draft must pass the `make lint` gate before handoff.
 - **`ansible_navigator`** executes plays, so it is out of this skill's flow —
   running and verifying belong to molecule under `refine`. If ever invoked, it
   is molecule/ephemeral or `--check` only, never the live fleet.

@@ -191,7 +191,7 @@ Walk the curated commits oldest→newest, checking out each with `git checkout -
 (so a previous gate's autofix cannot block the next checkout), and gate each; after
 the walk, `git switch` back to the branch.
 
-- **Lint every commit** — `pre-commit run --all-files`. Cheap; mandatory. A hook
+- **Lint every commit** — `make pre-commit`. Cheap; mandatory. A hook
   that autofixes files makes pre-commit exit non-zero — treat that as the commit
   failing lint (re-curate so it is clean from the start) and discard the autofix
   edits before moving on.
