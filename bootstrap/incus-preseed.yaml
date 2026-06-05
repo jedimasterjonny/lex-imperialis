@@ -1,0 +1,33 @@
+---
+# One-shot host bootstrap for the molecule test runner. Apply once per dev host:
+#   incus admin init --preseed < bootstrap/incus-preseed.yaml
+# Not idempotent (incus admin init errors on existing entities), so it is a
+# documented bootstrap artefact, not a role.
+config: {}
+networks:
+  - name: incusbr0
+    type: bridge
+    config:
+      ipv4.address: auto
+      ipv4.nat: "true"
+      ipv6.address: "none"
+storage_pools:
+  - name: default
+    driver: btrfs
+    config:
+      source: /var/lib/incus/storage-pools/default
+profiles:
+  - name: default
+    description: Default profile for Molecule containers
+    devices:
+      eth0:
+        name: eth0
+        nictype: bridged
+        parent: incusbr0
+        type: nic
+      root:
+        path: /
+        pool: default
+        type: disk
+projects: []
+cluster: null

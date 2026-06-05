@@ -1,0 +1,17 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - ../../defaults/main.yml
+  tasks:
+    - name: Read /etc/motd
+      ansible.builtin.slurp:
+        src: /etc/motd
+      register: motd_file
+
+    - name: Motd matches the configured message
+      ansible.builtin.assert:
+        that:
+          - "(motd_file.content | b64decode) == motd_message"
+        fail_msg: "/etc/motd does not match the configured motd_message"
