@@ -1,2 +1,8 @@
 ---
 profile: production
+
+# The whole-file vault holds only an encrypted token — nothing to lint. Excluding
+# it silences ansible-lint's (non-fatal) decryption warnings, since it has no
+# vault password by default or in CI.
+exclude_paths:
+  - inventory/group_vars/all/vault.yml
