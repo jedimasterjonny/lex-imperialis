@@ -10,6 +10,11 @@
   "semanticCommits": "enabled",
   "packageRules": [
     {
+      "description": "pinDigest updates carry no version change, so the lint check is enough to merge them unattended.",
+      "matchUpdateTypes": ["pinDigest"],
+      "automerge": true
+    },
+    {
       "description": "requirements.txt deps reach the live fleet but CI runs lint only, not molecule, so they are merged by hand after a local molecule check.",
       "matchFileNames": ["requirements.txt"],
       "automerge": false
