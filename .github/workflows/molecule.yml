@@ -42,9 +42,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Emit one matrix per tier: roles with a default scenario (incus) and
-      # roles with a hetzner scenario (full VM). A PR tests only the roles it
-      # changes; shared infra pulls in motd, the harness exemplar.
+      # Emit one matrix per tier from the PR diff. A changed role runs its own
+      # tiers; shared infra (anything outside roles/) is exercised via the motd
+      # harness. incus is free, so any shared change runs it; the billable
+      # hetzner VM validates real-machine behaviour, so a requirements-dev.txt
+      # (test/lint toolchain) bump alone stays incus-only.
       - name: Determine roles and tiers
         id: set
         env:
@@ -54,27 +56,34 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$EVENT" = "workflow_dispatch" ]; then
-            roles=$(find roles -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -u)
+            roles=$(find roles -mindepth 1 -maxdepth 1 -type d -printf '%f\n')
+            shared=""
           else
             changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA")
-            roles=$(printf '%s\n' "$changed" | sed -n 's#^roles/\([^/]*\)/.*#\1#p' | sort -u)
-            # Anything outside roles/ is shared infra → validate via motd, the
-            # harness exemplar; this can't drift out of sync with a path list.
-            if printf '%s\n' "$changed" | grep -qvE '^roles/'; then
-              roles=$(printf '%s\nmotd\n' "$roles" | sort -u)
+            roles=$(printf '%s\n' "$changed" | sed -n 's#^roles/\([^/]*\)/.*#\1#p')
+            shared=$(printf '%s\n' "$changed" | grep -vE '^roles/' || true)
+          fi
+
+          incus_cand="$roles"
+          hetzner_cand="$roles"
+          if [ -n "$shared" ]; then
+            incus_cand=$(printf '%s\nmotd' "$roles")
+            if printf '%s\n' "$shared" | grep -qvE '^requirements-dev\.txt$'; then
+              hetzner_cand=$(printf '%s\nmotd' "$roles")
             fi
           fi
 
-          incus_roles=""
-          hetzner_roles=""
-          for r in $roles; do
-            [ -n "$r" ] || continue
-            if [ -d "roles/$r/molecule/default" ]; then incus_roles="${incus_roles}${r}"$'\n'; fi
-            if [ -d "roles/$r/molecule/hetzner" ]; then hetzner_roles="${hetzner_roles}${r}"$'\n'; fi
-          done
-
-          incus=$(printf '%s' "$incus_roles" | jq -R -s -c 'split("\n") | map(select(length > 0))')
-          hetzner=$(printf '%s' "$hetzner_roles" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          tier_matrix() {  # $1: candidate roles  $2: scenario dir gating the tier
+            local out="" r
+            for r in $(printf '%s\n' "$1" | sort -u); do
+              if [ -n "$r" ] && [ -d "roles/$r/molecule/$2" ]; then
+                out="${out}${r}"$'\n'
+              fi
+            done
+            printf '%s' "$out" | jq -R -s -c 'split("\n") | map(select(length > 0))'
+          }
+          incus=$(tier_matrix "$incus_cand" default)
+          hetzner=$(tier_matrix "$hetzner_cand" hetzner)
           echo "incus=$incus" >> "$GITHUB_OUTPUT"
           echo "hetzner=$hetzner" >> "$GITHUB_OUTPUT"
           echo "incus: $incus  hetzner: $hetzner"
