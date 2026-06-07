@@ -40,3 +40,10 @@ repos:
         entry: shellcheck
         language: system
         types: [shell]
+      # Every role must ship an incus or libvirt test (libvirt implies hetzner).
+      - id: role-test-coverage
+        name: role-test-coverage
+        entry: bin/check-role-test-coverage.sh
+        language: script
+        pass_filenames: false
+        always_run: true
