@@ -1,0 +1,27 @@
+---
+- name: Destroy
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    motd_platform: "{{ molecule_yml.platforms[0] }}"
+  vars_files:
+    - "{{ lookup('env', 'MOLECULE_SCENARIO_DIRECTORY') }}/../../../../inventory/group_vars/all/vault.yml"
+  tasks:
+    - name: Delete the server
+      hetzner.hcloud.server:
+        api_token: "{{ hcloud_token }}"
+        name: "{{ motd_platform.name }}"
+        state: absent
+
+    - name: Delete the SSH key
+      hetzner.hcloud.ssh_key:
+        api_token: "{{ hcloud_token }}"
+        name: "{{ motd_platform.name }}-key"
+        state: absent
+
+    - name: Clear the Molecule instance config
+      ansible.builtin.copy:
+        content: "{{ [] | to_nice_yaml }}"
+        dest: "{{ molecule_instance_config }}"
+        mode: "0600"
