@@ -1,4 +1,7 @@
 ---
+# Shared across roles: drives incus from molecule_yml.platforms, so it is
+# role-agnostic. Each role's default scenario references it via
+# provisioner.playbooks.create.
 - name: Create
   hosts: localhost
   connection: local
@@ -9,19 +12,19 @@
       loop: "{{ molecule_yml.platforms }}"
       loop_control:
         label: "{{ item.name }}"
-      register: motd_launch
-      changed_when: motd_launch.rc == 0
+      register: mol_launch
+      changed_when: mol_launch.rc == 0
       failed_when:
-        - motd_launch.rc != 0
-        - "'already exists' not in motd_launch.stderr"
+        - mol_launch.rc != 0
+        - "'already exists' not in mol_launch.stderr"
 
     - name: Wait until instances respond to exec
       ansible.builtin.command: "incus exec {{ item.name }} -- true"
       loop: "{{ molecule_yml.platforms }}"
       loop_control:
         label: "{{ item.name }}"
-      register: motd_ping
-      until: motd_ping.rc == 0
+      register: mol_ping
+      until: mol_ping.rc == 0
       retries: 30
       delay: 2
       changed_when: false

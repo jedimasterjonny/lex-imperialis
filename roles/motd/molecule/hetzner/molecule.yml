@@ -1,6 +1,6 @@
 ---
 platforms:
-  - name: motd-hetzner
+  - name: "lex-motd-hetzner-${MOLECULE_RUN_ID:-local}"
     server_type: cx23
     image: opensuse-16
     # Pinned region: cx23 is in stock in nbg1 (also hel1, fsn1). If a run
@@ -8,9 +8,12 @@ platforms:
     location: nbg1
 provisioner:
   name: ansible
+  # Provisioning is role-agnostic and shared at the repo root.
+  playbooks:
+    create: "${MOLECULE_SCENARIO_DIRECTORY}/../../../../molecule/hetzner/create.yml"
+    destroy: "${MOLECULE_SCENARIO_DIRECTORY}/../../../../molecule/hetzner/destroy.yml"
   config_options:
     defaults:
-      # Scenario dir is roles/motd/molecule/hetzner; ../../.. is roles/.
       roles_path: "${MOLECULE_SCENARIO_DIRECTORY}/../../.."
       # ../../../.. is the repo root, where the gitignored vault password lives.
       vault_password_file: "${MOLECULE_SCENARIO_DIRECTORY}/../../../../.vault_pass"

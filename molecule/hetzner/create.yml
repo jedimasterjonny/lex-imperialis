@@ -1,44 +1,46 @@
 ---
+# Shared across roles; role-agnostic via molecule_yml.platforms. Each role's
+# hetzner scenario references it via provisioner.playbooks.create.
 - name: Create
   hosts: localhost
   connection: local
   gather_facts: false
   vars:
-    motd_platform: "{{ molecule_yml.platforms[0] }}"
-    motd_ssh_key: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/ssh_key"
+    mol_platform: "{{ molecule_yml.platforms[0] }}"
+    mol_ssh_key: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/ssh_key"
   vars_files:
-    # The token is in the repo's single vault file; ../../../.. is the repo
-    # root relative to roles/motd/molecule/hetzner.
+    # The token is in the repo's single vault file. MOLECULE_SCENARIO_DIRECTORY
+    # is the role's scenario dir; ../../../.. is the repo root.
     - "{{ lookup('env', 'MOLECULE_SCENARIO_DIRECTORY') }}/../../../../inventory/group_vars/all/vault.yml"
   tasks:
     - name: Generate an ephemeral SSH key
-      ansible.builtin.command: "ssh-keygen -t ed25519 -N '' -f {{ motd_ssh_key }}"
+      ansible.builtin.command: "ssh-keygen -t ed25519 -N '' -f {{ mol_ssh_key }}"
       args:
-        creates: "{{ motd_ssh_key }}"
+        creates: "{{ mol_ssh_key }}"
 
     - name: Read the public key
       ansible.builtin.slurp:
-        src: "{{ motd_ssh_key }}.pub"
-      register: motd_pubkey
+        src: "{{ mol_ssh_key }}.pub"
+      register: mol_pubkey
 
     # api_token is no_log in the module spec, so it stays redacted in output;
     # a task-level no_log would add nothing and would hide API errors.
     - name: Upload the public key to Hetzner
       hetzner.hcloud.ssh_key:
         api_token: "{{ hcloud_token }}"
-        name: "{{ motd_platform.name }}-key"
-        public_key: "{{ motd_pubkey.content | b64decode | trim }}"
+        name: "{{ mol_platform.name }}-key"
+        public_key: "{{ mol_pubkey.content | b64decode | trim }}"
         state: present
 
     - name: Launch the server
       hetzner.hcloud.server:
         api_token: "{{ hcloud_token }}"
-        name: "{{ motd_platform.name }}"
-        server_type: "{{ motd_platform.server_type }}"
-        image: "{{ motd_platform.image }}"
-        location: "{{ motd_platform.location }}"
+        name: "{{ mol_platform.name }}"
+        server_type: "{{ mol_platform.server_type }}"
+        image: "{{ mol_platform.image }}"
+        location: "{{ mol_platform.location }}"
         ssh_keys:
-          - "{{ motd_platform.name }}-key"
+          - "{{ mol_platform.name }}-key"
         # openSUSE cloud images may ship without python3; cloud-init installs
         # it so Ansible can run. wait_for_connection below blocks until it lands.
         user_data: |
@@ -46,28 +48,28 @@
           packages:
             - python3
         state: started
-      register: motd_server
+      register: mol_server
 
     - name: Write the Molecule instance config
       ansible.builtin.copy:
-        content: "{{ [motd_instance] | to_nice_yaml }}"
+        content: "{{ [mol_instance] | to_nice_yaml }}"
         dest: "{{ molecule_instance_config }}"
         mode: "0600"
       vars:
-        motd_instance:
-          instance: "{{ motd_platform.name }}"
-          address: "{{ motd_server.hcloud_server.ipv4_address }}"
+        mol_instance:
+          instance: "{{ mol_platform.name }}"
+          address: "{{ mol_server.hcloud_server.ipv4_address }}"
           user: root
           port: 22
-          identity_file: "{{ motd_ssh_key }}"
+          identity_file: "{{ mol_ssh_key }}"
 
     - name: Add the server to the in-memory inventory
       ansible.builtin.add_host:
-        name: "{{ motd_platform.name }}"
+        name: "{{ mol_platform.name }}"
         groups: hetzner
-        ansible_host: "{{ motd_server.hcloud_server.ipv4_address }}"
+        ansible_host: "{{ mol_server.hcloud_server.ipv4_address }}"
         ansible_user: root
-        ansible_ssh_private_key_file: "{{ motd_ssh_key }}"
+        ansible_ssh_private_key_file: "{{ mol_ssh_key }}"
         ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
       changed_when: false
 

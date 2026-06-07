@@ -1,4 +1,5 @@
 ---
+# Shared across roles; role-agnostic via molecule_yml.platforms.
 - name: Destroy
   hosts: localhost
   connection: local
@@ -9,23 +10,23 @@
       loop: "{{ molecule_yml.platforms }}"
       loop_control:
         label: "{{ item.name }}"
-      register: motd_stopped
-      changed_when: motd_stopped.rc == 0
+      register: mol_stopped
+      changed_when: mol_stopped.rc == 0
       failed_when:
-        - motd_stopped.rc != 0
-        - "'failed to get domain' not in motd_stopped.stderr"
-        - "'not running' not in motd_stopped.stderr"
+        - mol_stopped.rc != 0
+        - "'failed to get domain' not in mol_stopped.stderr"
+        - "'not running' not in mol_stopped.stderr"
 
     - name: Undefine instances and their UEFI nvram
       ansible.builtin.command: "virsh -c qemu:///system undefine --nvram {{ item.name }}"
       loop: "{{ molecule_yml.platforms }}"
       loop_control:
         label: "{{ item.name }}"
-      register: motd_undefined
-      changed_when: motd_undefined.rc == 0
+      register: mol_undefined
+      changed_when: mol_undefined.rc == 0
       failed_when:
-        - motd_undefined.rc != 0
-        - "'failed to get domain' not in motd_undefined.stderr"
+        - mol_undefined.rc != 0
+        - "'failed to get domain' not in mol_undefined.stderr"
 
     - name: Remove instance disks
       ansible.builtin.file:

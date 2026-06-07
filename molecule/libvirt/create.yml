@@ -1,4 +1,6 @@
 ---
+# Shared across roles; role-agnostic via molecule_yml.platforms. Each role's
+# libvirt scenario references it via provisioner.playbooks.create.
 - name: Create
   hosts: localhost
   connection: local
@@ -7,25 +9,25 @@
     # community.libvirt needs the libvirt binding, which only the system
     # interpreter has — not the venv molecule runs from.
     ansible_python_interpreter: /usr/bin/python3
-    motd_ssh_key: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/ssh_key"
-    motd_image_cache: "{{ lookup('env', 'HOME') }}/.cache/molecule-libvirt"
+    mol_ssh_key: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/ssh_key"
+    mol_image_cache: "{{ lookup('env', 'HOME') }}/.cache/molecule-libvirt"
   tasks:
     - name: Ensure the image cache directory exists
       ansible.builtin.file:
-        path: "{{ motd_image_cache }}"
+        path: "{{ mol_image_cache }}"
         state: directory
         mode: "0755"
 
     - name: Generate an ephemeral SSH key
-      ansible.builtin.command: "ssh-keygen -t ed25519 -N '' -f {{ motd_ssh_key }}"
+      ansible.builtin.command: "ssh-keygen -t ed25519 -N '' -f {{ mol_ssh_key }}"
       args:
-        creates: "{{ motd_ssh_key }}"
+        creates: "{{ mol_ssh_key }}"
 
     - name: Launch instances
       community.libvirt.virt_cloud_instance:
         name: "{{ item.name }}"
         base_image: "{{ item.image }}"
-        image_cache_dir: "{{ motd_image_cache }}"
+        image_cache_dir: "{{ mol_image_cache }}"
         image_checksum: "{{ item.image_checksum }}"
         url_timeout: 600
         disks:
@@ -45,7 +47,7 @@
         networks:
           - network: default
         cloud_init:
-          root_ssh_key: "{{ motd_ssh_key }}.pub"
+          root_ssh_key: "{{ mol_ssh_key }}.pub"
         wait_for_cloud_init_reboot: false
       loop: "{{ molecule_yml.platforms }}"
       loop_control:
@@ -56,41 +58,41 @@
       loop: "{{ molecule_yml.platforms }}"
       loop_control:
         label: "{{ item.name }}"
-      register: motd_domifaddr
-      until: "motd_domifaddr.stdout is search('\\d+\\.\\d+\\.\\d+\\.\\d+')"
+      register: mol_domifaddr
+      until: "mol_domifaddr.stdout is search('\\d+\\.\\d+\\.\\d+\\.\\d+')"
       retries: 30
       delay: 4
       changed_when: false
 
     - name: Build the instance config
       ansible.builtin.set_fact:
-        motd_instance_conf: "{{ motd_instance_conf | default([]) + [motd_conf] }}"
+        mol_instance_conf: "{{ mol_instance_conf | default([]) + [mol_conf] }}"
       vars:
-        motd_conf:
+        mol_conf:
           instance: "{{ item.item.name }}"
           address: "{{ item.stdout | regex_search('\\d+\\.\\d+\\.\\d+\\.\\d+') }}"
           user: root
           port: 22
-          identity_file: "{{ motd_ssh_key }}"
-      loop: "{{ motd_domifaddr.results }}"
+          identity_file: "{{ mol_ssh_key }}"
+      loop: "{{ mol_domifaddr.results }}"
       loop_control:
         label: "{{ item.item.name }}"
 
     - name: Write the molecule instance config
       ansible.builtin.copy:
-        content: "{{ motd_instance_conf | to_nice_yaml }}"
+        content: "{{ mol_instance_conf | to_nice_yaml }}"
         dest: "{{ molecule_instance_config }}"
         mode: "0600"
 
     - name: Wait for SSH to accept the key
       ansible.builtin.command: >-
-        ssh -i {{ motd_ssh_key }} -o BatchMode=yes -o StrictHostKeyChecking=no
+        ssh -i {{ mol_ssh_key }} -o BatchMode=yes -o StrictHostKeyChecking=no
         -o UserKnownHostsFile=/dev/null root@{{ item.address }} true
-      loop: "{{ motd_instance_conf }}"
+      loop: "{{ mol_instance_conf }}"
       loop_control:
         label: "{{ item.instance }}"
-      register: motd_ssh
-      until: motd_ssh.rc == 0
+      register: mol_ssh
+      until: mol_ssh.rc == 0
       retries: 20
       delay: 3
       changed_when: false
