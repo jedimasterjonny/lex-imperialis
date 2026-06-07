@@ -51,11 +51,23 @@ The git tree MUST be bisect-safe at all times: every commit — on every branch,
 
 - Splitting work across commits is fine — add a feature in one commit, its tests in the next — provided each commit is itself green.
 
+## Test tiers
+
+A role's molecule scenarios are the contract CI runs against:
+
+- `default` — incus container; the preferred tier, run locally and free on the CI runner.
+- `libvirt` — local full-boot VM (`qemu:///system`); only where a container can't fully exercise the role.
+- `hetzner` — the full-VM tier's CI form, a real Hetzner Cloud VM (Hetzner can't nest KVM, so the VM is the machine); bills money.
+
+Every role must ship a `default` or `libvirt` scenario (or both), and a `libvirt` scenario requires a `hetzner` one; `bin/check-role-test-coverage.sh` (a pre-commit hook) enforces it. Prefer incus — add the full-VM tier only when a container can't test the role. `motd` is the exception: it carries all three as the harness exemplar.
+
+Shared, role-agnostic create/destroy playbooks live in `molecule/<tier>/`; a scenario's `molecule.yml` references them and names instances `lex-<role>-<tier>-${MOLECULE_RUN_ID}`, so concurrent runs never collide. converge/verify are role-specific and live in `default`; the other scenarios symlink them, so a role keeps one of each. CI tests only the roles a PR changes, plus `motd` whenever shared infra changes.
+
 ## Verifying changes
 
 Run the gates yourself before presenting or committing — never hand back unverified work.
 
-- `make lint` for lint, `make pre-commit` to run the full hook set; `molecule test` for the role(s) you touched — it drives local incus containers, initialised once per host from `bootstrap/incus-preseed.yaml`. `make test-vm` runs the same role on a local libvirt VM (needs a working `qemu:///system`) for full-boot fidelity. `make test-hetzner` runs it on a real Hetzner Cloud VM (needs `.vault_pass` to decrypt the API token) — bills real money, so reserve it for pre-merge confidence.
+- `make lint` for lint, `make pre-commit` for the full hook set. `make test ROLE=<role>` drives the incus scenario (local containers, initialised once per host from `bootstrap/incus-preseed.yaml`); `make test-vm ROLE=<role>` the libvirt VM; `make test-hetzner ROLE=<role>` the real Hetzner VM (needs `.vault_pass` to decrypt the API token) — bills real money, so reserve it for pre-merge confidence. `ROLE` defaults to `motd`.
 - Every task must be idempotent — molecule's idempotence check (a second converge reporting zero changed) enforces it.
 - Fix failures at the root, don't suppress them. Show the command output as evidence.
 - Formatting is owned by the linters — don't hand-format or override them.
