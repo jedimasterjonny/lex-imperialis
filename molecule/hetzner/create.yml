@@ -80,7 +80,15 @@
   gather_facts: false
   tasks:
     # Blocks on the SSH port, then on a ping test — i.e. until cloud-init has
-    # finished installing python3. Both retry until the timeout.
+    # installed python3. Retries until the timeout.
     - name: Wait for SSH and python3
       ansible.builtin.wait_for_connection:
         timeout: 300
+
+    # python3 being up does not mean cloud-init is done: it installs packages via
+    # zypper and holds the zypper lock until it finishes, so a converge that runs
+    # zypper races it (rc 7, "system management is locked"). Block until done.
+    - name: Wait for cloud-init to finish
+      ansible.builtin.command: cloud-init status --wait
+      changed_when: false
+      failed_when: false
