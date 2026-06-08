@@ -1,0 +1,17 @@
+---
+# Incus host: the daemon and CLI tooling, plus firewalld to gate the bridge.
+incus_packages:
+  - incus
+  - incus-tools
+  - firewalld
+  - python3-firewall
+
+# The init preseed (templates/preseed.yaml.j2) creates this bridge; trusting it
+# in firewalld lets instances reach the host's DHCP and DNS.
+incus_bridge: incusbr0
+
+# Default storage pool. The fleet runs btrfs with a subvolume at this source;
+# hosts on another filesystem (e.g. the non-btrfs molecule VMs) override the
+# driver, and a dir pool needs no source.
+incus_storage_driver: btrfs
+incus_storage_source: /var/lib/incus/storage-pools/default

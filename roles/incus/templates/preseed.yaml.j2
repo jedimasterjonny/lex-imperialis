@@ -1,0 +1,31 @@
+---
+config: {}
+networks:
+  - name: {{ incus_bridge }}
+    type: bridge
+    config:
+      ipv4.address: auto
+      ipv4.nat: "true"
+      ipv6.address: "none"
+storage_pools:
+  - name: default
+    driver: {{ incus_storage_driver }}
+{% if incus_storage_source %}
+    config:
+      source: {{ incus_storage_source }}
+{% endif %}
+profiles:
+  - name: default
+    description: Default profile
+    devices:
+      eth0:
+        name: eth0
+        nictype: bridged
+        parent: {{ incus_bridge }}
+        type: nic
+      root:
+        path: /
+        pool: default
+        type: disk
+projects: []
+cluster: null

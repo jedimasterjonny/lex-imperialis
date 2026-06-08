@@ -61,7 +61,7 @@ A role's molecule scenarios are the contract CI runs against:
 
 Every role must ship a `default` or `libvirt` scenario (or both), and a `libvirt` scenario requires a `hetzner` one; `bin/check-role-test-coverage.sh` (a pre-commit hook) enforces it. Prefer incus — add the full-VM tier only when a container can't test the role. `motd` is the exception: it carries all three as the harness exemplar.
 
-Shared, role-agnostic create/destroy playbooks live in `molecule/<tier>/`; a scenario's `molecule.yml` references them and names instances `lex-<role>-<tier>-${MOLECULE_RUN_ID}`, so concurrent runs never collide. converge/verify are role-specific and live in `default`; the other scenarios symlink them, so a role keeps one of each. CI tests only the roles a PR changes, plus `motd` for shared-infra changes — though a `requirements-dev.txt`-only (toolchain) bump runs the free incus tier only.
+Shared, role-agnostic create/destroy playbooks live in `molecule/<tier>/`; a scenario's `molecule.yml` references them and names instances `lex-<role>-<tier>-${MOLECULE_RUN_ID}`, so concurrent runs never collide. converge/verify are role-specific and live in the role's primary scenario (`default`, or `libvirt` where there is no container tier); the other scenarios symlink them, so a role keeps one of each. CI tests only the roles a PR changes, plus `motd` for shared-infra changes — though a `requirements-dev.txt`-only (toolchain) bump runs the free incus tier only.
 
 ## Verifying changes
 
