@@ -126,6 +126,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y incus
           sudo incus admin init --auto --storage-backend=dir
+          # Docker (preinstalled on the runner) defaults FORWARD to DROP, which
+          # blocks incus container NAT; the runner also has no IPv6 egress.
+          sudo iptables -P FORWARD ACCEPT
+          sudo incus network set incusbr0 ipv6.address none
           sudo usermod -aG incus-admin "$USER"
 
       # No MOLECULE_RUN_ID: each incus leg gets its own ephemeral runner, so the
