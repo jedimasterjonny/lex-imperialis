@@ -1,0 +1,13 @@
+---
+- name: Converge
+  hosts: all
+  tasks:
+    # dev installs per-user tooling and dotfiles, so the owner account from
+    # common must exist first — the workstation always carries both roles.
+    - name: Apply the common role
+      ansible.builtin.include_role:
+        name: common
+
+    - name: Apply the dev role
+      ansible.builtin.include_role:
+        name: dev

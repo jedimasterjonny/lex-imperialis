@@ -1,0 +1,41 @@
+---
+- name: Install developer tooling
+  community.general.zypper:
+    name: "{{ dev_packages }}"
+    state: present
+  become: true
+
+- name: Install npm
+  community.general.zypper:
+    name: npm
+    state: present
+  become: true
+  when: dev_npm | bool
+
+- name: Ensure curl is present for the Claude Code installer
+  community.general.zypper:
+    name: curl
+    state: present
+  become: true
+
+# The native installer self-updates in the background, so it runs once and
+# never again — creates guards re-runs. HOME is set explicitly because
+# become_user does not reliably export it for the script.
+- name: Install Claude Code with the native installer
+  ansible.builtin.shell:
+    cmd: set -o pipefail && curl -fsSL https://claude.ai/install.sh | bash
+    creates: "{{ dev_claude_bin }}"
+  become: true
+  become_user: "{{ dev_user }}"
+  environment:
+    HOME: "{{ dev_user_home }}"
+
+- name: Deploy the owner's git and nvim dotfiles
+  ansible.builtin.include_role:
+    name: stow
+  vars:
+    stow_user: "{{ dev_user }}"
+    stow_user_home: "{{ dev_user_home }}"
+    stow_packages:
+      - git
+      - nvim
