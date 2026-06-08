@@ -1,0 +1,90 @@
+---
+- name: Ensure the owner's supplementary groups exist
+  ansible.builtin.group:
+    name: "{{ item }}"
+    system: true
+  loop: "{{ common_user_groups }}"
+  become: true
+
+- name: Ensure the owner account exists
+  ansible.builtin.user:
+    name: "{{ common_user_name }}"
+    uid: "{{ common_user_uid }}"
+    group: "{{ common_user_group }}"
+    groups: "{{ common_user_groups }}"
+    append: true
+    shell: "{{ common_user_shell }}"
+    comment: "{{ common_user_comment }}"
+    create_home: true
+  become: true
+
+- name: Install base packages
+  community.general.zypper:
+    name: "{{ common_packages }}"
+    state: present
+  become: true
+
+# validate keeps a broken policy from ever reaching disk and locking out sudo.
+- name: Grant the wheel group own-password sudo
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/wheel
+    content: |
+      ## wheel members may run any command, authenticating with their own
+      ## password rather than root's (overriding the vendor-default targetpw).
+      %wheel ALL=(ALL:ALL) ALL
+      Defaults:%wheel !targetpw
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s
+  become: true
+
+- name: Deploy the owner's dotfiles
+  become: true
+  become_user: "{{ common_user_name }}"
+  block:
+    # update: false makes this a bootstrap clone — never refresh an existing
+    # tree, whose tracked files are the live targets of the deployed symlinks.
+    - name: Clone the dotfiles repository
+      ansible.builtin.git:
+        repo: "{{ common_dots_repo }}"
+        dest: "{{ common_dots_dir }}"
+        version: "{{ common_dots_version }}"
+        update: false
+
+    - name: Find the files the stow package provides
+      ansible.builtin.find:
+        paths: "{{ common_dots_stow_dir }}"
+        hidden: true
+        recurse: true
+      register: common_stow_files
+
+    - name: Stat each package target in the home directory
+      ansible.builtin.stat:
+        path: "{{ common_user_home }}/{{ item.path | relpath(common_dots_stow_dir) }}"
+        follow: false
+      loop: "{{ common_stow_files.files }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+      register: common_stow_targets
+
+    # Clear skel-provided files so stow can own the target; never touch an
+    # existing symlink, which is our own prior deployment and keeps the role
+    # idempotent.
+    - name: Remove skel files that would block stow
+      ansible.builtin.file:
+        path: "{{ item.stat.path }}"
+        state: absent
+      loop: "{{ common_stow_targets.results }}"
+      loop_control:
+        label: "{{ item.item.path | basename }}"
+      when:
+        - item.stat.exists
+        - not item.stat.islnk
+
+    - name: Deploy the bash SUSE dotfiles with stow
+      ansible.builtin.command:
+        cmd: "stow --verbose --target {{ common_user_home }} {{ common_dots_stow_package }}"
+        chdir: "{{ common_dots_dir }}"
+      register: common_stow
+      changed_when: "'LINK:' in common_stow.stderr"

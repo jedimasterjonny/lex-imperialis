@@ -1,0 +1,5 @@
+---
+- name: Apply the common role to this host
+  hosts: this_host
+  roles:
+    - common

@@ -1,0 +1,85 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - ../../defaults/main.yml
+  tasks:
+    - name: Look up the owner account
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ common_user_name }}"
+
+    - name: Read the group database
+      ansible.builtin.getent:
+        database: group
+
+    - name: Owner account mirrors the configured identity
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['getent_passwd'][common_user_name][1] | int == common_user_uid
+          - ansible_facts['getent_passwd'][common_user_name][2] == ansible_facts['getent_group'][common_user_group][1]
+          - ansible_facts['getent_passwd'][common_user_name][4] == common_user_home
+          - ansible_facts['getent_passwd'][common_user_name][5] == common_user_shell
+        fail_msg: "owner account does not match the configured uid/group/home/shell"
+
+    - name: Owner belongs to the configured supplementary groups
+      ansible.builtin.assert:
+        that:
+          - common_user_name in ansible_facts['getent_group'][item][2].split(',')
+        fail_msg: "owner is not a member of the {{ item }} group"
+        quiet: true
+      loop: "{{ common_user_groups }}"
+
+    - name: Stat the wheel sudoers drop-in
+      ansible.builtin.stat:
+        path: /etc/sudoers.d/wheel
+      register: common_sudoers_wheel
+
+    - name: Wheel sudoers drop-in is installed and sudo-readable
+      ansible.builtin.assert:
+        that:
+          - common_sudoers_wheel.stat.exists
+          - common_sudoers_wheel.stat.mode == '0440'
+          - common_sudoers_wheel.stat.pw_name == 'root'
+          - common_sudoers_wheel.stat.gr_name == 'root'
+        fail_msg: "/etc/sudoers.d/wheel is missing or not owned root:root mode 0440"
+
+    - name: Gather installed package facts
+      ansible.builtin.package_facts:
+        manager: auto
+
+    - name: Base packages are installed
+      ansible.builtin.assert:
+        that:
+          - item in ansible_facts.packages
+        fail_msg: "package {{ item }} is not installed"
+        quiet: true
+      loop: "{{ common_packages }}"
+
+    - name: Dotfiles repository is checked out
+      ansible.builtin.stat:
+        path: "{{ common_dots_dir }}/.git"
+      register: common_dots_git
+
+    - name: Dotfiles checkout is a git working tree
+      ansible.builtin.assert:
+        that:
+          - common_dots_git.stat.exists
+          - common_dots_git.stat.isdir
+        fail_msg: "{{ common_dots_dir }} is not a git checkout"
+
+    - name: Re-run stow in simulation to confirm the package is deployed
+      ansible.builtin.command:
+        cmd: "stow --simulate --verbose --target {{ common_user_home }} {{ common_dots_stow_package }}"
+        chdir: "{{ common_dots_dir }}"
+      become: true
+      become_user: "{{ common_user_name }}"
+      register: common_stow_check
+      changed_when: false
+
+    - name: Bash SUSE dotfiles are already stowed
+      ansible.builtin.assert:
+        that:
+          - "'LINK:' not in common_stow_check.stderr"
+        fail_msg: "stow reports the {{ common_dots_stow_package }} package is not fully deployed"
