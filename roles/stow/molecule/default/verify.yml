@@ -1,0 +1,17 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Stat the stowed gitconfig
+      ansible.builtin.stat:
+        path: /home/tester/.gitconfig
+      become: true
+      register: stow_gitconfig
+
+    - name: Gitconfig is a stow symlink
+      ansible.builtin.assert:
+        that:
+          - stow_gitconfig.stat.exists
+          - stow_gitconfig.stat.islnk
+        fail_msg: "the git package was not stowed for tester"

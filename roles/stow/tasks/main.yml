@@ -1,0 +1,58 @@
+---
+- name: Install stow
+  community.general.zypper:
+    name: stow
+    state: present
+  become: true
+
+- name: Deploy the stow packages
+  become: true
+  become_user: "{{ stow_user }}"
+  block:
+    # update: false makes this a bootstrap clone — never refresh an existing
+    # tree, whose tracked files are the live targets of the deployed symlinks.
+    - name: Clone the dotfiles repository
+      ansible.builtin.git:
+        repo: "{{ stow_dots_repo }}"
+        dest: "{{ stow_dots_dir }}"
+        version: "{{ stow_dots_version }}"
+        update: false
+
+    - name: Find the files the stow packages provide
+      ansible.builtin.find:
+        paths: "{{ stow_packages | map('regex_replace', '^', stow_dots_dir ~ '/') | list }}"
+        hidden: true
+        recurse: true
+      register: stow_files
+
+    # The path relative to the dots dir is "<package>/<target>"; strip the
+    # leading package component to get the file's location in the home directory.
+    - name: Stat each package target in the home directory
+      ansible.builtin.stat:
+        path: "{{ stow_user_home }}/{{ (item.path | relpath(stow_dots_dir)).split('/', 1)[1] }}"
+        follow: false
+      loop: "{{ stow_files.files }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+      register: stow_targets
+
+    # Clear skel-provided files so stow can own the target; never touch an
+    # existing symlink, which is our own prior deployment and keeps the role
+    # idempotent.
+    - name: Remove skel files that would block stow
+      ansible.builtin.file:
+        path: "{{ item.stat.path }}"
+        state: absent
+      loop: "{{ stow_targets.results }}"
+      loop_control:
+        label: "{{ item.item.path | basename }}"
+      when:
+        - item.stat.exists
+        - not item.stat.islnk
+
+    - name: Deploy the packages with stow
+      ansible.builtin.command:
+        cmd: "stow --verbose --target {{ stow_user_home }} {{ stow_packages | join(' ') }}"
+        chdir: "{{ stow_dots_dir }}"
+      register: stow_result
+      changed_when: "'LINK:' in stow_result.stderr"

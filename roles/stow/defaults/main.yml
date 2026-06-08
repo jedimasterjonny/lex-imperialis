@@ -1,0 +1,10 @@
+---
+# Deploy GNU stow packages from the owner's dotfiles checkout. Consumers set
+# stow_user, stow_user_home, and stow_packages; stow is ensured here, while git
+# (for the clone) is assumed already installed.
+stow_user: jonny
+stow_user_home: "/home/{{ stow_user }}"
+stow_dots_repo: "https://github.com/jedimasterjonny/dots.git"
+stow_dots_version: main
+stow_dots_dir: "{{ stow_user_home }}/dots"
+stow_packages: []
