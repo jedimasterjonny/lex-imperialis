@@ -1,0 +1,23 @@
+---
+# opensuse-16 (Leap) carries neither incus nor its lego dependency in its base
+# repos, unlike the Tumbleweed fleet and libvirt tier; add the OBS repos that
+# build them so converge can install incus here. Test-only — the fleet needs no
+# extra repos.
+- name: Prepare
+  hosts: all
+  become: true
+  tasks:
+    - name: Enable the incus and lego package repos
+      community.general.zypper_repository:
+        name: "{{ item.name }}"
+        repo: "{{ item.repo }}"
+        auto_import_keys: true
+        runrefresh: true
+        state: present
+      loop:
+        - name: virtualization-containers
+          repo: "https://download.opensuse.org/repositories/Virtualization:/containers/{{ ansible_facts['distribution_version'] }}/"
+        - name: network-utilities
+          repo: "https://download.opensuse.org/repositories/network:/utilities/{{ ansible_facts['distribution_version'] }}/"
+      loop_control:
+        label: "{{ item.name }}"
