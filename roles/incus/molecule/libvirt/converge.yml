@@ -1,0 +1,13 @@
+---
+- name: Converge
+  hosts: all
+  tasks:
+    - name: Apply the incus role
+      ansible.builtin.include_role:
+        name: incus
+      vars:
+        # The test VMs aren't btrfs (libvirt is xfs), so use a dir pool — it works
+        # on any filesystem and needs no source. Shared with hetzner via the
+        # converge symlink, so the fleet's btrfs default is not molecule-tested.
+        incus_storage_driver: dir
+        incus_storage_source: ""

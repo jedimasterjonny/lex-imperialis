@@ -1,0 +1,11 @@
+---
+# Bootstrap incus on the molecule test runner — the one host molecule cannot set
+# up for itself, since it needs incus to launch the default-tier containers.
+# Applies the incus role (the single source of truth for incus config) to this
+# host; idempotent, so re-running is safe:
+#   ansible-playbook bootstrap/incus.yml --ask-become-pass
+- name: Bootstrap the incus test runner
+  hosts: localhost
+  connection: local
+  roles:
+    - incus

@@ -1,0 +1,46 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - ../../defaults/main.yml
+  tasks:
+    - name: Gather installed package facts
+      ansible.builtin.package_facts:
+        manager: auto
+
+    # package_facts may record python3-firewall under a versioned rpm name, so
+    # verify it functionally below and check the rest by package name.
+    - name: Incus and firewall packages are installed
+      ansible.builtin.assert:
+        that:
+          - item in ansible_facts.packages
+        fail_msg: "package {{ item }} is not installed"
+        quiet: true
+      loop: "{{ incus_packages | reject('equalto', 'python3-firewall') | list }}"
+
+    - name: The firewalld python bindings are usable
+      ansible.builtin.command: python3 -c 'import firewall'
+      changed_when: false
+
+    - name: Firewalld is running
+      ansible.builtin.command: firewall-cmd --state
+      changed_when: false
+      become: true
+
+    - name: The incus bridge exists
+      ansible.builtin.command: "incus network show {{ incus_bridge }}"
+      changed_when: false
+      become: true
+
+    - name: The default storage pool exists
+      ansible.builtin.command: incus storage show default
+      changed_when: false
+      become: true
+
+    # --query-interface exits non-zero when absent, so its rc is the assertion.
+    # --permanent is the durable guarantee: it survives a firewalld reload and reboot.
+    - name: The incus bridge is permanently trusted
+      ansible.builtin.command: "firewall-cmd --permanent --zone=trusted --query-interface={{ incus_bridge }}"
+      changed_when: false
+      become: true
