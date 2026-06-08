@@ -1,0 +1,53 @@
+---
+- name: Install incus and firewall packages
+  community.general.zypper:
+    name: "{{ incus_packages }}"
+    state: present
+  become: true
+
+- name: Enable and start firewalld
+  ansible.builtin.systemd_service:
+    name: firewalld
+    enabled: true
+    state: started
+  become: true
+
+# The bridge need not exist yet: firewalld records the binding and applies it
+# when the init below brings the bridge up.
+- name: Trust the incus bridge so instances reach host DHCP and DNS
+  ansible.posix.firewalld:
+    zone: trusted
+    interface: "{{ incus_bridge }}"
+    permanent: true
+    immediate: true
+    state: enabled
+  become: true
+
+# Both units: the socket for boot activation, the service so the daemon is up
+# now rather than on the first client connection.
+- name: Enable and start incus
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - incus.socket
+    - incus.service
+  become: true
+
+# incus admin init --preseed errors on existing entities, so guard on the bridge:
+# its presence means the daemon is already initialised. Run-once, not reconciling.
+- name: Check whether incus is initialised
+  ansible.builtin.command: "incus network show {{ incus_bridge }}"
+  register: incus_initialised
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Initialise incus from the preseed
+  ansible.builtin.command:
+    cmd: incus admin init --preseed
+    stdin: "{{ lookup('ansible.builtin.template', 'preseed.yaml.j2') }}"
+  when: incus_initialised.rc != 0
+  changed_when: true
+  become: true
