@@ -10,17 +10,10 @@ common_user_shell: /bin/bash
 common_user_comment: "Jonny O'Connell"
 common_user_home: "/home/{{ common_user_name }}"
 
-# git backs the dotfiles checkout; the rest are the requested base tools.
+# Base tools for every host.
 common_packages:
   - vim
   - tmux
   - htop
-  - stow
   - sudo
   - git
-
-common_dots_dir: "{{ common_user_home }}/dots"
-common_dots_repo: "https://github.com/jedimasterjonny/dots.git"
-common_dots_version: main
-common_dots_stow_package: bash-suse
-common_dots_stow_dir: "{{ common_dots_dir }}/{{ common_dots_stow_package }}"

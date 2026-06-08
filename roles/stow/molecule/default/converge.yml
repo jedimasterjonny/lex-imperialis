@@ -1,0 +1,24 @@
+---
+- name: Converge
+  hosts: all
+  tasks:
+    - name: Create a user to receive the stow packages
+      ansible.builtin.user:
+        name: tester
+        create_home: true
+      become: true
+
+    - name: Install git for the dotfiles clone
+      community.general.zypper:
+        name: git
+        state: present
+      become: true
+
+    - name: Deploy a stow package
+      ansible.builtin.include_role:
+        name: stow
+      vars:
+        stow_user: tester
+        stow_user_home: /home/tester
+        stow_packages:
+          - git
