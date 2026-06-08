@@ -67,7 +67,7 @@ Shared, role-agnostic create/destroy playbooks live in `molecule/<tier>/`; a sce
 
 Run the gates yourself before presenting or committing — never hand back unverified work.
 
-- `make lint` for lint, `make pre-commit` for the full hook set. `make test ROLE=<role>` drives the incus scenario (local containers, initialised once per host from `bootstrap/incus-preseed.yaml`); `make test-vm ROLE=<role>` the libvirt VM; `make test-hetzner ROLE=<role>` the real Hetzner VM (needs `.vault_pass` to decrypt the API token) — bills real money, so reserve it for pre-merge confidence. `ROLE` defaults to `motd`.
+- `make lint` for lint, `make pre-commit` for the full hook set. `make test ROLE=<role>` drives the incus scenario where the role has one (local containers, on a host bootstrapped once via `bootstrap/incus.yml`); `make test-vm ROLE=<role>` the libvirt VM; `make test-hetzner ROLE=<role>` the real Hetzner VM (needs `.vault_pass` to decrypt the API token) — bills real money, so reserve it for pre-merge confidence. `ROLE` defaults to `motd`.
 - Every task must be idempotent — molecule's idempotence check (a second converge reporting zero changed) enforces it.
 - Fix failures at the root, don't suppress them. Show the command output as evidence.
 - Formatting is owned by the linters — don't hand-format or override them.
