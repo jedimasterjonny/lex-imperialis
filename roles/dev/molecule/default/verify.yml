@@ -1,0 +1,63 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - ../../defaults/main.yml
+  tasks:
+    - name: Gather installed package facts
+      ansible.builtin.package_facts:
+        manager: auto
+
+    # python3/python3-pip are capability names that zypper resolves to versioned
+    # rpms (e.g. python313), so package_facts records the versioned name. Verify
+    # those functionally below; check the rest by package name.
+    - name: Developer tooling is installed
+      ansible.builtin.assert:
+        that:
+          - item in ansible_facts.packages
+        fail_msg: "package {{ item }} is not installed"
+        quiet: true
+      loop: "{{ dev_packages | reject('search', 'python3') | list }}"
+
+    - name: Python 3 and pip are usable
+      ansible.builtin.command: python3 -m pip --version
+      changed_when: false
+
+    - name: Gated npm is usable when enabled
+      ansible.builtin.command: npm --version
+      changed_when: false
+      when: dev_npm | bool
+
+    - name: Stat the Claude Code binary
+      ansible.builtin.stat:
+        path: "{{ dev_claude_bin }}"
+      become: true
+      register: dev_claude_stat
+
+    - name: Claude Code is installed for the owner
+      ansible.builtin.assert:
+        that:
+          - dev_claude_stat.stat.exists
+          - dev_claude_stat.stat.executable
+        fail_msg: "claude binary missing or not executable at {{ dev_claude_bin }}"
+
+    - name: Stat the stowed git and nvim configs
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      become: true
+      loop:
+        - "{{ dev_user_home }}/.gitconfig"
+        - "{{ dev_user_home }}/.config/nvim/init.lua"
+      register: dev_dotfiles
+
+    - name: Git and nvim configs are stow symlinks
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.islnk
+        fail_msg: "{{ item.item }} is not a stow symlink"
+        quiet: true
+      loop: "{{ dev_dotfiles.results }}"
+      loop_control:
+        label: "{{ item.item }}"

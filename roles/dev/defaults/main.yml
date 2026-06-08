@@ -1,0 +1,19 @@
+---
+# Developer tooling for the workstation.
+dev_packages:
+  - direnv
+  - gh
+  - git
+  - make
+  - neovim
+  - python3
+  - python3-pip
+
+# npm ships with the role; disable on hosts that do no Node work.
+dev_npm: true
+
+# Claude Code installs per-user via the native installer; the owner is the
+# target and the binary lands under their ~/.local.
+dev_user: jonny
+dev_user_home: "/home/{{ dev_user }}"
+dev_claude_bin: "{{ dev_user_home }}/.local/bin/claude"

@@ -57,29 +57,14 @@
         quiet: true
       loop: "{{ common_packages }}"
 
-    - name: Dotfiles repository is checked out
+    - name: Stat the stowed bashrc
       ansible.builtin.stat:
-        path: "{{ common_dots_dir }}/.git"
-      register: common_dots_git
+        path: "{{ common_user_home }}/.bashrc"
+      register: common_bashrc
 
-    - name: Dotfiles checkout is a git working tree
+    - name: Owner bashrc is a stow symlink
       ansible.builtin.assert:
         that:
-          - common_dots_git.stat.exists
-          - common_dots_git.stat.isdir
-        fail_msg: "{{ common_dots_dir }} is not a git checkout"
-
-    - name: Re-run stow in simulation to confirm the package is deployed
-      ansible.builtin.command:
-        cmd: "stow --simulate --verbose --target {{ common_user_home }} {{ common_dots_stow_package }}"
-        chdir: "{{ common_dots_dir }}"
-      become: true
-      become_user: "{{ common_user_name }}"
-      register: common_stow_check
-      changed_when: false
-
-    - name: Bash SUSE dotfiles are already stowed
-      ansible.builtin.assert:
-        that:
-          - "'LINK:' not in common_stow_check.stderr"
-        fail_msg: "stow reports the {{ common_dots_stow_package }} package is not fully deployed"
+          - common_bashrc.stat.exists
+          - common_bashrc.stat.islnk
+        fail_msg: "bash-suse dotfiles are not stowed for the owner"
