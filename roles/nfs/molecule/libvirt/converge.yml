@@ -1,0 +1,45 @@
+---
+- name: Converge
+  hosts: all
+  vars:
+    nfs_fixture_export: /srv/nfs-fixture
+    # The role mounts this loopback export, exercising the real client path
+    # without a second host to act as the NAS.
+    nfs_shares:
+      - name: fixture
+        server: 127.0.0.1
+        export: "{{ nfs_fixture_export }}"
+  pre_tasks:
+    # A self-contained loopback NFS server gives the role a real export to mount.
+    # Needs the kernel nfsd module — present on the full-kernel hetzner VM; the
+    # Tumbleweed Minimal-VM auto-loads it when nfs-server starts.
+    - name: Install the NFS server (test fixture)
+      community.general.zypper:
+        name: nfs-kernel-server
+        state: present
+      become: true
+
+    - name: Create the export directory
+      ansible.builtin.file:
+        path: "{{ nfs_fixture_export }}"
+        state: directory
+        mode: "0777"
+      become: true
+
+    - name: Export it to localhost
+      ansible.builtin.copy:
+        dest: /etc/exports
+        content: "{{ nfs_fixture_export }} 127.0.0.1(rw,sync,no_subtree_check,no_root_squash)\n"
+        mode: "0644"
+      become: true
+
+    # Starting the server runs exportfs, so the export is live before the role
+    # mounts it in the roles section below.
+    - name: Enable and start the NFS server
+      ansible.builtin.systemd_service:
+        name: nfs-server
+        enabled: true
+        state: started
+      become: true
+  roles:
+    - role: nfs
