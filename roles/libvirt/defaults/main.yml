@@ -2,6 +2,7 @@
 # Libvirt virtualisation host: the daemon, CLI and image tooling, and the python
 # bindings community.libvirt needs to manage the default network.
 libvirt_packages:
+  - curl
   - guestfs-tools
   - libguestfs
   - libvirt
@@ -30,3 +31,12 @@ libvirt_user: jonny
 # start a libvirt network (no htb qdisc), so that tier leaves activation to the
 # full-kernel hetzner VM.
 libvirt_default_network_active: true
+
+# Tumbleweed rolls, so the host keeps a fresh copy of the cloud qcow2 in the
+# image store to build VMs from. tumbleweed-image-refresh.sh (curl, above)
+# re-fetches it only when the published sha256 changes; the systemd timer runs
+# it weekly, at 03:30 on Sundays.
+libvirt_image_url: https://download.opensuse.org/tumbleweed/appliances/openSUSE-Tumbleweed-Minimal-VM.x86_64-Cloud.qcow2
+libvirt_image_dir: /var/lib/libvirt/images
+libvirt_image_refresh_script: /usr/local/sbin/tumbleweed-image-refresh.sh
+libvirt_image_refresh_oncalendar: "Sun *-*-* 03:30:00"

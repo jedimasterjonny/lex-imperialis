@@ -1,0 +1,9 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Refresh the cached openSUSE Tumbleweed libvirt image
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart={{ libvirt_image_refresh_script }}

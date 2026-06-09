@@ -4,6 +4,13 @@
   gather_facts: false
   vars_files:
     - ../../defaults/main.yml
+  vars:
+    # Local fixture for the refresh-script functional check below; the script
+    # takes the image name from the URL, so these point at the scratch copy.
+    libvirt_refresh_image: "{{ libvirt_refresh_tmp.path }}/openSUSE-Tumbleweed-Minimal-VM.x86_64-Cloud.qcow2"
+    libvirt_refresh_env:
+      IMAGE_URL: "file://{{ libvirt_refresh_image }}"
+      IMAGE_DIR: "{{ libvirt_refresh_tmp.path }}/store"
   tasks:
     - name: The libvirt daemon answers on the system socket
       ansible.builtin.command: virsh -c qemu:///system version
@@ -51,3 +58,92 @@
         that: "'libvirt' in libvirt_user_groups.stdout.split()"
         fail_msg: "{{ libvirt_user }} is not in the libvirt group"
         quiet: true
+
+    - name: Stat the image refresh script
+      ansible.builtin.stat:
+        path: "{{ libvirt_image_refresh_script }}"
+      register: libvirt_refresh_script
+
+    - name: The refresh script is installed and executable
+      ansible.builtin.assert:
+        that:
+          - libvirt_refresh_script.stat.exists
+          - libvirt_refresh_script.stat.executable
+        fail_msg: "{{ libvirt_image_refresh_script }} is missing or not executable"
+        quiet: true
+
+    # daemon_reload is a no-op that just makes the module gather and return the
+    # timer's systemctl-show properties to assert against; it reads, not mutates.
+    - name: Read the refresh timer's state
+      ansible.builtin.systemd_service:
+        name: tumbleweed-image-refresh.timer
+        daemon_reload: true
+      register: libvirt_refresh_timer
+      become: true
+
+    - name: The timer is enabled and fires at 03:30 on Sundays
+      ansible.builtin.assert:
+        that:
+          - libvirt_refresh_timer.status.UnitFileState == 'enabled'
+          - "'Sun' in libvirt_refresh_timer.status.TimersCalendar"
+          - "'03:30:00' in libvirt_refresh_timer.status.TimersCalendar"
+        fail_msg: "image refresh timer is not enabled for {{ libvirt_image_refresh_oncalendar }}"
+        quiet: true
+
+    # Exercise the script end to end against a local fixture over file://, so it
+    # runs the fetch, checksum, and atomic-place path without pulling the real
+    # ~300 MB image over the network.
+    - name: Create a scratch dir for the refresh test
+      ansible.builtin.tempfile:
+        state: directory
+        suffix: image-refresh
+      register: libvirt_refresh_tmp
+
+    - name: Write a fixture image
+      ansible.builtin.copy:
+        content: "lex-imperialis image refresh fixture\n"
+        dest: "{{ libvirt_refresh_image }}"
+        mode: "0644"
+
+    - name: Checksum the fixture
+      ansible.builtin.stat:
+        path: "{{ libvirt_refresh_image }}"
+        checksum_algorithm: sha256
+      register: libvirt_refresh_fixture
+
+    - name: Publish the fixture's sha256 the way openSUSE does
+      ansible.builtin.copy:
+        content: "{{ libvirt_refresh_fixture.stat.checksum }}  {{ libvirt_refresh_image | basename }}\n"
+        dest: "{{ libvirt_refresh_image }}.sha256"
+        mode: "0644"
+
+    - name: Refresh the fixture into the scratch store
+      ansible.builtin.command: "{{ libvirt_image_refresh_script }}"
+      environment: "{{ libvirt_refresh_env }}"
+      changed_when: false
+
+    - name: Re-run; the cached copy should already be current
+      ansible.builtin.command: "{{ libvirt_image_refresh_script }}"
+      environment: "{{ libvirt_refresh_env }}"
+      register: libvirt_refresh_rerun
+      changed_when: false
+
+    - name: Stat the cached image
+      ansible.builtin.stat:
+        path: "{{ libvirt_refresh_env.IMAGE_DIR }}/{{ libvirt_refresh_image | basename }}"
+        checksum_algorithm: sha256
+      register: libvirt_refresh_cached
+
+    - name: The script caches the image and skips an unchanged re-fetch
+      ansible.builtin.assert:
+        that:
+          - libvirt_refresh_cached.stat.exists
+          - libvirt_refresh_cached.stat.checksum == libvirt_refresh_fixture.stat.checksum
+          - "'is current' in libvirt_refresh_rerun.stdout"
+        fail_msg: "the refresh script did not cache the image or re-fetched an unchanged copy"
+        quiet: true
+
+    - name: Remove the refresh test scratch dir
+      ansible.builtin.file:
+        path: "{{ libvirt_refresh_tmp.path }}"
+        state: absent
