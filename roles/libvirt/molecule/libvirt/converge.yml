@@ -1,0 +1,15 @@
+---
+- name: Converge
+  hosts: all
+  tasks:
+    # libvirt adds the owner to the libvirt group, so the account must exist
+    # first. Create it directly, not via common: the cloud images these tiers
+    # boot already hold uid 1000, which common pins for the owner.
+    - name: Ensure the owner account exists
+      ansible.builtin.user:
+        name: jonny
+      become: true
+
+    - name: Apply the libvirt role
+      ansible.builtin.include_role:
+        name: libvirt
