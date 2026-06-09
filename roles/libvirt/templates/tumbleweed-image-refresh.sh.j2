@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Cache the openSUSE Tumbleweed cloud qcow2 in the libvirt image store, refreshing
+# it only when the published sha256 differs from the cached copy. Tumbleweed
+# rolls, so a systemd timer runs this weekly. IMAGE_URL and IMAGE_DIR are
+# overridable for testing.
+set -euo pipefail
+
+IMAGE_URL="${IMAGE_URL:-{{ libvirt_image_url }}}"
+IMAGE_DIR="${IMAGE_DIR:-{{ libvirt_image_dir }}}"
+
+image_name="$(basename "$IMAGE_URL")"
+dest="${IMAGE_DIR}/${image_name}"
+mkdir -p "$IMAGE_DIR"
+
+# openSUSE publishes "<sha256>  <filename>" next to the image.
+expected="$(curl -fsSL --retry 3 "${IMAGE_URL}.sha256" | awk '{print $1; exit}')"
+if [[ -z "$expected" ]]; then
+    echo "could not read the published checksum for ${image_name}" >&2
+    exit 1
+fi
+
+if [[ -f "$dest" ]] && printf '%s  %s\n' "$expected" "$dest" | sha256sum --check --status; then
+    echo "${image_name} is current (${expected})"
+    exit 0
+fi
+
+# Download beside the destination (same filesystem) so the swap is an atomic
+# rename; the trap clears the partial file on any failure.
+tmp="$(mktemp "${dest}.XXXXXX")"
+trap 'rm -f "$tmp"' EXIT
+
+curl -fsSL --retry 3 -o "$tmp" "$IMAGE_URL"
+if ! printf '%s  %s\n' "$expected" "$tmp" | sha256sum --check --status; then
+    echo "checksum mismatch after fetching ${image_name}" >&2
+    exit 1
+fi
+
+chmod 0644 "$tmp"
+mv -f "$tmp" "$dest"
+trap - EXIT
+echo "refreshed ${image_name} (${expected})"
