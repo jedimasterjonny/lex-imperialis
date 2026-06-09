@@ -1,0 +1,53 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - ../../defaults/main.yml
+  tasks:
+    - name: The libvirt daemon answers on the system socket
+      ansible.builtin.command: virsh -c qemu:///system version
+      changed_when: false
+      become: true
+
+    # Capability names resolve to versioned rpms (python3* → python3XY*,
+    # libguestfs → libguestfs0), so verify the tooling functionally rather than
+    # by package name.
+    - name: The virtualisation tooling is installed and runnable
+      ansible.builtin.command: "{{ item }}"
+      changed_when: false
+      loop:
+        - virt-install --version
+        - guestfish --version
+        - mkisofs -version
+
+    - name: The python libvirt and lxml bindings import
+      ansible.builtin.command: python3 -c 'import libvirt, lxml.etree'
+      changed_when: false
+
+    # Activation is gated to the full-kernel tiers (see the role), so verify only
+    # the network is defined (net-info succeeds) and autostarting here; the
+    # hetzner converge proves it actually starts.
+    - name: Read the default network state
+      ansible.builtin.command: virsh -c qemu:///system net-info default
+      register: libvirt_default_net
+      changed_when: false
+      become: true
+
+    - name: The default network is defined and autostarting
+      ansible.builtin.assert:
+        that:
+          - "libvirt_default_net.stdout is search('Autostart:.*yes')"
+        fail_msg: "default network is not autostarting"
+        quiet: true
+
+    - name: Read the owner's group membership
+      ansible.builtin.command: "id -nG {{ libvirt_user }}"
+      register: libvirt_user_groups
+      changed_when: false
+
+    - name: The owner is in the libvirt group
+      ansible.builtin.assert:
+        that: "'libvirt' in libvirt_user_groups.stdout.split()"
+        fail_msg: "{{ libvirt_user }} is not in the libvirt group"
+        quiet: true

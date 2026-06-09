@@ -1,0 +1,32 @@
+---
+# Libvirt virtualisation host: the daemon, CLI and image tooling, and the python
+# bindings community.libvirt needs to manage the default network.
+libvirt_packages:
+  - guestfs-tools
+  - libguestfs
+  - libvirt
+  - mkisofs
+  - python3-libvirt-python
+  - python3-lxml
+  - virt-install
+
+# Modular libvirt daemons, socket-activated (the monolithic libvirtd is
+# deprecated). qemu drives qemu:///system; network manages the default NAT
+# network; storage, nodedev, and secret round out a VM host. Daemons don't
+# socket-activate each other, so each the host uses is enabled explicitly.
+libvirt_daemons:
+  - virtqemud
+  - virtnetworkd
+  - virtstoraged
+  - virtnodedevd
+  - virtsecretd
+
+# Owner account added to the libvirt group so it drives VMs without sudo; the
+# common role creates it.
+libvirt_user: jonny
+
+# Start (activate) the default NAT network now, on top of autostarting it. The
+# molecule libvirt tier overrides this to false: its minimal-VM kernel can't
+# start a libvirt network (no htb qdisc), so that tier leaves activation to the
+# full-kernel hetzner VM.
+libvirt_default_network_active: true
