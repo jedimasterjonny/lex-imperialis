@@ -1,0 +1,41 @@
+---
+- name: Install libvirt and virtualisation tooling
+  community.general.zypper:
+    name: "{{ libvirt_packages }}"
+    state: present
+  become: true
+
+# Socket activation, the modular-daemon model: the .socket listens on boot and
+# the daemon starts on first connection. The monolithic libvirtd is deprecated.
+- name: Enable the modular libvirt daemon sockets
+  ansible.builtin.systemd_service:
+    name: "{{ item }}.socket"
+    enabled: true
+    state: started
+  loop: "{{ libvirt_daemons }}"
+  become: true
+
+# The libvirt package ships the default NAT network; autostart brings it up on
+# boot.
+- name: Enable autostart for the default network
+  community.libvirt.virt_net:
+    name: default
+    autostart: true
+  become: true
+
+# Separate task (virt_net ignores autostart when state is set) and gated: the
+# molecule libvirt tier's minimal-VM kernel can't start a libvirt network, so it
+# sets libvirt_default_network_active false; the fleet and hetzner start it.
+- name: Activate the default network
+  community.libvirt.virt_net:
+    name: default
+    state: active
+  become: true
+  when: libvirt_default_network_active | bool
+
+- name: Add the owner to the libvirt group
+  ansible.builtin.user:
+    name: "{{ libvirt_user }}"
+    groups: libvirt
+    append: true
+  become: true
