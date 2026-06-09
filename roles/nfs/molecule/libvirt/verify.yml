@@ -1,0 +1,40 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  vars:
+    nfs_test_mount: /nfs/fixture
+    nfs_probe_content: "lex-imperialis nfs probe\n"
+  tasks:
+    # findmnt reports nfs4 as the fstype for a v4 mount, so match the nfs prefix.
+    - name: Read the fixture mount
+      ansible.builtin.command: "findmnt --noheadings --output FSTYPE,SOURCE {{ nfs_test_mount }}"
+      register: nfs_findmnt
+      changed_when: false
+
+    - name: The share is mounted as NFS
+      ansible.builtin.assert:
+        that:
+          - "'nfs' in nfs_findmnt.stdout"
+        fail_msg: "{{ nfs_test_mount }} is not an NFS mount"
+        quiet: true
+
+    - name: Write a file through the mount
+      ansible.builtin.copy:
+        dest: "{{ nfs_test_mount }}/probe.txt"
+        content: "{{ nfs_probe_content }}"
+        mode: "0644"
+      become: true
+
+    - name: Read it back
+      ansible.builtin.slurp:
+        src: "{{ nfs_test_mount }}/probe.txt"
+      register: nfs_probe
+      become: true
+
+    - name: The content round-trips through NFS
+      ansible.builtin.assert:
+        that:
+          - "(nfs_probe.content | b64decode) == nfs_probe_content"
+        fail_msg: "data did not round-trip through the NFS mount"
+        quiet: true
