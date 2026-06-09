@@ -51,3 +51,34 @@
   when: incus_initialised.rc != 0
   changed_when: true
   become: true
+
+- name: Install the incus image refresh script
+  ansible.builtin.template:
+    src: incus-image-refresh.sh.j2
+    dest: "{{ incus_image_refresh_script }}"
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+- name: Install the image refresh systemd units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - incus-image-refresh.service
+    - incus-image-refresh.timer
+  become: true
+
+# daemon_reload picks up unit changes before enabling; it does not itself report
+# changed, so the task stays idempotent.
+- name: Enable and start the image refresh timer
+  ansible.builtin.systemd_service:
+    name: incus-image-refresh.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true

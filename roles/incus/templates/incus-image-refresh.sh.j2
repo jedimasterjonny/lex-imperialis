@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Cache the openSUSE Tumbleweed cloud image in the local incus image store and
+# refresh it as the source rolls, so containers launch from the local copy
+# rather than pulling from the images: remote (incus reuses it by fingerprint).
+# A systemd timer runs this weekly. SOURCE and ALIAS are overridable for testing.
+set -euo pipefail
+
+SOURCE="${INCUS_IMAGE_SOURCE:-{{ incus_image_source }}}"
+ALIAS="${INCUS_IMAGE_ALIAS:-{{ incus_image_alias }}}"
+
+if incus image info "$ALIAS" >/dev/null 2>&1; then
+    # Already cached: pull a newer version if the source rolled, else a no-op.
+    incus image refresh "$ALIAS"
+    echo "refreshed incus image ${ALIAS}"
+else
+    # First run: copy it in, flagged --auto-update so refresh tracks the source.
+    incus image copy "$SOURCE" local: --alias "$ALIAS" --auto-update
+    echo "cached incus image ${ALIAS} from ${SOURCE}"
+fi
