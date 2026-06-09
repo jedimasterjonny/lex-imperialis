@@ -4,6 +4,14 @@
   gather_facts: false
   vars_files:
     - ../../defaults/main.yml
+  vars:
+    # Functional check of the refresh script below uses a tiny image over the
+    # same images: remote, so it runs the real copy + refresh path without
+    # pulling the large Tumbleweed image.
+    incus_refresh_test_alias: lex-image-refresh-test
+    incus_refresh_env:
+      INCUS_IMAGE_SOURCE: images:alpine/edge
+      INCUS_IMAGE_ALIAS: "{{ incus_refresh_test_alias }}"
   tasks:
     - name: Gather installed package facts
       ansible.builtin.package_facts:
@@ -43,4 +51,64 @@
     - name: The incus bridge is permanently trusted
       ansible.builtin.command: "firewall-cmd --permanent --zone=trusted --query-interface={{ incus_bridge }}"
       changed_when: false
+      become: true
+
+    - name: Stat the image refresh script
+      ansible.builtin.stat:
+        path: "{{ incus_image_refresh_script }}"
+      register: incus_refresh_script
+
+    - name: The refresh script is installed and executable
+      ansible.builtin.assert:
+        that:
+          - incus_refresh_script.stat.exists
+          - incus_refresh_script.stat.executable
+        fail_msg: "{{ incus_image_refresh_script }} is missing or not executable"
+        quiet: true
+
+    # daemon_reload is a no-op that just makes the module gather and return the
+    # timer's systemctl-show properties to assert against; it reads, not mutates.
+    - name: Read the refresh timer's state
+      ansible.builtin.systemd_service:
+        name: incus-image-refresh.timer
+        daemon_reload: true
+      register: incus_refresh_timer
+      become: true
+
+    - name: The timer is enabled and fires at 03:00 on Sundays
+      ansible.builtin.assert:
+        that:
+          - incus_refresh_timer.status.UnitFileState == 'enabled'
+          - "'Sun' in incus_refresh_timer.status.TimersCalendar"
+          - "'03:00:00' in incus_refresh_timer.status.TimersCalendar"
+        fail_msg: "image refresh timer is not enabled for {{ incus_image_refresh_oncalendar }}"
+        quiet: true
+
+    - name: Cache a fixture image via the refresh script
+      ansible.builtin.command: "{{ incus_image_refresh_script }}"
+      environment: "{{ incus_refresh_env }}"
+      changed_when: false
+      become: true
+
+    - name: Re-run; the cached fixture should refresh in place
+      ansible.builtin.command: "{{ incus_image_refresh_script }}"
+      environment: "{{ incus_refresh_env }}"
+      changed_when: false
+      become: true
+
+    - name: List the local image aliases
+      ansible.builtin.command: incus image list --format csv --columns l
+      register: incus_refresh_images
+      changed_when: false
+      become: true
+
+    - name: The fixture image is cached locally
+      ansible.builtin.assert:
+        that: "incus_refresh_test_alias in incus_refresh_images.stdout"
+        fail_msg: "the refresh script did not cache the fixture image"
+        quiet: true
+
+    - name: Remove the fixture image
+      ansible.builtin.command: "incus image delete {{ incus_refresh_test_alias }}"
+      changed_when: true
       become: true

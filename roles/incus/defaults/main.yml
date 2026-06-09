@@ -15,3 +15,12 @@ incus_bridge: incusbr0
 # driver, and a dir pool needs no source.
 incus_storage_driver: btrfs
 incus_storage_source: /var/lib/incus/storage-pools/default
+
+# Cache the Tumbleweed cloud image in the local incus image store so containers
+# launch from the local copy instead of pulling images: each time; incus reuses
+# it by fingerprint. incus-image-refresh.sh keeps it current (--auto-update) and
+# the systemd timer runs it weekly, at 03:00 on Sundays.
+incus_image_source: images:opensuse/tumbleweed/cloud
+incus_image_alias: tumbleweed
+incus_image_refresh_script: /usr/local/sbin/incus-image-refresh.sh
+incus_image_refresh_oncalendar: "Sun *-*-* 03:00:00"
