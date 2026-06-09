@@ -1,0 +1,10 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Weekly refresh of the cached openSUSE Tumbleweed libvirt image
+
+[Timer]
+OnCalendar={{ libvirt_image_refresh_oncalendar }}
+Persistent=true
+
+[Install]
+WantedBy=timers.target
