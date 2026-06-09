@@ -1,0 +1,9 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Refresh the cached Tumbleweed incus image
+Wants=network-online.target incus.socket
+After=network-online.target incus.socket
+
+[Service]
+Type=oneshot
+ExecStart={{ incus_image_refresh_script }}
