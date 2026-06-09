@@ -1,0 +1,10 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Weekly refresh of the cached Tumbleweed incus image
+
+[Timer]
+OnCalendar={{ incus_image_refresh_oncalendar }}
+Persistent=true
+
+[Install]
+WantedBy=timers.target
