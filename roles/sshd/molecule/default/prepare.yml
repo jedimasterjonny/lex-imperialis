@@ -1,0 +1,12 @@
+---
+# The container image ships sshd inactive with no host keys; first start
+# generates the keys the role's validate loads. Test-only — Ansible reaches
+# fleet hosts over SSH, so sshd is already running there.
+- name: Prepare
+  hosts: all
+  become: true
+  tasks:
+    - name: Start sshd
+      ansible.builtin.systemd_service:
+        name: sshd
+        state: started
