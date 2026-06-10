@@ -1,0 +1,20 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Read the effective sshd configuration
+      ansible.builtin.command: /usr/sbin/sshd -T
+      register: sshd_effective
+      changed_when: false
+
+    - name: Hardening settings are in effect
+      ansible.builtin.assert:
+        that:
+          - "'passwordauthentication no' in sshd_effective.stdout_lines"
+          - "'kbdinteractiveauthentication no' in sshd_effective.stdout_lines"
+          - "'permitrootlogin prohibit-password' in sshd_effective.stdout_lines"
+          - "'x11forwarding no' in sshd_effective.stdout_lines"
+          - "'loglevel VERBOSE' in sshd_effective.stdout_lines"
+        fail_msg: "the hardening drop-in is not in effect"
+        quiet: true
