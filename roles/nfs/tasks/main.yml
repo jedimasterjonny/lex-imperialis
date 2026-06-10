@@ -1,0 +1,20 @@
+---
+- name: Install the NFS client
+  community.general.zypper:
+    name: "{{ nfs_package }}"
+    state: present
+  become: true
+
+# ansible.posix.mount creates the mount point (and /nfs) when absent, writes the
+# fstab entry, and mounts now — idempotent once the entry and mount match.
+- name: Mount the NFS shares
+  ansible.posix.mount:
+    path: "{{ nfs_mount_root }}/{{ item.name }}"
+    src: "{{ item.server }}:{{ item.export }}"
+    fstype: nfs
+    opts: "{{ nfs_mount_options }}"
+    state: mounted
+  loop: "{{ nfs_shares }}"
+  loop_control:
+    label: "{{ item.name }}"
+  become: true
