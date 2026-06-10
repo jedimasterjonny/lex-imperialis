@@ -1,0 +1,14 @@
+---
+# sshd keeps the first value it reads for each keyword, and the shipped config
+# includes /etc/ssh/sshd_config.d ahead of its own settings, so the drop-in
+# overrides the defaults.
+- name: Deploy the sshd hardening drop-in
+  ansible.builtin.copy:
+    src: 40-hardening.conf
+    dest: /etc/ssh/sshd_config.d/40-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/sshd -t -f %s
+  become: true
+  notify: Reload sshd
