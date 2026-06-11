@@ -10,14 +10,40 @@
       ansible.builtin.uri:
         url: http://127.0.0.1/
         headers:
-          Host: "{{ item }}.{{ arr_domain }}"
+          Host: "{{ item.key }}.{{ arr_domain }}"
         follow_redirects: none
         status_code: [200, 302, 401]
-      loop: "{{ arr_apps.keys() | list }}"
+      loop: "{{ arr_apps | dict2items | selectattr('value.port', 'defined') | list }}"
+      loop_control:
+        label: "{{ item.key }}"
       register: arr_proxied
       until: arr_proxied.status in [200, 302, 401]
       retries: 30
       delay: 2
+
+    # The proxy wait already proves the ported apps are up; only the portless
+    # ones need their units read directly. daemon_reload is a no-op that just
+    # makes the module gather and return the unit's systemctl-show properties
+    # to assert against; it reads, not mutates.
+    - name: Read the portless apps' unit state
+      ansible.builtin.systemd_service:
+        name: "{{ item.key }}"
+        daemon_reload: true
+      loop: "{{ arr_apps | dict2items | rejectattr('value.port', 'defined') | list }}"
+      loop_control:
+        label: "{{ item.key }}"
+      register: arr_portless
+      become: true
+
+    - name: The portless apps are running
+      ansible.builtin.assert:
+        that:
+          - item.status.ActiveState == 'active'
+        fail_msg: "{{ item.item.key }} is not running"
+        quiet: true
+      loop: "{{ arr_portless.results }}"
+      loop_control:
+        label: "{{ item.item.key }}"
 
     - name: Read the app account inside the radarr container
       ansible.builtin.command: podman exec radarr id -u abc
@@ -32,16 +58,22 @@
         fail_msg: "radarr is not running as PUID {{ arr_apps.radarr.uid }}"
         quiet: true
 
-    - name: Stat the movies data directory
+    - name: Stat the data directories
       ansible.builtin.stat:
-        path: "{{ arr_data_root }}/{{ arr_apps.radarr.data }}"
-      register: arr_movies_dir
+        path: "{{ arr_data_root }}/{{ item.key }}"
+      loop: "{{ arr_data_dirs | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+      register: arr_dirs
 
-    - name: The data directory belongs to radarr and the shared group
+    - name: Each data directory belongs to its app and the shared group
       ansible.builtin.assert:
         that:
-          - arr_movies_dir.stat.isdir
-          - arr_movies_dir.stat.pw_name == "radarr"
-          - arr_movies_dir.stat.gr_name == arr_group
-        fail_msg: "the movies directory is not owned by radarr:{{ arr_group }}"
+          - item.stat.isdir
+          - item.stat.pw_name == item.item.value
+          - item.stat.gr_name == arr_group
+        fail_msg: "{{ item.item.key }} is not owned by {{ item.item.value }}:{{ arr_group }}"
         quiet: true
+      loop: "{{ arr_dirs.results }}"
+      loop_control:
+        label: "{{ item.item.key }}"

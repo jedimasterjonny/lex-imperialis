@@ -21,12 +21,12 @@
 
 - name: Create the data directories
   ansible.builtin.file:
-    path: "{{ arr_data_root }}/{{ item.value.data }}"
+    path: "{{ arr_data_root }}/{{ item.key }}"
     state: directory
-    owner: "{{ item.key }}"
+    owner: "{{ item.value }}"
     group: "{{ arr_group }}"
     mode: "02775"
-  loop: "{{ arr_apps | dict2items | selectattr('value.data', 'defined') | list }}"
+  loop: "{{ arr_data_dirs | dict2items }}"
   loop_control:
     label: "{{ item.key }}"
   become: true
