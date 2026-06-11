@@ -69,6 +69,20 @@
       loop_control:
         label: "{{ item.item.key }}"
 
+    # recyclarr has no service account to read — quadlet User= sets its
+    # identity, and exec inherits it, so id reads what it actually runs as.
+    - name: Read recyclarr's runtime account
+      ansible.builtin.command: podman exec recyclarr sh -c 'id -u && id -g'
+      become: true
+      register: arr_recyclarr_id
+      changed_when: false
+
+    - name: Recyclarr runs as its host user and per-app group
+      ansible.builtin.assert:
+        that:
+          - arr_recyclarr_id.stdout_lines == [arr_apps.recyclarr.uid | string, arr_apps.recyclarr.uid | string]
+        quiet: true
+
     # exec defaults to container root, which bypasses file perms — drop to the
     # service account so the write exercises the shared group.
     - name: Probe a media write from beets
