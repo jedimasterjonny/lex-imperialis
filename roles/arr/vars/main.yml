@@ -4,10 +4,12 @@
 # data names what the app mounts under /data — 'root' is the whole tree, so
 # imports hardlink across downloads and media; a list is just those dirs.
 # publish exposes the app's port on the host for native clients; device passes
-# a host device through for hardware transcoding. prowlarr only manages
-# indexers and recyclarr only talks to the other apps, so neither has a data
-# mount. recyclarr's config — and the arr API keys inside it — is
-# operator-managed in its volume, keeping the keys out of the repo.
+# a host device through for hardware transcoding; netns joins another app's
+# container netns (lifecycle follows it); network_alias, caps, sysctls and
+# binds are quadlet passthroughs. prowlarr only manages indexers and recyclarr
+# only talks to the other apps, so neither has a data mount. recyclarr's
+# config — and the arr API keys inside it — is operator-managed in its volume,
+# keeping the keys out of the repo.
 arr_group: arr
 arr_gid: 3000
 
@@ -17,6 +19,7 @@ arr_data_dirs:
   movies: radarr
   tv: sonarr
   music: lidarr
+  downloads: transmission
 
 # Media access beyond what ownership grants: these apps carry the shared group
 # — the importers co-write with beets and the future download client, whose
@@ -64,3 +67,22 @@ arr_apps:
   recyclarr:
     image: ghcr.io/recyclarr/recyclarr:7.3.0
     uid: 3007
+  # Shares the wireguard netns, so every peer connection rides the tunnel;
+  # caddy reaches the webui at the wireguard container's transmission alias.
+  transmission:
+    image: lscr.io/linuxserver/transmission:4.1.2
+    uid: 3008
+    port: 9091
+    netns: wireguard
+    data: [downloads]
+  wireguard:
+    image: lscr.io/linuxserver/wireguard:1.0.20250521
+    uid: 3009
+    network_alias: transmission
+    caps: [NET_ADMIN]
+    sysctls: [net.ipv4.conf.all.src_valid_mark=1]
+    binds: ["{{ arr_wireguard_conf_path }}:/config/wg_confs/wg0.conf:ro"]
+
+# Client config for transmission's tunnel; the operator's real config arrives
+# via arr_wireguard_conf (vault).
+arr_wireguard_conf_path: /etc/wireguard/wg0.conf
