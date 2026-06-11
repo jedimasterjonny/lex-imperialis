@@ -45,17 +45,50 @@
       loop_control:
         label: "{{ item.item.key }}"
 
-    - name: Read the app account inside the radarr container
-      ansible.builtin.command: podman exec radarr id -u abc
+    # lscr.io images drop their service to PUID:PGID as the abc account;
+    # recyclarr runs under quadlet User= and has no account to read.
+    - name: Read each app account inside its container
+      ansible.builtin.command: podman exec {{ item.key }} sh -c 'id -u abc && id -g abc'
       become: true
-      register: arr_radarr_uid
+      loop: "{{ arr_apps | dict2items | selectattr('value.image', 'match', 'lscr\\.io/') | list }}"
+      loop_control:
+        label: "{{ item.key }}"
+      register: arr_app_ids
       changed_when: false
 
-    - name: Radarr drops to its host user
+    - name: Each app drops to its host user and its policy group
       ansible.builtin.assert:
         that:
-          - arr_radarr_uid.stdout == arr_apps.radarr.uid | string
-        fail_msg: "radarr is not running as PUID {{ arr_apps.radarr.uid }}"
+          - item.stdout_lines == [arr_app_uid | string, arr_app_gid | string]
+        fail_msg: "{{ item.item.key }} is not running as {{ arr_app_uid }}:{{ arr_app_gid }}"
+        quiet: true
+      vars:
+        arr_app_uid: "{{ item.item.value.uid }}"
+        arr_app_gid: "{{ arr_gid if item.item.key in arr_media_access else item.item.value.uid }}"
+      loop: "{{ arr_app_ids.results }}"
+      loop_control:
+        label: "{{ item.item.key }}"
+
+    # exec defaults to container root, which bypasses file perms — drop to the
+    # service account so the write exercises the shared group.
+    - name: Probe a media write from beets
+      ansible.builtin.command: podman exec --user abc beets sh -c 'touch /music/.probe && rm /music/.probe'
+      become: true
+      register: arr_beets_write
+      changed_when: false
+
+    - name: Probe a media write from plex
+      ansible.builtin.command: podman exec plex touch /movies/.probe
+      become: true
+      register: arr_plex_write
+      changed_when: false
+      failed_when: false
+
+    - name: Beets writes media through the shared group; plex cannot at all
+      ansible.builtin.assert:
+        that:
+          - arr_beets_write.rc == 0
+          - arr_plex_write.rc != 0
         quiet: true
 
     - name: Stat the data directories

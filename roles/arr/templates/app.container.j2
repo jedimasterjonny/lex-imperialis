@@ -1,4 +1,6 @@
 {% set arr_lsio = item.value.image.startswith('lscr.io/') %}
+{% set arr_app_gid = arr_gid if item.key in arr_media_access else item.value.uid %}
+{% set arr_data_suffix = ':ro' if arr_media_access[item.key] | default('rw') == 'ro' else '' %}
 [Unit]
 Description={{ item.key | capitalize }}
 {% if item.value.data is defined %}
@@ -12,10 +14,10 @@ Network=caddy.network
 Environment=TZ={{ arr_timezone }}
 {% if arr_lsio %}
 Environment=PUID={{ item.value.uid }}
-Environment=PGID={{ arr_gid }}
+Environment=PGID={{ arr_app_gid }}
 Environment=UMASK=002
 {% else %}
-User={{ item.value.uid }}:{{ arr_gid }}
+User={{ item.value.uid }}:{{ arr_app_gid }}
 {% endif %}
 {% if item.value.device is defined %}
 {# '-' marks the device optional, so GPU-less molecule containers still start. #}
@@ -27,7 +29,7 @@ PublishPort={{ item.value.port }}:{{ item.value.port }}
 {# lscr.io images chown /config themselves; :U hands it to User= for the rest. #}
 Volume={{ item.key }}-config:/config{{ '' if arr_lsio else ':U' }}
 {% for data in item.value.data | default([]) %}
-Volume={{ arr_data_root }}/{{ data }}:/{{ data }}
+Volume={{ arr_data_root }}/{{ data }}:/{{ data }}{{ arr_data_suffix }}
 {% endfor %}
 
 [Service]
