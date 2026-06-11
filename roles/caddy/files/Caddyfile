@@ -1,0 +1,7 @@
+# Health endpoint, so the bare proxy is observable.
+http://localhost {
+	respond 204
+}
+
+# Backend roles register their vhosts as sites/<role>.caddy.
+import sites/*.caddy

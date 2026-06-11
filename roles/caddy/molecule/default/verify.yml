@@ -1,0 +1,15 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Wait for the health endpoint
+      ansible.builtin.uri:
+        url: http://127.0.0.1/
+        headers:
+          Host: localhost
+        status_code: 204
+      register: caddy_health
+      until: caddy_health.status == 204
+      retries: 30
+      delay: 2
