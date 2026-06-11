@@ -1,0 +1,70 @@
+---
+- name: Create the shared group
+  ansible.builtin.group:
+    name: "{{ arr_group }}"
+    gid: "{{ arr_gid }}"
+    system: true
+  become: true
+
+- name: Create the per-app users
+  ansible.builtin.user:
+    name: "{{ item.key }}"
+    uid: "{{ item.value.uid }}"
+    group: "{{ arr_group }}"
+    shell: /usr/sbin/nologin
+    create_home: false
+    system: true
+  loop: "{{ arr_apps | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  become: true
+
+- name: Create the data directories
+  ansible.builtin.file:
+    path: "{{ arr_data_root }}/{{ item.value.data }}"
+    state: directory
+    owner: "{{ item.key }}"
+    group: "{{ arr_group }}"
+    mode: "02775"
+  loop: "{{ arr_apps | dict2items | selectattr('value.data', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.key }}"
+  become: true
+
+- name: Install the app container units
+  ansible.builtin.template:
+    src: app.container.j2
+    dest: /etc/containers/systemd/{{ item.key }}.container
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ arr_apps | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  become: true
+  notify:
+    - Reload systemd
+    - Restart the app containers
+
+# The caddy role owns /etc/caddy/sites and imports every sites/*.caddy.
+- name: Register the apps with the reverse proxy
+  ansible.builtin.template:
+    src: arr.caddy.j2
+    dest: /etc/caddy/sites/arr.caddy
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart caddy
+
+# Quadlet units only exist after the daemon reload, so apply pending restarts
+# before asserting the services are up.
+- name: Apply pending unit changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Start the containers
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: started
+  loop: "{{ arr_apps.keys() | list }}"
+  become: true
