@@ -1,0 +1,17 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Query the podman runtime
+      ansible.builtin.command: podman info
+      become: true
+      register: podman_info
+      changed_when: false
+
+    - name: The netavark network backend is active
+      ansible.builtin.assert:
+        that:
+          - "'netavark' in podman_info.stdout"
+        fail_msg: "podman is not using the netavark network backend"
+        quiet: true
