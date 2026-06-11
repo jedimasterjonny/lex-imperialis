@@ -10,11 +10,23 @@
 arr_group: arr
 arr_gid: 3000
 
-# Media dir → owning app; the others write via the 2775 group bit and UMASK.
+# Media dir → owning app; arr_media_access apps reach the rest via the 2775
+# group bit and UMASK.
 arr_data_dirs:
   movies: radarr
   tv: sonarr
   music: lidarr
+
+# Media access beyond what ownership grants: these apps carry the shared group
+# — the importers co-write with beets and the future download client, whose
+# files are group-owned — and ro mounts media read-only. The rest run under
+# their own per-app group with no media access at all.
+arr_media_access:
+  radarr: rw
+  sonarr: rw
+  lidarr: rw
+  beets: rw
+  plex: ro
 
 arr_apps:
   radarr:
