@@ -42,6 +42,7 @@
   loop_control:
     label: "{{ item.key }}"
   become: true
+  register: arr_app_units
   notify:
     - Reload systemd
     - Restart the app containers
