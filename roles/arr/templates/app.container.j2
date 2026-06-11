@@ -1,3 +1,4 @@
+{% set arr_lsio = item.value.image.startswith('lscr.io/') %}
 [Unit]
 Description={{ item.key | capitalize }}
 {% if item.value.data is defined %}
@@ -8,14 +9,26 @@ RequiresMountsFor={{ arr_data_root }}
 ContainerName={{ item.key }}
 Image={{ item.value.image }}
 Network=caddy.network
+Environment=TZ={{ arr_timezone }}
+{% if arr_lsio %}
 Environment=PUID={{ item.value.uid }}
 Environment=PGID={{ arr_gid }}
-Environment=TZ={{ arr_timezone }}
 Environment=UMASK=002
-Volume={{ item.key }}-config:/config
-{% if item.value.data is defined %}
-Volume={{ arr_data_root }}/{{ item.value.data }}:/{{ item.value.data }}
+{% else %}
+User={{ item.value.uid }}:{{ arr_gid }}
 {% endif %}
+{% if item.value.device is defined %}
+{# '-' marks the device optional, so GPU-less molecule containers still start. #}
+AddDevice=-{{ item.value.device }}
+{% endif %}
+{% if item.value.publish | default(false) %}
+PublishPort={{ item.value.port }}:{{ item.value.port }}
+{% endif %}
+{# lscr.io images chown /config themselves; :U hands it to User= for the rest. #}
+Volume={{ item.key }}-config:/config{{ '' if arr_lsio else ':U' }}
+{% for data in item.value.data | default([]) %}
+Volume={{ arr_data_root }}/{{ data }}:/{{ data }}
+{% endfor %}
 
 [Service]
 Restart=on-failure
