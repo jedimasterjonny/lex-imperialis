@@ -7,3 +7,8 @@ arr_timezone: Etc/UTC
 
 # NAS-backed media root; each app that stores media gets <root>/<data type>.
 arr_data_root: /nfs/administratum/scriptorum
+
+# wg-quick client config routing transmission's traffic (vault-sourced).
+# Empty installs a generated blackhole config: the tunnel comes up dead, so
+# torrent traffic can never leak outside the VPN.
+arr_wireguard_conf: ""

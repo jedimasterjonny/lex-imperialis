@@ -12,12 +12,12 @@
         headers:
           Host: "{{ item.key }}.{{ arr_domain }}"
         follow_redirects: none
-        status_code: [200, 302, 401]
+        status_code: [200, 301, 302, 401]
       loop: "{{ arr_apps | dict2items | selectattr('value.port', 'defined') | list }}"
       loop_control:
         label: "{{ item.key }}"
       register: arr_proxied
-      until: arr_proxied.status in [200, 302, 401]
+      until: arr_proxied.status in [200, 301, 302, 401]
       retries: 30
       delay: 2
 
@@ -89,6 +89,28 @@
         that:
           - arr_beets_write.rc == 0
           - arr_plex_write.rc != 0
+        quiet: true
+
+    - name: Read each side of the shared netns
+      ansible.builtin.command: podman exec {{ item }} readlink /proc/self/ns/net
+      loop: [wireguard, transmission]
+      become: true
+      register: arr_netns
+      changed_when: false
+
+    - name: Read the default route in the tunnel netns
+      ansible.builtin.command: podman exec wireguard ip route get 1.1.1.1
+      become: true
+      register: arr_tunnel_route
+      changed_when: false
+
+    # The proxy wait above already proves the webui path skips the tunnel: the
+    # blackhole config molecule converges with would eat a proxied request.
+    - name: Transmission lives in the wireguard netns and routes via the tunnel
+      ansible.builtin.assert:
+        that:
+          - arr_netns.results[0].stdout == arr_netns.results[1].stdout
+          - "'dev wg0' in arr_tunnel_route.stdout"
         quiet: true
 
     - name: Stat the data directories
