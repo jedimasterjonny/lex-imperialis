@@ -7,8 +7,12 @@
   connection: local
   gather_facts: false
   tasks:
+    # A platform's optional `config` map renders as -c key=value launch
+    # options, e.g. security.nesting for roles that run nested containers.
     - name: Launch instances
-      ansible.builtin.command: "incus launch {{ item.image }} {{ item.name }}"
+      ansible.builtin.command: >-
+        incus launch {{ item.image }} {{ item.name }}
+        {% for option in item.config | default({}) | dict2items %} -c {{ option.key }}={{ option.value }}{% endfor %}
       loop: "{{ molecule_yml.platforms }}"
       loop_control:
         label: "{{ item.name }}"
