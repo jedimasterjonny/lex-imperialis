@@ -1,27 +1,65 @@
 ---
 # Per-app identity and wiring; renovate's image manager bumps the tags. uid
-# feeds the container's PUID; data names both the subdirectory under
-# arr_data_root and the in-container mount, matching the linuxserver.io volume
-# conventions. prowlarr only manages indexers, so it has no data mount.
+# feeds the container's PUID on lscr.io images and the quadlet User= elsewhere;
+# data lists the dirs under arr_data_root the app mounts at /<name>; publish
+# exposes the app's port on the host for native clients; device passes a host
+# device through for hardware transcoding. prowlarr only manages indexers and
+# recyclarr only talks to the other apps, so neither has a data mount.
+# recyclarr's config — and the arr API keys inside it — is operator-managed
+# in its volume, keeping the keys out of the repo.
 arr_group: arr
 arr_gid: 3000
+
+# Media dir → owning app; arr_media_access apps reach the rest via the 2775
+# group bit and UMASK.
+arr_data_dirs:
+  movies: radarr
+  tv: sonarr
+  music: lidarr
+
+# Media access beyond what ownership grants: these apps carry the shared group
+# — the importers co-write with beets and the future download client, whose
+# files are group-owned — and ro mounts media read-only. The rest run under
+# their own per-app group with no media access at all.
+arr_media_access:
+  radarr: rw
+  sonarr: rw
+  lidarr: rw
+  beets: rw
+  plex: ro
+
 arr_apps:
   radarr:
     image: lscr.io/linuxserver/radarr:6.2.1
     uid: 3001
     port: 7878
-    data: movies
+    data: [movies]
   sonarr:
     image: lscr.io/linuxserver/sonarr:4.0.17
     uid: 3002
     port: 8989
-    data: tv
+    data: [tv]
   lidarr:
     image: lscr.io/linuxserver/lidarr:3.1.0
     uid: 3003
     port: 8686
-    data: music
+    data: [music]
   prowlarr:
     image: lscr.io/linuxserver/prowlarr:2.4.0
     uid: 3004
     port: 9696
+  beets:
+    image: lscr.io/linuxserver/beets:2.11.0
+    uid: 3005
+    port: 8337
+    data: [music]
+  plex:
+    image: lscr.io/linuxserver/plex:1.43.2
+    uid: 3006
+    port: 32400
+    publish: true
+    device: /dev/dri
+    data: [movies, tv, music]
+  recyclarr:
+    image: ghcr.io/recyclarr/recyclarr:7.3.0
+    uid: 3007

@@ -6,11 +6,23 @@
     system: true
   become: true
 
+# Apps without shared media access get their own group, so a misbehaving
+# container can't write outside its app's files.
+- name: Create the per-app groups
+  ansible.builtin.group:
+    name: "{{ item.key }}"
+    gid: "{{ item.value.uid }}"
+    system: true
+  loop: "{{ arr_apps | dict2items | rejectattr('key', 'in', arr_media_access) | list }}"
+  loop_control:
+    label: "{{ item.key }}"
+  become: true
+
 - name: Create the per-app users
   ansible.builtin.user:
     name: "{{ item.key }}"
     uid: "{{ item.value.uid }}"
-    group: "{{ arr_group }}"
+    group: "{{ arr_group if item.key in arr_media_access else item.key }}"
     shell: /usr/sbin/nologin
     create_home: false
     system: true
@@ -21,12 +33,12 @@
 
 - name: Create the data directories
   ansible.builtin.file:
-    path: "{{ arr_data_root }}/{{ item.value.data }}"
+    path: "{{ arr_data_root }}/{{ item.key }}"
     state: directory
-    owner: "{{ item.key }}"
+    owner: "{{ item.value }}"
     group: "{{ arr_group }}"
     mode: "02775"
-  loop: "{{ arr_apps | dict2items | selectattr('value.data', 'defined') | list }}"
+  loop: "{{ arr_data_dirs | dict2items }}"
   loop_control:
     label: "{{ item.key }}"
   become: true
@@ -42,6 +54,7 @@
   loop_control:
     label: "{{ item.key }}"
   become: true
+  register: arr_app_units
   notify:
     - Reload systemd
     - Restart the app containers
