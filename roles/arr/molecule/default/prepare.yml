@@ -1,0 +1,18 @@
+---
+# The wireguard container needs the host's wireguard module; an unprivileged
+# instance can't autoload it. Probe before escalating so a local run with the
+# module already loaded never prompts for sudo.
+- name: Prepare
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Probe for the wireguard module
+      ansible.builtin.stat:
+        path: /sys/module/wireguard
+      register: arr_wireguard_module
+
+    - name: Load the wireguard module
+      community.general.modprobe:
+        name: wireguard
+      become: true
+      when: not arr_wireguard_module.stat.exists

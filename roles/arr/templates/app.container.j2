@@ -6,11 +6,30 @@ Description={{ item.key | capitalize }}
 {% if item.value.data is defined %}
 RequiresMountsFor={{ arr_data_root }}
 {% endif %}
+{% if item.value.netns is defined %}
+{# Sharing a netns ties this app to its owner: restarts propagate via PartOf. #}
+Requires={{ item.value.netns }}.service
+After={{ item.value.netns }}.service
+PartOf={{ item.value.netns }}.service
+{% endif %}
 
 [Container]
 ContainerName={{ item.key }}
 Image={{ item.value.image }}
+{% if item.value.netns is defined %}
+Network=container:{{ item.value.netns }}
+{% else %}
 Network=caddy.network
+{% endif %}
+{% if item.value.network_alias is defined %}
+NetworkAlias={{ item.value.network_alias }}
+{% endif %}
+{% for cap in item.value.caps | default([]) %}
+AddCapability={{ cap }}
+{% endfor %}
+{% for sysctl in item.value.sysctls | default([]) %}
+Sysctl={{ sysctl }}
+{% endfor %}
 Environment=TZ={{ arr_timezone }}
 {% if arr_lsio %}
 Environment=PUID={{ item.value.uid }}
@@ -28,9 +47,16 @@ PublishPort={{ item.value.port }}:{{ item.value.port }}
 {% endif %}
 {# lscr.io images chown /config themselves; :U hands it to User= for the rest. #}
 Volume={{ item.key }}-config:/config{{ '' if arr_lsio else ':U' }}
-{% for data in item.value.data | default([]) %}
-Volume={{ arr_data_root }}/{{ data }}:/{{ data }}{{ arr_data_suffix }}
+{% for bind in item.value.binds | default([]) %}
+Volume={{ bind }}
 {% endfor %}
+{% if item.value.data | default('') == 'root' %}
+Volume={{ arr_data_root }}:/data{{ arr_data_suffix }}
+{% else %}
+{% for data in item.value.data | default([]) %}
+Volume={{ arr_data_root }}/{{ data }}:/data/{{ data }}{{ arr_data_suffix }}
+{% endfor %}
+{% endif %}
 
 [Service]
 Restart=on-failure
