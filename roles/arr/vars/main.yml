@@ -1,16 +1,17 @@
 ---
 # Per-app identity and wiring; renovate's image manager bumps the tags. uid
 # feeds the container's PUID on lscr.io images and the quadlet User= elsewhere;
-# data lists the dirs under arr_data_root the app mounts at /<name>; publish
-# exposes the app's port on the host for native clients; device passes a host
-# device through for hardware transcoding. prowlarr only manages indexers and
-# recyclarr only talks to the other apps, so neither has a data mount.
-# recyclarr's config — and the arr API keys inside it — is operator-managed
-# in its volume, keeping the keys out of the repo.
+# data names what the app mounts under /data — 'root' is the whole tree, so
+# imports hardlink across downloads and media; a list is just those dirs.
+# publish exposes the app's port on the host for native clients; device passes
+# a host device through for hardware transcoding. prowlarr only manages
+# indexers and recyclarr only talks to the other apps, so neither has a data
+# mount. recyclarr's config — and the arr API keys inside it — is
+# operator-managed in its volume, keeping the keys out of the repo.
 arr_group: arr
 arr_gid: 3000
 
-# Media dir → owning app; arr_media_access apps reach the rest via the 2775
+# Data dir → owning app; arr_media_access apps reach the rest via the 2775
 # group bit and UMASK.
 arr_data_dirs:
   movies: radarr
@@ -33,17 +34,17 @@ arr_apps:
     image: lscr.io/linuxserver/radarr:6.2.1
     uid: 3001
     port: 7878
-    data: [movies]
+    data: root
   sonarr:
     image: lscr.io/linuxserver/sonarr:4.0.17
     uid: 3002
     port: 8989
-    data: [tv]
+    data: root
   lidarr:
     image: lscr.io/linuxserver/lidarr:3.1.0
     uid: 3003
     port: 8686
-    data: [music]
+    data: root
   prowlarr:
     image: lscr.io/linuxserver/prowlarr:2.4.0
     uid: 3004

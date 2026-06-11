@@ -72,13 +72,13 @@
     # exec defaults to container root, which bypasses file perms — drop to the
     # service account so the write exercises the shared group.
     - name: Probe a media write from beets
-      ansible.builtin.command: podman exec --user abc beets sh -c 'touch /music/.probe && rm /music/.probe'
+      ansible.builtin.command: podman exec --user abc beets sh -c 'touch /data/music/.probe && rm /data/music/.probe'
       become: true
       register: arr_beets_write
       changed_when: false
 
     - name: Probe a media write from plex
-      ansible.builtin.command: podman exec plex touch /movies/.probe
+      ansible.builtin.command: podman exec plex touch /data/movies/.probe
       become: true
       register: arr_plex_write
       changed_when: false
