@@ -1,0 +1,18 @@
+[Unit]
+Description=Caddy reverse proxy
+
+[Container]
+ContainerName=caddy
+Image={{ caddy_image }}
+Network=caddy.network
+PublishPort=80:80
+Volume=/etc/caddy:/etc/caddy:ro
+Volume=caddy-data:/data
+Volume=caddy-config:/config
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

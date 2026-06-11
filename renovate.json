@@ -8,11 +8,30 @@
     ":semanticCommitTypeAll(build)"
   ],
   "semanticCommits": "enabled",
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Container image refs pinned in role vars; quadlet templates render them.",
+      "managerFilePatterns": ["/^roles/.+/vars/main\\.yml$/"],
+      "matchStrings": ["image: (?<depName>[^\\s:]+):(?<currentValue>[^\\s@]+)(?:@(?<currentDigest>sha256:\\S+))?"],
+      "datasourceTemplate": "docker"
+    }
+  ],
   "packageRules": [
     {
       "description": "pinDigest updates carry no version change, so the lint check is enough to merge them unattended.",
       "matchUpdateTypes": ["pinDigest"],
       "automerge": true
+    },
+    {
+      "description": "linuxserver images carry legacy build-number (151), two-part (5.14), and four-part tags that docker versioning reads as upgrades; their releases are strict semver, so reject the rest.",
+      "matchPackageNames": ["lscr.io/linuxserver/**"],
+      "versioning": "semver"
+    },
+    {
+      "description": "lidarr has a legacy 8.1.2135 tag that even strict semver accepts; mainline is 3.x.",
+      "matchPackageNames": ["lscr.io/linuxserver/lidarr"],
+      "allowedVersions": "<8"
     }
   ]
 }

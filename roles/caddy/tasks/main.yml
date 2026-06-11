@@ -1,0 +1,57 @@
+---
+- name: Create the config directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - /etc/caddy
+    - /etc/caddy/sites
+  become: true
+
+- name: Deploy the Caddyfile
+  ansible.builtin.copy:
+    src: Caddyfile
+    dest: /etc/caddy/Caddyfile
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart caddy
+
+- name: Create the container network
+  ansible.builtin.copy:
+    src: caddy.network
+    dest: /etc/containers/systemd/caddy.network
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify:
+    - Reload systemd
+    - Restart caddy
+
+- name: Install the caddy container unit
+  ansible.builtin.template:
+    src: caddy.container.j2
+    dest: /etc/containers/systemd/caddy.container
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify:
+    - Reload systemd
+    - Restart caddy
+
+# The quadlet unit only exists after the daemon reload, so apply pending
+# restarts before asserting the service is up.
+- name: Apply pending unit changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Start caddy
+  ansible.builtin.systemd_service:
+    name: caddy
+    state: started
+  become: true

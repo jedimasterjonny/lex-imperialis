@@ -1,0 +1,25 @@
+[Unit]
+Description={{ item.key | capitalize }}
+{% if item.value.data is defined %}
+RequiresMountsFor={{ arr_data_root }}
+{% endif %}
+
+[Container]
+ContainerName={{ item.key }}
+Image={{ item.value.image }}
+Network=caddy.network
+Environment=PUID={{ item.value.uid }}
+Environment=PGID={{ arr_gid }}
+Environment=TZ={{ arr_timezone }}
+Environment=UMASK=002
+Volume={{ item.key }}-config:/config
+{% if item.value.data is defined %}
+Volume={{ arr_data_root }}/{{ item.value.data }}:/{{ item.value.data }}
+{% endif %}
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

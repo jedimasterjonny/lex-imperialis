@@ -1,0 +1,9 @@
+---
+# Internal domain the reverse proxy routes on: each app answers at
+# <app>.<arr_domain> over plain HTTP. Point wildcard DNS for it at the host.
+arr_domain: home.arpa
+
+arr_timezone: Etc/UTC
+
+# NAS-backed media root; each app that stores media gets <root>/<data type>.
+arr_data_root: /nfs/administratum/scriptorum
