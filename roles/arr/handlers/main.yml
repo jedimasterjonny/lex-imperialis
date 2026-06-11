@@ -1,0 +1,20 @@
+---
+# Listed reload-first: handlers run in definition order, and restarts of
+# quadlet-generated units need the regenerated units loaded.
+- name: Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  become: true
+
+- name: Restart the app containers
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: restarted
+  loop: "{{ arr_apps.keys() | list }}"
+  become: true
+
+- name: Restart caddy
+  ansible.builtin.systemd_service:
+    name: caddy
+    state: restarted
+  become: true
