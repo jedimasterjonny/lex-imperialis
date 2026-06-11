@@ -1,0 +1,15 @@
+---
+- name: Install podman
+  community.general.zypper:
+    name: "{{ podman_packages }}"
+    state: present
+  become: true
+
+- name: Create the quadlet directory
+  ansible.builtin.file:
+    path: /etc/containers/systemd
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true

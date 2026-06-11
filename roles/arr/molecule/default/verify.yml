@@ -1,0 +1,47 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - ../../defaults/main.yml
+    - ../../vars/main.yml
+  tasks:
+    - name: Wait for each app to answer through the proxy
+      ansible.builtin.uri:
+        url: http://127.0.0.1/
+        headers:
+          Host: "{{ item }}.{{ arr_domain }}"
+        follow_redirects: none
+        status_code: [200, 302, 401]
+      loop: "{{ arr_apps.keys() | list }}"
+      register: arr_proxied
+      until: arr_proxied.status in [200, 302, 401]
+      retries: 30
+      delay: 2
+
+    - name: Read the app account inside the radarr container
+      ansible.builtin.command: podman exec radarr id -u abc
+      become: true
+      register: arr_radarr_uid
+      changed_when: false
+
+    - name: Radarr drops to its host user
+      ansible.builtin.assert:
+        that:
+          - arr_radarr_uid.stdout == arr_apps.radarr.uid | string
+        fail_msg: "radarr is not running as PUID {{ arr_apps.radarr.uid }}"
+        quiet: true
+
+    - name: Stat the movies data directory
+      ansible.builtin.stat:
+        path: "{{ arr_data_root }}/{{ arr_apps.radarr.data }}"
+      register: arr_movies_dir
+
+    - name: The data directory belongs to radarr and the shared group
+      ansible.builtin.assert:
+        that:
+          - arr_movies_dir.stat.isdir
+          - arr_movies_dir.stat.pw_name == "radarr"
+          - arr_movies_dir.stat.gr_name == arr_group
+        fail_msg: "the movies directory is not owned by radarr:{{ arr_group }}"
+        quiet: true

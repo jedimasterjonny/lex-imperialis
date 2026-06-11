@@ -1,0 +1,7 @@
+---
+# aardvark-dns is netavark's DNS resolver. zypper only recommends it, and the
+# zypper module skips recommends, so without naming it here containers on a
+# podman network cannot resolve one another.
+podman_packages:
+  - podman
+  - aardvark-dns
