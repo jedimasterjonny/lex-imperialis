@@ -22,13 +22,15 @@
         - mol_launch.rc != 0
         - "'already exists' not in mol_launch.stderr"
 
-    - name: Wait until instances respond to exec
-      ansible.builtin.command: "incus exec {{ item.name }} -- true"
+    # Network-online implies exec responds; converges that fetch packages
+    # otherwise race the boot's DHCP/DNS setup.
+    - name: Wait until instances are online
+      ansible.builtin.command: "incus exec {{ item.name }} -- systemctl is-active network-online.target"
       loop: "{{ molecule_yml.platforms }}"
       loop_control:
         label: "{{ item.name }}"
-      register: mol_ping
-      until: mol_ping.rc == 0
+      register: mol_online
+      until: mol_online.rc == 0
       retries: 30
       delay: 2
       changed_when: false
