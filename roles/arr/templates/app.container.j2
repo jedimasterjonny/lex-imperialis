@@ -28,9 +28,13 @@ PublishPort={{ item.value.port }}:{{ item.value.port }}
 {% endif %}
 {# lscr.io images chown /config themselves; :U hands it to User= for the rest. #}
 Volume={{ item.key }}-config:/config{{ '' if arr_lsio else ':U' }}
+{% if item.value.data | default('') == 'root' %}
+Volume={{ arr_data_root }}:/data{{ arr_data_suffix }}
+{% else %}
 {% for data in item.value.data | default([]) %}
-Volume={{ arr_data_root }}/{{ data }}:/{{ data }}{{ arr_data_suffix }}
+Volume={{ arr_data_root }}/{{ data }}:/data/{{ data }}{{ arr_data_suffix }}
 {% endfor %}
+{% endif %}
 
 [Service]
 Restart=on-failure
