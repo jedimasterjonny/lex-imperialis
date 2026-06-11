@@ -14,6 +14,7 @@
       "description": "Container image refs pinned in role vars; quadlet templates render them.",
       "managerFilePatterns": ["/^roles/.+/vars/main\\.yml$/"],
       "matchStrings": ["image: (?<depName>[^\\s:]+):(?<currentValue>[^\\s@]+)(?:@(?<currentDigest>sha256:\\S+))?"],
+      "autoReplaceStringTemplate": "image: {{{depName}}}:{{{newValue}}}{{#if newDigest}}@{{{newDigest}}}{{/if}}",
       "datasourceTemplate": "docker"
     }
   ],
