@@ -1,0 +1,39 @@
+---
+# Temporary CI diagnostic: molecule's cleanup step runs before the
+# failure-path destroy, so dump why caddy.service failed to start while the
+# instance still exists. Tolerates a missing instance (cleanup also runs
+# before create). Never merged — the branch is deleted after diagnosis.
+- name: Cleanup
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Collect caddy diagnostics from the instance
+      ansible.builtin.command:
+        argv:
+          - incus
+          - exec
+          - "lex-caddy-incus-{{ lookup('env', 'MOLECULE_RUN_ID') | default('local', true) }}"
+          - --
+          - sh
+          - -c
+          - "{{ item }}"
+      loop:
+        - journalctl -u caddy.service --no-pager
+        - systemctl status caddy.service --no-pager -l
+        - podman pull docker.io/library/caddy:2.11.4
+      changed_when: false
+      failed_when: false
+      register: caddy_diag
+
+    - name: Show the diagnostics
+      ansible.builtin.debug:
+        msg: |
+          CMD: {{ item.item }}
+          RC: {{ item.rc | default('n/a') }}
+          STDOUT:
+          {{ item.stdout | default('') }}
+          STDERR:
+          {{ item.stderr | default('') }}
+      loop: "{{ caddy_diag.results }}"
+      loop_control:
+        label: "{{ item.item }}"
