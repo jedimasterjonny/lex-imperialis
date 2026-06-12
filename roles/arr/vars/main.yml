@@ -34,49 +34,49 @@ arr_media_access:
 
 arr_apps:
   radarr:
-    image: lscr.io/linuxserver/radarr:6.2.1
+    image: lscr.io/linuxserver/radarr:6.2.1@sha256:4c490ccd44d31feb49dc4cc542f2148a420fc1ae0c1ba94e59b39ba4bf112716
     uid: 3001
     port: 7878
     data: root
   sonarr:
-    image: lscr.io/linuxserver/sonarr:4.0.17
+    image: lscr.io/linuxserver/sonarr:4.0.17@sha256:0b3f344388bd7bed4f2f770058de795e76447e4a481b83c8d5f8fed489371fde
     uid: 3002
     port: 8989
     data: root
   lidarr:
-    image: lscr.io/linuxserver/lidarr:3.1.0
+    image: lscr.io/linuxserver/lidarr:3.1.0@sha256:b08b2194fa4ddb7f7ace9d1bfd82bd9b26f457d79aa70f42d923d2e15a820f0e
     uid: 3003
     port: 8686
     data: root
   prowlarr:
-    image: lscr.io/linuxserver/prowlarr:2.4.0
+    image: lscr.io/linuxserver/prowlarr:2.4.0@sha256:a46d0ce0a8236bc4e065fe7c91a55d026c9d849620c5845250519b977d8857f3
     uid: 3004
     port: 9696
   beets:
-    image: lscr.io/linuxserver/beets:2.11.0
+    image: lscr.io/linuxserver/beets:2.11.0@sha256:f8b58e60a3b07d5a2d0048aedcf83235d02babf7cb4dc579a92a767ffaca1aae
     uid: 3005
     port: 8337
     data: [music]
   plex:
-    image: lscr.io/linuxserver/plex:1.43.2
+    image: lscr.io/linuxserver/plex:1.43.2@sha256:58f13a1df833fcb7b3499c6b52aec9d7473b93b1a1e2d2219db57e761e57903b
     uid: 3006
     port: 32400
     publish: true
     device: /dev/dri
     data: [movies, tv, music]
   recyclarr:
-    image: ghcr.io/recyclarr/recyclarr:7.5.2
+    image: ghcr.io/recyclarr/recyclarr:7.5.2@sha256:2550848d43a453f2c6adf3582f2198ac719f76670691d76de0819053103ef2fb
     uid: 3007
   # Shares the wireguard netns, so every peer connection rides the tunnel;
   # caddy reaches the webui at the wireguard container's transmission alias.
   transmission:
-    image: lscr.io/linuxserver/transmission:4.1.2
+    image: lscr.io/linuxserver/transmission:4.1.2@sha256:ec464a74779392475c7243e7bad7d3d87db5c7bd332bf4dda7e091a84f16c3a9
     uid: 3008
     port: 9091
     netns: wireguard
     data: [downloads]
   wireguard:
-    image: lscr.io/linuxserver/wireguard:1.0.20250521
+    image: lscr.io/linuxserver/wireguard:1.0.20250521@sha256:1bf21d1c8933f7376da97bb14a459ae18e716e49d2e3456dbfd71414f60a319a
     uid: 3009
     network_alias: transmission
     caps: [NET_ADMIN]
