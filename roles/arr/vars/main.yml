@@ -22,7 +22,7 @@ arr_data_dirs:
   downloads: transmission
 
 # Media access beyond what ownership grants: these apps carry the shared group
-# — the importers co-write with beets and the future download client, whose
+# — the importers co-write with beets and transmission, whose
 # files are group-owned — and ro mounts media read-only. The rest run under
 # their own per-app group with no media access at all.
 arr_media_access:
