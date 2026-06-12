@@ -1,0 +1,11 @@
+---
+# The cloud image trims diffutils to its busybox variant, which conflicts with
+# tukit's hard diffutils requirement; a real install ships the full package.
+- name: Prepare
+  hosts: all
+  tasks:
+    - name: Remove the image's busybox diffutils
+      community.general.zypper:
+        name: busybox-diffutils
+        state: absent
+      become: true
