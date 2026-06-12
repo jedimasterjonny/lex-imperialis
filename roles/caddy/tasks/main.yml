@@ -12,13 +12,26 @@
   become: true
 
 - name: Deploy the Caddyfile
-  ansible.builtin.copy:
-    src: Caddyfile
+  ansible.builtin.template:
+    src: Caddyfile.j2
     dest: /etc/caddy/Caddyfile
     owner: root
     group: root
     mode: "0644"
   become: true
+  notify: Restart caddy
+
+# Keeps the token out of the world-readable Caddyfile; caddy reads it from
+# the environment instead.
+- name: Deploy the environment file
+  ansible.builtin.copy:
+    content: "CLOUDFLARE_API_TOKEN={{ caddy_cloudflare_api_token }}\n"
+    dest: /etc/caddy/env
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  no_log: true
   notify: Restart caddy
 
 - name: Create the container network

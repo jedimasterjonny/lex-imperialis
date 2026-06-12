@@ -149,7 +149,8 @@
     - Reload systemd
     - Restart the app containers
 
-# The caddy role owns /etc/caddy/sites and imports every sites/*.caddy.
+# The caddy role owns /etc/caddy/sites and imports every sites/*.caddy as
+# matcher + handle snippets inside its wildcard vhost.
 - name: Register the apps with the reverse proxy
   ansible.builtin.template:
     src: arr.caddy.j2
