@@ -1,0 +1,13 @@
+---
+# Shared across roles: the Tumbleweed cloud image ships an `opensuse` user
+# holding uid 1000, which common pins for the owner. Scenarios that create
+# the owner reference this via provisioner.playbooks.prepare.
+- name: Prepare
+  hosts: all
+  tasks:
+    - name: Remove the image's cloud user
+      ansible.builtin.user:
+        name: opensuse
+        state: absent
+        remove: true
+      become: true
