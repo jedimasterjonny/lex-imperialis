@@ -1,9 +1,45 @@
 # arr
 
+Media automation stack: podman quadlets on `caddy.network`, every webui
+proxied at `<app>.<arr_domain>` via the caddy snippet contract. Config
+lives in per-app named volumes; media lives under the NAS-backed
+`arr_data_root`, one dir per data type, mounted at `/data`. Unit changes
+bounce only the apps they touch.
+
+## Apps
+
+- **radarr / sonarr / lidarr** — the importers; mount the whole data tree,
+  so imports hardlink from `downloads` into the libraries on one
+  filesystem.
+- **prowlarr** — indexer management; talks only to the other apps' APIs,
+  no media mount.
+- **beets** — mounts `music` only, co-writing lidarr's library.
+- **plex** — mounts the libraries read-only, passes `/dev/dri` through for
+  hardware transcoding, and publishes its port on the host for native
+  clients.
+- **recyclarr** — TRaSH-guides sync over the importers' APIs; no media
+  mount, no webui. Its config stays operator-managed in its volume, keeping
+  the arr API keys it holds out of the repo.
+- **transmission** — mounts `downloads` only, keeping the libraries out of
+  the torrent client's reach; netns-confined to the tunnel (below).
+- **wireguard** — owns the tunnel netns; no media.
+
+## Least privilege
+
+Every app runs as its own host uid. The importers, beets and plex carry
+the shared `arr` group; the rest get a per-app group, so a misbehaving
+container can't write outside its app's files. lscr.io images drop their
+service to `PUID`/`PGID`; recyclarr runs under quadlet `User=`.
+
+Data dirs are setgid `2775`, each owned by the app that fills it; with
+`UMASK=002` files land group-writable, so the rw apps co-write and
+hardlink across each other's output. plex's membership is read-only —
+`:ro` mounts enforce it.
+
 ## Transmission behind WireGuard
 
-The wireguard container owns the network namespace; transmission joins it via
-`Network=container:wireguard` and has no network of its own.
+The wireguard container owns the network namespace; transmission joins it
+via `Network=container:wireguard` and has no network of its own.
 
 - **Namespace owner** — wireguard sits on `caddy.network` with
   `NetworkAlias=transmission`, carries `NET_ADMIN` and
@@ -27,7 +63,3 @@ The wireguard container owns the network namespace; transmission joins it via
   modprobed only when `/sys/module/wireguard` is absent. The molecule
   instance is unprivileged with no kmod; prepare loads the module on the host
   instead.
-- **Blast radius** — transmission mounts `/data/downloads` only and runs
-  under its own per-app group; the setgid downloads dir hands its files to
-  the shared group, so the importers can hardlink them while the media
-  libraries stay out of transmission's reach.
