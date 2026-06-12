@@ -15,3 +15,83 @@
           - "'netavark' in podman_info.stdout"
         fail_msg: "podman is not using the netavark network backend"
         quiet: true
+
+    - name: Stat the image prune script
+      ansible.builtin.stat:
+        path: /usr/local/bin/podman-image-prune
+      register: podman_prune_script
+
+    - name: The prune script is installed and executable
+      ansible.builtin.assert:
+        that:
+          - podman_prune_script.stat.exists
+          - podman_prune_script.stat.executable
+        fail_msg: "/usr/local/bin/podman-image-prune is missing or not executable"
+        quiet: true
+
+    # daemon_reload is a no-op that just makes the module gather and return the
+    # timer's systemctl-show properties to assert against; it reads, not mutates.
+    - name: Read the prune timer's state
+      ansible.builtin.systemd_service:
+        name: podman-image-prune.timer
+        daemon_reload: true
+      register: podman_prune_timer
+      become: true
+
+    - name: The timer is enabled and fires at 06:00 on Saturdays
+      ansible.builtin.assert:
+        that:
+          - podman_prune_timer.status.ActiveState == 'active'
+          - podman_prune_timer.status.UnitFileState == 'enabled'
+          - "'Sat' in podman_prune_timer.status.TimersCalendar"
+          - "'06:00:00' in podman_prune_timer.status.TimersCalendar"
+        fail_msg: "the prune timer is not enabled for Sat 06:00"
+        quiet: true
+
+    - name: Stage a probe build context
+      ansible.builtin.file:
+        path: /tmp/podman-prune-probe
+        state: directory
+        mode: "0755"
+
+    # COPY only — a RUN step would need runc, which the CI runner's AppArmor
+    # denies inside the nested container.
+    - name: Write the probe Containerfile
+      ansible.builtin.copy:
+        content: |
+          FROM scratch
+          COPY Containerfile /
+        dest: /tmp/podman-prune-probe/Containerfile
+        mode: "0644"
+
+    - name: Build an untagged image to strand as dangling
+      ansible.builtin.command: podman build /tmp/podman-prune-probe
+      become: true
+      changed_when: false
+
+    - name: List dangling images before the prune
+      ansible.builtin.command: podman images --filter dangling=true --quiet
+      become: true
+      register: podman_dangling_before
+      changed_when: false
+
+    # Starting a oneshot unit blocks until it exits, so success means the
+    # script ran clean.
+    - name: Fire the prune service
+      ansible.builtin.systemd_service:
+        name: podman-image-prune.service
+        state: started
+      become: true
+
+    - name: List dangling images after the prune
+      ansible.builtin.command: podman images --filter dangling=true --quiet
+      become: true
+      register: podman_dangling_after
+      changed_when: false
+
+    - name: The prune removed the stranded image
+      ansible.builtin.assert:
+        that:
+          - podman_dangling_before.stdout_lines | length > 0
+          - podman_dangling_after.stdout_lines | length == 0
+        quiet: true
