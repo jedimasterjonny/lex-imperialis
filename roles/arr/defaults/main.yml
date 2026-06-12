@@ -1,7 +1,8 @@
 ---
-# Internal domain the reverse proxy routes on: each app answers at
-# <app>.<arr_domain> over plain HTTP. Point wildcard DNS for it at the host.
-arr_domain: home.arpa
+# Domain the reverse proxy routes on: each app answers at <app>.<arr_domain>.
+# Follows caddy_domain wherever the vault sets it. Point wildcard DNS for it
+# at the host.
+arr_domain: "{{ caddy_domain | default('home.arpa') }}"
 
 arr_timezone: Etc/UTC
 

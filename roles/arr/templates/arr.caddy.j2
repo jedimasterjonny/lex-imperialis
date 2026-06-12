@@ -1,5 +1,7 @@
 {% for app, spec in arr_apps.items() if spec.port is defined %}
-http://{{ app }}.{{ arr_domain }} {
+@{{ app }} host {{ app }}.{{ arr_domain }}
+handle @{{ app }} {
 	reverse_proxy {{ app }}:{{ spec.port }}
 }
+
 {% endfor %}
