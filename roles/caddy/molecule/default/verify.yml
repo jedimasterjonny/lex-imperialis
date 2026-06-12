@@ -2,6 +2,8 @@
 - name: Verify
   hosts: all
   gather_facts: false
+  vars_files:
+    - ../../defaults/main.yml
   tasks:
     - name: Wait for the health endpoint
       ansible.builtin.uri:
@@ -13,3 +15,20 @@
       until: caddy_health.status == 204
       retries: 30
       delay: 2
+
+    # No sites are registered, so the empty wildcard vhost answers 200.
+    - name: The wildcard vhost answers
+      ansible.builtin.uri:
+        url: http://127.0.0.1/
+        headers:
+          Host: "probe.{{ caddy_domain }}"
+        status_code: 200
+
+    # Renovate bumps the image unattended; catch a build that drops the
+    # DNS-01 plugin before it reaches the fleet.
+    - name: The cloudflare DNS module is compiled in
+      ansible.builtin.command: podman exec caddy caddy list-modules
+      become: true
+      register: caddy_modules
+      changed_when: false
+      failed_when: "'dns.providers.cloudflare' not in caddy_modules.stdout"

@@ -1,0 +1,20 @@
+{% if caddy_cloudflare_api_token %}
+{
+	acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+}
+
+{% endif %}
+# Health endpoint, so the bare proxy is observable.
+http://localhost {
+	respond 204
+}
+
+# Backend roles register matcher + handle snippets as sites/<role>.caddy; the
+# wildcard vhost keeps every service name off the public CT logs.
+{% if caddy_cloudflare_api_token %}
+*.{{ caddy_domain }} {
+{% else %}
+http://*.{{ caddy_domain }} {
+{% endif %}
+	import sites/*.caddy
+}
