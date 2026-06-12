@@ -1,0 +1,44 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    # daemon_reload is a no-op that just makes the module gather and return the
+    # timer's systemctl-show properties to assert against; it reads, not mutates.
+    - name: Read the update timer's state
+      ansible.builtin.systemd_service:
+        name: transactional-update.timer
+        daemon_reload: true
+      register: autoupdate_timer
+      become: true
+
+    - name: The timer is enabled and fires early Monday only
+      ansible.builtin.assert:
+        that:
+          - autoupdate_timer.status.ActiveState == 'active'
+          - autoupdate_timer.status.UnitFileState == 'enabled'
+          - "'Mon *-*-* 03:00:00' in autoupdate_timer.status.TimersCalendar"
+          # The drop-in must replace the vendor daily schedule, not append to it.
+          - "'*-*-* 00:00:00' not in autoupdate_timer.status.TimersCalendar"
+        fail_msg: "the update timer is not enabled for Mon 03:00 alone"
+        quiet: true
+
+    # The properties replicate the vendor unit's EnvironmentFile chain verbatim,
+    # so the assertion sees exactly what the service sees.
+    - name: Read the effective reboot method
+      ansible.builtin.command: >-
+        systemd-run --pipe
+        --property EnvironmentFile=-/usr/etc/transactional-update.conf
+        --property EnvironmentFile=-/usr/etc/transactional-update.conf.d/*
+        --property EnvironmentFile=-/etc/transactional-update.conf
+        printenv REBOOT_METHOD UPDATE_METHOD
+      become: true
+      register: autoupdate_env
+      changed_when: false
+
+    - name: The service will dup and reboot via systemd
+      ansible.builtin.assert:
+        that:
+          - autoupdate_env.stdout_lines == ['systemd', 'dup']
+        fail_msg: "the conf chain does not yield REBOOT_METHOD=systemd UPDATE_METHOD=dup"
+        quiet: true
