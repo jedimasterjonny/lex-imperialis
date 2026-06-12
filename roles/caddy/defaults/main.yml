@@ -1,0 +1,8 @@
+---
+# Domain the wildcard vhost serves. The real domain is sensitive topology, so
+# it lives in the vault; this default keeps molecule self-contained.
+caddy_domain: home.arpa
+
+# Cloudflare API token for the DNS-01 challenge (vault-sourced). Empty keeps
+# the wildcard vhost on plain HTTP, so molecule never reaches for ACME.
+caddy_cloudflare_api_token: ""
