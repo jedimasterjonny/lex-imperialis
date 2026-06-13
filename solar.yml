@@ -20,3 +20,4 @@
     - podman
     - autoupdate
     - nfs
+    - caddy
