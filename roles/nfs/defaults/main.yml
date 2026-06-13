@@ -7,10 +7,10 @@ nfs_mount_root: /nfs
 
 # Mount options, tuned for the link to the NAS. The NAS serves over 1 GbE
 # (~117 MB/s usable) and that link is the ceiling: the client's 2.5 GbE and the
-# 10 GbE switch cannot lift a single flow past the slowest hop. 1 MiB rsize/wsize
-# already saturate gigabit, so they are pinned at 1 MiB rather than inflated for
-# the faster switch, which a single flow can't use. nfsvers=4.1 is the NAS's
-# ceiling — it rejects 4.2.
+# 10 GbE switch cannot lift a single flow past the slowest hop. We request 1 MiB
+# rsize/wsize but the NAS caps both at 128 KiB on mount, which already saturates
+# gigabit — the cap costs nothing, and a single flow can't use the faster switch
+# anyway. nfsvers=4.1 is the NAS's ceiling — it rejects 4.2.
 #   _netdev   order the mount after the network is online
 #   hard      retry indefinitely rather than return I/O errors and risk data loss
 #   noatime   drop atime write-backs: fewer round trips, less load on the NAS
