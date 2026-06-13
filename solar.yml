@@ -1,0 +1,5 @@
+---
+- name: Configure solar
+  hosts: solar
+  roles:
+    - common
