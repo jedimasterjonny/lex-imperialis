@@ -7,38 +7,34 @@
     # timer's systemctl-show properties to assert against; it reads, not mutates.
     - name: Read the update timer's state
       ansible.builtin.systemd_service:
-        name: transactional-update.timer
+        name: autoupdate.timer
         daemon_reload: true
       register: autoupdate_timer
       become: true
 
-    - name: The timer is enabled and fires early Monday only
+    - name: The timer is enabled and fires early Monday
       ansible.builtin.assert:
         that:
           - autoupdate_timer.status.ActiveState == 'active'
           - autoupdate_timer.status.UnitFileState == 'enabled'
           - "'Mon *-*-* 03:00:00' in autoupdate_timer.status.TimersCalendar"
-          # The drop-in must replace the vendor daily schedule, not append to it.
-          - "'*-*-* 00:00:00' not in autoupdate_timer.status.TimersCalendar"
-        fail_msg: "the update timer is not enabled for Mon 03:00 alone"
+        fail_msg: "the update timer is not enabled for Mon 03:00"
         quiet: true
 
-    # The properties replicate the vendor unit's EnvironmentFile chain verbatim,
-    # so the assertion sees exactly what the service sees.
-    - name: Read the effective reboot method
-      ansible.builtin.command: >-
-        systemd-run --pipe
-        --property EnvironmentFile=-/usr/etc/transactional-update.conf
-        --property EnvironmentFile=-/usr/etc/transactional-update.conf.d/*
-        --property EnvironmentFile=-/etc/transactional-update.conf
-        printenv REBOOT_METHOD UPDATE_METHOD
+    - name: Read the update service definition
+      ansible.builtin.systemd_service:
+        name: autoupdate.service
+      register: autoupdate_service
       become: true
-      register: autoupdate_env
-      changed_when: false
 
-    - name: The service will dup and reboot via systemd
+    - name: The service runs zypper dup then reboots
       ansible.builtin.assert:
         that:
-          - autoupdate_env.stdout_lines == ['systemd', 'dup']
-        fail_msg: "the conf chain does not yield REBOOT_METHOD=systemd UPDATE_METHOD=dup"
+          - "'zypper' in autoupdate_service.status.ExecStart"
+          - "'dup' in autoupdate_service.status.ExecStart"
+          # The reboot only fires because 102/103 count as success; drop this and
+          # a reboot-recommended dup exits non-zero and ExecStartPost is skipped.
+          - autoupdate_service.status.SuccessExitStatus == '102 103'
+          - "'reboot' in autoupdate_service.status.ExecStartPost"
+        fail_msg: "the service does not run zypper dup, accept 102/103, then reboot"
         quiet: true
