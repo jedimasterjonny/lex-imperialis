@@ -1,44 +1,21 @@
 ---
-- name: Install transactional-update
-  community.general.zypper:
-    name: transactional-update
-    state: present
-  become: true
-
-# auto would silently defer to rebootmgr's maintenance window if rebootmgr ever
-# appeared; systemd keeps the reboot immediately after a successful update.
-- name: Pin the reboot method
+- name: Install the update service and timer
   ansible.builtin.copy:
-    src: transactional-update.conf
-    dest: /etc/transactional-update.conf
+    src: "{{ item }}"
+    dest: /etc/systemd/system/{{ item }}
     owner: root
     group: root
     mode: "0644"
-  become: true
-
-- name: Create the timer drop-in directory
-  ansible.builtin.file:
-    path: /etc/systemd/system/transactional-update.timer.d
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
-  become: true
-
-- name: Schedule updates for early Monday
-  ansible.builtin.copy:
-    src: schedule.conf
-    dest: /etc/systemd/system/transactional-update.timer.d/schedule.conf
-    owner: root
-    group: root
-    mode: "0644"
+  loop:
+    - autoupdate.service
+    - autoupdate.timer
   become: true
 
 # daemon_reload picks up unit changes before enabling; it does not itself report
 # changed, so the task stays idempotent.
 - name: Enable and start the update timer
   ansible.builtin.systemd_service:
-    name: transactional-update.timer
+    name: autoupdate.timer
     enabled: true
     state: started
     daemon_reload: true
