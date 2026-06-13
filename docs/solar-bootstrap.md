@@ -27,8 +27,11 @@ as the old ynarri box, wiped and reinstalled.
 - **Hostname**: set manually (installer / `hostnamectl`), not yet codified.
   Automate — set it from the play (e.g. `ansible.builtin.hostname`) so a rebuild
   reproduces it without a manual step.
-- **Update model**: solar is non-transactional and has no `transactional-update`
-  installed. The `autoupdate` role would install it and commit the box to weekly
-  `dup`+reboot. Deferred pending an explicit decision — not part of base bring-up.
+- **Update model**: classic (rw-root) Tumbleweed. The `autoupdate` role runs a
+  weekly `zypper --non-interactive dup` (Mon 03:00 + jitter) via a systemd timer,
+  rebooting on success. A first attempt using `transactional-update` was applied
+  then **fully backed out** live — its packages, `/etc` config, timer drop-in, and
+  the stale dracut initramfs module were all removed (the role can't un-apply
+  itself, so this was a manual cleanup); the box now uses plain `zypper dup`.
 - **DHCP reservation**: confirm solar's lease is a static reservation, not one
   that could move. Router-side, so it cannot be Ansible-managed from here.
