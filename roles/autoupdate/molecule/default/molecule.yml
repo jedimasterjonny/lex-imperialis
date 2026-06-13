@@ -8,7 +8,6 @@ provisioner:
   # the repo root relative to this scenario dir.
   playbooks:
     create: "${MOLECULE_SCENARIO_DIRECTORY}/../../../../molecule/incus/create.yml"
-    prepare: "${MOLECULE_SCENARIO_DIRECTORY}/prepare.yml"
     destroy: "${MOLECULE_SCENARIO_DIRECTORY}/../../../../molecule/incus/destroy.yml"
   config_options:
     defaults:
