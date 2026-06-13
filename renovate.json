@@ -3,6 +3,7 @@
   "extends": [
     "config:best-practices",
     ":automergeMinor",
+    ":automergeDigest",
     ":enablePreCommit",
     ":semanticCommitScopeDisabled",
     ":semanticCommitTypeAll(build)"
