@@ -3,3 +3,4 @@
   hosts: solar
   roles:
     - common
+    - sshd
