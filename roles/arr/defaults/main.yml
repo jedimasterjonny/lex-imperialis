@@ -9,6 +9,16 @@ arr_timezone: Etc/UTC
 # NAS-backed media root; each app that stores media gets <root>/<data type>.
 arr_data_root: /nfs/administratum/scriptorum
 
+# Data dir → owning app, created under arr_data_root with the shared group and
+# setgid so the importers co-write. Media types nest under media/ (matching the
+# apps' mounts); downloads is a sibling. Set empty on hosts whose NAS layout
+# (and its perms) is managed externally, so the role creates no data dirs.
+arr_data_dirs:
+  media/movies: radarr
+  media/tv: sonarr
+  media/music: lidarr
+  downloads: transmission
+
 # Apps to deploy; the whole stack by default. Override per host (in the play) to
 # bring containers up incrementally — each app's user, group, unit and proxy
 # snippet, plus the shared group, data dirs and wireguard tunnel, are gated on
