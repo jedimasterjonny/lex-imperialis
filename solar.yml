@@ -14,6 +14,22 @@
       - name: astropath
         server: administratum
         export: /volume2/astropath
+    # Bring the arr stack up one container at a time.
+    arr_enabled:
+      - prowlarr
+      - lidarr
+      - radarr
+      - sonarr
+      - beets
+      - recyclarr
+      - plex
+      - wireguard
+      - transmission
+    # Media lives under arr-data on the NAS; mounting it as /data makes the apps'
+    # /data/media/... paths match their restored configs. The NAS owns the layout
+    # and its perms, so the role creates no data dirs here.
+    arr_data_root: /nfs/scriptorum/arr-data
+    arr_data_dirs: {}
   roles:
     - common
     - sshd
@@ -21,3 +37,4 @@
     - autoupdate
     - nfs
     - caddy
+    - arr
