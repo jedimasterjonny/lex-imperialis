@@ -1,0 +1,37 @@
+---
+- name: Install restic
+  community.general.zypper:
+    name: "{{ podman_backup_package }}"
+    state: present
+  become: true
+
+- name: Install the podman volume backup script
+  ansible.builtin.template:
+    src: podman-backup.sh.j2
+    dest: "{{ podman_backup_script }}"
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+- name: Install the backup service and timer
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - podman-backup.service
+    - podman-backup.timer
+  become: true
+
+# daemon_reload picks up unit changes before enabling; it does not itself report
+# changed, so the task stays idempotent.
+- name: Enable and start the backup timer
+  ansible.builtin.systemd_service:
+    name: podman-backup.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true

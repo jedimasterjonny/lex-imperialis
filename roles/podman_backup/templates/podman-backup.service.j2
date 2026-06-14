@@ -1,0 +1,10 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Back up podman volumes to the astropath NFS share
+# Orders after the _netdev NFS mount (which already waits on the network), and
+# pulls it in if absent.
+RequiresMountsFor={{ podman_backup_root }}
+
+[Service]
+Type=oneshot
+ExecStart={{ podman_backup_script }}

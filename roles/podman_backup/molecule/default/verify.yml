@@ -1,0 +1,83 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - ../../defaults/main.yml
+  vars:
+    # Matches podman_backup_root in converge.yml.
+    podman_backup_repo_root: /var/tmp/backup
+    podman_backup_probe_content: "lex-imperialis podman backup probe\n"
+  tasks:
+    - name: Confirm restic is installed and runnable
+      ansible.builtin.command: restic version
+      register: podman_backup_restic
+      changed_when: false
+
+    - name: Stat the backup script
+      ansible.builtin.stat:
+        path: "{{ podman_backup_script }}"
+      register: podman_backup_script_stat
+
+    - name: The backup script is installed and executable
+      ansible.builtin.assert:
+        that:
+          - podman_backup_script_stat.stat.exists
+          - podman_backup_script_stat.stat.executable
+        fail_msg: "{{ podman_backup_script }} is missing or not executable"
+        quiet: true
+
+    # daemon_reload is a no-op that just makes the module gather and return the
+    # timer's systemctl-show properties to assert against; it reads, not mutates.
+    - name: Read the backup timer's state
+      ansible.builtin.systemd_service:
+        name: podman-backup.timer
+        daemon_reload: true
+      register: podman_backup_timer
+      become: true
+
+    - name: The timer is enabled and fires at 01:00 on Wednesdays
+      ansible.builtin.assert:
+        that:
+          - podman_backup_timer.status.ActiveState == 'active'
+          - podman_backup_timer.status.UnitFileState == 'enabled'
+          - "'Wed' in podman_backup_timer.status.TimersCalendar"
+          - "'01:00:00' in podman_backup_timer.status.TimersCalendar"
+        fail_msg: "the backup timer is not enabled for Wed 01:00"
+        quiet: true
+
+    # The script derives the repo from $(hostname); match it the same way.
+    - name: Determine the host's repo path
+      ansible.builtin.command: hostname
+      register: podman_backup_hostname
+      changed_when: false
+
+    - name: Set the repo path
+      ansible.builtin.set_fact:
+        podman_backup_repo: "{{ podman_backup_repo_root }}/{{ podman_backup_hostname.stdout }}-podman-backup"
+
+    # Starting a oneshot unit blocks until it exits, so success means the
+    # backup ran clean.
+    - name: Fire the backup service
+      ansible.builtin.systemd_service:
+        name: podman-backup.service
+        state: started
+      become: true
+
+    - name: Restore the latest snapshot to a scratch directory
+      ansible.builtin.command: "restic --insecure-no-password --repo {{ podman_backup_repo }} restore latest --target /var/tmp/restore"
+      changed_when: false
+      become: true
+
+    - name: Read the probe file back from the restore
+      ansible.builtin.slurp:
+        src: /var/tmp/restore/var/lib/containers/storage/volumes/lex-probe/_data/probe.txt
+      register: podman_backup_restored
+      become: true
+
+    - name: The probe data round-trips through restic
+      ansible.builtin.assert:
+        that:
+          - (podman_backup_restored.content | b64decode) == podman_backup_probe_content
+        fail_msg: "the probe data did not round-trip through the backup"
+        quiet: true
