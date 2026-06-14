@@ -1,0 +1,19 @@
+---
+# restic is the backup engine and its own rotation tool (restic forget --prune).
+podman_backup_package: restic
+
+# The repo lives at <root>/<hostname>-podman-backup; the script appends the
+# hostname at run time. Default root is the astropath NFS share solar mounts.
+podman_backup_root: /nfs/astropath
+
+# Installed backup script. /usr/local/sbin: root-only, like incus-image-refresh.
+podman_backup_script: /usr/local/sbin/podman-backup.sh
+
+# Weekly, on a slot no other scheduled job uses — autoupdate (Mon 03:00-05:00),
+# podman image-prune (Sat 06:00), incus (Sun 03:00) and libvirt (Sun 03:30)
+# refreshes all sit elsewhere.
+podman_backup_oncalendar: "Wed *-*-* 01:00:00"
+
+# restic retention: weeks then months of history kept, older snapshots pruned.
+podman_backup_keep_weekly: 8
+podman_backup_keep_monthly: 6

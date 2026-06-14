@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Weekly backup of this host's podman volumes into a per-host restic repository
+# on the astropath NFS share. Container units are quiesced for a consistent
+# snapshot and always restarted (trap on EXIT); restic's retention policy prunes
+# old snapshots.
+set -euo pipefail
+
+repo="{{ podman_backup_root }}/$(hostname)-podman-backup"
+keep_weekly="{{ podman_backup_keep_weekly }}"
+keep_monthly="{{ podman_backup_keep_monthly }}"
+
+export RESTIC_REPOSITORY="$repo"
+# systemd runs this with no $HOME, so pin restic's cache somewhere it can find it.
+export RESTIC_CACHE_DIR=/var/cache/restic
+restic() { command restic --insecure-no-password "$@"; }
+{% raw %}
+# Each podman volume's mountpoint. Capturing into a variable (rather than a
+# process substitution, which would mask a failure) lets set -e abort here if
+# podman errors, instead of silently reporting an empty, successful backup.
+volumes="$(podman volume ls --format '{{ .Mountpoint }}')"
+sources=()
+[ -n "$volumes" ] && mapfile -t sources <<<"$volumes"
+if ((${#sources[@]} == 0)); then
+    echo "no podman volumes to back up"
+    exit 0
+fi
+
+# Quiesce the running quadlet container services for a consistent snapshot, and
+# restart them however the backup exits. Only .container quadlets run on the
+# fleet; .pod/.kube units would need handling here.
+units=()
+for unit_file in /etc/containers/systemd/*.container; do
+    [ -e "$unit_file" ] || continue
+    unit="$(basename "${unit_file%.container}").service"
+    if systemctl is-active --quiet "$unit"; then
+        units+=("$unit")
+    fi
+done
+
+# No || true: a unit that fails to restart fails the service, so it surfaces
+# rather than leaving a container down silently.
+restart_units() {
+    if ((${#units[@]})); then
+        systemctl start "${units[@]}"
+    fi
+}
+trap restart_units EXIT
+
+if ((${#units[@]})); then
+    systemctl stop "${units[@]}"
+fi
+
+mkdir -p "$repo" "$RESTIC_CACHE_DIR"
+restic snapshots >/dev/null 2>&1 || restic init
+restic backup --tag podman-volumes "${sources[@]}"
+restic forget --tag podman-volumes \
+    --keep-weekly "$keep_weekly" --keep-monthly "$keep_monthly" --prune
+{% endraw %}

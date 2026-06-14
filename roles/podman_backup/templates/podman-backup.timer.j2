@@ -1,0 +1,10 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Weekly backup of podman volumes
+
+[Timer]
+OnCalendar={{ podman_backup_oncalendar }}
+Persistent=true
+
+[Install]
+WantedBy=timers.target
