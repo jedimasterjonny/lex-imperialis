@@ -16,7 +16,9 @@ PartOf={{ item.value.netns }}.service
 [Container]
 ContainerName={{ item.key }}
 Image={{ item.value.image }}
-{% if item.value.netns is defined %}
+{% if item.value.network | default('') == 'host' %}
+Network=host
+{% elif item.value.netns is defined %}
 Network=container:{{ item.value.netns }}
 {% else %}
 Network=caddy.network
@@ -42,7 +44,9 @@ User={{ item.value.uid }}:{{ arr_app_gid }}
 {# '-' marks the device optional, so GPU-less molecule containers still start. #}
 AddDevice=-{{ item.value.device }}
 {% endif %}
-{% if item.value.publish | default(false) %}
+{# Host networking already exposes every port natively, so a publish is both #}
+{# redundant and rejected by podman. #}
+{% if item.value.publish | default(false) and item.value.network | default('') != 'host' %}
 PublishPort={{ item.value.port }}:{{ item.value.port }}
 {% endif %}
 {# lscr.io images chown /config themselves; :U hands it to User= for the rest. #}
@@ -50,12 +54,35 @@ Volume={{ item.key }}-config:/config{{ '' if arr_lsio else ':U' }}
 {% for bind in item.value.binds | default([]) %}
 Volume={{ bind }}
 {% endfor %}
+{% for path in item.value.tmpfs | default([]) %}
+Tmpfs={{ path }}
+{% endfor %}
 {% if item.value.data | default('') == 'root' %}
 Volume={{ arr_data_root }}:/data{{ arr_data_suffix }}
+{% elif item.value.data | default('') is mapping %}
+{# A mapping pins each NAS subdir to an explicit container path (Plex's library #}
+{# predates the /data convention), rather than the implicit /data/<name>. #}
+{% for src, dest in item.value.data.items() %}
+Volume={{ arr_data_root }}/{{ src }}:{{ dest }}{{ arr_data_suffix }}
+{% endfor %}
 {% else %}
 {% for data in item.value.data | default([]) %}
 Volume={{ arr_data_root }}/{{ data }}:/data/{{ data }}{{ arr_data_suffix }}
 {% endfor %}
+{% endif %}
+{% if item.value.healthcheck is defined %}
+HealthCmd={{ item.value.healthcheck.cmd }}
+HealthInterval={{ item.value.healthcheck.interval | default('1m') }}
+HealthTimeout={{ item.value.healthcheck.timeout | default('10s') }}
+HealthStartPeriod={{ item.value.healthcheck.start_period | default('30s') }}
+HealthRetries={{ item.value.healthcheck.retries | default(3) }}
+{# A blackhole tunnel (no real wg config) is meant to stay down — never #}
+{# restart-loop it; only act on failure once a real config is in place. #}
+{% if item.key == 'wireguard' and arr_wireguard_conf | default('') | length == 0 %}
+HealthOnFailure=none
+{% else %}
+HealthOnFailure={{ item.value.healthcheck.on_failure | default('none') }}
+{% endif %}
 {% endif %}
 
 [Service]
