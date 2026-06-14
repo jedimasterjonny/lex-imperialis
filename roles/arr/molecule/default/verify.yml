@@ -13,13 +13,27 @@
           Host: "{{ item.key }}.{{ arr_domain }}"
         follow_redirects: none
         status_code: [200, 301, 302, 401]
-      loop: "{{ arr_apps | dict2items | selectattr('value.port', 'defined') | list }}"
+      loop: "{{ arr_apps | dict2items | selectattr('value.port', 'defined') | rejectattr('value.network', 'defined') | list }}"
       loop_control:
         label: "{{ item.key }}"
       register: arr_proxied
       until: arr_proxied.status in [200, 301, 302, 401]
       retries: 30
       delay: 2
+
+    # Host-networked apps aren't on caddy.network, so the proxy snippet skips
+    # them; prove they're up by hitting the host port directly instead.
+    - name: Wait for each host-networked app to answer directly
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ item.value.port }}/identity"
+        status_code: [200]
+      loop: "{{ arr_apps | dict2items | selectattr('value.port', 'defined') | selectattr('value.network', 'defined') | list }}"
+      loop_control:
+        label: "{{ item.key }}"
+      register: arr_hostnet
+      until: arr_hostnet.status == 200
+      retries: 40
+      delay: 3
 
     # The proxy wait already proves the ported apps are up; only the portless
     # ones need their units read directly. daemon_reload is a no-op that just
@@ -86,13 +100,13 @@
     # exec defaults to container root, which bypasses file perms — drop to the
     # service account so the write exercises the shared group.
     - name: Probe a media write from beets
-      ansible.builtin.command: podman exec --user abc beets sh -c 'touch /data/music/.probe && rm /data/music/.probe'
+      ansible.builtin.command: podman exec --user abc beets sh -c 'touch /data/media/music/.probe && rm /data/media/music/.probe'
       become: true
       register: arr_beets_write
       changed_when: false
 
     - name: Probe a media write from plex
-      ansible.builtin.command: podman exec plex touch /data/movies/.probe
+      ansible.builtin.command: podman exec plex touch /movies/.probe
       become: true
       register: arr_plex_write
       changed_when: false
@@ -126,6 +140,11 @@
           - arr_netns.results[0].stdout == arr_netns.results[1].stdout
           - "'dev wg0' in arr_tunnel_route.stdout"
         quiet: true
+
+    - name: Wireguard carries the auto-recovery healthcheck
+      ansible.builtin.command: grep -q '^HealthCmd=' /etc/containers/systemd/wireguard.container
+      become: true
+      changed_when: false
 
     - name: Stat the data directories
       ansible.builtin.stat:

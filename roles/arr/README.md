@@ -1,10 +1,12 @@
 # arr
 
-Media automation stack: podman quadlets on `caddy.network`, every webui
-proxied at `<app>.<arr_domain>` via the caddy snippet contract. Config
-lives in per-app named volumes; media lives under the NAS-backed
-`arr_data_root`, one dir per data type, mounted at `/data`. Unit changes
-bounce only the apps they touch.
+Media automation stack as rootful podman quadlets. Each webui is proxied at
+`<app>.<arr_domain>` via the caddy snippet contract — except host-networked
+apps (plex), reached directly. Config lives in per-app named volumes; media
+lives under the NAS-backed `arr_data_root` as `media/<type>` libraries beside a
+sibling `downloads`. `arr_enabled` picks which apps a host runs (default: all),
+so the stack can come up one container at a time. Unit changes bounce only the
+apps they touch.
 
 ## Apps
 
@@ -13,10 +15,12 @@ bounce only the apps they touch.
   filesystem.
 - **prowlarr** — indexer management; talks only to the other apps' APIs,
   no media mount.
-- **beets** — mounts `music` only, co-writing lidarr's library.
-- **plex** — mounts the libraries read-only, passes `/dev/dri` through for
-  hardware transcoding, and publishes its port on the host for native
-  clients.
+- **beets** — mounts the whole tree (`data: root`) so it hardlink-imports
+  from `downloads` into lidarr's music library.
+- **plex** — host-networked (so GDM/DLNA discovery works; not proxied),
+  mounts the libraries read-only at their native flat paths (`/movies`,
+  `/tv`, `/music`) to match its restored database, passes `/dev/dri` through
+  for hardware transcoding, and gets a tmpfs `/transcode`.
 - **recyclarr** — TRaSH-guides sync over the importers' APIs; no media
   mount, no webui. Its config stays operator-managed in its volume, keeping
   the arr API keys it holds out of the repo.
@@ -26,10 +30,11 @@ bounce only the apps they touch.
 
 ## Least privilege
 
-Every app runs as its own host uid. The importers, beets and plex carry
-the shared `arr` group; the rest get a per-app group, so a misbehaving
-container can't write outside its app's files. lscr.io images drop their
-service to `PUID`/`PGID`; recyclarr runs under quadlet `User=`.
+Every app runs as its own host uid. The importers, beets, transmission and
+plex carry the shared `arr` group; the rest get a per-app group. The harder
+boundary is the mount — a container can't reach what it never mounts. lscr.io
+images drop their service to `PUID`/`PGID`; recyclarr runs under quadlet
+`User=`.
 
 Data dirs are setgid `2775`, each owned by the app that fills it; with
 `UMASK=002` files land group-writable, so the rw apps co-write and
@@ -53,6 +58,11 @@ via `Network=container:wireguard` and has no network of its own.
   service: it starts after the tunnel exists and restarts whenever wireguard
   does. A config change notifies `Restart wireguard`; PartOf carries
   transmission with it.
+- **Auto-recovery** — wireguard carries a healthcheck (`ping` through wg0);
+  sustained failure kills the container so systemd's `Restart=on-failure`
+  rebuilds it and PartOf bounces transmission into the fresh netns. The
+  template forces it off when `arr_wireguard_conf` is empty, so the blackhole
+  isn't restart-looped.
 - **Kill-switch** — with `arr_wireguard_conf` empty, the role generates a
   blackhole config: random keys, `AllowedIPs = 0.0.0.0/0`, a TEST-NET
   endpoint. wg0 comes up with a dead default route, so torrent traffic cannot
