@@ -1,4 +1,4 @@
-{% for app, spec in arr_apps.items() if spec.port is defined %}
+{% for app, spec in arr_apps.items() if spec.port is defined and app in arr_enabled and spec.network | default('') != 'host' %}
 @{{ app }} host {{ app }}.{{ arr_domain }}
 handle @{{ app }} {
 	reverse_proxy {{ app }}:{{ spec.port }}

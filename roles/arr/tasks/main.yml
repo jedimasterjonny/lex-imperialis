@@ -1,44 +1,101 @@
 ---
-# The wireguard container drives the host's kernel wireguard; persist it
-# declaratively and load it only where it's missing — the minimal molecule
-# image has no kmod (nor /etc/modules-load.d), but its host already carries
-# the module.
-- name: Create the modules-load.d directory
-  ansible.builtin.file:
-    path: /etc/modules-load.d
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
+# Wireguard owns transmission's tunnel; its host setup runs only when the
+# wireguard app is enabled.
+- name: Set up the wireguard tunnel host
+  when: "'wireguard' in arr_enabled"
   become: true
+  block:
+    # The wireguard container drives the host's kernel wireguard; persist it
+    # declaratively and load it only where it's missing — the minimal molecule
+    # image has no kmod (nor /etc/modules-load.d), but its host already carries
+    # the module.
+    - name: Create the modules-load.d directory
+      ansible.builtin.file:
+        path: /etc/modules-load.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
 
-- name: Persist the wireguard module across boots
-  ansible.builtin.copy:
-    content: |
-      wireguard
-    dest: /etc/modules-load.d/wireguard.conf
-    owner: root
-    group: root
-    mode: "0644"
-  become: true
+    - name: Persist the wireguard module across boots
+      ansible.builtin.copy:
+        content: |
+          wireguard
+        dest: /etc/modules-load.d/wireguard.conf
+        owner: root
+        group: root
+        mode: "0644"
 
-- name: Probe for the wireguard module
-  ansible.builtin.stat:
-    path: /sys/module/wireguard
-  register: arr_wireguard_module
+    - name: Probe for the wireguard module
+      ansible.builtin.stat:
+        path: /sys/module/wireguard
+      register: arr_wireguard_module
 
-- name: Load the wireguard module
-  community.general.modprobe:
-    name: wireguard
-  become: true
-  when: not arr_wireguard_module.stat.exists
+    - name: Load the wireguard module
+      community.general.modprobe:
+        name: wireguard
+      when: not arr_wireguard_module.stat.exists
 
+    - name: Create the wireguard config directory
+      ansible.builtin.file:
+        path: "{{ arr_wireguard_conf_path | dirname }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    # The marker keeps the generated keys from churning every run, yet still lets
+    # an emptied arr_wireguard_conf converge a stale real config back to a
+    # blackhole — creates: would leave the revoked tunnel in place forever. The
+    # read-only probe runs even under --check, so a dry run reports the install.
+    - name: Probe for a blackhole wireguard config
+      ansible.builtin.command: grep -qxF '# blackhole' {{ arr_wireguard_conf_path }}
+      register: arr_wireguard_blackhole
+      failed_when: false
+      changed_when: false
+      check_mode: false
+      when: arr_wireguard_conf | length == 0
+
+    # Dummy keys and a TEST-NET endpoint bring wg0 up with a dead default route:
+    # transmission keeps its kill-switch from first boot, real config or not.
+    - name: Install a blackhole wireguard config
+      ansible.builtin.copy:
+        content: |
+          # blackhole
+          [Interface]
+          PrivateKey = {{ lookup('community.general.random_string', length=32, base64=true) }}
+          Address = 100.64.0.2/32
+
+          [Peer]
+          PublicKey = {{ lookup('community.general.random_string', length=32, base64=true) }}
+          AllowedIPs = 0.0.0.0/0
+          Endpoint = 192.0.2.1:51820
+        dest: "{{ arr_wireguard_conf_path }}"
+        owner: root
+        group: root
+        mode: "0600"
+      when: arr_wireguard_conf | length == 0 and arr_wireguard_blackhole.rc != 0
+      notify: Restart wireguard
+
+    - name: Install the wireguard config
+      ansible.builtin.copy:
+        content: "{{ arr_wireguard_conf }}"
+        dest: "{{ arr_wireguard_conf_path }}"
+        owner: root
+        group: root
+        mode: "0600"
+      when: arr_wireguard_conf | length > 0
+      no_log: true
+      notify: Restart wireguard
+
+# The shared group only when an enabled app carries it (the media-access apps).
 - name: Create the shared group
   ansible.builtin.group:
     name: "{{ arr_group }}"
     gid: "{{ arr_gid }}"
     system: true
   become: true
+  when: arr_enabled | select('in', arr_media_access) | list | length > 0
 
 # Apps without shared media access get their own group, so a misbehaving
 # container can't write outside its app's files.
@@ -47,7 +104,7 @@
     name: "{{ item.key }}"
     gid: "{{ item.value.uid }}"
     system: true
-  loop: "{{ arr_apps | dict2items | rejectattr('key', 'in', arr_media_access) | list }}"
+  loop: "{{ arr_apps | dict2items | selectattr('key', 'in', arr_enabled) | rejectattr('key', 'in', arr_media_access) | list }}"
   loop_control:
     label: "{{ item.key }}"
   become: true
@@ -60,11 +117,13 @@
     shell: /usr/sbin/nologin
     create_home: false
     system: true
-  loop: "{{ arr_apps | dict2items }}"
+  loop: "{{ arr_apps | dict2items | selectattr('key', 'in', arr_enabled) | list }}"
   loop_control:
     label: "{{ item.key }}"
   become: true
 
+# One dir per data type, owned by the app that fills it; created only when that
+# owning app is enabled.
 - name: Create the data directories
   ansible.builtin.file:
     path: "{{ arr_data_root }}/{{ item.key }}"
@@ -72,66 +131,10 @@
     owner: "{{ item.value }}"
     group: "{{ arr_group }}"
     mode: "02775"
-  loop: "{{ arr_data_dirs | dict2items }}"
+  loop: "{{ arr_data_dirs | dict2items | selectattr('value', 'in', arr_enabled) | list }}"
   loop_control:
     label: "{{ item.key }}"
   become: true
-
-- name: Create the wireguard config directory
-  ansible.builtin.file:
-    path: "{{ arr_wireguard_conf_path | dirname }}"
-    state: directory
-    owner: root
-    group: root
-    mode: "0700"
-  become: true
-
-# The marker keeps the generated keys from churning every run, yet still lets
-# an emptied arr_wireguard_conf converge a stale real config back to a
-# blackhole — creates: would leave the revoked tunnel in place forever. The
-# read-only probe runs even under --check, so a dry run reports the install.
-- name: Probe for a blackhole wireguard config
-  ansible.builtin.command: grep -qxF '# blackhole' {{ arr_wireguard_conf_path }}
-  register: arr_wireguard_blackhole
-  failed_when: false
-  changed_when: false
-  check_mode: false
-  become: true
-  when: arr_wireguard_conf | length == 0
-
-# Dummy keys and a TEST-NET endpoint bring wg0 up with a dead default route:
-# transmission keeps its kill-switch from first boot, real config or not.
-- name: Install a blackhole wireguard config
-  ansible.builtin.copy:
-    content: |
-      # blackhole
-      [Interface]
-      PrivateKey = {{ lookup('community.general.random_string', length=32, base64=true) }}
-      Address = 100.64.0.2/32
-
-      [Peer]
-      PublicKey = {{ lookup('community.general.random_string', length=32, base64=true) }}
-      AllowedIPs = 0.0.0.0/0
-      Endpoint = 192.0.2.1:51820
-    dest: "{{ arr_wireguard_conf_path }}"
-    owner: root
-    group: root
-    mode: "0600"
-  become: true
-  when: arr_wireguard_conf | length == 0 and arr_wireguard_blackhole.rc != 0
-  notify: Restart wireguard
-
-- name: Install the wireguard config
-  ansible.builtin.copy:
-    content: "{{ arr_wireguard_conf }}"
-    dest: "{{ arr_wireguard_conf_path }}"
-    owner: root
-    group: root
-    mode: "0600"
-  become: true
-  when: arr_wireguard_conf | length > 0
-  no_log: true
-  notify: Restart wireguard
 
 - name: Install the app container units
   ansible.builtin.template:
@@ -140,7 +143,7 @@
     owner: root
     group: root
     mode: "0644"
-  loop: "{{ arr_apps | dict2items }}"
+  loop: "{{ arr_apps | dict2items | selectattr('key', 'in', arr_enabled) | list }}"
   loop_control:
     label: "{{ item.key }}"
   become: true
@@ -170,5 +173,5 @@
   ansible.builtin.systemd_service:
     name: "{{ item }}"
     state: started
-  loop: "{{ arr_apps.keys() | list }}"
+  loop: "{{ arr_enabled }}"
   become: true
