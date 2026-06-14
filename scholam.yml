@@ -3,5 +3,8 @@
   hosts: this_host
   roles:
     - common
+    - sshd
+    - autoupdate
     - incus
     - libvirt
+    - dev
