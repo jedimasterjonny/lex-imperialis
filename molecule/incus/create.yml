@@ -34,3 +34,18 @@
       retries: 30
       delay: 2
       changed_when: false
+
+    # The Tumbleweed mirror CDN intermittently times out serving repo metadata
+    # (curl 28), which a converge install reports as "No provider of <pkg> found".
+    # Prime the cache here, retried, so the install reuses fresh metadata within
+    # zypper's refresh window instead of racing a flaky refresh of its own.
+    - name: Prime the zypper metadata cache
+      ansible.builtin.command: "incus exec {{ item.name }} -- zypper --non-interactive refresh"
+      loop: "{{ molecule_yml.platforms }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: mol_refresh
+      until: mol_refresh.rc == 0
+      retries: 5
+      delay: 10
+      changed_when: false
