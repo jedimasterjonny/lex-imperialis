@@ -34,6 +34,11 @@
       "description": "lidarr has a legacy 8.1.2135 tag that even strict semver accepts; mainline is 3.x.",
       "matchPackageNames": ["lscr.io/linuxserver/lidarr"],
       "allowedVersions": "<8"
+    },
+    {
+      "description": "python-dateutil is a hard dep of hetzner.hcloud (its vendored hcloud SDK imports dateutil.parser.isoparse); upstream tried datetime.fromisoformat and reverted over the ISO-8601 Z suffix. It's stable, not abandoned, just release-inactive.",
+      "matchPackageNames": ["python-dateutil"],
+      "abandonmentThreshold": null
     }
   ]
 }
