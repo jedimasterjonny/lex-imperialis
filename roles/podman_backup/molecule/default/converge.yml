@@ -1,0 +1,34 @@
+---
+- name: Converge
+  hosts: all
+  vars:
+    # Local stand-in for the astropath NFS share — mounting it is the nfs role's
+    # job, not this role's.
+    podman_backup_root: /var/tmp/backup
+  pre_tasks:
+    - name: Install podman (the runtime whose volumes are backed up)
+      community.general.zypper:
+        name: podman
+        state: present
+      become: true
+
+    - name: Create a probe volume to back up
+      ansible.builtin.command:
+        cmd: podman volume create lex-probe
+      register: podman_backup_probe
+      changed_when: "'lex-probe' in podman_backup_probe.stdout"
+      failed_when:
+        - podman_backup_probe.rc != 0
+        - "'already exists' not in podman_backup_probe.stderr"
+      become: true
+
+    - name: Seed the probe volume with data
+      ansible.builtin.copy:
+        content: "lex-imperialis podman backup probe\n"
+        dest: /var/lib/containers/storage/volumes/lex-probe/_data/probe.txt
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+  roles:
+    - role: podman_backup
