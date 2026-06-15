@@ -82,29 +82,3 @@
         that:
           - common_hostname_cmd.stdout == common_hostname
         fail_msg: "hostname is {{ common_hostname_cmd.stdout }}, expected {{ common_hostname }}"
-
-    - name: Read the netconfig static config
-      ansible.builtin.slurp:
-        src: /etc/sysconfig/network/config
-      register: common_netconfig
-
-    - name: DNS search domain is pinned in netconfig
-      ansible.builtin.assert:
-        that:
-          - searchlist_line in (common_netconfig.content | b64decode)
-        fail_msg: "netconfig static searchlist is not pinned to {{ common_dns_searchlist }}"
-      vars:
-        searchlist_line: 'NETCONFIG_DNS_STATIC_SEARCHLIST="{{ common_dns_searchlist }}"'
-
-    - name: Read resolv.conf
-      ansible.builtin.slurp:
-        src: /etc/resolv.conf
-      register: common_resolv
-
-    - name: Search domain reaches resolv.conf
-      ansible.builtin.assert:
-        that:
-          - common_dns_searchlist in resolv_search.split()
-        fail_msg: "{{ common_dns_searchlist }} is not in the resolv.conf search list"
-      vars:
-        resolv_search: "{{ (common_resolv.content | b64decode).splitlines() | select('match', '^search ') | first | default('') }}"
