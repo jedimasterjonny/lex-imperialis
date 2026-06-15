@@ -21,6 +21,8 @@ Favour the simplest solution that meets current needs; hold to KISS, YAGNI, and 
 
 Loose `roles/` at the repo root — no collection wrapper. Single operator with nothing to publish; revisit only if custom plugins or modules appear.
 
+Fleet playbooks live in `playbooks/`; the bootstrap and molecule playbooks stay with their tooling (`bootstrap/`, `molecule/<tier>/`).
+
 ## Commit hygiene
 
 Every commit MUST be 100% clean: it contains **only** the changes required for its stated purpose, and nothing else.
@@ -74,7 +76,7 @@ Run the gates yourself before presenting or committing — never hand back unver
 
 ## Running plays
 
-Write and `molecule`-test code. Against live hosts, only `--check`/`--diff` dry runs — never apply. Applying to the real fleet is the operator's call. Tasks that render secrets set `no_log: true` — otherwise `--diff` prints them in plaintext.
+Write and `molecule`-test code. Against live hosts, only `--check`/`--diff` dry runs (`make check PLAY=<play>`) — never apply. Applying to the real fleet (`make apply`) is the operator's call. Tasks that render secrets set `no_log: true` — otherwise `--diff` prints them in plaintext.
 
 ## Documentation style
 
