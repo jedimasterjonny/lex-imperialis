@@ -76,7 +76,7 @@ Run the gates yourself before presenting or committing — never hand back unver
 
 ## Running plays
 
-Write and `molecule`-test code. Against live hosts, only `--check`/`--diff` dry runs — never apply. Applying to the real fleet is the operator's call. Tasks that render secrets set `no_log: true` — otherwise `--diff` prints them in plaintext.
+Write and `molecule`-test code. Against live hosts, only `--check`/`--diff` dry runs (`make check PLAY=<play>`) — never apply. Applying to the real fleet (`make apply`) is the operator's call. Tasks that render secrets set `no_log: true` — otherwise `--diff` prints them in plaintext.
 
 ## Documentation style
 
