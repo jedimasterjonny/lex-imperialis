@@ -1,0 +1,13 @@
+---
+# firewalld plus the python bindings ansible.posix.firewalld drives it through.
+firewalld_packages:
+  - firewalld
+  - python3-firewall
+
+# Services and ports opened in the default zone (the system default, public).
+# ssh is the baseline so a host that sets nothing more stays reachable; a play
+# needing more overrides the list — and must keep ssh in it (solar opens caddy
+# and Plex). Ports are "<n>/<proto>" or "<lo>-<hi>/<proto>".
+firewalld_services:
+  - ssh
+firewalld_ports: []

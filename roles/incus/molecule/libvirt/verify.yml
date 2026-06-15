@@ -17,16 +17,17 @@
       ansible.builtin.package_facts:
         manager: auto
 
-    # package_facts may record python3-firewall under a versioned rpm name, so
-    # verify it functionally below and check the rest by package name.
-    - name: Incus and firewall packages are installed
+    - name: Incus packages are installed
       ansible.builtin.assert:
         that:
           - item in ansible_facts.packages
         fail_msg: "package {{ item }} is not installed"
         quiet: true
-      loop: "{{ incus_packages | reject('equalto', 'python3-firewall') | list }}"
+      loop: "{{ incus_packages }}"
 
+    # firewalld and its bindings come from the firewalld role, applied first; the
+    # bridge-trust task needs both. package_facts may record python3-firewall
+    # under a versioned rpm name, so verify it functionally rather than by name.
     - name: The firewalld python bindings are usable
       ansible.builtin.command: python3 -c 'import firewall'
       changed_when: false

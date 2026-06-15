@@ -1,10 +1,10 @@
 ---
-# Incus host: the daemon and CLI tooling, plus firewalld to gate the bridge.
+# Incus host: the daemon and CLI tooling. The firewalld role, applied before
+# this one, installs firewalld and its python bindings; this role only trusts
+# the bridge.
 incus_packages:
   - incus
   - incus-tools
-  - firewalld
-  - python3-firewall
 
 # The init preseed (templates/preseed.yaml.j2) creates this bridge; trusting it
 # in firewalld lets instances reach the host's DHCP and DNS.

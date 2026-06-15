@@ -1,0 +1,16 @@
+---
+- name: Converge
+  hosts: all
+  tasks:
+    - name: Apply the firewalld role
+      ansible.builtin.include_role:
+        name: firewalld
+      vars:
+        # Exercise the per-host extension path the plays use: a service beyond
+        # the baseline, a port with a protocol, and a port range.
+        firewalld_services:
+          - ssh
+          - http
+        firewalld_ports:
+          - 443/udp
+          - 32412-32414/udp
