@@ -4,16 +4,6 @@
     name: "{{ common_hostname }}"
   become: true
 
-# resolv.conf is netconfig-generated, so the static searchlist is the supported
-# way to pin a search domain; the handler regenerates resolv.conf from it.
-- name: Pin the DNS search domain
-  ansible.builtin.lineinfile:
-    path: /etc/sysconfig/network/config
-    regexp: '^NETCONFIG_DNS_STATIC_SEARCHLIST='
-    line: 'NETCONFIG_DNS_STATIC_SEARCHLIST="{{ common_dns_searchlist }}"'
-  become: true
-  notify: Update netconfig
-
 - name: Ensure the owner's supplementary groups exist
   ansible.builtin.group:
     name: "{{ item }}"
