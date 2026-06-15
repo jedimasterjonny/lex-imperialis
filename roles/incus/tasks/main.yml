@@ -1,15 +1,8 @@
 ---
-- name: Install incus and firewall packages
+- name: Install incus
   community.general.zypper:
     name: "{{ incus_packages }}"
     state: present
-  become: true
-
-- name: Enable and start firewalld
-  ansible.builtin.systemd_service:
-    name: firewalld
-    enabled: true
-    state: started
   become: true
 
 # The bridge need not exist yet: firewalld records the binding and applies it
