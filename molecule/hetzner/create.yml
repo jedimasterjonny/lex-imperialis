@@ -8,6 +8,16 @@
   vars:
     mol_platform: "{{ molecule_yml.platforms[0] }}"
     mol_ssh_key: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/ssh_key"
+    # Capacity fallback. Hetzner returns resource_unavailable when a server type
+    # is sold out in a location; the launch loop walks every region for the
+    # pinned type first, then repeats for each fallback type. cx23 routinely
+    # sells out fleet-wide while cpx22 (its 2c/4GB peer, a different pool) stays
+    # in stock; all are x86, so the image is unchanged. unique drops the pinned
+    # values should a fallback list ever repeat them.
+    mol_locations: "{{ ([mol_platform.location] + ['fsn1', 'hel1']) | unique }}"
+    mol_server_types: "{{ ([mol_platform.server_type] + ['cpx22', 'cx33']) | unique }}"
+    mol_attempts: "{{ mol_server_types | product(mol_locations) | list }}"
+    mol_server_created: false
   vars_files:
     # The token is in the repo's single vault file. MOLECULE_SCENARIO_DIRECTORY
     # is the role's scenario dir; ../../../.. is the repo root.
@@ -32,23 +42,20 @@
         public_key: "{{ mol_pubkey.content | b64decode | trim }}"
         state: present
 
-    - name: Launch the server
-      hetzner.hcloud.server:
-        api_token: "{{ hcloud_token }}"
-        name: "{{ mol_platform.name }}"
-        server_type: "{{ mol_platform.server_type }}"
-        image: "{{ mol_platform.image }}"
-        location: "{{ mol_platform.location }}"
-        ssh_keys:
-          - "{{ mol_platform.name }}-key"
-        # openSUSE cloud images may ship without python3; cloud-init installs
-        # it so Ansible can run. wait_for_connection below blocks until it lands.
-        user_data: |
-          #cloud-config
-          packages:
-            - python3
-        state: started
-      register: mol_server
+    # Stop at the first pair with capacity; tasks/launch.yml skips the rest
+    # once one succeeds.
+    - name: Launch the server, falling back on capacity shortfalls
+      ansible.builtin.include_tasks: tasks/launch.yml
+      loop: "{{ mol_attempts }}"
+      loop_control:
+        label: "{{ item.0 }} in {{ item.1 }}"
+
+    - name: Fail when every region and server type is at capacity
+      ansible.builtin.fail:
+        msg: >-
+          No Hetzner capacity for {{ mol_server_types | join(', ') }}
+          in {{ mol_locations | join(', ') }}.
+      when: not mol_server_created
 
     - name: Write the Molecule instance config
       ansible.builtin.copy:

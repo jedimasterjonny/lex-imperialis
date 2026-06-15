@@ -1,0 +1,38 @@
+---
+# One launch attempt for a (server_type, location) pair, included in a loop by
+# create.yml. Skips once an earlier pair has succeeded; on a capacity shortfall
+# it rescues so the loop tries the next pair, but re-raises any other error.
+# item.0 is the server type, item.1 the location.
+- name: "Launch {{ item.0 ~ ' in ' ~ item.1 }}"
+  when: not mol_server_created
+  block:
+    - name: Request the server
+      hetzner.hcloud.server:
+        api_token: "{{ hcloud_token }}"
+        name: "{{ mol_platform.name }}"
+        server_type: "{{ item.0 }}"
+        image: "{{ mol_platform.image }}"
+        location: "{{ item.1 }}"
+        ssh_keys:
+          - "{{ mol_platform.name }}-key"
+        # openSUSE cloud images may ship without python3; cloud-init installs
+        # it so Ansible can run. wait_for_connection later blocks until it lands.
+        user_data: |
+          #cloud-config
+          packages:
+            - python3
+        state: started
+      register: mol_launch
+
+    - name: Record the launched server
+      ansible.builtin.set_fact:
+        mol_server: "{{ mol_launch }}"
+        mol_server_created: true
+  rescue:
+    # The capacity code surfaces two ways -- a synchronous APIException
+    # (failure.code) and an async ActionException (failure.action.error.code) --
+    # but both render it into the message, so match there; re-raise anything else.
+    - name: Re-raise non-capacity failures
+      ansible.builtin.fail:
+        msg: "{{ ansible_failed_result.msg }}"
+      when: "'resource_unavailable' not in (ansible_failed_result.msg | default(''))"
