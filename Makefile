@@ -5,7 +5,10 @@ ROLE ?= motd
 MOLECULE_RUN_ID ?= local
 export MOLECULE_RUN_ID
 
-.PHONY: lint ansible-lint yamllint hooks pre-commit test test-vm test-hetzner destroy-hetzner
+# PLAY selects which playbook in playbooks/ to run, e.g. make check PLAY=solar.
+PLAY ?= scholam
+
+.PHONY: lint ansible-lint yamllint hooks pre-commit test test-vm test-hetzner destroy-hetzner check apply
 
 lint: yamllint ansible-lint
 
@@ -34,3 +37,13 @@ test-hetzner:
 # Tear down a leaked VM after an interrupted run; the CI teardown backstop calls it.
 destroy-hetzner:
 	. .venv/bin/activate && cd roles/$(ROLE) && molecule destroy -s hetzner
+
+# Dry run against the live fleet: --check --diff (check mode is best-effort —
+# unguarded command/shell tasks still run). .vault_pass decrypts vault vars;
+# roles that render secrets set no_log so --diff stays clean.
+check:
+	. .venv/bin/activate && ansible-playbook playbooks/$(PLAY).yml --vault-password-file .vault_pass --check --diff
+
+# Real apply to the live fleet — the operator's call, not part of any automated flow.
+apply:
+	. .venv/bin/activate && ansible-playbook playbooks/$(PLAY).yml --vault-password-file .vault_pass
