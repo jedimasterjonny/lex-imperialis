@@ -1,6 +1,10 @@
 ---
 - name: Converge
   hosts: all
+  vars:
+    # The molecule instance name is already the container hostname, so this
+    # keeps the hostname task idempotent.
+    common_hostname: "{{ inventory_hostname }}"
   tasks:
     - name: Apply the common role
       ansible.builtin.include_role:
