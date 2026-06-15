@@ -2,6 +2,7 @@
 - name: Configure solar
   hosts: solar
   vars:
+    common_hostname: solar
     # Match jonny's uid on the NAS (administratum: 1026; gid 100/users already
     # matches) so NFS ownership reconciles — the v4 mounts use numeric sec=sys,
     # which carries raw uids and bypasses name-based idmapping.

@@ -1,6 +1,8 @@
 ---
 - name: Converge
   hosts: all
+  vars:
+    common_hostname: "{{ inventory_hostname }}"
   tasks:
     # dev installs per-user tooling and dotfiles, so the owner account from
     # common must exist first — the workstation always carries both roles.
