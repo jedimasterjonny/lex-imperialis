@@ -1,0 +1,5 @@
+---
+- name: Update netconfig
+  ansible.builtin.command: netconfig update -f
+  changed_when: true
+  become: true

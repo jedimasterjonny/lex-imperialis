@@ -1,4 +1,11 @@
 ---
+# common_hostname has no default — each play sets it per host, since the
+# inventory name isn't always the real one (this_host is the alias for scholam).
+
+# DNS search domain, pinned via netconfig's static searchlist; policy stays
+# auto, so DHCP-supplied servers and search domains survive.
+common_dns_searchlist: localdomain
+
 # Owner account: the identity mirrors the local Tumbleweed install. wheel is
 # added for sudo; no password is managed.
 common_user_name: jonny

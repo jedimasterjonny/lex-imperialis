@@ -1,6 +1,8 @@
 ---
 - name: Configure this host
   hosts: this_host
+  vars:
+    common_hostname: scholam
   roles:
     - common
     - sshd
