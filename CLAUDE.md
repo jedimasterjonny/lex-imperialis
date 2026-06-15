@@ -21,6 +21,8 @@ Favour the simplest solution that meets current needs; hold to KISS, YAGNI, and 
 
 Loose `roles/` at the repo root — no collection wrapper. Single operator with nothing to publish; revisit only if custom plugins or modules appear.
 
+Fleet playbooks live in `playbooks/`; the bootstrap and molecule playbooks stay with their tooling (`bootstrap/`, `molecule/<tier>/`).
+
 ## Commit hygiene
 
 Every commit MUST be 100% clean: it contains **only** the changes required for its stated purpose, and nothing else.
