@@ -4,6 +4,7 @@
   roles:
     - common
     - sshd
+    - firewalld
     - autoupdate
     - incus
     - libvirt

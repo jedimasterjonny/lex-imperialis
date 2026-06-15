@@ -2,6 +2,12 @@
 - name: Converge
   hosts: all
   tasks:
+    # incus's bridge-trust task needs a live firewalld; the fleet plays apply the
+    # firewalld role before incus, so do the same here for the standalone test.
+    - name: Apply the firewalld role
+      ansible.builtin.include_role:
+        name: firewalld
+
     - name: Apply the incus role
       ansible.builtin.include_role:
         name: incus

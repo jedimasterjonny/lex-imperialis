@@ -5,6 +5,15 @@
     state: present
   become: true
 
+# netavark reapplies its rules when firewalld reloads, so published ports and
+# container networking survive a reload; the shipped unit is disabled.
+- name: Enable the netavark firewalld-reload listener
+  ansible.builtin.systemd_service:
+    name: netavark-firewalld-reload.service
+    enabled: true
+    state: started
+  become: true
+
 - name: Create the quadlet directory
   ansible.builtin.file:
     path: /etc/containers/systemd
