@@ -3,8 +3,8 @@ platforms:
   - name: "lex-incus-hetzner-${MOLECULE_RUN_ID:-local}"
     server_type: cx23
     image: opensuse-16
-    # Pinned region: cx23 is in stock in nbg1 (also hel1, fsn1). If a run
-    # fails with resource_unavailable, switch location to another in-stock one.
+    # First-tried region and type; molecule/hetzner/create.yml falls back across
+    # regions then server types on a resource_unavailable (capacity) shortfall.
     location: nbg1
 provisioner:
   name: ansible
