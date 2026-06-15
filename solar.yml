@@ -30,9 +30,26 @@
     # and its perms, so the role creates no data dirs here.
     arr_data_root: /nfs/scriptorum/arr-data
     arr_data_dirs: {}
+    # Firewall openings beyond the ssh baseline. caddy serves http/https, and
+    # QUIC needs 443/udp too. Plex runs on the host network, so its ports are
+    # opened here: 32400 plus the GDM/DLNA discovery set.
+    firewalld_services:
+      - ssh
+      - http
+      - https
+    firewalld_ports:
+      - 443/udp
+      - 32400/tcp
+      - 1900/udp
+      - 5353/udp
+      - 8324/tcp
+      - 32410/udp
+      - 32412-32414/udp
+      - 32469/tcp
   roles:
     - common
     - sshd
+    - firewalld
     - podman
     - autoupdate
     - nfs

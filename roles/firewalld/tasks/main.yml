@@ -1,0 +1,33 @@
+---
+- name: Install firewalld and its python bindings
+  community.general.zypper:
+    name: "{{ firewalld_packages }}"
+    state: present
+  become: true
+
+- name: Enable and start firewalld
+  ansible.builtin.systemd_service:
+    name: firewalld
+    enabled: true
+    state: started
+  become: true
+
+# permanent + immediate: the rule applies now and survives a reload or reboot.
+# zone is left unset, so each opening lands in the system default zone (public).
+- name: Open the configured services
+  ansible.posix.firewalld:
+    service: "{{ item }}"
+    permanent: true
+    immediate: true
+    state: enabled
+  loop: "{{ firewalld_services }}"
+  become: true
+
+- name: Open the configured ports
+  ansible.posix.firewalld:
+    port: "{{ item }}"
+    permanent: true
+    immediate: true
+    state: enabled
+  loop: "{{ firewalld_ports }}"
+  become: true

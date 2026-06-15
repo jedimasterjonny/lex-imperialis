@@ -1,0 +1,36 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Read the firewalld unit state
+      ansible.builtin.systemd_service:
+        name: firewalld
+      register: firewalld_unit
+      become: true
+
+    - name: Firewalld is enabled and active
+      ansible.builtin.assert:
+        that:
+          - firewalld_unit.status.ActiveState == 'active'
+          - firewalld_unit.status.UnitFileState == 'enabled'
+        fail_msg: "firewalld is not enabled and active"
+        quiet: true
+
+    # --query-* exits non-zero when the opening is absent, so its rc is the
+    # assertion. --permanent is the durable guarantee: it survives a reload.
+    - name: The configured services are open
+      ansible.builtin.command: "firewall-cmd --permanent --query-service={{ item }}"
+      changed_when: false
+      become: true
+      loop:
+        - ssh
+        - http
+
+    - name: The configured ports are open
+      ansible.builtin.command: "firewall-cmd --permanent --query-port={{ item }}"
+      changed_when: false
+      become: true
+      loop:
+        - 443/udp
+        - 32412-32414/udp
