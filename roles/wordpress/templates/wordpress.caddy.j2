@@ -1,0 +1,4 @@
+@wordpress host wordpress.{{ wordpress_domain }}
+handle @wordpress {
+	reverse_proxy wordpress:80
+}

@@ -1,0 +1,19 @@
+---
+- name: Converge
+  hosts: all
+  vars:
+    # Throwaway credentials for the ephemeral molecule database.
+    wordpress_db_password: molecule
+    wordpress_db_root_password: molecule-root
+  tasks:
+    - name: Apply the podman role
+      ansible.builtin.include_role:
+        name: podman
+
+    - name: Apply the caddy role
+      ansible.builtin.include_role:
+        name: caddy
+
+    - name: Apply the wordpress role
+      ansible.builtin.include_role:
+        name: wordpress
