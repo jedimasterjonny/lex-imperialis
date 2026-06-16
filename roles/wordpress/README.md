@@ -27,10 +27,10 @@ sets the passwords only on first init — rotating one means an in-container
 `wordpress-redis` runs redis as a pure object cache — memory capped at
 `wordpress_redis_maxmemory` with LRU eviction, no volume, no persistence. The
 role pre-wires `WP_REDIS_HOST`/`WP_REDIS_PORT` into wp-config, so the only manual
-step is installing and enabling the Redis Object Cache plugin in wp-admin; it
-reads the constants and connects with no further config. wordpress only `Wants`
-the cache — if it is down the plugin's drop-in degrades to WordPress's default
-in-process cache.
+step is installing and enabling the Redis Object Cache plugin (via `wp`, below,
+or wp-admin); it reads the constants and connects with no further config.
+wordpress only `Wants` the cache — if it is down the plugin's drop-in degrades to
+WordPress's default in-process cache.
 
 ## Behind Caddy
 
@@ -38,6 +38,18 @@ Caddy terminates TLS and forwards plain HTTP to `wordpress:80`. The official
 image already trusts `X-Forwarded-Proto`, so WordPress detects HTTPS behind the
 proxy and stops emitting `http://` URLs. The snippet routes
 `wordpress.<wordpress_domain>`; point wildcard DNS for it at the host.
+
+## wp-cli
+
+`/usr/local/bin/wp` runs the official `wordpress:cli` image against the live
+stack — the web container's volumes, the database credentials, and the network —
+so `wp <command>` manages the site. Rootful podman, so run it as root. Turn on
+the object cache with:
+
+```bash
+wp plugin install redis-cache --activate
+wp redis enable
+```
 
 ## Deploy
 
