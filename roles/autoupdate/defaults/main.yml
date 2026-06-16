@@ -1,0 +1,5 @@
+---
+# Rolling Tumbleweed upgrades the whole system with `dup`; Leap (and other point
+# releases) apply vendor patches with `patch`. Both return 102/103 when a reboot
+# or restart is advised, which the unit treats as success.
+autoupdate_zypper_command: "{{ 'dup' if ansible_facts['distribution'] == 'openSUSE Tumbleweed' else 'patch' }}"
