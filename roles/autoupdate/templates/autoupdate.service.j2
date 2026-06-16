@@ -1,12 +1,12 @@
 [Unit]
-Description=Unattended zypper distribution upgrade and reboot
+Description=Unattended zypper {{ autoupdate_zypper_command }} and reboot
 Wants=network-online.target
 After=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/zypper --non-interactive dup --auto-agree-with-licenses
-# 102/103 are zypper's "reboot/restart recommended" infos on a successful dup,
+ExecStart=/usr/bin/zypper --non-interactive {{ autoupdate_zypper_command }} --auto-agree-with-licenses
+# 102/103 are zypper's "reboot/restart recommended" infos on a successful run,
 # not failures: accept them so the reboot still fires. A real failure (a lower
 # exit code) skips ExecStartPost, leaving the system un-rebooted for inspection.
 SuccessExitStatus=102 103
