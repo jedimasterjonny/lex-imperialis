@@ -1,0 +1,69 @@
+---
+# Provision rogue-trader: a persistent Hetzner cx33 in the emmas-edit project,
+# joined to the home VPN at boot. cloud-init installs the tooling, writes the
+# tunnel config, then brings it up; it is a split tunnel (AllowedIPs
+# 192.168.0.0/16), so only home-network traffic uses the VPN and the public
+# interface stays up. Provision-once: user_data applies only at first boot, so
+# re-running is a no-op (ssh_key and server state=started are idempotent) and
+# does not re-render wg0.conf on an existing server. Run with
+# -e @inventory/group_vars/all/vault.yml --vault-password-file .vault_pass.
+- name: Provision rogue-trader
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    rogue_trader_name: rogue-trader
+    rogue_trader_server_type: cx33
+    rogue_trader_location: hel1
+    rogue_trader_image: opensuse-16
+    rogue_trader_vpn_address: 192.168.3.3
+    # openresolv backs wg-quick's DNS= line; python3 lets Ansible drive the box
+    # over the VPN afterwards.
+    rogue_trader_cloud_config:
+      packages:
+        - python3
+        - wireguard-tools
+        - openresolv
+      write_files:
+        - path: /etc/wireguard/wg0.conf
+          owner: root:root
+          permissions: "0600"
+          content: "{{ rogue_trader_wireguard_conf }}"
+      runcmd:
+        - [systemctl, enable, --now, wg-quick@wg0]
+  # hcloud_token_emmas_edit and rogue_trader_wireguard_conf come from the vault,
+  # supplied at run time: -e @inventory/group_vars/all/vault.yml. Kept out of
+  # vars_files so ansible-lint (no vault password in CI) need not decrypt it.
+  tasks:
+    - name: Upload the SSH key to Hetzner
+      hetzner.hcloud.ssh_key:
+        api_token: "{{ hcloud_token_emmas_edit }}"
+        name: "{{ rogue_trader_name }}-key"
+        public_key: "{{ lookup('file', '~/.ssh/id_ed25519.pub') }}"
+        state: present
+
+    # user_data carries the WireGuard config, which holds a private key, so the
+    # task is no_log; api_token is already redacted by the module spec.
+    - name: Create the server
+      hetzner.hcloud.server:
+        api_token: "{{ hcloud_token_emmas_edit }}"
+        name: "{{ rogue_trader_name }}"
+        server_type: "{{ rogue_trader_server_type }}"
+        image: "{{ rogue_trader_image }}"
+        location: "{{ rogue_trader_location }}"
+        ssh_keys:
+          - "{{ rogue_trader_name }}-key"
+        user_data: "#cloud-config\n{{ rogue_trader_cloud_config | to_nice_yaml }}"
+        state: started
+      no_log: true
+
+    # Post-provision smoke test: a connect over the VPN confirms the box joined
+    # and the router already has its peer. It depends on router-side state this
+    # play does not own, so for a peer not yet added to the router it times out
+    # even though provisioning itself succeeded.
+    - name: Wait for rogue-trader to come up on the VPN
+      ansible.builtin.wait_for:
+        host: "{{ rogue_trader_vpn_address }}"
+        port: 22
+        delay: 15
+        timeout: 420
