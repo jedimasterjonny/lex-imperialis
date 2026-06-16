@@ -1,0 +1,24 @@
+---
+platforms:
+  - name: "lex-firewalld-leap-${MOLECULE_RUN_ID:-local}"
+    image: images:opensuse/16.0/cloud
+    # firewalld writes nftables rules into the instance's net namespace; the CI
+    # runner's AppArmor denies that under the default profile, so drop it — the
+    # instance is throwaway.
+    config:
+      raw.lxc: lxc.apparmor.profile=unconfined
+provisioner:
+  name: ansible
+  # Provisioning is role-agnostic and shared at the repo root; ../../../.. is
+  # the repo root relative to this scenario dir.
+  playbooks:
+    create: "${MOLECULE_SCENARIO_DIRECTORY}/../../../../molecule/incus/create.yml"
+    destroy: "${MOLECULE_SCENARIO_DIRECTORY}/../../../../molecule/incus/destroy.yml"
+  config_options:
+    defaults:
+      roles_path: "${MOLECULE_SCENARIO_DIRECTORY}/../../.."
+  inventory:
+    group_vars:
+      all:
+        ansible_connection: community.general.incus
+        ansible_incus_remote: local
