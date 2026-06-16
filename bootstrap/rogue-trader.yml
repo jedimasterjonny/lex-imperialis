@@ -5,8 +5,9 @@
 # 192.168.0.0/16), so only home-network traffic uses the VPN and the public
 # interface stays up. Provision-once: user_data applies only at first boot, so
 # re-running is a no-op (ssh_key and server state=started are idempotent) and
-# does not re-render wg0.conf on an existing server. Run with
-# -e @inventory/group_vars/all/vault.yml --vault-password-file .vault_pass.
+# does not re-render wg0.conf on an existing server. Run from the repo root:
+#   ansible-playbook bootstrap/rogue-trader.yml \
+#     -e @inventory/group_vars/all/vault.yml --vault-password-file .vault_pass
 - name: Provision rogue-trader
   hosts: localhost
   connection: local
