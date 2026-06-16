@@ -1,0 +1,23 @@
+---
+- name: Configure rogue-trader
+  hosts: rogue-trader
+  vars:
+    common_hostname: rogue-trader
+    # Leap 16's sles cloud user holds uid 1000, so the owner takes a free uid.
+    common_user_uid: 1026
+    # caddy is staged for WordPress. caddy_domain and the Cloudflare token are
+    # global vault vars (solar's), so override them here: an empty token holds
+    # the vhost on plain HTTP — no ACME, no cert pulled for another host's
+    # domain — until the WordPress role supplies rogue-trader's own domain.
+    caddy_domain: home.arpa
+    caddy_cloudflare_api_token: ""
+  roles:
+    - common
+    - sshd
+    # Pure WireGuard client → the ssh-only default holds. The tunnel initiates
+    # to the Unifi router, so its return traffic rides conntrack (no inbound
+    # 51820/udp), and caddy's http/https stay shut until the WordPress vhost lands.
+    - firewalld
+    - podman
+    - autoupdate
+    - caddy
