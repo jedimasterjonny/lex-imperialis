@@ -2,9 +2,10 @@
 name: molecule
 
 # "on" is quoted so yamllint's truthy rule does not read it as a boolean.
-# Two tiers, routed by the scenarios a role ships: incus (default) runs free on
-# the GitHub runner; the full-VM tier runs on a billable Hetzner VM (Hetzner
-# Cloud cannot nest KVM, so the VM is the real machine). discover gates both to
+# Three tiers, routed by the scenarios a role ships: incus runs free on the
+# GitHub runner on two images — Tumbleweed (default) and Leap 16 (leap, the
+# LEAP_ROLES subset); the full-VM tier runs on a billable Hetzner VM (Hetzner
+# Cloud cannot nest KVM, so the VM is the real machine). discover gates each to
 # the roles a PR actually touches. No push:main — the --no-ff merge tree equals
 # the validated PR tree.
 "on":
@@ -35,6 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       incus: ${{ steps.set.outputs.incus }}
+      leap: ${{ steps.set.outputs.leap }}
       hetzner: ${{ steps.set.outputs.hetzner }}
     steps:
       - name: Check out
@@ -44,9 +46,10 @@ jobs:
 
       # Emit one matrix per tier from the PR diff. A changed role runs its own
       # tiers; shared infra (anything outside roles/) is exercised via the motd
-      # harness. incus is free, so any shared change runs it; the billable
-      # hetzner VM validates real-machine behaviour, so a requirements-dev.txt
-      # (test/lint toolchain) bump alone stays incus-only.
+      # harness. The incus tiers (Tumbleweed default + Leap) are free, so any
+      # shared change runs them; the billable hetzner VM validates real-machine
+      # behaviour, so a requirements-dev.txt (test/lint toolchain) bump alone
+      # stays on the free incus tiers.
       - name: Determine roles and tiers
         id: set
         env:
@@ -83,10 +86,12 @@ jobs:
             printf '%s' "$out" | jq -R -s -c 'split("\n") | map(select(length > 0))'
           }
           incus=$(tier_matrix "$incus_cand" default)
+          leap=$(tier_matrix "$incus_cand" leap)
           hetzner=$(tier_matrix "$hetzner_cand" hetzner)
           echo "incus=$incus" >> "$GITHUB_OUTPUT"
+          echo "leap=$leap" >> "$GITHUB_OUTPUT"
           echo "hetzner=$hetzner" >> "$GITHUB_OUTPUT"
-          echo "incus: $incus  hetzner: $hetzner"
+          echo "incus: $incus  leap: $leap  hetzner: $hetzner"
 
   incus:
     name: incus (${{ matrix.role }})
@@ -138,6 +143,50 @@ jobs:
         env:
           ROLE: ${{ matrix.role }}
         run: sg incus-admin -c "make test ROLE=$ROLE"
+
+  leap:
+    name: leap (${{ matrix.role }})
+    needs: discover
+    if: needs.discover.outputs.leap != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        role: ${{ fromJSON(needs.discover.outputs.leap) }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dev tooling
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install -r requirements-dev.txt
+
+      # Same incus setup as the default-image tier above; see its comments.
+      - name: Set up incus
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y incus
+          sudo incus admin init --auto --storage-backend=dir
+          sudo iptables -P FORWARD ACCEPT
+          sudo incus network set incusbr0 ipv6.address none
+          sudo usermod -aG incus-admin "$USER"
+
+      - name: Run the leap molecule scenario
+        env:
+          ROLE: ${{ matrix.role }}
+        run: sg incus-admin -c "make test-leap ROLE=$ROLE"
 
   hetzner:
     name: hetzner (${{ matrix.role }})
