@@ -1,0 +1,23 @@
+[Unit]
+Description=WordPress
+{# The database unit starts first; wordpress reconnects until it answers. #}
+Requires=wordpress-db.service
+After=wordpress-db.service
+{# The cache is optional — the drop-in degrades gracefully if it is down — so #}
+{# only order after it, never require it. #}
+Wants=wordpress-redis.service
+After=wordpress-redis.service
+
+[Container]
+ContainerName=wordpress
+Image={{ wordpress_image }}
+Network=caddy.network
+EnvironmentFile=/etc/wordpress/wordpress.env
+Volume=wordpress-html:/var/www/html
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,87 @@
+---
+- name: Create the config directory
+  ansible.builtin.file:
+    path: /etc/wordpress
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+# Both quadlets read the database credentials via EnvironmentFile=, so the
+# passwords never land in the world-readable unit files.
+- name: Deploy the database credentials
+  ansible.builtin.template:
+    src: wordpress.env.j2
+    dest: /etc/wordpress/wordpress.env
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  no_log: true
+  notify:
+    - Restart the database
+    - Restart wordpress
+
+- name: Install the database container unit
+  ansible.builtin.template:
+    src: mariadb.container.j2
+    dest: /etc/containers/systemd/wordpress-db.container
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify:
+    - Reload systemd
+    - Restart the database
+
+- name: Install the cache container unit
+  ansible.builtin.template:
+    src: redis.container.j2
+    dest: /etc/containers/systemd/wordpress-redis.container
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify:
+    - Reload systemd
+    - Restart the cache
+
+- name: Install the wordpress container unit
+  ansible.builtin.template:
+    src: wordpress.container.j2
+    dest: /etc/containers/systemd/wordpress.container
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify:
+    - Reload systemd
+    - Restart wordpress
+
+# The caddy role owns /etc/caddy/sites and imports every sites/*.caddy as
+# matcher + handle snippets inside its wildcard vhost.
+- name: Register wordpress with the reverse proxy
+  ansible.builtin.template:
+    src: wordpress.caddy.j2
+    dest: /etc/caddy/sites/wordpress.caddy
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart caddy
+
+# Quadlet units only exist after the daemon reload, so apply pending restarts
+# before asserting the services are up.
+- name: Apply pending unit changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Start the containers
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: started
+  loop:
+    - wordpress-redis
+    - wordpress-db
+    - wordpress
+  become: true
