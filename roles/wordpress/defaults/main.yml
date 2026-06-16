@@ -1,0 +1,22 @@
+---
+# Domain the reverse proxy routes on: wordpress answers at wordpress.<domain>.
+# Follows caddy_domain wherever the vault sets it. Point wildcard DNS for it
+# at the host.
+wordpress_domain: "{{ caddy_domain | default('home.arpa') }}"
+
+wordpress_timezone: Etc/UTC
+
+# Memory ceiling for the redis object cache; it evicts LRU keys past this and
+# keeps nothing on disk.
+wordpress_redis_maxmemory: 256mb
+
+# Database the wordpress container connects to; mariadb creates the database and
+# user on first init. Not secret — the passwords are.
+wordpress_db_name: wordpress
+wordpress_db_user: wordpress
+
+# Database passwords (vault-sourced). Empty leaves the stack uninitialised:
+# mariadb needs them to create the database on first boot. Molecule sets
+# throwaway values; the fleet sources them from the vault.
+wordpress_db_password: ""
+wordpress_db_root_password: ""

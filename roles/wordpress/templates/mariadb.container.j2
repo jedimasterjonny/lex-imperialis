@@ -1,0 +1,16 @@
+[Unit]
+Description=WordPress database
+
+[Container]
+ContainerName=wordpress-db
+Image={{ wordpress_db_image }}
+Network=caddy.network
+EnvironmentFile=/etc/wordpress/wordpress.env
+Volume=wordpress-db:/var/lib/mysql
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

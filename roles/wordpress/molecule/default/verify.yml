@@ -1,0 +1,93 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - ../../defaults/main.yml
+  tasks:
+    - name: Wait for wordpress to answer through the proxy
+      ansible.builtin.uri:
+        url: http://127.0.0.1/
+        headers:
+          Host: "wordpress.{{ wordpress_domain }}"
+        follow_redirects: none
+        status_code: [200, 301, 302]
+      register: wordpress_proxied
+      until: wordpress_proxied.status in [200, 301, 302]
+      retries: 60
+      delay: 5
+
+    # The install page rendering proves the whole chain: caddy proxies the
+    # request, wordpress serves PHP (so wordpress_config_extra is valid), and it
+    # reached the database — a failed connection answers 500, not the form.
+    - name: The install page renders through the database
+      ansible.builtin.uri:
+        url: http://127.0.0.1/wp-admin/install.php
+        headers:
+          Host: "wordpress.{{ wordpress_domain }}"
+        return_content: true
+      register: wordpress_install
+      until: "'WordPress' in wordpress_install.content"
+      retries: 30
+      delay: 5
+
+    # daemon_reload is a no-op that just makes the module gather and return each
+    # unit's systemctl-show properties to assert against; it reads, not mutates.
+    - name: Read the container units' state
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        daemon_reload: true
+      loop:
+        - wordpress-redis
+        - wordpress-db
+        - wordpress
+      register: wordpress_units
+      become: true
+
+    - name: The containers are running
+      ansible.builtin.assert:
+        that:
+          - item.status.ActiveState == 'active'
+        fail_msg: "{{ item.item }} is not running"
+        quiet: true
+      loop: "{{ wordpress_units.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: The cache answers
+      ansible.builtin.command: podman exec wordpress-redis redis-cli ping
+      become: true
+      register: wordpress_redis_ping
+      changed_when: false
+      failed_when: wordpress_redis_ping.stdout != 'PONG'
+
+    - name: Read the WordPress extra config
+      ansible.builtin.command: podman exec wordpress printenv WORDPRESS_CONFIG_EXTRA
+      become: true
+      register: wordpress_extra_config
+      changed_when: false
+
+    # wp-config.php eval's WORDPRESS_CONFIG_EXTRA at runtime, so the constants it
+    # carries point the operator-enabled plugin at the cache with no manual step.
+    - name: The redis host is wired into the config
+      ansible.builtin.assert:
+        that:
+          - "'WP_REDIS_HOST' in wordpress_extra_config.stdout"
+          - "'wordpress-redis' in wordpress_extra_config.stdout"
+        fail_msg: "the redis host is not wired into WORDPRESS_CONFIG_EXTRA"
+        quiet: true
+
+    # The command fails on a non-zero rc, so a working run proves the wrapper
+    # mounts the volume and the cli image reads the core version from it.
+    - name: Run wp-cli through the wrapper
+      ansible.builtin.command: /usr/local/bin/wp core version
+      become: true
+      register: wordpress_wp_cli
+      changed_when: false
+
+    - name: The wp-cli wrapper reports the core version
+      ansible.builtin.assert:
+        that:
+          - wordpress_wp_cli.stdout | length > 0
+        fail_msg: "wp-cli returned no WordPress version"
+        quiet: true

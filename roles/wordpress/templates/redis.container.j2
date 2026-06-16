@@ -1,0 +1,17 @@
+[Unit]
+Description=WordPress Redis cache
+
+[Container]
+ContainerName=wordpress-redis
+Image={{ wordpress_redis_image }}
+Network=caddy.network
+{# Pure object cache: cap memory with LRU eviction and disable RDB/AOF, so it #}
+{# needs no volume and never persists to disk. #}
+Exec=redis-server --maxmemory {{ wordpress_redis_maxmemory }} --maxmemory-policy allkeys-lru --save ""
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# wp-cli against the live stack: the web container's volumes, the database
+# credentials, and the network. Rootful podman, so run it as root.
+exec podman run --rm --interactive \
+	--volumes-from wordpress \
+	--env-file /etc/wordpress/wordpress.env \
+	--network caddy \
+	{{ wordpress_cli_image }} wp "$@"
