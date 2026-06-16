@@ -13,7 +13,12 @@
         that:
           - "'passwordauthentication no' in sshd_effective.stdout_lines"
           - "'kbdinteractiveauthentication no' in sshd_effective.stdout_lines"
-          - "'permitrootlogin prohibit-password' in sshd_effective.stdout_lines"
+          # sshd -T renders this value with either synonym depending on the
+          # OpenSSH build: Tumbleweed prints prohibit-password, Leap 16 the
+          # older without-password. Both mean key-only root login.
+          - >-
+            'permitrootlogin prohibit-password' in sshd_effective.stdout_lines or
+            'permitrootlogin without-password' in sshd_effective.stdout_lines
           - "'x11forwarding no' in sshd_effective.stdout_lines"
           - "'loglevel VERBOSE' in sshd_effective.stdout_lines"
         fail_msg: "the hardening drop-in is not in effect"
