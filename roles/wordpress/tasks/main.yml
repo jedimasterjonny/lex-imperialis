@@ -71,6 +71,16 @@
   become: true
   notify: Restart caddy
 
+# Wrapper over the official cli image, so `wp <command>` manages the live site.
+- name: Install the wp-cli wrapper
+  ansible.builtin.template:
+    src: wp.j2
+    dest: /usr/local/bin/wp
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
 # Quadlet units only exist after the daemon reload, so apply pending restarts
 # before asserting the services are up.
 - name: Apply pending unit changes

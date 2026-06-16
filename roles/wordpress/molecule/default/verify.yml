@@ -76,3 +76,18 @@
           - "'wordpress-redis' in wordpress_extra_config.stdout"
         fail_msg: "the redis host is not wired into WORDPRESS_CONFIG_EXTRA"
         quiet: true
+
+    # The command fails on a non-zero rc, so a working run proves the wrapper
+    # mounts the volume and the cli image reads the core version from it.
+    - name: Run wp-cli through the wrapper
+      ansible.builtin.command: /usr/local/bin/wp core version
+      become: true
+      register: wordpress_wp_cli
+      changed_when: false
+
+    - name: The wp-cli wrapper reports the core version
+      ansible.builtin.assert:
+        that:
+          - wordpress_wp_cli.stdout | length > 0
+        fail_msg: "wp-cli returned no WordPress version"
+        quiet: true
