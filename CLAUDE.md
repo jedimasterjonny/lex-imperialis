@@ -58,18 +58,19 @@ The git tree MUST be bisect-safe at all times: every commit — on every branch,
 A role's molecule scenarios are the contract CI runs against:
 
 - `default` — incus container; the preferred tier, run locally and free on the CI runner.
+- `leap` — incus container on the openSUSE Leap 16 image; the free, routine Leap check for the `LEAP_ROLES` subset, since the rest of the fleet is Tumbleweed.
 - `libvirt` — local full-boot VM (`qemu:///system`); only where a container can't fully exercise the role.
 - `hetzner` — the full-VM tier's CI form, a real Hetzner Cloud VM (Hetzner can't nest KVM, so the VM is the machine); bills money.
 
-Every role must ship a `default` or `libvirt` scenario (or both), and a `libvirt` scenario requires a `hetzner` one; `bin/check-role-test-coverage.sh` (a pre-commit hook) enforces it. Prefer incus — add the full-VM tier only when a container can't test the role. `motd` is the exception: it carries all three as the harness exemplar.
+Every role must ship a `default` or `libvirt` scenario (or both), and a `libvirt` scenario requires a `hetzner` one; roles in the `LEAP_ROLES` subset additionally ship a `leap` scenario. `bin/check-role-test-coverage.sh` (a pre-commit hook) enforces all of this. Prefer incus — add the full-VM tier only when a container can't test the role. `motd` is the exception: it carries every tier as the harness exemplar.
 
-Shared, role-agnostic create and destroy playbooks live in `molecule/<tier>/`, where `<tier>` is `incus`, `libvirt`, or `hetzner` (the incus tier also has a shared `prepare.yml`); the container tier's per-role scenario dir is `default`, but its shared dir and instance token are `incus`. A scenario's `molecule.yml` references those playbooks and names instances `lex-<role>-<tier>-${MOLECULE_RUN_ID:-local}` (underscores in the role name hyphenated), so concurrent runs never collide. converge/verify are role-specific and live in the role's primary scenario (`default`, or `libvirt` where there is no container tier); the other scenarios symlink them, so a role keeps one of each. CI tests only the roles a PR changes, plus `motd` for shared-infra changes — though a `requirements-dev.txt`-only (toolchain) bump runs the free incus tier only.
+Shared, role-agnostic create and destroy playbooks live in `molecule/<tier>/`, where `<tier>` is `incus`, `libvirt`, or `hetzner` (the incus tier also has a shared `prepare.yml`); the container tier ships two scenarios, `default` (Tumbleweed) and `leap` (Leap 16), both built from the `incus` playbooks. A scenario's `molecule.yml` references those playbooks and names instances `lex-<role>-<token>-${MOLECULE_RUN_ID:-local}` (the token is the scenario name, except `default`'s is `incus`; underscores in the role name hyphenated), so concurrent runs never collide. converge/verify are role-specific and live in the role's primary scenario (`default`, or `libvirt` where there is no container tier); the other scenarios symlink them, so a role keeps one of each. CI tests only the roles a PR changes, plus `motd` for shared-infra changes — though a `requirements-dev.txt`-only (toolchain) bump runs the free incus tier only.
 
 ## Verifying changes
 
 Run the gates yourself before presenting or committing — never hand back unverified work.
 
-- `make lint` for lint, `make pre-commit` for the full hook set. `make test ROLE=<role>` drives the incus scenario where the role has one (local containers, on a host bootstrapped once via `bootstrap/incus.yml`); `make test-vm ROLE=<role>` the libvirt VM; `make test-hetzner ROLE=<role>` the real Hetzner VM (needs `.vault_pass` to decrypt the API token) — bills real money, so reserve it for pre-merge confidence. `ROLE` defaults to `motd`.
+- `make lint` for lint, `make pre-commit` for the full hook set. `make test ROLE=<role>` drives the incus scenario where the role has one (local containers, on a host bootstrapped once via `bootstrap/incus.yml`); `make test-leap ROLE=<role>` the Leap-16 container; `make test-vm ROLE=<role>` the libvirt VM; `make test-hetzner ROLE=<role>` the real Hetzner VM (needs `.vault_pass` to decrypt the API token) — bills real money, so reserve it for pre-merge confidence. `ROLE` defaults to `motd`.
 - Every task must be idempotent — molecule's idempotence check (a second converge reporting zero changed) enforces it.
 - Fix failures at the root, don't suppress them. Show the command output as evidence.
 - Formatting is owned by the linters — don't hand-format or override them.

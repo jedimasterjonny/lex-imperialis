@@ -1,8 +1,11 @@
 ---
 - name: Verify
   hosts: all
-  gather_facts: false
   tasks:
+    - name: Determine the upgrade command expected for this distribution
+      ansible.builtin.set_fact:
+        autoupdate_expected_command: "{{ 'dup' if ansible_facts['distribution'] == 'openSUSE Tumbleweed' else 'patch' }}"
+
     # daemon_reload is a no-op that just makes the module gather and return the
     # timer's systemctl-show properties to assert against; it reads, not mutates.
     - name: Read the update timer's state
@@ -27,14 +30,14 @@
       register: autoupdate_service
       become: true
 
-    - name: The service runs zypper dup then reboots
+    - name: The service runs the distro's zypper command then reboots
       ansible.builtin.assert:
         that:
           - "'zypper' in autoupdate_service.status.ExecStart"
-          - "'dup' in autoupdate_service.status.ExecStart"
+          - autoupdate_expected_command in autoupdate_service.status.ExecStart
           # The reboot only fires because 102/103 count as success; drop this and
-          # a reboot-recommended dup exits non-zero and ExecStartPost is skipped.
+          # a reboot-recommended run exits non-zero and ExecStartPost is skipped.
           - autoupdate_service.status.SuccessExitStatus == '102 103'
           - "'reboot' in autoupdate_service.status.ExecStartPost"
-        fail_msg: "the service does not run zypper dup, accept 102/103, then reboot"
+        fail_msg: "the service does not run zypper {{ autoupdate_expected_command }}, accept 102/103, then reboot"
         quiet: true

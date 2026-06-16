@@ -8,7 +8,7 @@ export MOLECULE_RUN_ID
 # PLAY selects which playbook in playbooks/ to run, e.g. make check PLAY=solar.
 PLAY ?= scholam
 
-.PHONY: lint ansible-lint yamllint hooks pre-commit test test-vm test-hetzner destroy-hetzner check apply
+.PHONY: lint ansible-lint yamllint hooks pre-commit test test-leap test-vm test-hetzner destroy-hetzner check apply
 
 lint: yamllint ansible-lint
 
@@ -26,6 +26,10 @@ pre-commit:
 
 test:
 	. .venv/bin/activate && cd roles/$(ROLE) && molecule test
+
+# Free incus tier on the openSUSE Leap 16 image, for the LEAP_ROLES subset.
+test-leap:
+	. .venv/bin/activate && cd roles/$(ROLE) && molecule test -s leap
 
 test-vm:
 	. .venv/bin/activate && cd roles/$(ROLE) && molecule test -s libvirt

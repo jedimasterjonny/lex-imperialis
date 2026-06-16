@@ -1,14 +1,22 @@
 ---
-- name: Install the update service and timer
+- name: Install the update timer
   ansible.builtin.copy:
-    src: "{{ item }}"
-    dest: /etc/systemd/system/{{ item }}
+    src: autoupdate.timer
+    dest: /etc/systemd/system/autoupdate.timer
     owner: root
     group: root
     mode: "0644"
-  loop:
-    - autoupdate.service
-    - autoupdate.timer
+  become: true
+
+# The upgrade command is distro-specific (dup on Tumbleweed, patch on Leap), so
+# the service is templated while the timer stays a static file.
+- name: Install the update service
+  ansible.builtin.template:
+    src: autoupdate.service.j2
+    dest: /etc/systemd/system/autoupdate.service
+    owner: root
+    group: root
+    mode: "0644"
   become: true
 
 # daemon_reload picks up unit changes before enabling; it does not itself report
