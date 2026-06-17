@@ -77,6 +77,13 @@
         fail_msg: "the redis host is not wired into WORDPRESS_CONFIG_EXTRA"
         quiet: true
 
+    - name: WP-cron is disabled in the generated config
+      ansible.builtin.assert:
+        that:
+          - "'DISABLE_WP_CRON' in wordpress_extra_config.stdout"
+        fail_msg: "DISABLE_WP_CRON is not wired into WORDPRESS_CONFIG_EXTRA"
+        quiet: true
+
     # The command fails on a non-zero rc, so a working run proves the wrapper
     # mounts the volume and the cli image reads the core version from it.
     - name: Run wp-cli through the wrapper
@@ -91,3 +98,13 @@
           - wordpress_wp_cli.stdout | length > 0
         fail_msg: "wp-cli returned no WordPress version"
         quiet: true
+
+    # daemon_reload only makes the module gather the unit's state (as the
+    # container-state read above), so the assert can read ActiveState.
+    - name: The wp-cron timer is active
+      ansible.builtin.systemd_service:
+        name: wordpress-cron.timer
+        daemon_reload: true
+      register: wordpress_cron_timer
+      become: true
+      failed_when: wordpress_cron_timer.status.ActiveState != 'active'
