@@ -1,8 +1,14 @@
 ---
-# Domain the reverse proxy routes on: wordpress answers at wordpress.<domain>.
-# Follows caddy_domain wherever the vault sets it. Point wildcard DNS for it
-# at the host.
-wordpress_domain: "{{ caddy_domain | default('home.arpa') }}"
+# Public domains the site answers on. The caddy public-site block reverse-
+# proxies them all to the wordpress container; WordPress canonicalises between
+# them (e.g. www -> apex) from its own siteurl. Point DNS for each at the host.
+wordpress_domains:
+  - "wordpress.{{ caddy_domain | default('home.arpa') }}"
+
+# Front the domains with TLS: the caddy global acme_dns issues the cert via
+# DNS-01 before any A record points here. Molecule sets it false to stay on
+# plain HTTP with no ACME.
+wordpress_tls: true
 
 wordpress_timezone: Etc/UTC
 

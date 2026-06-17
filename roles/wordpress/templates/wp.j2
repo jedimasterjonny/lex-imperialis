@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # wp-cli against the live stack: the web container's volumes, the database
 # credentials, and the network. Rootful podman, so run it as root.
-exec podman run --rm --interactive \
+# The cli image is Alpine (www-data is uid 82) but the wordpress image is
+# Debian and owns /var/www/html as uid 33, so run as 33 — otherwise wp-cli
+# cannot read a 0600 wp-config and would write files with the wrong owner.
+exec podman run --rm --interactive --user 33:33 \
 	--volumes-from wordpress \
 	--env-file /etc/wordpress/wordpress.env \
 	--network caddy \
