@@ -9,6 +9,7 @@
   loop:
     - /etc/caddy
     - /etc/caddy/sites
+    - /etc/caddy/sites-public
   become: true
 
 - name: Deploy the Caddyfile
