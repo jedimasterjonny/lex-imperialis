@@ -14,6 +14,14 @@ Image={{ wordpress_image }}
 Network=caddy.network
 EnvironmentFile=/etc/wordpress/wordpress.env
 Volume=wordpress-html:/var/www/html
+{# DB-independent liveness — a static asset, so a database blip never #}
+{# restart-loops apache; HealthOnFailure=kill + Restart=on-failure self-heals. #}
+HealthCmd=curl -fsS http://127.0.0.1/wp-includes/images/blank.gif -o /dev/null
+HealthInterval=30s
+HealthTimeout=5s
+HealthRetries=3
+HealthStartPeriod=120s
+HealthOnFailure=kill
 
 [Service]
 Restart=on-failure

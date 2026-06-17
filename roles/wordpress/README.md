@@ -4,7 +4,8 @@ WordPress as rootful podman quadlets — the `wordpress` (Apache/PHP) container,
 its `wordpress-db` mariadb database, and a `wordpress-redis` object cache —
 served at its own `wordpress_domains` via a caddy public site block. Core
 and uploads persist in the `wordpress-html` volume, the database in
-`wordpress-db`. Targets openSUSE Leap 16.
+`wordpress-db`; each container self-heals via a healthcheck. Targets openSUSE
+Leap 16.
 
 ## Database
 
@@ -34,6 +35,14 @@ step is installing and enabling the Redis Object Cache plugin (via `wp`, below,
 or wp-admin); it reads the constants and connects with no further config.
 wordpress only `Wants` the cache — if it is down the plugin's drop-in degrades to
 WordPress's default in-process cache.
+
+## Scheduled tasks
+
+`DISABLE_WP_CRON` takes wp-cron off visitor page-loads; a `wordpress-cron.timer`
+runs `wp cron event run --due-now` every 5 minutes instead, so scheduled tasks
+fire on a fixed cadence regardless of traffic. On a migrated install set it in
+wp-config directly (`wp config set DISABLE_WP_CRON true --raw`) — the bundled
+constant only lands on a fresh, role-generated config.
 
 ## Behind Caddy
 
