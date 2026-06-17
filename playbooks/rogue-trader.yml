@@ -5,19 +5,31 @@
     common_hostname: rogue-trader
     # Leap 16's sles cloud user holds uid 1000, so the owner takes a free uid.
     common_user_uid: 1026
-    # caddy is staged for WordPress. caddy_domain and the Cloudflare token are
-    # global vault vars (solar's), so override them here: an empty token holds
-    # the vhost on plain HTTP — no ACME, no cert pulled for another host's
-    # domain — until the WordPress role supplies rogue-trader's own domain.
-    caddy_domain: home.arpa
-    caddy_cloudflare_api_token: ""
+    # caddy + wordpress serve emmasedit.com (apex + www) publicly. The Cloudflare
+    # token is scoped to the emmasedit.com zone — distinct from the global caddy
+    # token, which is solar's — so override it here. No internal services run, so
+    # the wildcard vhost is off; caddy issues the cert over DNS-01, so it is in
+    # place before the DNS flip.
+    caddy_wildcard: false
+    caddy_cloudflare_api_token: "{{ emmasedit_cloudflare_api_token }}"
+    wordpress_domains:
+      - emmasedit.com
+      - www.emmasedit.com
+    wordpress_db_password: "{{ rogue_trader_wordpress_db_password }}"
+    wordpress_db_root_password: "{{ rogue_trader_wordpress_db_root_password }}"
+    # The public site needs 80/443 inbound; ssh stays for management.
+    firewalld_services:
+      - ssh
+      - http
+      - https
   roles:
     - common
     - sshd
-    # Pure WireGuard client → the ssh-only default holds. The tunnel initiates
-    # to the Unifi router, so its return traffic rides conntrack (no inbound
-    # 51820/udp), and caddy's http/https stay shut until the WordPress vhost lands.
+    # WireGuard client: ssh for management plus http/https for the public site.
+    # The tunnel initiates outbound to the router, so its return traffic rides
+    # conntrack — no inbound 51820/udp needed.
     - firewalld
     - podman
     - autoupdate
     - caddy
+    - wordpress
