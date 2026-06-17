@@ -2,7 +2,7 @@
 
 WordPress as rootful podman quadlets — the `wordpress` (Apache/PHP) container,
 its `wordpress-db` mariadb database, and a `wordpress-redis` object cache —
-proxied at `wordpress.<wordpress_domain>` via the caddy snippet contract. Core
+served at its own `wordpress_domains` via a caddy public site block. Core
 and uploads persist in the `wordpress-html` volume, the database in
 `wordpress-db`. Targets openSUSE Leap 16.
 
@@ -34,10 +34,12 @@ WordPress's default in-process cache.
 
 ## Behind Caddy
 
-Caddy terminates TLS and forwards plain HTTP to `wordpress:80`. The official
-image already trusts `X-Forwarded-Proto`, so WordPress detects HTTPS behind the
-proxy and stops emitting `http://` URLs. The snippet routes
-`wordpress.<wordpress_domain>`; point wildcard DNS for it at the host.
+Caddy forwards plain HTTP to `wordpress:80`, terminating TLS at the edge when
+`wordpress_tls` is set. The official image already trusts `X-Forwarded-Proto`,
+so WordPress detects HTTPS behind the proxy and stops emitting `http://` URLs. The role writes a
+`sites-public/wordpress.caddy` block routing every name in `wordpress_domains`;
+with `wordpress_tls` (default) the caddy global `acme_dns` certifies them via
+DNS-01. Point DNS for each name at the host.
 
 ## wp-cli
 
@@ -53,8 +55,10 @@ wp redis enable
 
 ## Deploy
 
-Wire it after `podman` and `caddy` on a Leap host, and set the passwords in the
-vault:
+Wire it after `podman` and `caddy` on a Leap host. Set `wordpress_domains` to
+the public names, the DB passwords in the vault, and — for TLS (`wordpress_tls`,
+the default) — caddy's `caddy_cloudflare_api_token` scoped to that zone; set
+`wordpress_tls: false` for plain HTTP instead.
 
 ```yaml
 roles:

@@ -1,4 +1,4 @@
-@wordpress host wordpress.{{ wordpress_domain }}
-handle @wordpress {
+{% set scheme = '' if wordpress_tls else 'http://' %}
+{{ wordpress_domains | map('regex_replace', '^', scheme) | join(', ') }} {
 	reverse_proxy wordpress:80
 }
