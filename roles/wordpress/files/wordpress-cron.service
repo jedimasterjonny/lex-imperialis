@@ -1,0 +1,9 @@
+[Unit]
+Description=WordPress scheduled tasks
+# wp-cron runs through the cli wrapper, which needs the stack up.
+Requires=wordpress.service
+After=wordpress.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/wp cron event run --due-now

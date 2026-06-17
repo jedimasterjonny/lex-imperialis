@@ -82,6 +82,20 @@
     mode: "0755"
   become: true
 
+# wp-cron off visitor page-loads (DISABLE_WP_CRON, set in the env): a system
+# timer runs the scheduled tasks on a fixed cadence instead.
+- name: Install the wp-cron service and timer
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - wordpress-cron.service
+    - wordpress-cron.timer
+  become: true
+
 # Quadlet units only exist after the daemon reload, so apply pending restarts
 # before asserting the services are up.
 - name: Apply pending unit changes
@@ -95,4 +109,14 @@
     - wordpress-redis
     - wordpress-db
     - wordpress
+  become: true
+
+# daemon_reload picks up the new units before enabling; it does not report
+# changed, so the task stays idempotent.
+- name: Enable the wp-cron timer
+  ansible.builtin.systemd_service:
+    name: wordpress-cron.timer
+    enabled: true
+    state: started
+    daemon_reload: true
   become: true
