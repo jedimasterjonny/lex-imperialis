@@ -12,6 +12,9 @@ and uploads persist in the `wordpress-html` volume, the database in
 and `wordpress_db_user` on first init from the credentials file. wordpress
 `Requires`/`After` it, so the database unit starts first; wordpress reconnects
 until mariadb accepts connections, so a cold first boot self-heals.
+`MARIADB_AUTO_UPGRADE` runs `mariadb-upgrade` when the image is a newer major
+than the data dir, so a renovate mariadb bump migrates the system tables on the
+next restart with no manual step.
 
 ## Secrets
 
