@@ -59,12 +59,13 @@
     - Reload systemd
     - Restart wordpress
 
-# The caddy role owns /etc/caddy/sites and imports every sites/*.caddy as
-# matcher + handle snippets inside its wildcard vhost.
+# WordPress is public — it serves its own domains, not a wildcard subdomain —
+# so it registers a full site block in /etc/caddy/sites-public, which the caddy
+# role imports at the top level.
 - name: Register wordpress with the reverse proxy
   ansible.builtin.template:
     src: wordpress.caddy.j2
-    dest: /etc/caddy/sites/wordpress.caddy
+    dest: /etc/caddy/sites-public/wordpress.caddy
     owner: root
     group: root
     mode: "0644"

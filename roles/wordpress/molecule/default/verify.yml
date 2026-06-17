@@ -9,7 +9,7 @@
       ansible.builtin.uri:
         url: http://127.0.0.1/
         headers:
-          Host: "wordpress.{{ wordpress_domain }}"
+          Host: "{{ wordpress_domains[0] }}"
         follow_redirects: none
         status_code: [200, 301, 302]
       register: wordpress_proxied
@@ -24,7 +24,7 @@
       ansible.builtin.uri:
         url: http://127.0.0.1/wp-admin/install.php
         headers:
-          Host: "wordpress.{{ wordpress_domain }}"
+          Host: "{{ wordpress_domains[0] }}"
         return_content: true
       register: wordpress_install
       until: "'WordPress' in wordpress_install.content"

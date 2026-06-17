@@ -6,3 +6,9 @@ caddy_domain: home.arpa
 # Cloudflare API token for the DNS-01 challenge (vault-sourced). Empty keeps
 # the wildcard vhost on plain HTTP, so molecule never reaches for ACME.
 caddy_cloudflare_api_token: ""
+
+# Render the *.{{ caddy_domain }} wildcard vhost. True for internal-service
+# hosts whose backends register sites/*.caddy matcher snippets. A host serving
+# only an explicit public site (sites-public/*.caddy) sets this false, so caddy
+# never provisions a pointless wildcard cert.
+caddy_wildcard: true

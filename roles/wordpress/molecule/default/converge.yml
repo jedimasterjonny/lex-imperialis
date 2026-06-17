@@ -5,6 +5,12 @@
     # Throwaway credentials for the ephemeral molecule database.
     wordpress_db_password: molecule
     wordpress_db_root_password: molecule-root
+    # No real domain or ACME in the container: serve the test host over plain
+    # HTTP, and drop caddy's wildcard vhost so only the wordpress block renders.
+    wordpress_tls: false
+    wordpress_domains:
+      - wordpress.home.arpa
+    caddy_wildcard: false
   tasks:
     - name: Apply the podman role
       ansible.builtin.include_role:
