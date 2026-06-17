@@ -108,3 +108,17 @@
       register: wordpress_cron_timer
       become: true
       failed_when: wordpress_cron_timer.status.ActiveState != 'active'
+
+    # podman healthcheck run executes each container's HealthCmd; rc 0 = healthy.
+    - name: Each container passes its healthcheck
+      ansible.builtin.command: "podman healthcheck run {{ item }}"
+      loop:
+        - wordpress-redis
+        - wordpress-db
+        - wordpress
+      register: wordpress_health
+      until: wordpress_health.rc == 0
+      retries: 12
+      delay: 10
+      changed_when: false
+      become: true
