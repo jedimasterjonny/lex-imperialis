@@ -8,6 +8,12 @@ Network=caddy.network
 {# Pure object cache: cap memory with LRU eviction and disable RDB/AOF, so it #}
 {# needs no volume and never persists to disk. #}
 Exec=redis-server --maxmemory {{ wordpress_redis_maxmemory }} --maxmemory-policy allkeys-lru --save ""
+HealthCmd=redis-cli ping
+HealthInterval=30s
+HealthTimeout=5s
+HealthRetries=3
+HealthStartPeriod=30s
+HealthOnFailure=kill
 
 [Service]
 Restart=on-failure

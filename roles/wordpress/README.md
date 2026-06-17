@@ -4,7 +4,8 @@ WordPress as rootful podman quadlets — the `wordpress` (Apache/PHP) container,
 its `wordpress-db` mariadb database, and a `wordpress-redis` object cache —
 served at its own `wordpress_domains` via a caddy public site block. Core
 and uploads persist in the `wordpress-html` volume, the database in
-`wordpress-db`. Targets openSUSE Leap 16.
+`wordpress-db`; each container self-heals via a healthcheck. Targets openSUSE
+Leap 16.
 
 ## Database
 
