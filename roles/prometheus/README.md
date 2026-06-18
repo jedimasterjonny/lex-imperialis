@@ -29,5 +29,7 @@ The role's host is the NAS, not a fleet openSUSE node, which shapes it:
 - `prometheus_cadvisor_targets` — list of `host:8080` scrape targets, scraped at
   30s to match cadvisor's housekeeping interval.
 
-A changed `prometheus.yml` is hot-reloaded via `/-/reload`
-(`--web.enable-lifecycle`); the container is not restarted.
+A changed `prometheus.yml` recreates the container. The config is bind-mounted as
+a single file; Ansible's atomic write gives it a new inode that the pinned mount
+never sees, so a hot `/-/reload` reads the stale config — only a recreate
+re-resolves the mount. The TSDB is a directory mount, so it survives.
