@@ -1,8 +1,9 @@
 # prometheus
 
 Prometheus as a single Docker container, deployed from a templated compose
-project with `community.docker.docker_compose_v2`. It scrapes itself and the
-`node_exporter` targets in `prometheus_node_targets`.
+project with `community.docker.docker_compose_v2`. It scrapes itself, the
+`node_exporter` targets in `prometheus_node_targets`, and the `cadvisor` targets
+in `prometheus_cadvisor_targets`.
 
 ## Target: administratum (Synology)
 
@@ -25,6 +26,8 @@ The role's host is the NAS, not a fleet openSUSE node, which shapes it:
 - `prometheus_project_dir` — where `compose.yaml` + `prometheus.yml` are written.
 - `prometheus_data_dir` — host path bind-mounted as the TSDB (`/prometheus`).
 - `prometheus_node_targets` — list of `host:9100` scrape targets.
+- `prometheus_cadvisor_targets` — list of `host:8080` scrape targets, scraped at
+  30s to match cadvisor's housekeeping interval.
 
 A changed `prometheus.yml` is hot-reloaded via `/-/reload`
 (`--web.enable-lifecycle`); the container is not restarted.
