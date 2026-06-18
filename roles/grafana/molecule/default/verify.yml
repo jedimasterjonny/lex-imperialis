@@ -38,7 +38,7 @@
             | list | length > 0
         fail_msg: No default prometheus datasource is provisioned
 
-    - name: Search for the node exporter dashboard
+    - name: Search the provisioned dashboards
       ansible.builtin.uri:
         url: http://127.0.0.1/api/search?type=dash-db
         headers:
@@ -48,11 +48,15 @@
         force_basic_auth: true
       register: grafana_dashboards
 
-    - name: The node exporter dashboard is provisioned
+    - name: The canned dashboards are provisioned
       ansible.builtin.assert:
         that:
           - >-
             grafana_dashboards.json
             | selectattr('title', 'eq', 'Node Exporter Full')
             | list | length > 0
-        fail_msg: The Node Exporter Full dashboard is not provisioned
+          - >-
+            grafana_dashboards.json
+            | selectattr('title', 'eq', 'cadvisor dashboard')
+            | list | length > 0
+        fail_msg: The Node Exporter Full and cadvisor dashboards are not both provisioned

@@ -18,10 +18,13 @@
         return_content: true
       register: prometheus_targets
 
-    - name: The node scrape job is configured
+    - name: The node and cadvisor scrape jobs are configured
       ansible.builtin.assert:
         that:
           - >-
             prometheus_targets.json.data.activeTargets
             | selectattr('labels.job', 'eq', 'node') | list | length > 0
-        fail_msg: Prometheus has no node scrape targets
+          - >-
+            prometheus_targets.json.data.activeTargets
+            | selectattr('labels.job', 'eq', 'cadvisor') | list | length > 0
+        fail_msg: Prometheus has no node or cadvisor scrape targets
