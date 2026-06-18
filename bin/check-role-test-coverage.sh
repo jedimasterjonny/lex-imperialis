@@ -11,7 +11,7 @@ set -euo pipefail
 roles_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/roles"
 
 # Roles guaranteed green on openSUSE Leap 16, the Leap server's baseline.
-leap_roles="autoupdate caddy common firewalld motd podman sshd wordpress"
+leap_roles="autoupdate caddy common firewalld motd podman podman_backup sshd wordpress"
 
 status=0
 for role_path in "$roles_dir"/*/; do
