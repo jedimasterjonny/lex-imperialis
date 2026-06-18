@@ -1,0 +1,26 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    # name="cadvisor" proves the whole chain: --cgroupns=host lets it see its own
+    # cgroup, and the podman factory (fed by the mounted socket) labels it by name
+    # rather than a bare cgroup id. Retried: the first housekeeping pass that
+    # discovers the container can land just after the endpoint starts serving.
+    - name: Wait for cadvisor to export named container metrics
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8080/metrics
+        return_content: true
+      register: cadvisor_metrics
+      until:
+        - cadvisor_metrics.status == 200
+        - '''name="cadvisor"'' in cadvisor_metrics.content'
+      retries: 30
+      delay: 2
+
+    - name: Container metrics are exported
+      ansible.builtin.assert:
+        that:
+          - "'cadvisor_version_info' in cadvisor_metrics.content"
+          - "'container_cpu_usage_seconds_total{' in cadvisor_metrics.content"
+        fail_msg: cadvisor served no container_cpu_usage_seconds_total metric

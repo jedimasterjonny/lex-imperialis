@@ -1,0 +1,31 @@
+---
+# cadvisor's native podman factory reads the podman API socket to label
+# containers by name and image; without it containers show only as cgroup ids.
+- name: Enable the podman API socket
+  ansible.builtin.systemd_service:
+    name: podman.socket
+    enabled: true
+    state: started
+  become: true
+
+- name: Install the cadvisor container unit
+  ansible.builtin.template:
+    src: cadvisor.container.j2
+    dest: /etc/containers/systemd/cadvisor.container
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart cadvisor
+
+# Restart-on-change runs at flush; this generates the quadlet unit and asserts it
+# is up even on a converge where nothing changed and no handler fired.
+- name: Apply pending unit changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Start cadvisor
+  ansible.builtin.systemd_service:
+    name: cadvisor
+    state: started
+    daemon_reload: true
+  become: true
