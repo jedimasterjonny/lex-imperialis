@@ -5,8 +5,12 @@ its system default (`public`); the role only adds to it.
 
 `firewalld_services` and `firewalld_ports` are the openings; a host needing more
 than the `ssh` baseline sets its own list in the play (`playbooks/solar.yml` opens caddy's
-80/443 plus QUIC and the Plex port set). Rules are written `permanent` and
-`immediate`, so they apply at once and survive a reload or reboot.
+80/443 plus QUIC and the Plex port set). `firewalld_rich_rules` takes full
+rich-rule strings for what a plain service/port can't express — chiefly scoping a
+port to a source subnet so a public host opens it only to its private network
+(`playbooks/rogue-trader.yml` opens node_exporter's 9100 to the WireGuard subnet).
+Rules are written `permanent` and `immediate`, so they apply at once and survive a
+reload or reboot.
 
 incus needs firewalld up for its bridge-trust task, so the plays apply this role
 before incus.

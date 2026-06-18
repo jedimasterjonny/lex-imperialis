@@ -11,3 +11,8 @@ firewalld_packages:
 firewalld_services:
   - ssh
 firewalld_ports: []
+
+# Rich rules, for openings a plain service/port can't express — chiefly scoping a
+# port to a source so it is not exposed on every interface (a public host opening
+# a port only to its private subnet). Each item is a full rich-rule string.
+firewalld_rich_rules: []

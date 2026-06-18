@@ -7,10 +7,13 @@
         name: firewalld
       vars:
         # Exercise the per-host extension path the plays use: a service beyond
-        # the baseline, a port with a protocol, and a port range.
+        # the baseline, a port with a protocol, a port range, and a rich rule
+        # scoping a port to a source subnet.
         firewalld_services:
           - ssh
           - http
         firewalld_ports:
           - 443/udp
           - 32412-32414/udp
+        firewalld_rich_rules:
+          - rule family="ipv4" source address="192.168.3.0/24" port port="9100" protocol="tcp" accept
