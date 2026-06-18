@@ -1,0 +1,11 @@
+---
+# Uniquely named, never the fleet-shared "Reload systemd": a duplicate handler
+# name whose winning definition lives in a later role is not flushed by an
+# earlier role's mid-play flush_handlers, so the restart is lost. daemon_reload
+# regenerates the quadlet-derived unit before restarting it.
+- name: Restart cadvisor
+  ansible.builtin.systemd_service:
+    name: cadvisor
+    state: restarted
+    daemon_reload: true
+  become: true

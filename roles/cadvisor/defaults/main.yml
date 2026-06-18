@@ -1,0 +1,18 @@
+---
+# Address cadvisor binds. Empty serves every interface; a host on a public
+# network overrides it to a private IP so the metrics never reach the internet.
+cadvisor_listen_ip: ""
+cadvisor_port: 8080
+
+# Units this one must start after (space-separated; becomes Wants= + After=). A
+# host that binds a VPN-interface address sets the interface's unit here so the
+# bind can't race the address at boot. Empty for a host binding every interface.
+cadvisor_after: ""
+
+# cadvisor is heavyweight at its defaults. Poll container stats every 30s rather
+# than the default 1s, drop per-container labels, and disable the high-cardinality
+# collectors the dashboard never reads — keeping cpu, cpuLoad, memory, network,
+# disk, diskIO, and oom_event. The prometheus role scrapes cadvisor at this same
+# cadence; keep the two in step or samples store twice.
+cadvisor_housekeeping_interval: 30s
+cadvisor_disable_metrics: advtcp,app,cpu_topology,cpuset,hugetlb,memory_numa,percpu,perf_event,process,referenced_memory,resctrl,sched,tcp,udp

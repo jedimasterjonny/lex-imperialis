@@ -38,16 +38,19 @@
 # revision bump propagates while converge stays idempotent. Skipped under --check:
 # get_url probes the URL to plan the fetch and grafana.com's download endpoint
 # rejects that probe (405), so this external fetch cannot be dry-run.
-- name: Download the node exporter dashboard
+- name: Download the dashboards
   ansible.builtin.get_url:
-    url: https://grafana.com/api/dashboards/1860/revisions/{{ grafana_node_exporter_dashboard_revision }}/download
-    dest: /etc/grafana/dashboards/node-exporter-full.json
+    url: https://grafana.com/api/dashboards/{{ item.id }}/revisions/{{ item.revision }}/download
+    dest: /etc/grafana/dashboards/{{ item.file }}
     owner: root
     group: root
     mode: "0644"
     force: true
   become: true
   when: not ansible_check_mode
+  loop: "{{ grafana_dashboards }}"
+  loop_control:
+    label: "{{ item.file }}"
   notify: Restart grafana
 
 # Keeps the password out of the world-readable unit; grafana reads it from the
