@@ -10,6 +10,11 @@ machine stats rather than only its own. The role enables `podman.socket` and
 mounts it read-only so cadvisor's native podman factory labels containers by
 `name` and `image`; without it containers show only as cgroup ids.
 
+`--security-opt=label=disable` lifts SELinux `container_t` confinement. On an
+enforcing host it otherwise denies the inotify watch on `/sys/fs/cgroup` (which
+crashes cadvisor) and the write to the podman socket. A non-enforcing host (e.g.
+the incus molecule container) ignores it.
+
 OOM-event detection is off: it reads `/dev/kmsg`, which an unprivileged container
 cannot, so `container_oom_events_total` stays flat. The rest of the collectors
 are unaffected.

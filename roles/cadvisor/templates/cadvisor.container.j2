@@ -16,8 +16,12 @@ Image={{ cadvisor_image }}
 # namespace so it sees every container's cgroups, not just its own; read-only
 # binds of / and /sys for machine and cgroup stats; and the podman socket so its
 # native podman factory labels containers by name and image.
+# label=disable lifts SELinux container_t confinement: on an enforcing host it
+# otherwise denies the inotify watch on /sys/fs/cgroup (fatal) and the write to
+# the podman socket. Trusted first-party container, so disabling the label beats
+# shipping a bespoke policy module.
 Network=host
-PodmanArgs=--cgroupns=host
+PodmanArgs=--cgroupns=host --security-opt=label=disable
 Volume=/:/rootfs:ro,rslave
 Volume=/sys:/sys:ro
 Volume=/run/podman/podman.sock:/var/run/podman/podman.sock:ro
