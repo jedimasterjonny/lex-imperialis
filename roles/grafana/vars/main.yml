@@ -1,6 +1,6 @@
 ---
 # renovate's image manager bumps the tag.
-grafana_image: docker.io/grafana/grafana-oss:12.1.0@sha256:6ac590e7cabc2fbe8d7b8fc1ce9c9f0582177b334e0df9c927ebd9670469440f
+grafana_image: docker.io/grafana/grafana-oss:12.4.3@sha256:2e986801428cd689c2358605289c90ab37d2b39e24808874971f54c99bcdc412
 
 # Node Exporter Full dashboard (grafana.com 1860), fetched at this revision
 # rather than vendored; a custom renovate manager bumps it (see renovate.json).
