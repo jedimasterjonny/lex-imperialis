@@ -1,0 +1,98 @@
+---
+- name: Create the config directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - /etc/grafana
+    - /etc/grafana/provisioning/datasources
+    - /etc/grafana/provisioning/dashboards
+    - /etc/grafana/dashboards
+  become: true
+
+- name: Provision the prometheus datasource
+  ansible.builtin.template:
+    src: datasource.yml.j2
+    dest: /etc/grafana/provisioning/datasources/prometheus.yml
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart grafana
+
+- name: Provision the dashboard provider
+  ansible.builtin.copy:
+    src: dashboards.yml
+    dest: /etc/grafana/provisioning/dashboards/default.yml
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart grafana
+
+# Fetched at the pinned revision (renovate-managed) rather than vendored. force
+# re-fetches the immutable revision but only rewrites it on a real change, so a
+# revision bump propagates while converge stays idempotent. Skipped under --check:
+# get_url probes the URL to plan the fetch and grafana.com's download endpoint
+# rejects that probe (405), so this external fetch cannot be dry-run.
+- name: Download the node exporter dashboard
+  ansible.builtin.get_url:
+    url: https://grafana.com/api/dashboards/1860/revisions/{{ grafana_node_exporter_dashboard_revision }}/download
+    dest: /etc/grafana/dashboards/node-exporter-full.json
+    owner: root
+    group: root
+    mode: "0644"
+    force: true
+  become: true
+  when: not ansible_check_mode
+  notify: Restart grafana
+
+# Keeps the password out of the world-readable unit; grafana reads it from the
+# environment instead.
+- name: Deploy the environment file
+  ansible.builtin.template:
+    src: env.j2
+    dest: /etc/grafana/env
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  no_log: true
+  notify: Restart grafana
+
+# The caddy role owns /etc/caddy/sites and imports every sites/*.caddy into the
+# wildcard vhost; this snippet routes grafana.<domain> to the container.
+- name: Register the caddy reverse-proxy snippet
+  ansible.builtin.template:
+    src: grafana.caddy.j2
+    dest: /etc/caddy/sites/grafana.caddy
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart caddy for grafana
+
+- name: Install the grafana container unit
+  ansible.builtin.template:
+    src: grafana.container.j2
+    dest: /etc/containers/systemd/grafana.container
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart grafana
+
+# Restart-on-change runs at flush; this generates the quadlet unit and asserts it
+# is up even on a converge where nothing changed and no handler fired.
+- name: Apply pending unit changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Start grafana
+  ansible.builtin.systemd_service:
+    name: grafana
+    state: started
+    daemon_reload: true
+  become: true

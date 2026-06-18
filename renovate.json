@@ -17,9 +17,27 @@
       "matchStrings": ["image: (?<depName>[^\\s:]+):(?<currentValue>[^\\s@]+)(?:@(?<currentDigest>sha256:\\S+))?"],
       "autoReplaceStringTemplate": "image: {{{depName}}}:{{{newValue}}}{{#if newDigest}}@{{{newDigest}}}{{/if}}",
       "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "Grafana dashboard revisions pinned in role vars; the role fetches them from grafana.com at converge.",
+      "managerFilePatterns": ["/^roles/.+/vars/main\\.yml$/"],
+      "matchStrings": ["# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+) packageName=(?<packageName>\\S+)\\s+\\S+: (?<currentValue>\\d+)"]
     }
   ],
+  "customDatasources": {
+    "grafana-dashboards": {
+      "defaultRegistryUrlTemplate": "https://grafana.com/api/dashboards/{{packageName}}",
+      "format": "json",
+      "transformTemplates": ["{ \"releases\": [ { \"version\": $string(revision) } ] }"]
+    }
+  },
   "packageRules": [
+    {
+      "description": "Grafana dashboard revisions are bare incrementing integers.",
+      "matchDatasources": ["custom.grafana-dashboards"],
+      "versioning": "regex:^(?<major>\\d+)$"
+    },
     {
       "description": "pinDigest updates carry no version change, so the lint check is enough to merge them unattended.",
       "matchUpdateTypes": ["pinDigest"],
