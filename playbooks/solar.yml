@@ -49,6 +49,8 @@
       - 32469/tcp
       # node_exporter, scraped by Prometheus on administratum over the LAN.
       - 9100/tcp
+    # Grafana reads the Prometheus on administratum (the NAS) over the LAN.
+    grafana_prometheus_url: http://administratum:9090
   roles:
     - common
     - sshd
@@ -57,6 +59,7 @@
     - autoupdate
     - nfs
     - caddy
+    - grafana
     - arr
     - podman_backup
     - node_exporter
