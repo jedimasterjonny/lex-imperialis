@@ -1,0 +1,21 @@
+---
+# Regression guard for the single-file bind-mount trap (mechanism in the role's
+# tasks): a config change on an already-running container must recreate it, or the
+# stale inode mount keeps the old config. verify asserts the new target took effect.
+- name: Change the scrape config on the running prometheus
+  hosts: all
+  tasks:
+    - name: Re-apply prometheus with an added sentinel target
+      ansible.builtin.include_role:
+        name: prometheus
+      # node_targets is the change under test; the other two mirror converge and
+      # must stay — defaults would drop the cadvisor job verify checks for and the
+      # apparmor=unconfined the nested incus container needs to start.
+      vars:
+        prometheus_node_targets:
+          - localhost:9100
+          - sentinel-regression:9100
+        prometheus_cadvisor_targets:
+          - localhost:8080
+        prometheus_security_opt:
+          - apparmor=unconfined
