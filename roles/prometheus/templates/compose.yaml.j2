@@ -16,7 +16,6 @@ services:
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
-      - --web.enable-lifecycle
     volumes:
       - {{ prometheus_project_dir }}/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - {{ prometheus_data_dir }}:/prometheus
