@@ -1,0 +1,13 @@
+---
+# Config is bind-mounted, so a changed prometheus.yml leaves the running
+# container untouched; --web.enable-lifecycle lets us hot-reload it instead of a
+# restart. Retry: on the first converge the container has only just come up.
+- name: Reload prometheus
+  ansible.builtin.uri:
+    url: http://localhost:9090/-/reload
+    method: POST
+    status_code: 200
+  register: prometheus_reload
+  until: prometheus_reload.status == 200
+  retries: 15
+  delay: 2
