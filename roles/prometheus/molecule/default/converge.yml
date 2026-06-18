@@ -43,6 +43,8 @@
       vars:
         prometheus_node_targets:
           - localhost:9100
+        prometheus_cadvisor_targets:
+          - localhost:8080
         # The nested container cannot load an AppArmor profile, so run the
         # container unconfined; production keeps docker's default.
         prometheus_security_opt:

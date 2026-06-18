@@ -10,3 +10,10 @@ scrape_configs:
   - job_name: node
     static_configs:
       - targets: {{ prometheus_node_targets | to_json }}
+
+  - job_name: cadvisor
+    # cadvisor polls every 30s (its housekeeping interval), so scrape at the same
+    # cadence rather than the global 15s and avoid storing each sample twice.
+    scrape_interval: 30s
+    static_configs:
+      - targets: {{ prometheus_cadvisor_targets | to_json }}

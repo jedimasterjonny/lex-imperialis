@@ -9,6 +9,10 @@ prometheus_data_dir: /var/lib/prometheus
 # job carries no targets until a host sets them.
 prometheus_node_targets: []
 
+# cadvisor scrape targets, each "host:8080". Empty by default, so the cadvisor
+# job carries no targets until a host sets them.
+prometheus_cadvisor_targets: []
+
 # Container security options (compose security_opt). Empty keeps docker's default
 # profiles; the molecule scenario sets apparmor=unconfined because its nested CI
 # container cannot load an AppArmor profile.
