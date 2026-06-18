@@ -18,7 +18,7 @@
     src: prometheus.yml.j2
     dest: "{{ prometheus_project_dir }}/prometheus.yml"
     mode: "0644"
-  notify: Reload prometheus
+  register: prometheus_config
 
 - name: Deploy the compose file
   ansible.builtin.template:
@@ -29,9 +29,15 @@
 # No become: on the NAS sudo needs a password, so the deploy runs as the
 # docker-group user. PATH carries /usr/local/bin, where the DSM docker CLI lives
 # off the non-interactive PATH; harmless on a host where docker is already found.
+#
+# recreate on a config change: prometheus.yml is bind-mounted as a single file, so
+# Ansible's atomic write gives it a new inode the pinned mount never sees — the
+# running container (or a hot /-/reload) keeps reading the stale file. A compose
+# change recreates via auto.
 - name: Bring the prometheus stack up
   community.docker.docker_compose_v2:
     project_src: "{{ prometheus_project_dir }}"
     state: present
+    recreate: "{{ 'always' if prometheus_config.changed else 'auto' }}"
   environment:
     PATH: "/usr/local/bin:{{ ansible_facts.env.PATH }}"

@@ -12,19 +12,36 @@
       retries: 30
       delay: 2
 
-    - name: Read the configured scrape targets
+    # Poll, not a one-shot read: verify runs right after side_effect recreates the
+    # container, and /-/ready goes green before the scrape pools register their
+    # targets.
+    - name: Wait for the node and cadvisor scrape jobs to register
       ansible.builtin.uri:
         url: http://127.0.0.1:9090/api/v1/targets
         return_content: true
       register: prometheus_targets
+      until:
+        - >-
+          prometheus_targets.json.data.activeTargets
+          | selectattr('labels.job', 'eq', 'node') | list | length > 0
+        - >-
+          prometheus_targets.json.data.activeTargets
+          | selectattr('labels.job', 'eq', 'cadvisor') | list | length > 0
+      retries: 30
+      delay: 2
 
-    - name: The node and cadvisor scrape jobs are configured
+    - name: Read the loaded runtime config
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9090/api/v1/status/config
+        return_content: true
+      register: prometheus_loaded_config
+
+    # side_effect added this target; finding it in the LOADED config proves the
+    # recreate applied the change — a stale single-file mount + reload would not.
+    - name: The side-effect config change reached the running container
       ansible.builtin.assert:
         that:
-          - >-
-            prometheus_targets.json.data.activeTargets
-            | selectattr('labels.job', 'eq', 'node') | list | length > 0
-          - >-
-            prometheus_targets.json.data.activeTargets
-            | selectattr('labels.job', 'eq', 'cadvisor') | list | length > 0
-        fail_msg: Prometheus has no node or cadvisor scrape targets
+          - "'sentinel-regression:9100' in prometheus_loaded_config.json.data.yaml"
+        fail_msg: >-
+          The running prometheus did not pick up the config change — the container
+          was not recreated (stale single-file bind mount).
