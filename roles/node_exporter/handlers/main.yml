@@ -1,0 +1,13 @@
+---
+# Listed reload-first: handlers run in definition order, and restarts of
+# quadlet-generated units need the regenerated units loaded.
+- name: Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  become: true
+
+- name: Restart node-exporter
+  ansible.builtin.systemd_service:
+    name: node-exporter
+    state: restarted
+  become: true

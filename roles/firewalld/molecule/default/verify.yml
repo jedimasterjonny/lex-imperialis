@@ -34,3 +34,21 @@
       loop:
         - 443/udp
         - 32412-32414/udp
+
+    - name: Read the permanent rich rules
+      ansible.builtin.command: firewall-cmd --permanent --list-rich-rules
+      changed_when: false
+      become: true
+      register: firewalld_rich_rules_out
+
+    # One rule line scoping the port to the source — not two loose substrings
+    # (a split rule would pass) nor the exact rule string (firewalld may requote
+    # or reorder tokens, differently across Tumbleweed and Leap).
+    - name: The source-scoped rich rule is present
+      ansible.builtin.assert:
+        that:
+          - >-
+            firewalld_rich_rules_out.stdout_lines
+            | select('search', '192.168.3.0/24') | select('search', '9100')
+            | list | length > 0
+        fail_msg: the source-scoped 9100 rich rule is absent

@@ -47,6 +47,8 @@
       - 32410/udp
       - 32412-32414/udp
       - 32469/tcp
+      # node_exporter, scraped by Prometheus on administratum over the LAN.
+      - 9100/tcp
   roles:
     - common
     - sshd
@@ -57,3 +59,4 @@
     - caddy
     - arr
     - podman_backup
+    - node_exporter

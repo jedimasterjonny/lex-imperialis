@@ -1,0 +1,19 @@
+---
+- name: Configure administratum
+  hosts: administratum
+  # The NAS isn't a fleet openSUSE host, so it gets none of the common/sshd/zypper
+  # roles, and sudo needs a password — the deploy runs unprivileged as the
+  # docker-group user.
+  become: false
+  vars:
+    # Prometheus lives on a subdir of the NAS's own astropath volume: the compose
+    # project beside its TSDB data (a local bind mount, not NFS).
+    prometheus_project_dir: /volume2/astropath/prometheus
+    prometheus_data_dir: /volume2/astropath/prometheus/data
+    # Scrape both node_exporters: solar over the LAN, rogue-trader over WireGuard
+    # (the NAS can't resolve its name, so use the WG address already in the repo).
+    prometheus_node_targets:
+      - solar:9100
+      - 192.168.3.3:9100
+  roles:
+    - prometheus
