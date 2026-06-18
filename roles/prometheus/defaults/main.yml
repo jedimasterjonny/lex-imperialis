@@ -1,0 +1,15 @@
+---
+# Where the compose project (compose.yaml + prometheus.yml) is written.
+prometheus_project_dir: /opt/prometheus
+
+# Host path bind-mounted as the TSDB data dir (/prometheus in the container).
+prometheus_data_dir: /var/lib/prometheus
+
+# node_exporter scrape targets, each "host:9100". Empty by default, so the node
+# job carries no targets until a host sets them.
+prometheus_node_targets: []
+
+# Container security options (compose security_opt). Empty keeps docker's default
+# profiles; the molecule scenario sets apparmor=unconfined because its nested CI
+# container cannot load an AppArmor profile.
+prometheus_security_opt: []

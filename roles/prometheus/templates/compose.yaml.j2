@@ -1,0 +1,22 @@
+# Managed by Ansible (prometheus role).
+services:
+  prometheus:
+    image: {{ prometheus_image }}
+    container_name: prometheus
+    # Host network: the container resolves scrape targets and routes to them
+    # exactly as the host does, and Prometheus serves on the host's :9090.
+    network_mode: host
+{% if prometheus_security_opt %}
+    security_opt:
+{% for opt in prometheus_security_opt %}
+      - {{ opt }}
+{% endfor %}
+{% endif %}
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    volumes:
+      - {{ prometheus_project_dir }}/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - {{ prometheus_data_dir }}:/prometheus
