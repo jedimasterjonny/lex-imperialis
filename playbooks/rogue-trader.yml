@@ -29,15 +29,18 @@
       - ssh
       - http
       - https
-    # node_exporter binds the WireGuard address only, so the public interface
-    # never exposes it. The scrape rides the WG tunnel but arrives with the LAN
-    # source (the router forwards it without NAT), so 9100 is permitted from the
-    # LAN subnet. Start the unit after the tunnel so the bind can't race wg0's
-    # address at boot.
+    # node_exporter and cadvisor bind the WireGuard address only, so the public
+    # interface never exposes them. The scrape rides the WG tunnel but arrives
+    # with the LAN source (the router forwards it without NAT), so the ports are
+    # permitted from the LAN subnet. Start the units after the tunnel so the bind
+    # can't race wg0's address at boot.
     node_exporter_listen_address: 192.168.3.3:9100
     node_exporter_after: wg-quick@wg0.service
+    cadvisor_listen_ip: 192.168.3.3
+    cadvisor_after: wg-quick@wg0.service
     firewalld_rich_rules:
       - rule family="ipv4" source address="192.168.1.0/24" port port="9100" protocol="tcp" accept
+      - rule family="ipv4" source address="192.168.1.0/24" port port="8080" protocol="tcp" accept
   roles:
     - common
     - sshd
@@ -52,3 +55,4 @@
     - wordpress
     - podman_backup
     - node_exporter
+    - cadvisor

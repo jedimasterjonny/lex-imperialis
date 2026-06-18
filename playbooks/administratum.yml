@@ -15,5 +15,9 @@
     prometheus_node_targets:
       - solar:9100
       - 192.168.3.3:9100
+    # cadvisor on the same two hosts, scraped the same way.
+    prometheus_cadvisor_targets:
+      - solar:8080
+      - 192.168.3.3:8080
   roles:
     - prometheus
