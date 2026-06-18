@@ -1,0 +1,22 @@
+[Unit]
+Description=Prometheus node exporter
+{% if node_exporter_after %}
+Wants={{ node_exporter_after }}
+After={{ node_exporter_after }}
+{% endif %}
+
+[Container]
+ContainerName=node-exporter
+Image={{ node_exporter_image }}
+# Host network and PID namespace plus a read-only root bind let the exporter
+# report the host's interfaces, processes, and filesystems rather than its own.
+Network=host
+PodmanArgs=--pid=host
+Volume=/:/host:ro,rslave
+Exec=--path.rootfs=/host --web.listen-address={{ node_exporter_listen_address }}
+
+[Service]
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
