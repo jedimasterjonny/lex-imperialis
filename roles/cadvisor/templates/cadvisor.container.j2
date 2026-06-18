@@ -1,0 +1,30 @@
+[Unit]
+Description=cAdvisor container metrics exporter
+# The podman factory needs the API socket up first, else it never registers and
+# containers lose their name and image labels.
+Wants=podman.socket
+After=podman.socket
+{% if cadvisor_after %}
+Wants={{ cadvisor_after }}
+After={{ cadvisor_after }}
+{% endif %}
+
+[Container]
+ContainerName=cadvisor
+Image={{ cadvisor_image }}
+# Host network so Prometheus scrapes it like the other exporters. The host cgroup
+# namespace so it sees every container's cgroups, not just its own; read-only
+# binds of / and /sys for machine and cgroup stats; and the podman socket so its
+# native podman factory labels containers by name and image.
+Network=host
+PodmanArgs=--cgroupns=host
+Volume=/:/rootfs:ro,rslave
+Volume=/sys:/sys:ro
+Volume=/run/podman/podman.sock:/var/run/podman/podman.sock:ro
+Exec=--port={{ cadvisor_port }}{% if cadvisor_listen_ip %} --listen_ip={{ cadvisor_listen_ip }}{% endif %} --housekeeping_interval={{ cadvisor_housekeeping_interval }} --store_container_labels=false --disable_metrics={{ cadvisor_disable_metrics }}
+
+[Service]
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
