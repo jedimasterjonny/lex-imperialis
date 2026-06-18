@@ -1,0 +1,18 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Wait for the metrics endpoint
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9100/metrics
+        return_content: true
+      register: node_exporter_metrics
+      until: node_exporter_metrics.status == 200
+      retries: 30
+      delay: 2
+
+    - name: Host metrics are exported
+      ansible.builtin.assert:
+        that: "'node_cpu_seconds_total' in node_exporter_metrics.content"
+        fail_msg: node_exporter served no node_cpu_seconds_total metric

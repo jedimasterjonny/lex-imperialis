@@ -1,0 +1,9 @@
+---
+# Address node_exporter binds. ":9100" serves every interface; a host on a public
+# network overrides it to a private IP so the metrics never reach the internet.
+node_exporter_listen_address: ":9100"
+
+# Units this one must start after (space-separated; becomes Wants= + After=). A
+# host that binds a VPN-interface address sets the interface's unit here so the
+# bind can't race the address at boot. Empty for a host binding every interface.
+node_exporter_after: ""

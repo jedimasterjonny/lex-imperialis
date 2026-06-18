@@ -1,0 +1,49 @@
+---
+# The role's real target is a Synology with docker already installed; here we
+# stand docker up in the throwaway container first, then converge the role.
+- name: Prepare docker
+  hosts: all
+  become: true
+  tasks:
+    # docker-compose is Compose V2, installed as the "docker compose" CLI plugin
+    # the docker_compose_v2 module drives.
+    - name: Install docker and compose
+      community.general.zypper:
+        name:
+          - docker
+          - docker-compose
+        state: present
+
+    # Nested incus: vfs needs no overlay/fuse and always works; the only
+    # container here uses host networking, so docker needs no bridge — skipping
+    # docker0 sidesteps the iptables setup an unprivileged container can't do.
+    - name: Configure the docker daemon for the nested container
+      ansible.builtin.copy:
+        content: |
+          {
+            "storage-driver": "vfs",
+            "bridge": "none",
+            "iptables": false
+          }
+        dest: /etc/docker/daemon.json
+        mode: "0644"
+
+    - name: Enable and start docker
+      ansible.builtin.systemd_service:
+        name: docker
+        enabled: true
+        state: started
+
+- name: Converge
+  hosts: all
+  tasks:
+    - name: Apply the prometheus role
+      ansible.builtin.include_role:
+        name: prometheus
+      vars:
+        prometheus_node_targets:
+          - localhost:9100
+        # The nested container cannot load an AppArmor profile, so run the
+        # container unconfined; production keeps docker's default.
+        prometheus_security_opt:
+          - apparmor=unconfined

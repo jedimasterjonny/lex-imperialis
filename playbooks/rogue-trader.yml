@@ -29,6 +29,14 @@
       - ssh
       - http
       - https
+    # node_exporter binds the WireGuard address only, and 9100 is permitted just
+    # from the WG subnet — so Prometheus on administratum can scrape it while the
+    # public interface never exposes it. Order it after the tunnel so the bind
+    # can't race wg0's address at boot.
+    node_exporter_listen_address: 192.168.3.3:9100
+    node_exporter_after: wg-quick@wg0.service
+    firewalld_rich_rules:
+      - rule family="ipv4" source address="192.168.3.0/24" port port="9100" protocol="tcp" accept
   roles:
     - common
     - sshd
@@ -42,3 +50,4 @@
     - caddy
     - wordpress
     - podman_backup
+    - node_exporter

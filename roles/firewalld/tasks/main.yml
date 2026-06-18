@@ -31,3 +31,12 @@
     state: enabled
   loop: "{{ firewalld_ports }}"
   become: true
+
+- name: Add the configured rich rules
+  ansible.posix.firewalld:
+    rich_rule: "{{ item }}"
+    permanent: true
+    immediate: true
+    state: enabled
+  loop: "{{ firewalld_rich_rules }}"
+  become: true
