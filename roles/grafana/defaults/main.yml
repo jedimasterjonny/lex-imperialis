@@ -1,0 +1,12 @@
+---
+# Prometheus datasource Grafana provisions, set as the default. Generic here so
+# molecule is self-contained; the real host points it at the fleet's Prometheus.
+grafana_prometheus_url: http://localhost:9090
+
+# Admin password, vault-sourced. Empty leaves the image default (admin/admin),
+# fine for molecule; set it on any real host. Rendered no_log into an env file.
+grafana_admin_password: ""
+
+# Domain the reverse proxy routes on: Grafana answers at grafana.<domain>.
+# Follows caddy_domain wherever the vault sets it.
+grafana_domain: "{{ caddy_domain | default('home.arpa') }}"

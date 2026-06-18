@@ -1,0 +1,20 @@
+[Unit]
+Description=Grafana
+
+[Container]
+ContainerName=grafana
+Image={{ grafana_image }}
+Network=caddy.network
+EnvironmentFile=/etc/grafana/env
+Volume=/etc/grafana/provisioning:/etc/grafana/provisioning:ro
+Volume=/etc/grafana/dashboards:/etc/grafana/dashboards:ro
+# :U hands the named volume to the image's grafana user (472), which owns its
+# state dir; rootful podman would otherwise create it root-owned.
+Volume=grafana-data:/var/lib/grafana:U
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

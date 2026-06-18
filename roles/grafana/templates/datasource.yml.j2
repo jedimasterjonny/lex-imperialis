@@ -1,0 +1,9 @@
+# Managed by Ansible (grafana role).
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: {{ grafana_prometheus_url }}
+    isDefault: true
