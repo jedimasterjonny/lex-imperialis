@@ -1,8 +1,9 @@
 # grafana
 
 Grafana as a Podman quadlet container, behind caddy, provisioned with a
-Prometheus datasource and the canned **Node Exporter Full** dashboard
-([grafana.com 1860](https://grafana.com/grafana/dashboards/1860)).
+Prometheus datasource and canned dashboards: **Node Exporter Full**
+([grafana.com 1860](https://grafana.com/grafana/dashboards/1860)) and
+**cadvisor** ([grafana.com 19792](https://grafana.com/grafana/dashboards/19792)).
 
 ## Behind caddy
 
@@ -16,9 +17,9 @@ sites dir).
 - **Datasource** — `provisioning/datasources/prometheus.yml`, a default
   Prometheus at `grafana_prometheus_url` with a fixed `uid: prometheus`.
 - **Dashboards** — `provisioning/dashboards/default.yml` points at
-  `/etc/grafana/dashboards`, where the role fetches the 1860 JSON from
-  grafana.com at the pinned `grafana_node_exporter_dashboard_revision` and mounts
-  it read-only. Its `ds_prometheus` datasource variable auto-selects the default
+  `/etc/grafana/dashboards`, where the role fetches each `grafana_dashboards`
+  entry from grafana.com at its pinned revision and mounts the directory
+  read-only. Each dashboard's datasource variable auto-selects the default
   datasource.
 
 State lives in the `grafana-data` named volume, handed to the image's `grafana`
@@ -31,6 +32,6 @@ user (472) with `:U`.
   into `/etc/grafana/env`. Empty leaves the image default (`admin`/`admin`).
 - `grafana_domain` — vhost domain; follows `caddy_domain`.
 
-The image (`grafana_image`) is pinned by digest and the dashboard revision
-(`grafana_node_exporter_dashboard_revision`) by a custom datasource in
-`renovate.json`; renovate bumps both.
+The image (`grafana_image`) is pinned by digest and each dashboard revision
+(`grafana_dashboards`) by a custom datasource in `renovate.json`; renovate bumps
+all of them.
