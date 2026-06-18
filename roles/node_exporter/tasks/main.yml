@@ -1,0 +1,23 @@
+---
+- name: Install the node-exporter container unit
+  ansible.builtin.template:
+    src: node-exporter.container.j2
+    dest: /etc/containers/systemd/node-exporter.container
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify:
+    - Reload systemd
+    - Restart node-exporter
+
+# The quadlet unit only exists after the daemon reload, so apply pending
+# restarts before asserting the service is up.
+- name: Apply pending unit changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Start node-exporter
+  ansible.builtin.systemd_service:
+    name: node-exporter
+    state: started
+  become: true
