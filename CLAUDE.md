@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # lex-imperialis
 
 Ansible code for a homelab.
@@ -13,6 +17,10 @@ This repo is public: every commit is world-readable and permanent, including git
 - Keep sensitive topology out of the repo — public IPs, external hostnames, exposed ports, and anything that maps the attack surface.
 - A secret that reaches a commit is compromised: rotate it, don't just delete it. Scrubbing history does not undo exposure.
 
+## Secrets
+
+The vault is `inventory/group_vars/all/vault.yml`, decrypted locally with a gitignored `.vault_pass`. Vault var names are host/purpose-scoped (`emmasedit_cloudflare_api_token`) and mapped to a role's generic var in a play's `vars:` block; a vault var named identically to a role's default is read straight from `group_vars/all`.
+
 ## Writing code
 
 Favour the simplest solution that meets current needs; hold to KISS, YAGNI, and DRY. Flag scope creep, unnecessary complexity, and premature optimisation as they appear.
@@ -22,6 +30,27 @@ Favour the simplest solution that meets current needs; hold to KISS, YAGNI, and 
 Loose `roles/` at the repo root — no collection wrapper. Single operator with nothing to publish; revisit only if custom plugins or modules appear.
 
 Fleet playbooks live in `playbooks/`; the bootstrap and molecule playbooks stay with their tooling (`bootstrap/`, `molecule/<tier>/`).
+
+## Fleet
+
+Four hosts in `inventory/hosts.yml`, each configured by `playbooks/<host>.yml` whose `roles:`/`vars:` are that host's spec (names are 40K-themed, not descriptive; `make` defaults `PLAY=scholam`). `scholam` (`this_host`) is the self-managing control host and molecule runner; `administratum` is the Synology NAS — the one non-openSUSE, non-podman host (Prometheus via Docker Compose). Keep host topology (addresses, ports, VPN) out of this file — see **Public repository**.
+
+## Roles
+
+Each role under `roles/` ships a `README.md` documenting its variables and contracts — read it before changing or composing a role.
+
+## Conventions
+
+Patterns shared across roles; follow them when adding or changing one.
+
+- **Container workloads are podman quadlets.** Template `*.container`/`*.network` units into `/etc/containers/systemd/` (the `podman` role creates that dir and must run first), then end the role with `meta: flush_handlers` then a `systemd_service: started` — the unit exists only after the daemon-reload, and the explicit start covers a no-change converge.
+- **Handler ordering is load-bearing.** Define the `daemon_reload` handler *first* (handlers fire in definition order). Give a role-specific restart handler a role-unique name — a duplicate redefined by a later role wins play-wide and is dropped by this role's mid-play flush.
+- **`vars/` vs `defaults/`.** `vars/main.yml` holds only renovate-pinned, digest-pinned image refs (with `# renovate:` comments); `defaults/main.yml` holds tunables and empty-string placeholders for vault secrets, which degrade so molecule runs with no vault.
+- **Secrets** render to a 0600 `EnvironmentFile` (referenced from the quadlet) with `no_log: true` — never into the world-readable unit.
+- **caddy snippet contract.** Backends never edit the Caddyfile: an internal service drops `/etc/caddy/sites/<role>.caddy`, a public one drops `/etc/caddy/sites-public/<role>.caddy`; backends sit on `caddy.network` and publish no host port (only caddy publishes 80/443).
+- **No `meta/dependencies`** — role ordering is enforced by the play and each molecule `converge.yml`.
+- **No tags** — don't introduce them.
+- **`validate:`** guards configs that can lock out a host (sshd `sshd -t`, sudoers `visudo -cf`).
 
 ## Commit hygiene
 
@@ -74,6 +103,13 @@ Run the gates yourself before presenting or committing — never hand back unver
 - Every task must be idempotent — molecule's idempotence check (a second converge reporting zero changed) enforces it.
 - Fix failures at the root, don't suppress them. Show the command output as evidence.
 - Formatting is owned by the linters — don't hand-format or override them.
+
+## Commands
+
+- **Setup**: `python -m venv .venv && . .venv/bin/activate && pip install -r requirements-dev.txt`, then `make hooks` to install the pre-commit hooks.
+- **Iterate on one role** without the full create→destroy lifecycle — from `roles/<role>/` with the venv active: `molecule converge` (apply), `molecule verify` (assertions), `molecule login` (shell in), `molecule destroy`; add `-s <scenario>` for a non-`default` tier. `make test ROLE=<role>` runs the whole lifecycle.
+- **Bootstrap**: a fresh Tumbleweed host runs `bootstrap/host.sh` (creates the `ansible` account + sshd) before it joins the inventory; `bootstrap/incus.yml` sets up the molecule runner; `bootstrap/rogue-trader.yml` provisions the Hetzner VM.
+- The `ansible` MCP server (`.mcp.json`) and the project-local skills (`ansible-author`, `refine`, `branch-finaliser`) are the intended authoring → review → finalise workflow.
 
 ## Running plays
 
