@@ -69,6 +69,15 @@
         fail_msg: "static assets are not cached for a year"
         quiet: true
 
+    # The bind mount lands the must-use plugin inside the container, so WordPress
+    # loads it and drops the generator meta. rc != 0 if the mount is missing.
+    - name: The hardening must-use plugin is mounted into the container
+      ansible.builtin.command: >-
+        podman exec wordpress test -f
+        /var/www/html/wp-content/mu-plugins/wordpress-hardening.php
+      become: true
+      changed_when: false
+
     # The install page rendering proves the whole chain: caddy proxies the
     # request, wordpress serves PHP (so wordpress_config_extra is valid), and it
     # reached the database — a failed connection answers 500, not the form.

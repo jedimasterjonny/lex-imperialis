@@ -56,7 +56,9 @@ a `Permissions-Policy` on every response, strips the upstream `X-Powered-By`, an
 on the TLS vhost adds a one-year `Strict-Transport-Security` header with
 `includeSubDomains`. Static assets (matched by extension) carry a one-year
 immutable `Cache-Control`; `readme.html` and `license.txt` 404 so they can't
-leak the core version. Point DNS for each name at the host.
+leak the core version. A read-only must-use plugin
+(`files/wordpress-hardening.php`, mounted at `wp-content/mu-plugins/`) drops the
+generator meta for the same reason. Point DNS for each name at the host.
 
 ## wp-cli
 
