@@ -6,6 +6,9 @@ ContainerName=wordpress-redis
 Image={{ wordpress_redis_image }}
 Network=caddy.network
 NoNewPrivileges=true
+DropCapability=all
+{# redis-server stays root on a non-privileged port and drops no privileges, so #}
+{# it needs no capability back. #}
 {# Pure object cache: cap memory with LRU eviction and disable RDB/AOF, so it #}
 {# needs no volume and never persists to disk. #}
 Exec=redis-server --maxmemory {{ wordpress_redis_maxmemory }} --maxmemory-policy allkeys-lru --save ""
