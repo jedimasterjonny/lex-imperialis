@@ -67,6 +67,15 @@ wp plugin install redis-cache --activate
 wp redis enable
 ```
 
+## Hardening
+
+Each container runs `NoNewPrivileges` and drops every capability, adding back
+only what its image needs: `wordpress-db` keeps `CHOWN`/`DAC_OVERRIDE` (datadir
+ownership) and `SETUID`/`SETGID` (the entrypoint's drop to the mysql user);
+`wordpress` also keeps `FOWNER` (unpacking core) and `NET_BIND_SERVICE` (apache
+on `:80`); `wordpress-redis` keeps none. A renovate image bump that needs a new
+capability surfaces as a failed healthcheck.
+
 ## Deploy
 
 Wire it after `podman` and `caddy` on a Leap host. Set `wordpress_domains` to

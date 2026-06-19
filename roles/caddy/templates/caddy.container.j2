@@ -5,6 +5,10 @@ Description=Caddy reverse proxy
 ContainerName=caddy
 Image={{ caddy_image }}
 Network=caddy.network
+NoNewPrivileges=true
+DropCapability=all
+{# Only to bind the privileged 80/443; caddy needs nothing else. #}
+AddCapability=NET_BIND_SERVICE
 EnvironmentFile=/etc/caddy/env
 PublishPort=80:80
 PublishPort=443:443
