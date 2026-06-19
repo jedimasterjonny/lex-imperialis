@@ -12,6 +12,13 @@ PublishPort=443:443/udp
 Volume=/etc/caddy:/etc/caddy:ro
 Volume=caddy-data:/data
 Volume=caddy-config:/config
+# Liveness probe against caddy's own 204 health endpoint (the localhost site in
+# the Caddyfile), so a wedged-but-running proxy is caught. Status only.
+HealthCmd=curl -fsS http://localhost/
+HealthInterval=1m
+HealthTimeout=10s
+HealthStartPeriod=30s
+HealthRetries=3
 
 [Service]
 Restart=on-failure

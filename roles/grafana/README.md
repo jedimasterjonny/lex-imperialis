@@ -25,6 +25,9 @@ sites dir).
 State lives in the `grafana-data` named volume, handed to the image's `grafana`
 user (472) with `:U`.
 
+The container carries a podman healthcheck against `/api/health` (status only,
+no restart on failure).
+
 ## Variables
 
 - `grafana_prometheus_url` — Prometheus datasource URL (default datasource).
