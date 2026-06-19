@@ -146,6 +146,17 @@
       become: true
       changed_when: false
 
+    # Run each webui app's probe directly (a non-zero exit fails the task), so
+    # the command resolving inside the image and the endpoint answering are both
+    # proven. wireguard is excluded — its blackhole tunnel is meant to fail.
+    - name: Each app's healthcheck passes
+      ansible.builtin.command: podman healthcheck run {{ item.key }}
+      become: true
+      loop: "{{ arr_apps | dict2items | selectattr('value.healthcheck', 'defined') | rejectattr('key', 'equalto', 'wireguard') | list }}"
+      loop_control:
+        label: "{{ item.key }}"
+      changed_when: false
+
     - name: Stat the data directories
       ansible.builtin.stat:
         path: "{{ arr_data_root }}/{{ item.key }}"
