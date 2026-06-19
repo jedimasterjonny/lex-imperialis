@@ -17,14 +17,66 @@
       retries: 60
       delay: 5
 
-    # caddy emits this header on every response, so it rides the install
+    # caddy emits these headers on every response, so they ride the install
     # redirect too. molecule runs wordpress_tls:false, so HSTS is not asserted.
-    - name: The security header is set on the proxied response
+    - name: The security headers are set on the proxied response
       ansible.builtin.assert:
         that:
           - wordpress_proxied.x_content_type_options | default('') == 'nosniff'
-        fail_msg: "X-Content-Type-Options: nosniff is missing from the proxied response"
+          - wordpress_proxied.referrer_policy | default('') == 'strict-origin-when-cross-origin'
+          - "'camera=()' in (wordpress_proxied.permissions_policy | default(''))"
+        fail_msg: "a security header is missing from the proxied response"
         quiet: true
+
+    # The upstream PHP tacks on its version; caddy strips it before the edge.
+    - name: The PHP version banner is stripped
+      ansible.builtin.assert:
+        that:
+          - wordpress_proxied.x_powered_by is not defined
+        fail_msg: "X-Powered-By leaked through the proxy"
+        quiet: true
+
+    # readme.html and license.txt exist in core but caddy 404s them, so a
+    # scanner can't read the exact version off them.
+    - name: The version-disclosure files are blocked
+      ansible.builtin.uri:
+        url: "http://127.0.0.1{{ item }}"
+        headers:
+          Host: "{{ wordpress_domains[0] }}"
+        status_code: [404]
+      loop:
+        - /readme.html
+        - /license.txt
+
+    # blank.gif is core's healthcheck target, so it is present; caddy stamps the
+    # one-year immutable cache header on it as a static asset.
+    - name: A static asset answers for the cache-header check
+      ansible.builtin.uri:
+        url: http://127.0.0.1/wp-includes/images/blank.gif
+        headers:
+          Host: "{{ wordpress_domains[0] }}"
+        follow_redirects: none
+      register: wordpress_static
+      until: wordpress_static.status == 200
+      retries: 30
+      delay: 5
+
+    - name: Static assets carry the one-year immutable cache header
+      ansible.builtin.assert:
+        that:
+          - "'immutable' in (wordpress_static.cache_control | default(''))"
+          - "'31536000' in (wordpress_static.cache_control | default(''))"
+        fail_msg: "static assets are not cached for a year"
+        quiet: true
+
+    # The bind mount lands the must-use plugin inside the container, so WordPress
+    # loads it and drops the generator meta. rc != 0 if the mount is missing.
+    - name: The hardening must-use plugin is mounted into the container
+      ansible.builtin.command: >-
+        podman exec wordpress test -f
+        /var/www/html/wp-content/mu-plugins/wordpress-hardening.php
+      become: true
+      changed_when: false
 
     # The install page rendering proves the whole chain: caddy proxies the
     # request, wordpress serves PHP (so wordpress_config_extra is valid), and it
