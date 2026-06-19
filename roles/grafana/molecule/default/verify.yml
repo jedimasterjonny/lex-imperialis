@@ -60,3 +60,10 @@
             | selectattr('title', 'eq', 'cadvisor dashboard')
             | list | length > 0
         fail_msg: The Node Exporter Full and cadvisor dashboards are not both provisioned
+
+    # A non-zero exit fails the task, proving curl resolves in the image and the
+    # health endpoint reports ok.
+    - name: The healthcheck passes
+      ansible.builtin.command: podman healthcheck run grafana
+      become: true
+      changed_when: false
