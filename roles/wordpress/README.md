@@ -51,9 +51,12 @@ Caddy forwards plain HTTP to `wordpress:80`, terminating TLS at the edge when
 so WordPress detects HTTPS behind the proxy and stops emitting `http://` URLs. The role writes a
 `sites-public/wordpress.caddy` block routing every name in `wordpress_domains`;
 with `wordpress_tls` (default) the caddy global `acme_dns` certifies them via
-DNS-01. The block sets `X-Content-Type-Options: nosniff` on every response, and
-on the TLS vhost a one-year `Strict-Transport-Security` header with
-`includeSubDomains`. Point DNS for each name at the host.
+DNS-01. The block sets `X-Content-Type-Options: nosniff`, `Referrer-Policy`, and
+a `Permissions-Policy` on every response, strips the upstream `X-Powered-By`, and
+on the TLS vhost adds a one-year `Strict-Transport-Security` header with
+`includeSubDomains`. Static assets (matched by extension) carry a one-year
+immutable `Cache-Control`; `readme.html` and `license.txt` 404 so they can't
+leak the core version. Point DNS for each name at the host.
 
 ## wp-cli
 
