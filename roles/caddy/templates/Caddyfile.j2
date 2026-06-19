@@ -23,5 +23,17 @@ import sites-public/*.caddy
 http://*.{{ caddy_domain }} {
 {% endif %}
 	import sites/*.caddy
+
+	# Unmatched subdomains get an explicit 404, not Caddy's empty 200.
+	handle {
+		respond 404
+	}
 }
 {% endif %}
+
+# Foreign hosts (the bare IP, a stray Host header) match nothing above; answer
+# 404 rather than Caddy's default empty 200. Host-less, so a managed site's
+# auto HTTP->HTTPS redirect (host-matched) still wins over it.
+http:// {
+	respond 404
+}
