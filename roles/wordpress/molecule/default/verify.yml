@@ -17,6 +17,15 @@
       retries: 60
       delay: 5
 
+    # caddy emits this header on every response, so it rides the install
+    # redirect too. molecule runs wordpress_tls:false, so HSTS is not asserted.
+    - name: The security header is set on the proxied response
+      ansible.builtin.assert:
+        that:
+          - wordpress_proxied.x_content_type_options | default('') == 'nosniff'
+        fail_msg: "X-Content-Type-Options: nosniff is missing from the proxied response"
+        quiet: true
+
     # The install page rendering proves the whole chain: caddy proxies the
     # request, wordpress serves PHP (so wordpress_config_extra is valid), and it
     # reached the database — a failed connection answers 500, not the form.
