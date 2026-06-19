@@ -7,9 +7,7 @@
     group: root
     mode: "0644"
   become: true
-  notify:
-    - Reload systemd
-    - Restart node-exporter
+  notify: Restart node-exporter
 
 # The quadlet unit only exists after the daemon reload, so apply pending
 # restarts before asserting the service is up.

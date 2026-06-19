@@ -1,32 +1,34 @@
 ---
-# Listed reload-first: handlers run in definition order, and restarts of
-# quadlet-generated units need the regenerated units loaded.
-- name: Reload systemd
-  ansible.builtin.systemd_service:
-    daemon_reload: true
-  become: true
-
+# daemon_reload folded into each restart, never a separate fleet-shared "Reload
+# systemd" handler: a duplicate name whose winning definition lives in a later
+# role reorders after this role's restart at the mid-play flush, so the
+# container is recreated from the stale generated unit. The reload regenerates
+# the quadlet-derived unit before the restart.
+#
 # The database before wordpress: wordpress reconnects, but starting them in
 # order spares it the failed first attempts.
 - name: Restart the database
   ansible.builtin.systemd_service:
     name: wordpress-db
     state: restarted
+    daemon_reload: true
   become: true
 
 - name: Restart the cache
   ansible.builtin.systemd_service:
     name: wordpress-redis
     state: restarted
+    daemon_reload: true
   become: true
 
 - name: Restart wordpress
   ansible.builtin.systemd_service:
     name: wordpress
     state: restarted
+    daemon_reload: true
   become: true
 
-- name: Restart caddy
+- name: Restart caddy for wordpress
   ansible.builtin.systemd_service:
     name: caddy
     state: restarted

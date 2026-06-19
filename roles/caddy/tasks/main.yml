@@ -43,9 +43,7 @@
     group: root
     mode: "0644"
   become: true
-  notify:
-    - Reload systemd
-    - Restart caddy
+  notify: Restart caddy
 
 - name: Install the caddy container unit
   ansible.builtin.template:
@@ -55,9 +53,7 @@
     group: root
     mode: "0644"
   become: true
-  notify:
-    - Reload systemd
-    - Restart caddy
+  notify: Restart caddy
 
 # The quadlet unit only exists after the daemon reload, so apply pending
 # restarts before asserting the service is up.
