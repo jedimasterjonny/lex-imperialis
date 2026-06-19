@@ -8,6 +8,27 @@
     mode: "0755"
   become: true
 
+- name: Create the must-use plugin directory
+  ansible.builtin.file:
+    path: /etc/wordpress/mu-plugins
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+# Mounted read-only into the container's mu-plugins; a restart recreates the
+# container, so an edited plugin is picked up off the fresh bind mount.
+- name: Deploy the hardening must-use plugin
+  ansible.builtin.copy:
+    src: wordpress-hardening.php
+    dest: /etc/wordpress/mu-plugins/wordpress-hardening.php
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart wordpress
+
 # Both quadlets read the database credentials via EnvironmentFile=, so the
 # passwords never land in the world-readable unit files.
 - name: Deploy the database credentials
