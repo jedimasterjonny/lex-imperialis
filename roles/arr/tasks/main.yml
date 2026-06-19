@@ -148,9 +148,7 @@
     label: "{{ item.key }}"
   become: true
   register: arr_app_units
-  notify:
-    - Reload systemd
-    - Restart the app containers
+  notify: Restart the app containers
 
 # The caddy role owns /etc/caddy/sites and imports every sites/*.caddy as
 # matcher + handle snippets inside its wildcard vhost.
@@ -162,7 +160,7 @@
     group: root
     mode: "0644"
   become: true
-  notify: Restart caddy
+  notify: Restart caddy for arr
 
 # Quadlet units only exist after the daemon reload, so apply pending restarts
 # before asserting the services are up.

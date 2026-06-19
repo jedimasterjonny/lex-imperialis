@@ -31,9 +31,7 @@
     group: root
     mode: "0644"
   become: true
-  notify:
-    - Reload systemd
-    - Restart the database
+  notify: Restart the database
 
 - name: Install the cache container unit
   ansible.builtin.template:
@@ -43,9 +41,7 @@
     group: root
     mode: "0644"
   become: true
-  notify:
-    - Reload systemd
-    - Restart the cache
+  notify: Restart the cache
 
 - name: Install the wordpress container unit
   ansible.builtin.template:
@@ -55,9 +51,7 @@
     group: root
     mode: "0644"
   become: true
-  notify:
-    - Reload systemd
-    - Restart wordpress
+  notify: Restart wordpress
 
 # WordPress is public — it serves its own domains, not a wildcard subdomain —
 # so it registers a full site block in /etc/caddy/sites-public, which the caddy
@@ -70,7 +64,7 @@
     group: root
     mode: "0644"
   become: true
-  notify: Restart caddy
+  notify: Restart caddy for wordpress
 
 # Wrapper over the official cli image, so `wp <command>` manages the live site.
 - name: Install the wp-cli wrapper
