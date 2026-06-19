@@ -8,6 +8,10 @@ sibling `downloads`. `arr_enabled` picks which apps a host runs (default: all),
 so the stack can come up one container at a time. Unit changes bounce only the
 apps they touch.
 
+Each webui app carries a podman liveness healthcheck against its own endpoint —
+status only, no restart on failure; recyclarr (no webui) is the exception, and
+wireguard's probe (below) instead force-restarts the tunnel.
+
 ## Apps
 
 - **radarr / sonarr / lidarr** — the importers; mount the whole data tree,

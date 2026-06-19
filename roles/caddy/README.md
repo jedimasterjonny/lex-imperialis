@@ -3,8 +3,9 @@
 Reverse proxy for the fleet's containers: one podman quadlet on
 `caddy.network`, a wildcard vhost (`caddy_wildcard`, default on) and/or
 explicit public site blocks, plus a `http://localhost` health endpoint
-answering 204. Anything matching no site — an unknown subdomain or a foreign
-`Host` — gets a 404, not Caddy's default empty 200.
+answering 204 — which the container's own podman healthcheck probes (status
+only, no restart on failure). Anything matching no site — an unknown subdomain
+or a foreign `Host` — gets a 404, not Caddy's default empty 200.
 
 ## Snippet contract
 

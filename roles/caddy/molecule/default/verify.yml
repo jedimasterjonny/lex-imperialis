@@ -42,3 +42,10 @@
       register: caddy_modules
       changed_when: false
       failed_when: "'dns.providers.cloudflare' not in caddy_modules.stdout"
+
+    # A non-zero exit fails the task, proving curl resolves in the image and the
+    # 204 health endpoint answers.
+    - name: The healthcheck passes
+      ansible.builtin.command: podman healthcheck run caddy
+      become: true
+      changed_when: false

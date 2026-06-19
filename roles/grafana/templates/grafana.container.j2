@@ -11,6 +11,13 @@ Volume=/etc/grafana/dashboards:/etc/grafana/dashboards:ro
 # :U hands the named volume to the image's grafana user (472), which owns its
 # state dir; rootful podman would otherwise create it root-owned.
 Volume=grafana-data:/var/lib/grafana:U
+# Liveness probe against Grafana's health endpoint (reports DB status), so a
+# wedged-but-running instance is caught. Status only.
+HealthCmd=curl -fsS http://localhost:3000/api/health
+HealthInterval=1m
+HealthTimeout=10s
+HealthStartPeriod=30s
+HealthRetries=3
 
 [Service]
 Restart=on-failure
