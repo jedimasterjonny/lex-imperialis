@@ -131,3 +131,31 @@
       delay: 10
       changed_when: false
       become: true
+
+    # The checks above prove each add-back set is sufficient; they can't prove it
+    # is minimal. Assert the posture directly so a regression that re-widens the
+    # caps or drops the restriction fails here, not silently in production.
+    - name: Read each container's security posture
+      ansible.builtin.command: "podman inspect {{ item.name }}"
+      loop:
+        - {name: wordpress-redis, caps: []}
+        - {name: wordpress-db, caps: [CAP_CHOWN, CAP_DAC_OVERRIDE, CAP_SETGID, CAP_SETUID]}
+        - {name: wordpress, caps: [CAP_CHOWN, CAP_DAC_OVERRIDE, CAP_FOWNER, CAP_NET_BIND_SERVICE, CAP_SETGID, CAP_SETUID]}
+      register: wordpress_posture
+      changed_when: false
+      become: true
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Each container keeps only its required capabilities and bars privilege escalation
+      vars:
+        container: "{{ item.stdout | from_json | first }}"
+      ansible.builtin.assert:
+        that:
+          - "container.EffectiveCaps | default([], true) | sort == item.item.caps | sort"
+          - "'no-new-privileges' in (container.HostConfig.SecurityOpt | default([], true))"
+        fail_msg: "{{ item.item.name }}'s capability or no-new-privileges posture has regressed"
+        quiet: true
+      loop: "{{ wordpress_posture.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
