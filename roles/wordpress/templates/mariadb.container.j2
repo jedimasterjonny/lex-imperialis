@@ -5,6 +5,11 @@ Description=WordPress database
 ContainerName=wordpress-db
 Image={{ wordpress_db_image }}
 Network=caddy.network
+NoNewPrivileges=true
+DropCapability=all
+{# The root entrypoint fixes the datadir's ownership (CHOWN, DAC_OVERRIDE) then #}
+{# drops to the mysql user (SETUID, SETGID) before exec'ing mariadbd. #}
+AddCapability=CHOWN DAC_OVERRIDE SETGID SETUID
 EnvironmentFile=/etc/wordpress/wordpress.env
 Volume=wordpress-db:/var/lib/mysql
 {# The image's healthcheck.sh: accepts connections and InnoDB is up. #}

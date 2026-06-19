@@ -12,6 +12,12 @@ After=wordpress-redis.service
 ContainerName=wordpress
 Image={{ wordpress_image }}
 Network=caddy.network
+NoNewPrivileges=true
+DropCapability=all
+{# The root entrypoint unpacks core into the volume (CHOWN, FOWNER, #}
+{# DAC_OVERRIDE), then apache binds :80 (NET_BIND_SERVICE) and drops its #}
+{# workers to www-data (SETUID, SETGID). #}
+AddCapability=CHOWN DAC_OVERRIDE FOWNER NET_BIND_SERVICE SETGID SETUID
 EnvironmentFile=/etc/wordpress/wordpress.env
 Volume=wordpress-html:/var/www/html
 {# DB-independent liveness — a static asset, so a database blip never #}

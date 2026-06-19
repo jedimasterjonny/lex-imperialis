@@ -51,6 +51,11 @@ Gated on `caddy_cloudflare_api_token`:
 - **Empty** — the default: the same vhost on plain HTTP
   (`http://*.<caddy_domain>`).
 
+## Hardening
+
+The container runs `NoNewPrivileges` and drops every capability except
+`NET_BIND_SERVICE`, which it needs to bind `:80`/`:443`.
+
 ## Production setup
 
 In the vault:
