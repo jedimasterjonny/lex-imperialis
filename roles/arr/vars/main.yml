@@ -62,7 +62,7 @@ arr_apps:
     healthcheck:
       cmd: curl -fsS http://127.0.0.1:9696/ping
   beets:
-    image: lscr.io/linuxserver/beets:2.11.0@sha256:bb73b8be1142a7b22e13d6f76f986bec99e60761a967714b098f8d766f88ca37
+    image: lscr.io/linuxserver/beets:2.11.0@sha256:14bfcf3993230b1ce416a54188e297fc3d20af249cabb5379ae5eb8c1528b7a9
     uid: 1040
     port: 8337
     # Whole tree so beets can import (and hardlink) from downloads into the
