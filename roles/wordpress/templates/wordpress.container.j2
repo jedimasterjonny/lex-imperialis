@@ -12,6 +12,7 @@ After=wordpress-redis.service
 ContainerName=wordpress
 Image={{ wordpress_image }}
 Network=caddy.network
+NoNewPrivileges=true
 EnvironmentFile=/etc/wordpress/wordpress.env
 Volume=wordpress-html:/var/www/html
 {# DB-independent liveness — a static asset, so a database blip never #}

@@ -5,6 +5,7 @@ Description=Caddy reverse proxy
 ContainerName=caddy
 Image={{ caddy_image }}
 Network=caddy.network
+NoNewPrivileges=true
 EnvironmentFile=/etc/caddy/env
 PublishPort=80:80
 PublishPort=443:443
