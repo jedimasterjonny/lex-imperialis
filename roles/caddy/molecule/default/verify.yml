@@ -16,13 +16,23 @@
       retries: 30
       delay: 2
 
-    # No sites are registered, so the empty wildcard vhost answers 200.
-    - name: The wildcard vhost answers
+    # No backend snippets are registered, so the wildcard vhost's catch-all
+    # handle answers 404 rather than Caddy's default empty 200.
+    - name: The wildcard vhost 404s an unregistered subdomain
       ansible.builtin.uri:
         url: http://127.0.0.1/
         headers:
           Host: "probe.{{ caddy_domain }}"
-        status_code: 200
+        status_code: 404
+
+    # A foreign Host matches no site block; the http:// catch-all answers 404
+    # rather than Caddy's default empty 200.
+    - name: A foreign host 404s
+      ansible.builtin.uri:
+        url: http://127.0.0.1/
+        headers:
+          Host: nonexistent.example
+        status_code: 404
 
     # Renovate bumps the image unattended; catch a build that drops the
     # DNS-01 plugin before it reaches the fleet.
