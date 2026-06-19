@@ -1,4 +1,9 @@
 {% set scheme = '' if wordpress_tls else 'http://' %}
 {{ wordpress_domains | map('regex_replace', '^', scheme) | join(', ') }} {
+{% if wordpress_tls %}
+	# HSTS only applies over HTTPS.
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+{% endif %}
+	header X-Content-Type-Options nosniff
 	reverse_proxy wordpress:80
 }
