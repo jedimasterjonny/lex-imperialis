@@ -1,17 +1,17 @@
 ---
-# Listed reload-first: handlers run in definition order, and restarts of
-# quadlet-generated units need the regenerated units loaded.
-- name: Reload systemd
-  ansible.builtin.systemd_service:
-    daemon_reload: true
-  become: true
-
+# daemon_reload folded into the restart, never a separate fleet-shared "Reload
+# systemd" handler: a duplicate name whose winning definition lives in a later
+# role reorders after this role's restart at the mid-play flush, so the
+# container is recreated from the stale generated unit. The reload regenerates
+# the quadlet-derived unit before the restart.
+#
 # Bounce only the apps whose unit files changed, so an image bump for one
 # app doesn't interrupt the others.
 - name: Restart the app containers
   ansible.builtin.systemd_service:
     name: "{{ item }}"
     state: restarted
+    daemon_reload: true
   loop: "{{ arr_app_units.results | selectattr('changed') | map(attribute='item.key') | list }}"
   become: true
 
@@ -22,7 +22,7 @@
     state: restarted
   become: true
 
-- name: Restart caddy
+- name: Restart caddy for arr
   ansible.builtin.systemd_service:
     name: caddy
     state: restarted
