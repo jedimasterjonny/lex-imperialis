@@ -1,4 +1,4 @@
-@homepage host homepage.{{ homepage_domain }}
-handle @homepage {
+{% set scheme = '' if homepage_tls else 'http://' %}
+{{ scheme }}{{ homepage_domain }} {
 	reverse_proxy homepage:3000
 }

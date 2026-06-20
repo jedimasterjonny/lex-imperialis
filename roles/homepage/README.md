@@ -4,13 +4,15 @@
 
 ## Behind caddy
 
-No published port. The container joins `caddy.network` and drops
-`/etc/caddy/sites/homepage.caddy`, so caddy serves it at `homepage.<domain>`
-under the wildcard vhost. caddy must be applied first (it owns the network and
-the sites dir).
+No published port. The container joins `caddy.network` and drops a full site
+block at `/etc/caddy/sites-public/homepage.caddy`, so caddy serves it at the
+apex `homepage_domain` and certifies it through the global `acme_dns` (DNS-01).
+caddy must be applied first (it owns the network and the sites-public dir).
+`homepage_tls: false` drops the block to plain HTTP for molecule, which has no
+token.
 
 Homepage v1 validates the `Host` header against `HOMEPAGE_ALLOWED_HOSTS`; the
-unit allows the proxy vhost plus the loopback `host:port` the liveness probe
+unit allows the apex vhost plus the loopback `host:port` the liveness probe
 sends. `LOG_TARGETS=stdout` keeps logs off the config mount.
 
 ## Config
@@ -32,7 +34,8 @@ only, no restart on failure).
 
 ## Variables
 
-- `homepage_domain` — vhost domain; follows `caddy_domain`.
+- `homepage_domain` — apex domain homepage serves at; follows `caddy_domain`.
+- `homepage_tls` — front the apex with an `acme_dns` cert (needs caddy's `caddy_cloudflare_api_token`); `false` serves plain HTTP (molecule).
 - `homepage_title` — dashboard title, rendered into `settings.yaml`.
 - `homepage_timezone` — container timezone for date/time display.
 - `homepage_uid` — host id the container runs as and that owns `settings.yaml`.

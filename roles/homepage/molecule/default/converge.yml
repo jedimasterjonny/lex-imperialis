@@ -1,13 +1,16 @@
 ---
 - name: Converge
   hosts: all
+  vars:
+    # No real domain or ACME in the container: serve the apex over plain HTTP.
+    homepage_tls: false
   tasks:
     - name: Apply the podman role
       ansible.builtin.include_role:
         name: podman
 
-    # Homepage sits behind caddy on its network and registers a sites snippet,
-    # so caddy must be up first to own the network and serve the proxy.
+    # Homepage sits behind caddy on its network and registers a public site
+    # block, so caddy must be up first to own the network and serve the proxy.
     - name: Apply the caddy role
       ansible.builtin.include_role:
         name: caddy

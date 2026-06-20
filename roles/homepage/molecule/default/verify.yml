@@ -5,14 +5,14 @@
   vars_files:
     - ../../defaults/main.yml
   tasks:
-    # Reached through caddy with the vhost Host header: homepage has no published
+    # Reached through caddy with the apex Host header: homepage has no published
     # port, only the caddy network. A 200 also proves v1 host validation accepts
     # the proxy vhost.
     - name: Wait for homepage to answer through the proxy
       ansible.builtin.uri:
         url: http://127.0.0.1/
         headers:
-          Host: "homepage.{{ homepage_domain }}"
+          Host: "{{ homepage_domain }}"
         return_content: true
       register: homepage_page
       until: homepage_page.status == 200

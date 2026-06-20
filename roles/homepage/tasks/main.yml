@@ -42,12 +42,12 @@
   become: true
   notify: Restart homepage
 
-# The caddy role owns /etc/caddy/sites and imports every sites/*.caddy into the
-# wildcard vhost; this snippet routes homepage.<domain> to the container.
-- name: Register the caddy reverse-proxy snippet
+# A full public site block (not a sites/ wildcard snippet), imported as a
+# top-level site and certified through the global acme_dns.
+- name: Register the caddy public site block
   ansible.builtin.template:
     src: homepage.caddy.j2
-    dest: /etc/caddy/sites/homepage.caddy
+    dest: /etc/caddy/sites-public/homepage.caddy
     owner: root
     group: root
     mode: "0644"
