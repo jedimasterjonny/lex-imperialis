@@ -1,7 +1,10 @@
 ---
 # Per-app identity and wiring; renovate's image manager bumps the tags. uid
 # feeds the container's PUID on lscr.io images and the quadlet User= elsewhere;
-# data names what the app mounts under /data — 'root' is the whole tree, so
+# omit it for an image that ships its own non-root user and writes only inside
+# its image (flaresolverr) — the role then sets no User= and creates no host
+# account, running it as the image's user. data names what the app mounts under
+# /data — 'root' is the whole tree, so
 # imports hardlink across downloads and media; a list is just those dirs.
 # publish exposes the app's port on the host for native clients; device passes
 # a host device through for hardware transcoding; netns joins another app's
@@ -61,6 +64,15 @@ arr_apps:
     port: 9696
     healthcheck:
       cmd: curl -fsS http://127.0.0.1:9696/ping
+  # Prowlarr's Cloudflare-challenge solver. No port, so no proxy snippet: this
+  # unauthenticated headless-browser proxy is an open URL-fetcher that must never
+  # face the public reverse proxy. No uid: it patches its bundled chromedriver in
+  # place under /app, writable only to the image's own user, so it runs as that
+  # user with no host account. /health answers 200 without launching the browser.
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:v3.5.0@sha256:139dfee1c6f89249c8d665d1333a42e8ec74ec0a86bc6bb1c8461e10d3a66a47
+    healthcheck:
+      cmd: curl -fsS http://127.0.0.1:8191/health
   beets:
     image: lscr.io/linuxserver/beets:2.11.0@sha256:14bfcf3993230b1ce416a54188e297fc3d20af249cabb5379ae5eb8c1528b7a9
     uid: 1040

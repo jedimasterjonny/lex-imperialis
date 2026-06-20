@@ -9,7 +9,8 @@ so the stack can come up one container at a time. Unit changes bounce only the
 apps they touch.
 
 Each webui app carries a podman liveness healthcheck against its own endpoint —
-status only, no restart on failure; recyclarr (no webui) is the exception, and
+status only, no restart on failure; flaresolverr (no webui) is probed the same
+way at its browserless `/health`, recyclarr (no endpoint) is the exception, and
 wireguard's probe (below) instead force-restarts the tunnel.
 
 ## Apps
@@ -19,6 +20,10 @@ wireguard's probe (below) instead force-restarts the tunnel.
   filesystem.
 - **prowlarr** — indexer management; talks only to the other apps' APIs,
   no media mount.
+- **flaresolverr** — Cloudflare-challenge solver for prowlarr; a
+  headless-browser proxy with no media mount and, being an unauthenticated
+  URL-fetcher, no proxy snippet — prowlarr reaches it by container name on
+  `caddy.network`.
 - **beets** — mounts the whole tree (`data: root`) so it hardlink-imports
   from `downloads` into lidarr's music library.
 - **plex** — host-networked (so GDM/DLNA discovery works; not proxied),
@@ -38,7 +43,9 @@ Every app runs as its own host uid. The importers, beets, transmission and
 plex carry the shared `arr` group; the rest get a per-app group. The harder
 boundary is the mount — a container can't reach what it never mounts. lscr.io
 images drop their service to `PUID`/`PGID`; recyclarr runs under quadlet
-`User=`.
+`User=`. flaresolverr keeps the image's own non-root user with no host account —
+it patches its bundled chromedriver in place under `/app`, writable only to that
+user, and mounts nothing on the host.
 
 Data dirs are setgid `2775`, each owned by the app that fills it; with
 `UMASK=002` files land group-writable, so the rw apps co-write and
