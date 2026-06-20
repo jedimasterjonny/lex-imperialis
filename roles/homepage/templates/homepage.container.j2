@@ -1,0 +1,35 @@
+[Unit]
+Description=Homepage
+
+[Container]
+ContainerName=homepage
+Image={{ homepage_image }}
+Network=caddy.network
+Environment=PUID={{ homepage_uid }}
+Environment=PGID={{ homepage_uid }}
+Environment=TZ={{ homepage_timezone }}
+# v1 validates the Host header: the proxy vhost, plus the loopback host:port the
+# liveness probe sends.
+Environment=HOMEPAGE_ALLOWED_HOSTS=homepage.{{ homepage_domain }},127.0.0.1:3000
+# Log to stdout only, so nothing is written under the config mount.
+Environment=LOG_TARGETS=stdout
+# Writable: homepage seeds skeleton services/widgets/bookmarks here on first boot
+# and the entrypoint chowns it to PUID; Ansible owns only settings.yaml. :Z
+# relabels it container_file_t so those writes pass on the SELinux-enforcing
+# fleet — the incus molecule instance isn't enforcing, so it can't catch a
+# missing label.
+Volume=/etc/homepage:/app/config:Z
+# Liveness against homepage's own health endpoint (busybox wget ships in the
+# alpine image). Status only.
+HealthCmd=wget -q --tries=1 --spider http://127.0.0.1:3000/api/healthcheck
+HealthInterval=1m
+HealthTimeout=10s
+HealthStartPeriod=30s
+HealthRetries=3
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+---
+# Domain the reverse proxy routes on: homepage answers at homepage.<domain>.
+# Follows caddy_domain wherever the vault sets it.
+homepage_domain: "{{ caddy_domain | default('home.arpa') }}"
+
+# Dashboard title, rendered into the managed settings.yaml.
+homepage_title: Homepage
+
+# Container timezone, for the dashboard's date/time display.
+homepage_timezone: Etc/UTC
+
+# Least-privilege host id the container drops to (PUID/PGID) and that owns the
+# config dir. Avoids 1000, which the cloud image's default user holds.
+homepage_uid: 3010
