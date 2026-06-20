@@ -1,7 +1,7 @@
 ---
-# Runs as its own least-privilege id; the image's entrypoint drops to PUID/PGID
-# and chowns /app/config to it, so the config dir and the managed files are
-# owned by that id to keep converge idempotent.
+# The container runs as its own least-privilege id (PUID/PGID = homepage_uid);
+# the host-side settings.yaml is owned by it so the read-only mount matches the
+# uid the container reads it as.
 - name: Create the homepage group
   ansible.builtin.group:
     name: homepage
@@ -19,9 +19,10 @@
     system: true
   become: true
 
-# Config and state share homepage's /app/config; a writable mount lets it seed
-# the skeleton services/widgets/bookmarks on first boot for the operator to fill
-# in (kept out of this public repo), while Ansible owns only settings.yaml.
+# Holds only the managed settings.yaml, mounted read-only on top of the
+# homepage-config volume; the container seeds the skeleton services/widgets/
+# bookmarks into the volume for the operator to fill in (kept out of this
+# public repo).
 - name: Create the config directory
   ansible.builtin.file:
     path: /etc/homepage
