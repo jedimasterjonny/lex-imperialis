@@ -1,0 +1,56 @@
+---
+- name: Create the config directory
+  ansible.builtin.file:
+    path: /etc/alertmanager
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+- name: Deploy the alertmanager config
+  ansible.builtin.template:
+    src: alertmanager.yml.j2
+    dest: /etc/alertmanager/alertmanager.yml
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart alertmanager
+
+# The webhook URL is a secret, so it lands in its own 0600 file the container
+# reads via webhook_url_file — never in the world-readable config. Owned by 65534
+# (the image's nobody) so the rootful container's process can read it.
+- name: Deploy the Discord webhook secret
+  ansible.builtin.copy:
+    content: "{{ alertmanager_discord_webhook_url }}\n"
+    dest: /etc/alertmanager/discord_webhook_url
+    owner: "65534"
+    group: root
+    mode: "0600"
+  become: true
+  no_log: true
+  when: alertmanager_discord_webhook_url | length > 0
+  notify: Restart alertmanager
+
+- name: Install the alertmanager container unit
+  ansible.builtin.template:
+    src: alertmanager.container.j2
+    dest: /etc/containers/systemd/alertmanager.container
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart alertmanager
+
+# Restart-on-change runs at flush; this generates the quadlet unit and asserts it
+# is up even on a converge where nothing changed and no handler fired.
+- name: Apply pending unit changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Start alertmanager
+  ansible.builtin.systemd_service:
+    name: alertmanager
+    state: started
+    daemon_reload: true
+  become: true

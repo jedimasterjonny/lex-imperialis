@@ -1,0 +1,35 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    # Host network, so Alertmanager answers on the instance's own :9093.
+    - name: Wait for alertmanager to be ready
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9093/-/ready
+        status_code: 200
+      register: alertmanager_ready
+      until: alertmanager_ready.status == 200
+      retries: 30
+      delay: 2
+
+    - name: Read the loaded runtime config
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9093/api/v2/status
+        return_content: true
+      register: alertmanager_status
+
+    # config.original is the raw config Alertmanager parsed; finding the templated
+    # route proves the role's config loaded, not the image's baked-in example.
+    - name: The templated config is loaded
+      ansible.builtin.assert:
+        that:
+          - "'receiver: default' in alertmanager_status.json.config.original"
+        fail_msg: alertmanager did not load the templated config
+
+    # A non-zero exit fails the task, proving wget resolves in the image and the
+    # health endpoint reports healthy.
+    - name: The healthcheck passes
+      ansible.builtin.command: podman healthcheck run alertmanager
+      become: true
+      changed_when: false

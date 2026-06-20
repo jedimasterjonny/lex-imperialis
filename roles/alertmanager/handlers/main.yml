@@ -1,0 +1,11 @@
+---
+# Uniquely named, never a fleet-shared "Restart …": a duplicate handler name
+# whose winning definition lives in a later role is not flushed by this role's
+# mid-play flush_handlers, so the restart is lost. daemon_reload regenerates the
+# quadlet-derived unit before restarting it.
+- name: Restart alertmanager
+  ansible.builtin.systemd_service:
+    name: alertmanager
+    state: restarted
+    daemon_reload: true
+  become: true

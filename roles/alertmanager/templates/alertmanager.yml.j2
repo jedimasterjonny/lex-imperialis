@@ -1,0 +1,16 @@
+# Managed by Ansible (alertmanager role).
+route:
+  receiver: default
+  group_by: ['alertname']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: default
+{% if alertmanager_discord_webhook_url %}
+    discord_configs:
+      # URL kept out of this world-readable file; the role renders it no_log into
+      # the referenced 0600 file.
+      - webhook_url_file: /etc/alertmanager/discord_webhook_url
+{% endif %}
