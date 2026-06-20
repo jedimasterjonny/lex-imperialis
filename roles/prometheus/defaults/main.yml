@@ -13,6 +13,10 @@ prometheus_node_targets: []
 # job carries no targets until a host sets them.
 prometheus_cadvisor_targets: []
 
+# Alertmanager targets alerts are routed to, each "host:9093". Empty by default,
+# so no alerting block or rule files are configured until a host sets them.
+prometheus_alertmanager_targets: []
+
 # Container security options (compose security_opt). Empty keeps docker's default
 # profiles; the molecule scenario sets apparmor=unconfined because its nested CI
 # container cannot load an AppArmor profile.

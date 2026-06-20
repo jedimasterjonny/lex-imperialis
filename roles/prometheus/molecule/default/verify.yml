@@ -30,6 +30,37 @@
       retries: 30
       delay: 2
 
+    # Polled like the scrape jobs: the static alertmanager target is discovered
+    # shortly after /-/ready, even though nothing is listening on 9093.
+    - name: Wait for the alertmanager to register
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9090/api/v1/alertmanagers
+        return_content: true
+      register: prometheus_alertmanagers
+      until:
+        - >-
+          prometheus_alertmanagers.json.data.activeAlertmanagers
+          | selectattr('url', 'search', 'localhost:9093') | list | length > 0
+      retries: 30
+      delay: 2
+
+    - name: Read the loaded alert rules
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9090/api/v1/rules
+        return_content: true
+      register: prometheus_loaded_rules
+
+    # The rule_files glob and its mounted rule both have to take effect for the
+    # InstanceDown rule to appear.
+    - name: The InstanceDown alert rule is loaded
+      ansible.builtin.assert:
+        that:
+          - >-
+            prometheus_loaded_rules.json.data.groups
+            | map(attribute='rules') | flatten
+            | selectattr('name', 'eq', 'InstanceDown') | list | length > 0
+        fail_msg: The InstanceDown alert rule is not loaded
+
     - name: Read the loaded runtime config
       ansible.builtin.uri:
         url: http://127.0.0.1:9090/api/v1/status/config

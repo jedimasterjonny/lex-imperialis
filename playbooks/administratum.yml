@@ -19,5 +19,8 @@
     prometheus_cadvisor_targets:
       - solar:8080
       - 192.168.3.3:8080
+    # Route alerts to Alertmanager on solar over the LAN.
+    prometheus_alertmanager_targets:
+      - solar:9093
   roles:
     - prometheus
