@@ -1,7 +1,11 @@
 ---
-# Domain the reverse proxy routes on: homepage answers at homepage.<domain>.
-# Follows caddy_domain wherever the vault sets it.
+# Apex domain homepage serves at; follows caddy_domain wherever the vault sets it.
 homepage_domain: "{{ caddy_domain | default('home.arpa') }}"
+
+# Front the apex with TLS: the caddy global acme_dns issues the cert via DNS-01
+# before any A record points here. Molecule sets it false to stay on plain HTTP
+# with no ACME.
+homepage_tls: true
 
 # Dashboard title, rendered into the managed settings.yaml.
 homepage_title: Homepage

@@ -8,9 +8,9 @@ Network=caddy.network
 Environment=PUID={{ homepage_uid }}
 Environment=PGID={{ homepage_uid }}
 Environment=TZ={{ homepage_timezone }}
-# v1 validates the Host header: the proxy vhost, plus the loopback host:port the
+# v1 validates the Host header: the apex vhost, plus the loopback host:port the
 # liveness probe sends.
-Environment=HOMEPAGE_ALLOWED_HOSTS=homepage.{{ homepage_domain }},127.0.0.1:3000
+Environment=HOMEPAGE_ALLOWED_HOSTS={{ homepage_domain }},127.0.0.1:3000
 # Log to stdout only, so nothing is written under the config mount.
 Environment=LOG_TARGETS=stdout
 # Operator data store: homepage seeds skeleton services/widgets/bookmarks here on
