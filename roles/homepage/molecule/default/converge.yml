@@ -1,0 +1,17 @@
+---
+- name: Converge
+  hosts: all
+  tasks:
+    - name: Apply the podman role
+      ansible.builtin.include_role:
+        name: podman
+
+    # Homepage sits behind caddy on its network and registers a sites snippet,
+    # so caddy must be up first to own the network and serve the proxy.
+    - name: Apply the caddy role
+      ansible.builtin.include_role:
+        name: caddy
+
+    - name: Apply the homepage role
+      ansible.builtin.include_role:
+        name: homepage
