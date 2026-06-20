@@ -1,0 +1,17 @@
+---
+# Uniquely named, never the fleet-shared "Reload systemd"/"Restart caddy": a
+# duplicate handler name whose winning definition lives in a later role is not
+# flushed by this role's mid-play flush_handlers, so the restart is lost.
+# daemon_reload regenerates the quadlet-derived unit before restarting it.
+- name: Restart homepage
+  ansible.builtin.systemd_service:
+    name: homepage
+    state: restarted
+    daemon_reload: true
+  become: true
+
+- name: Restart caddy for homepage
+  ansible.builtin.systemd_service:
+    name: caddy
+    state: restarted
+  become: true

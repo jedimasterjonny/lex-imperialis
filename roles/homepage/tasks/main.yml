@@ -1,0 +1,76 @@
+---
+# Runs as its own least-privilege id; the image's entrypoint drops to PUID/PGID
+# and chowns /app/config to it, so the config dir and the managed files are
+# owned by that id to keep converge idempotent.
+- name: Create the homepage group
+  ansible.builtin.group:
+    name: homepage
+    gid: "{{ homepage_uid }}"
+    system: true
+  become: true
+
+- name: Create the homepage user
+  ansible.builtin.user:
+    name: homepage
+    uid: "{{ homepage_uid }}"
+    group: homepage
+    shell: /usr/sbin/nologin
+    create_home: false
+    system: true
+  become: true
+
+# Config and state share homepage's /app/config; a writable mount lets it seed
+# the skeleton services/widgets/bookmarks on first boot for the operator to fill
+# in (kept out of this public repo), while Ansible owns only settings.yaml.
+- name: Create the config directory
+  ansible.builtin.file:
+    path: /etc/homepage
+    state: directory
+    owner: homepage
+    group: homepage
+    mode: "0755"
+  become: true
+
+- name: Provision the settings
+  ansible.builtin.template:
+    src: settings.yaml.j2
+    dest: /etc/homepage/settings.yaml
+    owner: homepage
+    group: homepage
+    mode: "0644"
+  become: true
+  notify: Restart homepage
+
+# The caddy role owns /etc/caddy/sites and imports every sites/*.caddy into the
+# wildcard vhost; this snippet routes homepage.<domain> to the container.
+- name: Register the caddy reverse-proxy snippet
+  ansible.builtin.template:
+    src: homepage.caddy.j2
+    dest: /etc/caddy/sites/homepage.caddy
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart caddy for homepage
+
+- name: Install the homepage container unit
+  ansible.builtin.template:
+    src: homepage.container.j2
+    dest: /etc/containers/systemd/homepage.container
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart homepage
+
+# Restart-on-change runs at flush; this generates the quadlet unit and asserts it
+# is up even on a converge where nothing changed and no handler fired.
+- name: Apply pending unit changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Start homepage
+  ansible.builtin.systemd_service:
+    name: homepage
+    state: started
+    daemon_reload: true
+  become: true

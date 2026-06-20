@@ -63,6 +63,7 @@
     - nfs
     - caddy
     - grafana
+    - homepage
     - arr
     - podman_backup
     - node_exporter
