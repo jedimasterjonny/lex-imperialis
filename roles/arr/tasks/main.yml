@@ -98,13 +98,16 @@
   when: arr_enabled | select('in', arr_media_access) | list | length > 0
 
 # Apps without shared media access get their own group, so a misbehaving
-# container can't write outside its app's files.
+# container can't write outside its app's files. An app with no uid runs as its
+# image's own user and gets no host account.
 - name: Create the per-app groups
   ansible.builtin.group:
     name: "{{ item.key }}"
     gid: "{{ item.value.uid }}"
     system: true
-  loop: "{{ arr_apps | dict2items | selectattr('key', 'in', arr_enabled) | rejectattr('key', 'in', arr_media_access) | list }}"
+  loop: >-
+    {{ arr_apps | dict2items | selectattr('key', 'in', arr_enabled)
+    | selectattr('value.uid', 'defined') | rejectattr('key', 'in', arr_media_access) | list }}
   loop_control:
     label: "{{ item.key }}"
   become: true
@@ -117,7 +120,7 @@
     shell: /usr/sbin/nologin
     create_home: false
     system: true
-  loop: "{{ arr_apps | dict2items | selectattr('key', 'in', arr_enabled) | list }}"
+  loop: "{{ arr_apps | dict2items | selectattr('key', 'in', arr_enabled) | selectattr('value.uid', 'defined') | list }}"
   loop_control:
     label: "{{ item.key }}"
   become: true

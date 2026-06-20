@@ -18,6 +18,7 @@
     # Bring the arr stack up one container at a time.
     arr_enabled:
       - prowlarr
+      - flaresolverr
       - lidarr
       - radarr
       - sonarr
