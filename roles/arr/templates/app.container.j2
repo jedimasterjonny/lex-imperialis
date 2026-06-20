@@ -1,5 +1,5 @@
 {% set arr_lsio = item.value.image.startswith('lscr.io/') %}
-{% set arr_app_gid = arr_gid if item.key in arr_media_access else item.value.uid %}
+{% set arr_app_gid = arr_gid if item.key in arr_media_access else item.value.uid | default('') %}
 {% set arr_data_suffix = ':ro' if arr_media_access[item.key] | default('rw') == 'ro' else '' %}
 [Unit]
 Description={{ item.key | capitalize }}
@@ -37,7 +37,7 @@ Environment=TZ={{ arr_timezone }}
 Environment=PUID={{ item.value.uid }}
 Environment=PGID={{ arr_app_gid }}
 Environment=UMASK=002
-{% else %}
+{% elif item.value.uid is defined %}
 User={{ item.value.uid }}:{{ arr_app_gid }}
 {% endif %}
 {% if item.value.device is defined %}
