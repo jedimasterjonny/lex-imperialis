@@ -1,0 +1,4 @@
+@homepage host homepage.{{ homepage_domain }}
+handle @homepage {
+	reverse_proxy homepage:3000
+}
