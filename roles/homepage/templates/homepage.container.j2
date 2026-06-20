@@ -13,12 +13,14 @@ Environment=TZ={{ homepage_timezone }}
 Environment=HOMEPAGE_ALLOWED_HOSTS=homepage.{{ homepage_domain }},127.0.0.1:3000
 # Log to stdout only, so nothing is written under the config mount.
 Environment=LOG_TARGETS=stdout
-# Writable: homepage seeds skeleton services/widgets/bookmarks here on first boot
-# and the entrypoint chowns it to PUID; Ansible owns only settings.yaml. :Z
-# relabels it container_file_t so those writes pass on the SELinux-enforcing
-# fleet — the incus molecule instance isn't enforcing, so it can't catch a
-# missing label.
-Volume=/etc/homepage:/app/config:Z
+# Operator data store: homepage seeds skeleton services/widgets/bookmarks here on
+# first boot and the entrypoint chowns it to PUID. A named volume keeps the
+# backing store off a host bind mount — podman labels it container_file_t (no :Z)
+# and podman_backup captures it automatically.
+Volume=homepage-config:/app/config
+# Ansible owns only settings.yaml; mounted read-only as a single file on top of
+# the volume so it stays config-as-code without shadowing the seeded data.
+Volume=/etc/homepage/settings.yaml:/app/config/settings.yaml:ro,Z
 # Liveness against homepage's own health endpoint (busybox wget ships in the
 # alpine image). Status only.
 HealthCmd=wget -q --tries=1 --spider http://127.0.0.1:3000/api/healthcheck
