@@ -45,6 +45,10 @@
           - localhost:9100
         prometheus_cadvisor_targets:
           - localhost:8080
+        # Nothing listens on 9093 here; the target need only be discovered for the
+        # alerting block and rule files to load, which verify asserts.
+        prometheus_alertmanager_targets:
+          - localhost:9093
         # The nested container cannot load an AppArmor profile, so run the
         # container unconfined; production keeps docker's default.
         prometheus_security_opt:

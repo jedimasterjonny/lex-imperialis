@@ -1,0 +1,28 @@
+[Unit]
+Description=Alertmanager
+
+[Container]
+ContainerName=alertmanager
+Image={{ alertmanager_image }}
+# Host network so Prometheus on the NAS reaches the API at :9093 over the LAN,
+# like the node and cadvisor exporters. The image's default command already points
+# at the mounted config and storage paths. Opening the port is the play's job.
+Network=host
+Volume=/etc/alertmanager:/etc/alertmanager:ro
+# :U hands the named volume to the image's nobody user (65534), which owns the
+# silences and notification log under /alertmanager; rootful podman would
+# otherwise create it root-owned.
+Volume=alertmanager-data:/alertmanager:U
+# Liveness probe against Alertmanager's health endpoint; status only, no restart.
+HealthCmd=wget -q -O /dev/null http://localhost:9093/-/healthy
+HealthInterval=1m
+HealthTimeout=10s
+HealthStartPeriod=30s
+HealthRetries=3
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

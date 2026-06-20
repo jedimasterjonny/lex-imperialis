@@ -1,0 +1,11 @@
+---
+- name: Converge
+  hosts: all
+  tasks:
+    - name: Apply the podman role
+      ansible.builtin.include_role:
+        name: podman
+
+    - name: Apply the alertmanager role
+      ansible.builtin.include_role:
+        name: alertmanager

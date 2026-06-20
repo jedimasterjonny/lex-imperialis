@@ -1,0 +1,3 @@
+---
+# renovate's image manager bumps the tag.
+alertmanager_image: docker.io/prom/alertmanager:v0.33.0@sha256:af26fbe4dd1886ac0efd7bd55cd9027da262e105b137a376522b7c14c3626e4a
