@@ -20,6 +20,25 @@
     mode: "0644"
   register: prometheus_config
 
+# Alert rules load only when an alertmanager is configured. They sit in a
+# directory mount, not the single-file prometheus.yml, so a changed rule reaches
+# the container — but Prometheus still needs the recreate below to reload it.
+- name: Deploy the alert rules
+  when: prometheus_alertmanager_targets | length > 0
+  block:
+    - name: Create the rules directory
+      ansible.builtin.file:
+        path: "{{ prometheus_project_dir }}/rules"
+        state: directory
+        mode: "0755"
+
+    - name: Deploy the alert rules file
+      ansible.builtin.copy:
+        src: rules/alerts.yml
+        dest: "{{ prometheus_project_dir }}/rules/alerts.yml"
+        mode: "0644"
+      register: prometheus_rules
+
 - name: Deploy the compose file
   ansible.builtin.template:
     src: compose.yaml.j2
@@ -32,12 +51,12 @@
 #
 # recreate on a config change: prometheus.yml is bind-mounted as a single file, so
 # Ansible's atomic write gives it a new inode the pinned mount never sees — the
-# running container (or a hot /-/reload) keeps reading the stale file. A compose
-# change recreates via auto.
+# running container (or a hot /-/reload) keeps reading the stale file. A changed
+# rule file needs the same recreate to reload. A compose change recreates via auto.
 - name: Bring the prometheus stack up
   community.docker.docker_compose_v2:
     project_src: "{{ prometheus_project_dir }}"
     state: present
-    recreate: "{{ 'always' if prometheus_config.changed else 'auto' }}"
+    recreate: "{{ 'always' if (prometheus_config.changed or prometheus_rules.changed | default(false)) else 'auto' }}"
   environment:
     PATH: "/usr/local/bin:{{ ansible_facts.env.PATH }}"

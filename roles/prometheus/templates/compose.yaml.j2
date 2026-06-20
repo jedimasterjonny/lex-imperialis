@@ -18,4 +18,7 @@ services:
       - --storage.tsdb.path=/prometheus
     volumes:
       - {{ prometheus_project_dir }}/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+{% if prometheus_alertmanager_targets %}
+      - {{ prometheus_project_dir }}/rules:/etc/prometheus/rules:ro
+{% endif %}
       - {{ prometheus_data_dir }}:/prometheus

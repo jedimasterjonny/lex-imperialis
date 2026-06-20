@@ -1,0 +1,12 @@
+# Managed by Ansible (prometheus role).
+groups:
+  - name: availability
+    rules:
+      - alert: InstanceDown
+        expr: up == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }} ({{ $labels.job }}) is down"
+          description: "{{ $labels.instance }} has been unreachable for over 5 minutes."
