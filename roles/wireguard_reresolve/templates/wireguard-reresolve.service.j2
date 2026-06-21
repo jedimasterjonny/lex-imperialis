@@ -1,0 +1,7 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Re-resolve the WireGuard {{ wireguard_reresolve_interface }} endpoint on a WAN-IP change
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/wireguard-reresolve {{ wireguard_reresolve_interface }} {{ wireguard_reresolve_resolver }} {{ wireguard_reresolve_stale_seconds }}
