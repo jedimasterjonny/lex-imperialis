@@ -81,3 +81,41 @@
           - (podman_backup_restored.content | b64decode) == podman_backup_probe_content
         fail_msg: "the probe data did not round-trip through the backup"
         quiet: true
+
+    # The successful run above triggered ExecStopPost, which should have recorded
+    # the outcome metric node_exporter scrapes.
+    - name: Read the outcome metric after the successful run
+      ansible.builtin.slurp:
+        src: "{{ podman_backup_textfile_dir }}/podman-backup.prom"
+      register: podman_backup_metric_ok
+      become: true
+
+    - name: A successful run records podman_backup_success 1
+      ansible.builtin.assert:
+        that:
+          - "'podman_backup_success 1' in (podman_backup_metric_ok.content | b64decode)"
+          - "'podman_backup_last_run_timestamp_seconds ' in (podman_backup_metric_ok.content | b64decode)"
+        fail_msg: "the outcome metric did not report a successful run"
+        quiet: true
+
+    # Drive the writer the way systemd would on a failed run; ExecStart failure
+    # can't be forced in a container, so invoke the hook with SERVICE_RESULT set.
+    - name: Simulate a failed run's ExecStopPost
+      ansible.builtin.command: "{{ podman_backup_metric_script }}"
+      environment:
+        SERVICE_RESULT: exit-code
+      changed_when: false
+      become: true
+
+    - name: Read the outcome metric after the simulated failure
+      ansible.builtin.slurp:
+        src: "{{ podman_backup_textfile_dir }}/podman-backup.prom"
+      register: podman_backup_metric_fail
+      become: true
+
+    - name: A failed run records podman_backup_success 0
+      ansible.builtin.assert:
+        that:
+          - "'podman_backup_success 0' in (podman_backup_metric_fail.content | b64decode)"
+        fail_msg: "the outcome metric did not report a failed run"
+        quiet: true

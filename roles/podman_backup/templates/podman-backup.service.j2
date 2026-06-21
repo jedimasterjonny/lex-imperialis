@@ -8,3 +8,6 @@ RequiresMountsFor={{ podman_backup_root }}
 [Service]
 Type=oneshot
 ExecStart={{ podman_backup_script }}
+# Runs whether ExecStart succeeded or failed, reading $SERVICE_RESULT to record
+# the outcome as a node_exporter metric.
+ExecStopPost={{ podman_backup_metric_script }}
