@@ -13,7 +13,9 @@ Image={{ node_exporter_image }}
 Network=host
 PodmanArgs=--pid=host
 Volume=/:/host:ro,rslave
-Exec=--path.rootfs=/host --web.listen-address={{ node_exporter_listen_address }}
+# The textfile directory is read through the read-only /host bind, so batch jobs
+# drop *.prom files on the host without the exporter needing a writable mount.
+Exec=--path.rootfs=/host --web.listen-address={{ node_exporter_listen_address }} --collector.textfile.directory=/host{{ node_exporter_textfile_directory }}
 
 [Service]
 Restart=on-failure

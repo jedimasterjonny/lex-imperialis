@@ -7,3 +7,8 @@ node_exporter_listen_address: ":9100"
 # host that binds a VPN-interface address sets the interface's unit here so the
 # bind can't race the address at boot. Empty for a host binding every interface.
 node_exporter_after: ""
+
+# Host directory the textfile collector reads, exposed to the container through
+# the read-only /host bind. Batch jobs (e.g. podman_backup) drop *.prom files here
+# for Prometheus to scrape; keep it in step with the writer's path.
+node_exporter_textfile_directory: /var/lib/node_exporter/textfile_collector

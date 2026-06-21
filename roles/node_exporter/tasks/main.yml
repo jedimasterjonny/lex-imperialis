@@ -1,4 +1,13 @@
 ---
+- name: Create the textfile collector directory
+  ansible.builtin.file:
+    path: "{{ node_exporter_textfile_directory }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
 - name: Install the node-exporter container unit
   ansible.builtin.template:
     src: node-exporter.container.j2
