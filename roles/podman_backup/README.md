@@ -9,3 +9,12 @@ backup fails), then prunes to `podman_backup_keep_weekly` / `_keep_monthly`.
 
 The repo is unencrypted (`--insecure-no-password`): the NAS share is trusted.
 Assumes `podman` is installed and the `nfs` role has mounted the target.
+
+## Alerting
+
+An `ExecStopPost` hook writes the run's outcome to
+`podman_backup_textfile_dir/podman-backup.prom` — `podman_backup_success` (1/0,
+from systemd's `$SERVICE_RESULT`) and `podman_backup_last_run_timestamp_seconds`.
+node_exporter scrapes that file (its `node_exporter_textfile_directory` must
+match), and the `prometheus` role's `PodmanBackupFailed` / `PodmanBackupOverdue`
+rules turn a failed or missed run into an Alertmanager notification.

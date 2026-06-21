@@ -10,3 +10,24 @@ groups:
         annotations:
           summary: "{{ $labels.instance }} ({{ $labels.job }}) is down"
           description: "{{ $labels.instance }} has been unreachable for over 5 minutes."
+
+  - name: backups
+    rules:
+      - alert: PodmanBackupFailed
+        expr: podman_backup_success == 0
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "podman backup failed on {{ $labels.instance }}"
+          description: "The last podman volume backup run on {{ $labels.instance }} failed."
+      # The weekly timer caps a healthy run at ~7 days old; 8 gives a day's grace
+      # before flagging a run that never fired (the metric stops advancing).
+      - alert: PodmanBackupOverdue
+        expr: time() - podman_backup_last_run_timestamp_seconds > 8 * 86400
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "podman backup overdue on {{ $labels.instance }}"
+          description: "{{ $labels.instance }} has not run a podman volume backup in over 8 days."

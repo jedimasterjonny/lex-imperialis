@@ -17,3 +17,10 @@ public interface; pair that with a source-scoped `firewalld` rule. Opening
 When that address belongs to a VPN interface, set `node_exporter_after` to its
 unit (e.g. `wg-quick@wg0.service`) so the exporter starts after the interface
 and the bind can't race the address at boot.
+
+## Textfile collector
+
+The role creates `node_exporter_textfile_directory` (default
+`/var/lib/node_exporter/textfile_collector`) and points the textfile collector at
+it through the read-only `/host` bind. Batch jobs drop a world-readable `*.prom`
+file there; `podman_backup` uses this to export its last run's outcome.
