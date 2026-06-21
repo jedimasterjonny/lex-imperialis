@@ -5,13 +5,18 @@
     state: present
   become: true
 
-- name: Install the podman volume backup script
+- name: Install the backup and metric scripts
   ansible.builtin.template:
-    src: podman-backup.sh.j2
-    dest: "{{ podman_backup_script }}"
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
     owner: root
     group: root
     mode: "0755"
+  loop:
+    - src: podman-backup.sh.j2
+      dest: "{{ podman_backup_script }}"
+    - src: podman-backup-metric.sh.j2
+      dest: "{{ podman_backup_metric_script }}"
   become: true
 
 - name: Install the backup service and timer
