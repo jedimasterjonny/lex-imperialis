@@ -31,8 +31,8 @@ wireguard's probe (below) instead force-restarts the tunnel.
   `/tv`, `/music`) to match its restored database, passes `/dev/dri` through
   for hardware transcoding, and gets a tmpfs `/transcode`.
 - **recyclarr** — TRaSH-guides sync over the importers' APIs; no media
-  mount, no webui. Its config stays operator-managed in its volume, keeping
-  the arr API keys it holds out of the repo.
+  mount, no webui. Its TRaSH config stays operator-managed in its volume; the
+  importer API keys it talks to are repo-owned (see **API keys**).
 - **transmission** — mounts `downloads` only, keeping the libraries out of
   the torrent client's reach; netns-confined to the tunnel (below).
 - **wireguard** — owns the tunnel netns; no media.
@@ -51,6 +51,17 @@ Data dirs are setgid `2775`, each owned by the app that fills it; with
 `UMASK=002` files land group-writable, so the rw apps co-write and
 hardlink across each other's output. plex's membership is read-only —
 `:ro` mounts enforce it.
+
+## API keys
+
+The Servarr apps (radarr, sonarr, lidarr, prowlarr) take their API key from the
+repo, not a self-generated `config.xml` value. `arr_api_keys` (vault-sourced)
+renders each app's key to a 0600 `/etc/arr/<app>.env`, which the unit reads as
+`<APP>__AUTH__APIKEY` — the key never touches the world-readable unit, and the
+env value overrides the config-file key at runtime. An empty key leaves the app
+to generate its own, so molecule converges with no vault. Vault replaces the
+whole dict; seed it with each app's current key so prowlarr and recyclarr keep
+working across the cutover.
 
 ## Transmission behind WireGuard
 
