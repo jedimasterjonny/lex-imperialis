@@ -29,3 +29,17 @@ arr_enabled: "{{ arr_apps.keys() | list }}"
 # Empty installs a generated blackhole config: the tunnel comes up dead, so
 # torrent traffic can never leak outside the VPN.
 arr_wireguard_conf: ""
+
+# Servarr API keys, vault-sourced and keyed by app. Each key is injected via the
+# app's <APP>__AUTH__APIKEY env var — rendered to a 0600 EnvironmentFile, never
+# the world-readable unit — which overrides the config.xml value at runtime, so
+# the repo owns the key instead of the app generating its own into the config
+# volume. The dict keys name the apps that support it; an empty value leaves that
+# app to self-generate, so molecule converges with no vault. Vault replaces the
+# whole dict (no merge); seeding it with each app's current key keeps prowlarr
+# and recyclarr working across the cutover.
+arr_api_keys:
+  radarr: ""
+  sonarr: ""
+  lidarr: ""
+  prowlarr: ""

@@ -139,6 +139,33 @@
     label: "{{ item.key }}"
   become: true
 
+- name: Create the API-key directory
+  ansible.builtin.file:
+    path: /etc/arr
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+# A Servarr app's key renders to a 0600 EnvironmentFile the unit reads, so it
+# never lands in the world-readable .container. Only apps with a vault-set key
+# get a file; an empty key (molecule) leaves the app to generate its own.
+- name: Deploy the Servarr API keys
+  ansible.builtin.template:
+    src: apikey.env.j2
+    dest: /etc/arr/{{ item.key }}.env
+    owner: root
+    group: root
+    mode: "0600"
+  loop: "{{ arr_api_keys | dict2items | selectattr('key', 'in', arr_enabled) | selectattr('value', 'truthy') | list }}"
+  loop_control:
+    label: "{{ item.key }}"
+  become: true
+  no_log: true
+  register: arr_api_key_files
+  notify: Restart the app containers
+
 - name: Install the app container units
   ansible.builtin.template:
     src: app.container.j2
