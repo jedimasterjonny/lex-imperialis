@@ -10,6 +10,17 @@ backup fails), then prunes to `podman_backup_keep_weekly` / `_keep_monthly`.
 The repo is unencrypted (`--insecure-no-password`): the NAS share is trusted.
 Assumes `podman` is installed and the `nfs` role has mounted the target.
 
+## Restore
+
+The role also installs `podman-restore.sh` (`podman_backup_restore_script`), the
+inverse of the backup, for disaster recovery. Run it on a host **after its play
+has converged** (so the volumes exist and are registered): it quiesces the
+quadlet units, empties each volume, restores the latest snapshot over them
+(restic preserves ownership and mode, so no chowns), and restarts the units. It
+aborts before touching anything if the repo holds no snapshot, and confirms
+before wiping when run from a terminal. The full per-host recovery sequence is in
+[`docs/disaster-recovery.md`](../../docs/disaster-recovery.md).
+
 ## Alerting
 
 An `ExecStopPost` hook writes the run's outcome to
