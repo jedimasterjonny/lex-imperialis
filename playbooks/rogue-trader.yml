@@ -48,6 +48,9 @@
     # The tunnel initiates outbound to the router, so its return traffic rides
     # conntrack — no inbound 51820/udp needed.
     - firewalld
+    # Keep the tunnel up across a home WAN-IP change: re-resolve the endpoint
+    # when the handshake goes stale. NFS and the metrics binds below ride it.
+    - wireguard_reresolve
     - podman
     - autoupdate
     - nfs

@@ -1,0 +1,9 @@
+---
+wireguard_reresolve_interface: wg0
+# Queried directly: a downed tunnel takes its DNS with it, so the system
+# resolver cannot resolve the endpoint hostname when it is needed most.
+wireguard_reresolve_resolver: 1.1.1.1
+# Only act once the latest handshake is older than this; a healthy tunnel
+# rehandshakes well within it, so the timer no-ops.
+wireguard_reresolve_stale_seconds: 150
+wireguard_reresolve_interval: 1min

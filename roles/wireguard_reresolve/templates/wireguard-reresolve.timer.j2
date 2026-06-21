@@ -1,0 +1,10 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Periodically re-resolve the WireGuard {{ wireguard_reresolve_interface }} endpoint
+
+[Timer]
+OnBootSec={{ wireguard_reresolve_interval }}
+OnUnitActiveSec={{ wireguard_reresolve_interval }}
+
+[Install]
+WantedBy=timers.target

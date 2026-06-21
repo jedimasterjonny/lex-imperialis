@@ -1,0 +1,50 @@
+---
+- name: Verify
+  hosts: all
+  tasks:
+    # daemon_reload is a no-op that just makes the module gather and return the
+    # timer's systemctl-show properties to assert against; it reads, not mutates.
+    - name: Read the re-resolve timer's state
+      ansible.builtin.systemd_service:
+        name: wireguard-reresolve.timer
+        daemon_reload: true
+      register: wireguard_reresolve_timer
+      become: true
+
+    - name: The timer is enabled and active
+      ansible.builtin.assert:
+        that:
+          - wireguard_reresolve_timer.status.ActiveState == 'active'
+          - wireguard_reresolve_timer.status.UnitFileState == 'enabled'
+        fail_msg: "the re-resolve timer is not enabled and active"
+        quiet: true
+
+    - name: Read the re-resolve service definition
+      ansible.builtin.systemd_service:
+        name: wireguard-reresolve.service
+      register: wireguard_reresolve_service
+      become: true
+
+    - name: The service invokes the re-resolve script for the interface
+      ansible.builtin.assert:
+        that:
+          - "'/usr/local/sbin/wireguard-reresolve' in wireguard_reresolve_service.status.ExecStart"
+          - "'wg0' in wireguard_reresolve_service.status.ExecStart"
+        fail_msg: "the service does not invoke the re-resolve script for wg0"
+        quiet: true
+
+    # With no wg0 interface in the container the script must exit cleanly at its
+    # guard rather than error — the real endpoint-update path needs a live
+    # tunnel, exercised on the host, not here.
+    - name: Run the script with no tunnel present
+      ansible.builtin.command: /usr/local/sbin/wireguard-reresolve wg0 1.1.1.1 150
+      register: wireguard_reresolve_run
+      changed_when: false
+      become: true
+
+    - name: It exits cleanly when the interface is absent
+      ansible.builtin.assert:
+        that:
+          - wireguard_reresolve_run.rc == 0
+        fail_msg: "the script errored without a wg0 interface present"
+        quiet: true

@@ -1,0 +1,7 @@
+---
+- name: Converge
+  hosts: all
+  tasks:
+    - name: Apply the wireguard_reresolve role
+      ansible.builtin.include_role:
+        name: wireguard_reresolve
