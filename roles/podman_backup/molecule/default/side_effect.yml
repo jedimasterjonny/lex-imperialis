@@ -1,0 +1,44 @@
+---
+# Regression guard for the restore path (podman-restore.sh): take a snapshot,
+# tamper with the live volume, then restore. verify asserts the original data
+# came back and the tampering — a stray file the snapshot never held — is gone,
+# proving the restore is an exact mirror, not an overlay.
+- name: Exercise the restore
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - ../../defaults/main.yml
+  vars:
+    podman_backup_probe_path: /var/lib/containers/storage/volumes/lex-probe/_data/probe.txt
+    podman_backup_stray_path: /var/lib/containers/storage/volumes/lex-probe/_data/stray.txt
+  tasks:
+    # Starting a oneshot unit blocks until it exits, so this returns only once the
+    # snapshot — capturing the original probe data — is written.
+    - name: Take a snapshot to restore from
+      ansible.builtin.systemd_service:
+        name: podman-backup.service
+        state: started
+      become: true
+
+    - name: Tamper with the probe file after the snapshot
+      ansible.builtin.copy:
+        content: "tampered\n"
+        dest: "{{ podman_backup_probe_path }}"
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Drop a stray file the snapshot does not contain
+      ansible.builtin.copy:
+        content: "stray\n"
+        dest: "{{ podman_backup_stray_path }}"
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Restore the volumes from the latest snapshot
+      ansible.builtin.command: "{{ podman_backup_restore_script }}"
+      changed_when: true
+      become: true
