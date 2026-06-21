@@ -157,6 +157,45 @@
         label: "{{ item.key }}"
       changed_when: false
 
+    # The Servarr apps take their API key from the repo, injected via a 0600
+    # EnvironmentFile so it never lands in the world-readable unit. Prove the
+    # file is locked down and the container actually receives the key.
+    - name: Stat each Servarr API-key env file
+      ansible.builtin.stat:
+        path: /etc/arr/{{ item }}.env
+      loop: "{{ arr_api_keys | dict2items | selectattr('key', 'in', arr_enabled) | map(attribute='key') | list }}"
+      become: true
+      register: arr_keyfile_stat
+
+    - name: Each API-key file is private to root
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.mode == '0600'
+          - item.stat.pw_name == 'root'
+        fail_msg: "/etc/arr/{{ item.item }}.env is missing or not 0600 root"
+        quiet: true
+      loop: "{{ arr_keyfile_stat.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Read each Servarr app's injected API key
+      ansible.builtin.command: podman exec {{ item }} printenv {{ item | upper }}__AUTH__APIKEY
+      loop: "{{ arr_api_keys | dict2items | selectattr('key', 'in', arr_enabled) | map(attribute='key') | list }}"
+      become: true
+      register: arr_injected_keys
+      changed_when: false
+
+    - name: Each Servarr app receives its API key from the env file
+      ansible.builtin.assert:
+        that:
+          - item.stdout | length > 0
+        fail_msg: "{{ item.item }} did not receive its API key"
+        quiet: true
+      loop: "{{ arr_injected_keys.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
     - name: Stat the data directories
       ansible.builtin.stat:
         path: "{{ arr_data_root }}/{{ item.key }}"

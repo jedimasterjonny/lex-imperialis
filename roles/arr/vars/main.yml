@@ -12,9 +12,9 @@
 # binds are quadlet passthroughs; healthcheck adds a podman liveness probe (cmd
 # plus optional interval/timeout/start_period/retries/on_failure, all
 # defaulted). prowlarr only manages indexers and recyclarr
-# only talks to the other apps, so neither has a data mount. recyclarr's
-# config — and the arr API keys inside it — is operator-managed in its volume,
-# keeping the keys out of the repo.
+# only talks to the other apps, so neither has a data mount. recyclarr's TRaSH
+# config is operator-managed in its volume; the Servarr API keys it references
+# are repo-owned via arr_api_keys (see defaults).
 #
 # Media-writing apps take their uid from the matching NAS user (filled in as
 # each is migrated) so files written over NFS land owned by an id the NAS
