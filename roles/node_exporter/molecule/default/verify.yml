@@ -2,6 +2,8 @@
 - name: Verify
   hosts: all
   gather_facts: false
+  vars_files:
+    - ../../defaults/main.yml
   tasks:
     - name: Wait for the metrics endpoint
       ansible.builtin.uri:
@@ -16,3 +18,26 @@
       ansible.builtin.assert:
         that: "'node_cpu_seconds_total' in node_exporter_metrics.content"
         fail_msg: node_exporter served no node_cpu_seconds_total metric
+
+    # Prove the textfile collector reads the host directory through the /host
+    # bind: drop a probe metric and confirm the exporter serves it.
+    - name: Drop a probe metric into the textfile directory
+      ansible.builtin.copy:
+        content: |
+          # HELP node_textfile_probe molecule textfile collector probe.
+          # TYPE node_textfile_probe gauge
+          node_textfile_probe 42
+        dest: "{{ node_exporter_textfile_directory }}/probe.prom"
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: The probe metric is exported
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9100/metrics
+        return_content: true
+      register: node_exporter_textfile
+      until: "'node_textfile_probe 42' in node_exporter_textfile.content"
+      retries: 15
+      delay: 2
