@@ -1,0 +1,52 @@
+#!/bin/sh
+# Re-resolve a WireGuard peer's DNS endpoint and update it when the WAN IP
+# behind the hostname changes. WireGuard resolves Endpoint= only at startup, so
+# a dynamic-IP gateway reboot strands the tunnel on the stale address. The
+# hostname survives only in the on-disk config (wg showconf reports the resolved
+# IP), and a downed tunnel takes its DNS with it, so the hostname is resolved
+# against a public resolver passed in.
+#
+# Usage: wireguard-reresolve <interface> <resolver> <stale_seconds>
+set -u
+
+iface=${1:?usage: wireguard-reresolve <interface> <resolver> <stale_seconds>}
+resolver=${2:?}
+stale=${3:?}
+conf="/etc/wireguard/${iface}.conf"
+
+# Absent interface or config (e.g. a test container): nothing to re-resolve.
+[ -e "/sys/class/net/${iface}" ] || exit 0
+[ -r "$conf" ] || exit 0
+
+pubkey=$(sed -n 's/^[[:space:]]*PublicKey[[:space:]]*=[[:space:]]*//p' "$conf" | head -n1)
+endpoint=$(sed -n 's/^[[:space:]]*Endpoint[[:space:]]*=[[:space:]]*//p' "$conf" | head -n1)
+if [ -z "$pubkey" ] || [ -z "$endpoint" ]; then
+	exit 0
+fi
+
+host=${endpoint%:*}
+port=${endpoint##*:}
+
+# An IP literal has nothing to re-resolve.
+case "$host" in
+	*[!0-9.]*) ;;
+	*) exit 0 ;;
+esac
+
+# A healthy tunnel rehandshakes within the threshold, so this is the no-op
+# common path; only a stale handshake means the endpoint may have moved.
+handshake=$(wg show "$iface" latest-handshakes | awk -v k="$pubkey" '$1 == k {print $2; exit}')
+[ -n "$handshake" ] || exit 0
+age=$(( $(date +%s) - handshake ))
+[ "$age" -gt "$stale" ] || exit 0
+
+# No answer (resolver unreachable, NXDOMAIN): leave the endpoint untouched and
+# retry next tick rather than clobber a working one.
+newip=$(dig +short +time=3 +tries=2 "@${resolver}" "$host" A | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -n1)
+[ -n "$newip" ] || exit 0
+
+current=$(wg show "$iface" endpoints | awk -v k="$pubkey" '$1 == k {print $2; exit}')
+if [ "${current%:*}" != "$newip" ]; then
+	wg set "$iface" peer "$pubkey" endpoint "${newip}:${port}" \
+		&& logger -t wireguard-reresolve "${iface} endpoint ${current:-none} -> ${newip}:${port} (handshake ${age}s stale)"
+fi
