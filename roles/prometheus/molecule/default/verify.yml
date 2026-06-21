@@ -50,16 +50,17 @@
         return_content: true
       register: prometheus_loaded_rules
 
-    # The rule_files glob and its mounted rule both have to take effect for the
-    # InstanceDown rule to appear.
-    - name: The InstanceDown alert rule is loaded
+    # The rule_files glob and its mounted rule both have to take effect for these
+    # rules to appear.
+    - name: The shipped alert rules are loaded
       ansible.builtin.assert:
         that:
           - >-
             prometheus_loaded_rules.json.data.groups
             | map(attribute='rules') | flatten
-            | selectattr('name', 'eq', 'InstanceDown') | list | length > 0
-        fail_msg: The InstanceDown alert rule is not loaded
+            | selectattr('name', 'in', ['InstanceDown', 'PodmanBackupFailed', 'PodmanBackupOverdue'])
+            | list | length == 3
+        fail_msg: not all shipped alert rules are loaded
 
     - name: Read the loaded runtime config
       ansible.builtin.uri:
