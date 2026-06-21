@@ -5,7 +5,7 @@
     state: present
   become: true
 
-- name: Install the backup and metric scripts
+- name: Install the backup, restore, and metric scripts
   ansible.builtin.template:
     src: "{{ item.src }}"
     dest: "{{ item.dest }}"
@@ -15,6 +15,8 @@
   loop:
     - src: podman-backup.sh.j2
       dest: "{{ podman_backup_script }}"
+    - src: podman-restore.sh.j2
+      dest: "{{ podman_backup_restore_script }}"
     - src: podman-backup-metric.sh.j2
       dest: "{{ podman_backup_metric_script }}"
   become: true

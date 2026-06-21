@@ -9,6 +9,11 @@ podman_backup_root: /nfs/astropath
 # Installed backup script. /usr/local/sbin: root-only, like incus-image-refresh.
 podman_backup_script: /usr/local/sbin/podman-backup.sh
 
+# Installed restore script — the inverse of the backup, for disaster recovery
+# (docs/disaster-recovery.md). Same root-only /usr/local/sbin home; run by hand,
+# not on a timer.
+podman_backup_restore_script: /usr/local/sbin/podman-restore.sh
+
 # ExecStopPost hook that records each run's outcome as a node_exporter textfile
 # metric. Same /usr/local/sbin home as the backup script.
 podman_backup_metric_script: /usr/local/sbin/podman-backup-metric.sh

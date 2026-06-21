@@ -27,6 +27,19 @@
         fail_msg: "{{ podman_backup_script }} is missing or not executable"
         quiet: true
 
+    - name: Stat the restore script
+      ansible.builtin.stat:
+        path: "{{ podman_backup_restore_script }}"
+      register: podman_backup_restore_script_stat
+
+    - name: The restore script is installed and executable
+      ansible.builtin.assert:
+        that:
+          - podman_backup_restore_script_stat.stat.exists
+          - podman_backup_restore_script_stat.stat.executable
+        fail_msg: "{{ podman_backup_restore_script }} is missing or not executable"
+        quiet: true
+
     # daemon_reload is a no-op that just makes the module gather and return the
     # timer's systemctl-show properties to assert against; it reads, not mutates.
     - name: Read the backup timer's state
@@ -118,4 +131,33 @@
         that:
           - "'podman_backup_success 0' in (podman_backup_metric_fail.content | b64decode)"
         fail_msg: "the outcome metric did not report a failed run"
+        quiet: true
+
+    # side_effect ran podman-restore.sh after tampering with the live volume; the
+    # probe should be back to its original content in the volume itself, not just
+    # a scratch restore.
+    - name: Read the probe file from the live volume after the restore
+      ansible.builtin.slurp:
+        src: /var/lib/containers/storage/volumes/lex-probe/_data/probe.txt
+      register: podman_backup_live_probe
+      become: true
+
+    - name: The restore returned the original probe data to the volume
+      ansible.builtin.assert:
+        that:
+          - (podman_backup_live_probe.content | b64decode) == podman_backup_probe_content
+        fail_msg: "the restore did not return the original probe data to the volume"
+        quiet: true
+
+    - name: Stat the stray file the restore should have removed
+      ansible.builtin.stat:
+        path: /var/lib/containers/storage/volumes/lex-probe/_data/stray.txt
+      register: podman_backup_stray
+      become: true
+
+    - name: The restore is an exact mirror, not an overlay
+      ansible.builtin.assert:
+        that:
+          - not podman_backup_stray.stat.exists
+        fail_msg: "the restore left a stray file the snapshot did not contain"
         quiet: true
