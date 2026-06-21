@@ -29,7 +29,7 @@ Favour the simplest solution that meets current needs; hold to KISS, YAGNI, and 
 
 Loose `roles/` at the repo root — no collection wrapper. Single operator with nothing to publish; revisit only if custom plugins or modules appear.
 
-Fleet playbooks live in `playbooks/`; the bootstrap and molecule playbooks stay with their tooling (`bootstrap/`, `molecule/<tier>/`).
+Fleet playbooks live in `playbooks/`; the bootstrap and molecule playbooks stay with their tooling (`bootstrap/`, `molecule/<tier>/`). Operator runbooks live in `docs/` (e.g. disaster recovery).
 
 ## Fleet
 
