@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# systemd ExecStopPost hook for podman-backup.service: record the run's outcome as
+# a node_exporter textfile metric so Prometheus can alert on a failed or overdue
+# backup. systemd sets SERVICE_RESULT to "success" iff ExecStart exited 0.
+set -euo pipefail
+
+dir="{{ podman_backup_textfile_dir }}"
+success=0
+[ "${SERVICE_RESULT:-}" = success ] && success=1
+
+mkdir -p "$dir"
+# Publish atomically: write a temp file the exporter's *.prom glob ignores, then
+# rename it over the target so no scrape reads a half-written file. 0644 so the
+# exporter's unprivileged user can read it.
+tmp="$(mktemp "$dir/.podman-backup.prom.XXXXXX")"
+cat >"$tmp" <<EOF
+# HELP podman_backup_success Whether the last podman volume backup run succeeded (1) or failed (0).
+# TYPE podman_backup_success gauge
+podman_backup_success $success
+# HELP podman_backup_last_run_timestamp_seconds Unix time the last podman volume backup run finished.
+# TYPE podman_backup_last_run_timestamp_seconds gauge
+podman_backup_last_run_timestamp_seconds $(date +%s)
+EOF
+chmod 0644 "$tmp"
+mv "$tmp" "$dir/podman-backup.prom"

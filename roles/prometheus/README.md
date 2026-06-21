@@ -36,10 +36,12 @@ The role's host is the NAS, not a fleet openSUSE node, which shapes it:
 ## Alerting
 
 When `prometheus_alertmanager_targets` is set, the role adds the `alerting` block
-and a `rule_files` glob, mounts its `files/rules/` (a starter `InstanceDown`
-alert) at `/etc/prometheus/rules`, and routes alerts to the targets. The rules
-sit in a directory mount, so a changed rule reaches the container — but, like a
-config change, only a recreate makes Prometheus reload it.
+and a `rule_files` glob, mounts its `files/rules/` at `/etc/prometheus/rules`, and
+routes alerts to the targets. The shipped rules are `InstanceDown` (a target
+unreachable for 5m) and the `podman_backup` pair `PodmanBackupFailed`
+(`podman_backup_success == 0`) and `PodmanBackupOverdue` (the last-run timestamp
+gone stale). The rules sit in a directory mount, so a changed rule reaches the
+container — but, like a config change, only a recreate makes Prometheus reload it.
 
 A changed `prometheus.yml` recreates the container. The config is bind-mounted as
 a single file; Ansible's atomic write gives it a new inode that the pinned mount
