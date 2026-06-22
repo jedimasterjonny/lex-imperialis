@@ -1,3 +1,3 @@
 ---
 # renovate's image manager bumps the tag.
-cadvisor_image: ghcr.io/google/cadvisor:v0.57.0@sha256:e75bdb03b74b0b6995f208f166fead2e6e555dde73e44200113bb26f41b1981d
+cadvisor_image: ghcr.io/google/cadvisor:v0.60.1@sha256:d48aea9d9c1bcf375917279842408703293fde88982d4610aefe75134ec69759
