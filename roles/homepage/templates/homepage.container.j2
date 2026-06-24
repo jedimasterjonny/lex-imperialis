@@ -5,6 +5,12 @@ Description=Homepage
 ContainerName=homepage
 Image={{ homepage_image }}
 Network=caddy.network
+NoNewPrivileges=true
+DropCapability=all
+{# The root entrypoint chowns the config volume to PUID (CHOWN), then drops to #}
+{# it with su-exec (SETUID, SETGID); homepage binds :3000, so no #}
+{# NET_BIND_SERVICE. #}
+AddCapability=CHOWN SETGID SETUID
 Environment=PUID={{ homepage_uid }}
 Environment=PGID={{ homepage_uid }}
 Environment=TZ={{ homepage_timezone }}
