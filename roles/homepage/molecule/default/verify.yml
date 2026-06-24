@@ -32,3 +32,22 @@
       ansible.builtin.command: podman healthcheck run homepage
       become: true
       changed_when: false
+
+    # The healthcheck proves the cap set is sufficient; it can't prove it is
+    # minimal. Assert the posture directly so a regression that re-widens the
+    # caps or drops the restriction fails here, not silently in production.
+    - name: Read the container's security posture
+      ansible.builtin.command: podman inspect homepage
+      register: homepage_posture
+      changed_when: false
+      become: true
+
+    - name: The container keeps only its required capabilities and bars privilege escalation
+      vars:
+        container: "{{ homepage_posture.stdout | from_json | first }}"
+      ansible.builtin.assert:
+        that:
+          - "container.EffectiveCaps | default([], true) | sort == ['CAP_CHOWN', 'CAP_SETGID', 'CAP_SETUID']"
+          - "'no-new-privileges' in (container.HostConfig.SecurityOpt | default([], true))"
+        fail_msg: "homepage's capability or no-new-privileges posture has regressed"
+        quiet: true
