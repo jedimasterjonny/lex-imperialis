@@ -7,3 +7,7 @@ After=wordpress-db.service
 [Service]
 Type=oneshot
 ExecStart=/usr/local/bin/wp-db-dump
+# Runs whether the dump succeeded or failed, reading $SERVICE_RESULT to record
+# the outcome as a node_exporter metric — a silently stale DR dump otherwise
+# surfaces only during the disaster it exists to cover.
+ExecStopPost=/usr/local/sbin/wp-db-dump-metric.sh

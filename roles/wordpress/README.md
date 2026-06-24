@@ -30,6 +30,15 @@ alongside the raw datadir. The dump is engine-portable SQL;
 `docs/disaster-recovery.md` covers loading it to recover from a broken upgrade.
 Run `wp-db-dump` by hand to dump on demand.
 
+An `ExecStopPost` hook on the service writes each run's outcome to
+`wordpress_db_dump_textfile_dir/wordpress-db-dump.prom` — `wordpress_db_dump_success`
+(1/0, from systemd's `$SERVICE_RESULT`) and
+`wordpress_db_dump_last_run_timestamp_seconds`. node_exporter scrapes that file (its
+`node_exporter_textfile_directory` must match), and the `prometheus` role's
+`WordpressDbDumpFailed` / `WordpressDbDumpOverdue` rules turn a failed or stale DR
+dump into an alert — without it the wrapper's keep-the-last-good-dump-on-failure
+behaviour hides a broken dump until the disaster it exists to cover.
+
 ## Secrets
 
 `wordpress_db_password` and `wordpress_db_root_password` are vault-sourced and

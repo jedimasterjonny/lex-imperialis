@@ -59,8 +59,10 @@
             prometheus_loaded_rules.json.data.groups
             | map(attribute='rules') | flatten
             | selectattr('name', 'in', ['InstanceDown', 'PodmanBackupFailed', 'PodmanBackupOverdue',
-                                        'FilesystemSpaceLow', 'ServiceRestartStorm'])
-            | list | length == 5
+                                        'WordpressDbDumpFailed', 'WordpressDbDumpOverdue',
+                                        'FilesystemSpaceLow', 'ServiceRestartStorm',
+                                        'AutoupdateFailed', 'AutoupdateOverdue'])
+            | list | length == 9
         fail_msg: not all shipped alert rules are loaded
 
     - name: Read the loaded runtime config

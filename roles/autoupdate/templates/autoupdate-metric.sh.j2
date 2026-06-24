@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# systemd ExecStopPost hook for autoupdate.service: record the run's outcome as a
+# node_exporter textfile metric so Prometheus can alert when an unattended update
+# fails and the host silently stops patching itself. systemd sets SERVICE_RESULT
+# to "success" iff ExecStart exited 0 — which, with SuccessExitStatus=102 103,
+# includes zypper's "reboot/restart recommended" codes. A successful run reboots
+# (the unit's ExecStartPost), so the trailing sync forces the metric to disk
+# before this hook returns — a dropped write would freeze the last-run timestamp
+# and falsely fire AutoupdateOverdue on a healthy host.
+set -euo pipefail
+
+dir="{{ autoupdate_textfile_dir }}"
+success=0
+[ "${SERVICE_RESULT:-}" = success ] && success=1
+
+mkdir -p "$dir"
+# Publish atomically: write a temp file the exporter's *.prom glob ignores, then
+# rename it over the target so no scrape reads a half-written file. 0644 so the
+# exporter's unprivileged user can read it.
+tmp="$(mktemp "$dir/.autoupdate.prom.XXXXXX")"
+cat >"$tmp" <<EOF
+# HELP autoupdate_success Whether the last unattended update run succeeded (1) or failed (0).
+# TYPE autoupdate_success gauge
+autoupdate_success $success
+# HELP autoupdate_last_run_timestamp_seconds Unix time the last unattended update run finished.
+# TYPE autoupdate_last_run_timestamp_seconds gauge
+autoupdate_last_run_timestamp_seconds $(date +%s)
+EOF
+chmod 0644 "$tmp"
+mv "$tmp" "$dir/autoupdate.prom"
+# Force to disk before returning: a successful run's ExecStartPost reboot races
+# this hook, and a lost write would stall the timestamp into a false overdue alert.
+sync
