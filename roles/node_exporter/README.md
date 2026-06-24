@@ -24,3 +24,17 @@ The role creates `node_exporter_textfile_directory` (default
 `/var/lib/node_exporter/textfile_collector`) and points the textfile collector at
 it through the read-only `/host` bind. Batch jobs drop a world-readable `*.prom`
 file there; `podman_backup` uses this to export its last run's outcome.
+
+## Systemd collector
+
+`--collector.systemd` with `--collector.systemd.enable-restarts-metrics` exports
+`node_systemd_service_restart_total` per `*.service` unit (`unit-include` filters
+out mounts, scopes, and timers), feeding Prometheus's `ServiceRestartStorm` alert.
+The collector reads the host D-Bus system bus, so the container binds the host's
+`/run/dbus/system_bus_socket` read-only at `/var/run/dbus/system_bus_socket` (the
+path the bus library dials; the image has no `/var/run` symlink) and adds
+`--security-opt=label=disable` —
+the enforcing fleet otherwise denies `container_t` the socket connect (the same
+trade-off cadvisor makes for the podman socket). Reads use the default,
+non-private bus connection, which systemd serves to any uid, so the exporter
+stays unprivileged.

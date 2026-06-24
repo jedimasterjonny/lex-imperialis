@@ -31,3 +31,27 @@ groups:
         annotations:
           summary: "podman backup overdue on {{ $labels.instance }}"
           description: "{{ $labels.instance }} has not run a podman volume backup in over 8 days."
+
+  - name: filesystem
+    rules:
+      - alert: FilesystemSpaceLow
+        expr: node_filesystem_avail_bytes{fstype!~"tmpfs|squashfs|overlay|ramfs"} / node_filesystem_size_bytes * 100 < 10
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "low disk space on {{ $labels.instance }}:{{ $labels.mountpoint }}"
+          description: "{{ $labels.mountpoint }} on {{ $labels.instance }} has under 10% free."
+
+  - name: services
+    rules:
+      # node_exporter's systemd collector exposes a true per-unit restart counter,
+      # robust to the cgroup-id churn that defeats a cadvisor start-time proxy.
+      - alert: ServiceRestartStorm
+        expr: increase(node_systemd_service_restart_total[15m]) > 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.name }} is restarting repeatedly on {{ $labels.instance }}"
+          description: "{{ $labels.name }} on {{ $labels.instance }} auto-restarted more than 3 times in 15 minutes."
