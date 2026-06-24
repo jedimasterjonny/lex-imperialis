@@ -3,11 +3,16 @@
   hosts: this_host
   vars:
     common_hostname: scholam
+    # node_exporter, scraped by Prometheus on administratum over the LAN.
+    firewalld_ports:
+      - 9100/tcp
   roles:
     - common
     - sshd
     - firewalld
+    - podman
     - autoupdate
     - incus
     - libvirt
     - dev
+    - node_exporter
