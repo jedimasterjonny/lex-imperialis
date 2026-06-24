@@ -17,3 +17,10 @@ dev_npm: true
 dev_user: jonny
 dev_user_home: "/home/{{ dev_user }}"
 dev_claude_bin: "{{ dev_user_home }}/.local/bin/claude"
+
+# A boot-start Claude Code Remote Control session, so the workstation is
+# remotely steerable from claude.ai/code or the Claude app the moment it is up.
+# Requires a one-time interactive `claude` /login (claude.ai OAuth, Pro/Max) and
+# workspace-trust acceptance the role cannot automate — see README.
+dev_remote_control: true
+dev_remote_control_workdir: "{{ dev_user_home }}"

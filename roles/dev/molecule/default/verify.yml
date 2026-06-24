@@ -61,3 +61,21 @@
       loop: "{{ dev_dotfiles.results }}"
       loop_control:
         label: "{{ item.item }}"
+
+    - name: Verify the Remote Control service
+      when: dev_remote_control | bool
+      block:
+        - name: Gather service facts
+          ansible.builtin.service_facts:
+
+        # The role installs and enables the unit for boot but deliberately never
+        # starts it — the session needs the owner's credentials, absent in CI and
+        # provisioned only by a one-time interactive /login on the real host. So
+        # assert just that positive contract; membership (from list-unit-files)
+        # is itself proof the unit file installed.
+        - name: The Remote Control service is installed and enabled for boot
+          ansible.builtin.assert:
+            that:
+              - "'claude-remote-control.service' in ansible_facts.services"
+              - ansible_facts.services['claude-remote-control.service'].status == 'enabled'
+            fail_msg: "claude-remote-control.service is not installed and enabled for boot"

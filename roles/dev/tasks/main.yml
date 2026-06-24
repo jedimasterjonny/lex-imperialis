@@ -39,3 +39,27 @@
     stow_packages:
       - git
       - nvim
+
+- name: Install the Claude Code Remote Control service
+  ansible.builtin.template:
+    src: claude-remote-control.service.j2
+    dest: /etc/systemd/system/claude-remote-control.service
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  when: dev_remote_control | bool
+
+# Enabled only, never started here: the session needs the owner's claude.ai
+# credentials, which only exist on the real host after a one-time interactive
+# /login. WantedBy=multi-user.target brings it up at the next boot; starting it
+# in molecule (no credentials) would crash-loop. Unit edits take effect at the
+# next restart or boot — there is deliberately no restart handler, so applying a
+# change never tears down a live remote session.
+- name: Enable the Claude Code Remote Control service for boot
+  ansible.builtin.systemd_service:
+    name: claude-remote-control.service
+    enabled: true
+    daemon_reload: true
+  become: true
+  when: dev_remote_control | bool

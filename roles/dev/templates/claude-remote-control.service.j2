@@ -1,0 +1,23 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Claude Code Remote Control session for {{ dev_user }}
+Wants=network-online.target
+After=network-online.target
+# Server mode polls the Anthropic API and exits on a long network outage; never
+# stop retrying so remote access returns on its own once the network does.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User={{ dev_user }}
+WorkingDirectory={{ dev_remote_control_workdir }}
+Environment=HOME={{ dev_user_home }}
+Environment=PATH={{ dev_user_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+# Remote Control rejects API-key auth, so make sure an inherited key can't break it.
+UnsetEnvironment=ANTHROPIC_API_KEY
+ExecStart={{ dev_claude_bin }} remote-control
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
