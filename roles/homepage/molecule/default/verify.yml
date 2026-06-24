@@ -19,6 +19,16 @@
       retries: 30
       delay: 2
 
+    # caddy stamps these on every response. molecule runs homepage_tls:false, so
+    # HSTS is not asserted.
+    - name: The security headers are set on the proxied response
+      ansible.builtin.assert:
+        that:
+          - homepage_page.x_content_type_options | default('') == 'nosniff'
+          - homepage_page.referrer_policy | default('') == 'strict-origin-when-cross-origin'
+        fail_msg: "a security header is missing from the proxied response"
+        quiet: true
+
     # The configured title reaches the rendered page, proving the managed
     # settings.yaml is mounted and read.
     - name: The provisioned title is served
