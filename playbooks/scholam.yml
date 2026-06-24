@@ -8,7 +8,7 @@
       - 9100/tcp
     # Bind node_exporter to the LAN interface only, so it isn't exposed on
     # the incus and libvirt bridges.
-    node_exporter_listen_address: "{{ ansible_default_ipv4.address }}:9100"
+    node_exporter_listen_address: "{{ ansible_facts['default_ipv4']['address'] }}:9100"
   roles:
     - common
     - sshd

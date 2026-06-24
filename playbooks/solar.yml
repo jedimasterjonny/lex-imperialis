@@ -56,7 +56,7 @@
       - 9093/tcp
     # Bind node_exporter to the LAN interface only, so it isn't exposed on
     # solar's podman container networks.
-    node_exporter_listen_address: "{{ ansible_default_ipv4.address }}:9100"
+    node_exporter_listen_address: "{{ ansible_facts['default_ipv4']['address'] }}:9100"
     # Grafana reads the Prometheus on administratum (the NAS) over the LAN.
     grafana_prometheus_url: http://administratum:9090
   roles:
