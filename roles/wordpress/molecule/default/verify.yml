@@ -179,12 +179,24 @@
       become: true
       failed_when: wordpress_dump_timer.status.ActiveState != 'active'
 
-    # rc != 0 if the wrapper cannot reach the database, authenticate, or write
-    # the volume, so a clean run proves the whole dump path end to end.
-    - name: Run the database backup wrapper
-      ansible.builtin.command: /usr/local/bin/wp-db-dump
+    # Verified active above; stop it now so a live 00:30 fire can't clobber the
+    # .prom the metric checks below write and read back (the timer is daily and
+    # Persistent).
+    - name: Stop the database-backup timer for the metric checks
+      ansible.builtin.systemd_service:
+        name: wordpress-db-dump.timer
+        state: stopped
       become: true
-      changed_when: false
+
+    # Start the oneshot the timer drives — not the wrapper directly — so this also
+    # exercises the ExecStopPost metric hook. Starting a oneshot blocks until it
+    # exits; rc != 0 if the wrapper cannot reach the database, authenticate, or
+    # write the volume, so a clean run proves the whole dump path end to end.
+    - name: Run the database backup service
+      ansible.builtin.systemd_service:
+        name: wordpress-db-dump.service
+        state: started
+      become: true
 
     # The database has no tables until WordPress is installed, but --databases
     # still emits its CREATE DATABASE, so a dump that carries the db name proves
@@ -196,6 +208,44 @@
         grep -qE 'CREATE DATABASE.*{{ wordpress_db_name }}' /dump/wordpress.sql
       become: true
       changed_when: false
+
+    # The successful run above fired ExecStopPost, which records the outcome
+    # metric node_exporter scrapes.
+    - name: Read the dump outcome metric after the successful run
+      ansible.builtin.slurp:
+        src: "{{ wordpress_db_dump_textfile_dir }}/wordpress-db-dump.prom"
+      register: wordpress_dump_metric_ok
+      become: true
+
+    - name: A successful dump records wordpress_db_dump_success 1
+      ansible.builtin.assert:
+        that:
+          - "'wordpress_db_dump_success 1' in (wordpress_dump_metric_ok.content | b64decode)"
+          - "'wordpress_db_dump_last_run_timestamp_seconds ' in (wordpress_dump_metric_ok.content | b64decode)"
+        fail_msg: "the dump outcome metric did not report a successful run"
+        quiet: true
+
+    # Drive the writer the way systemd would on a failed dump; an ExecStart
+    # failure is awkward to force here, so invoke the hook with SERVICE_RESULT set.
+    - name: Simulate a failed dump's ExecStopPost
+      ansible.builtin.command: /usr/local/sbin/wp-db-dump-metric.sh
+      environment:
+        SERVICE_RESULT: exit-code
+      changed_when: false
+      become: true
+
+    - name: Read the dump outcome metric after the simulated failure
+      ansible.builtin.slurp:
+        src: "{{ wordpress_db_dump_textfile_dir }}/wordpress-db-dump.prom"
+      register: wordpress_dump_metric_fail
+      become: true
+
+    - name: A failed dump records wordpress_db_dump_success 0
+      ansible.builtin.assert:
+        that:
+          - "'wordpress_db_dump_success 0' in (wordpress_dump_metric_fail.content | b64decode)"
+        fail_msg: "the dump outcome metric did not report a failed run"
+        quiet: true
 
     # podman healthcheck run executes each container's HealthCmd; rc 0 = healthy.
     - name: Each container passes its healthcheck
