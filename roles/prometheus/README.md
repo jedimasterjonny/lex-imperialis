@@ -42,11 +42,14 @@ unreachable for 5m); the `backups` group — the `podman_backup` pair
 `PodmanBackupFailed` (`podman_backup_success == 0`) and `PodmanBackupOverdue` (the
 last-run timestamp gone stale) plus the matching `wordpress` db-dump pair
 `WordpressDbDumpFailed` / `WordpressDbDumpOverdue`; `FilesystemSpaceLow` (a
-node_exporter filesystem under 10% free for 15m); and `ServiceRestartStorm` (a
-systemd unit that auto-restarted more than three times in 15m, off node_exporter's
+node_exporter filesystem under 10% free for 15m); `ServiceRestartStorm` (a systemd
+unit that auto-restarted more than three times in 15m, off node_exporter's
 `node_systemd_service_restart_total` counter — covers quadlet containers and every
-other service alike). The backup and dump pairs read an `ExecStopPost`-written
-outcome metric off node_exporter's textfile collector. The rules sit
+other service alike); and the `maintenance` group's `autoupdate` pair
+`AutoupdateFailed` / `AutoupdateOverdue` (an unattended `zypper` run that failed or
+has not completed in over 9 days). The backup, dump, and update pairs all read an
+`ExecStopPost`-written outcome metric off node_exporter's textfile collector. The
+rules sit
 in a directory mount, so a changed rule reaches the container — but, like a config
 change, only a recreate makes Prometheus reload it.
 

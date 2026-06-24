@@ -3,3 +3,8 @@
 # releases) apply vendor patches with `patch`. Both return 102/103 when a reboot
 # or restart is advised, which the unit treats as success.
 autoupdate_zypper_command: "{{ 'dup' if ansible_facts['distribution'] == 'openSUSE Tumbleweed' else 'patch' }}"
+
+# node_exporter textfile-collector directory the update outcome metric is written
+# to (autoupdate.prom). Must match the node_exporter role's
+# node_exporter_textfile_directory so Prometheus scrapes what this writes.
+autoupdate_textfile_dir: /var/lib/node_exporter/textfile_collector
