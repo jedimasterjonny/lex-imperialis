@@ -25,9 +25,9 @@ holds every podman named volume — so all container state (databases, app confi
 Plex library and history, the WordPress site) travels in it. Media on the NFS
 shares is not in the repo; it lives on the NAS and is the NAS's own concern.
 
-`scholam` runs no containers, so it has no repo — its state is the repo plus
-`.vault_pass`. `administratum` (the NAS) is the backup *target*; its DR is DSM's
-job (see below).
+`scholam`'s only podman workload is `node_exporter`, which is stateless, so it
+has no repo — its state is the repo plus `.vault_pass`. `administratum` (the NAS)
+is the backup *target*; its DR is DSM's job (see below).
 
 **Single point of failure:** every restic repo lives on `administratum`. Lose the
 NAS and you lose all podman backups with it.
@@ -93,9 +93,9 @@ The VM is provisioned by cloud-init, not a reinstall:
 
 ## scholam (control host)
 
-`scholam` is `this_host`: it manages itself and runs no containers, so there is
-nothing in a restic repo to restore. Recovery is bootstrap plus its play, run
-locally.
+`scholam` is `this_host`: it manages itself, and its only podman workload
+(`node_exporter`) is stateless, so there is nothing in a restic repo to restore.
+Recovery is bootstrap plus its play, run locally.
 
 1. Reinstall openSUSE Tumbleweed (keep the hostname).
 2. As root: `bootstrap/host.sh`.
