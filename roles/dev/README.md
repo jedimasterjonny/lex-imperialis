@@ -8,6 +8,11 @@ Claude Code installs once per user through the native installer, guarded by
 `creates:` — the binary self-updates in the background, so the role never
 reruns the script.
 
+The installer is an unpinned `curl … | bash` against a rolling URL with no
+published checksum or datasource, so a hand-bumped hash would break converge on
+every upstream tweak (YAGNI); the trust anchor is `claude.ai` over TLS, accepted
+knowingly on the host that holds `.vault_pass` and fleet-wide NOPASSWD root.
+
 ## Remote Control
 
 `dev_remote_control` (default `true`) installs a `claude-remote-control.service`
