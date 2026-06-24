@@ -9,7 +9,10 @@ block at `/etc/caddy/sites-public/homepage.caddy`, so caddy serves it at the
 apex `homepage_domain` and certifies it through the global `acme_dns` (DNS-01).
 caddy must be applied first (it owns the network and the sites-public dir).
 `homepage_tls: false` drops the block to plain HTTP for molecule, which has no
-token.
+token. The block sets `X-Content-Type-Options: nosniff` and `Referrer-Policy` on
+every response, and on the TLS vhost adds a one-year `Strict-Transport-Security`
+header — without `includeSubDomains`, since this is the fleet apex and would
+otherwise pin every sibling subdomain to HTTPS.
 
 Homepage v1 validates the `Host` header against `HOMEPAGE_ALLOWED_HOSTS`; the
 unit allows the apex vhost plus the loopback `host:port` the liveness probe
