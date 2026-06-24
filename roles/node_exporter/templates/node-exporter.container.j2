@@ -10,12 +10,22 @@ ContainerName=node-exporter
 Image={{ node_exporter_image }}
 # Host network and PID namespace plus a read-only root bind let the exporter
 # report the host's interfaces, processes, and filesystems rather than its own.
+# label=disable lets container_t reach the host D-Bus socket for the systemd
+# collector; the enforcing fleet denies the connect otherwise (the trade-off
+# cadvisor makes for the podman socket).
 Network=host
-PodmanArgs=--pid=host
+PodmanArgs=--pid=host --security-opt=label=disable
 Volume=/:/host:ro,rslave
+# Read-only host D-Bus system bus, mounted at the path the bus library dials
+# (/var/run, not /run — the image has no /var/run symlink), as cadvisor does for
+# the podman socket. No :Z — relabelling the host's socket would break host D-Bus.
+Volume=/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket:ro
 # The textfile directory is read through the read-only /host bind, so batch jobs
 # drop *.prom files on the host without the exporter needing a writable mount.
-Exec=--path.rootfs=/host --web.listen-address={{ node_exporter_listen_address }} --collector.textfile.directory=/host{{ node_exporter_textfile_directory }}
+# The systemd collector reads the host bus unprivileged (default non-private
+# connection); its restart counter feeds prometheus's ServiceRestartStorm alert,
+# and unit-include keeps mounts, scopes, and timers out.
+Exec=--path.rootfs=/host --web.listen-address={{ node_exporter_listen_address }} --collector.textfile.directory=/host{{ node_exporter_textfile_directory }} --collector.systemd --collector.systemd.enable-restarts-metrics --collector.systemd.unit-include=.+[.]service
 
 [Service]
 Restart=on-failure
