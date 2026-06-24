@@ -1,6 +1,8 @@
 ---
 - name: Verify
   hosts: all
+  vars_files:
+    - ../../defaults/main.yml
   tasks:
     - name: Determine the upgrade command expected for this distribution
       ansible.builtin.set_fact:
@@ -39,5 +41,50 @@
           # a reboot-recommended run exits non-zero and ExecStartPost is skipped.
           - autoupdate_service.status.SuccessExitStatus == '102 103'
           - "'reboot' in autoupdate_service.status.ExecStartPost"
-        fail_msg: "the service does not run zypper {{ autoupdate_expected_command }}, accept 102/103, then reboot"
+          - "'autoupdate-metric.sh' in autoupdate_service.status.ExecStopPost"
+        fail_msg: "the service does not run zypper {{ autoupdate_expected_command }}, accept 102/103, reboot, then record the outcome"
+        quiet: true
+
+    # Starting the service would reboot the host (ExecStartPost), so drive the
+    # ExecStopPost writer directly the way systemd would — with SERVICE_RESULT set
+    # — to prove it records each outcome as the metric node_exporter scrapes.
+    - name: Record a successful run via the metric hook
+      ansible.builtin.command: /usr/local/sbin/autoupdate-metric.sh
+      environment:
+        SERVICE_RESULT: success
+      changed_when: false
+      become: true
+
+    - name: Read the update outcome metric after the successful run
+      ansible.builtin.slurp:
+        src: "{{ autoupdate_textfile_dir }}/autoupdate.prom"
+      register: autoupdate_metric_ok
+      become: true
+
+    - name: A successful run records autoupdate_success 1
+      ansible.builtin.assert:
+        that:
+          - "'autoupdate_success 1' in (autoupdate_metric_ok.content | b64decode)"
+          - "'autoupdate_last_run_timestamp_seconds ' in (autoupdate_metric_ok.content | b64decode)"
+        fail_msg: "the update outcome metric did not report a successful run"
+        quiet: true
+
+    - name: Record a failed run via the metric hook
+      ansible.builtin.command: /usr/local/sbin/autoupdate-metric.sh
+      environment:
+        SERVICE_RESULT: exit-code
+      changed_when: false
+      become: true
+
+    - name: Read the update outcome metric after the failed run
+      ansible.builtin.slurp:
+        src: "{{ autoupdate_textfile_dir }}/autoupdate.prom"
+      register: autoupdate_metric_fail
+      become: true
+
+    - name: A failed run records autoupdate_success 0
+      ansible.builtin.assert:
+        that:
+          - "'autoupdate_success 0' in (autoupdate_metric_fail.content | b64decode)"
+        fail_msg: "the update outcome metric did not report a failed run"
         quiet: true

@@ -109,6 +109,17 @@
     mode: "0755"
   become: true
 
+# wordpress-db-dump.service's ExecStopPost hook: records each dump's outcome as a
+# node_exporter textfile metric so the silently-stale DR dump alerts instead.
+- name: Install the database backup metric script
+  ansible.builtin.template:
+    src: wp-db-dump-metric.sh.j2
+    dest: /usr/local/sbin/wp-db-dump-metric.sh
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
 # Static units for the role's two timers: wp-cron takes scheduled tasks off
 # visitor page-loads (DISABLE_WP_CRON in the env), and the daily db-dump writes a
 # logical backup podman_backup's restic sweep then captures alongside the datadir.

@@ -32,6 +32,25 @@ groups:
           summary: "podman backup overdue on {{ $labels.instance }}"
           description: "{{ $labels.instance }} has not run a podman volume backup in over 8 days."
 
+      - alert: WordpressDbDumpFailed
+        expr: wordpress_db_dump_success == 0
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "WordPress database dump failed on {{ $labels.instance }}"
+          description: "The last WordPress database dump on {{ $labels.instance }} failed — the DR fallback for a broken in-place upgrade is now stale."
+      # The daily timer caps a healthy dump at ~1 day old; 2 gives a day's grace
+      # before flagging a dump that stopped advancing.
+      - alert: WordpressDbDumpOverdue
+        expr: time() - wordpress_db_dump_last_run_timestamp_seconds > 2 * 86400
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "WordPress database dump overdue on {{ $labels.instance }}"
+          description: "{{ $labels.instance }} has not produced a WordPress database dump in over 2 days."
+
   - name: filesystem
     rules:
       - alert: FilesystemSpaceLow
@@ -55,3 +74,25 @@ groups:
         annotations:
           summary: "{{ $labels.name }} is restarting repeatedly on {{ $labels.instance }}"
           description: "{{ $labels.name }} on {{ $labels.instance }} auto-restarted more than 3 times in 15 minutes."
+
+  - name: maintenance
+    rules:
+      - alert: AutoupdateFailed
+        expr: autoupdate_success == 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "unattended update failed on {{ $labels.instance }}"
+          description: "The last unattended zypper update on {{ $labels.instance }} failed — the host may be unpatched or did not reboot."
+      # The weekly timer has no Persistent=, so a healthy run lands near 7 days
+      # apart; 9 gives grace over the cadence and jitter before flagging a stalled
+      # updater or a cycle the host slept through.
+      - alert: AutoupdateOverdue
+        expr: time() - autoupdate_last_run_timestamp_seconds > 9 * 86400
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "unattended update overdue on {{ $labels.instance }}"
+          description: "{{ $labels.instance }} has not completed an unattended update in over 9 days."

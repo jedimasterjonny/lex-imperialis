@@ -21,6 +21,11 @@ wordpress_redis_maxmemory: 256mb
 wordpress_db_name: wordpress
 wordpress_db_user: wordpress
 
+# node_exporter textfile-collector directory the db-dump outcome metric is
+# written to (wordpress-db-dump.prom). Must match the node_exporter role's
+# node_exporter_textfile_directory so Prometheus scrapes what this writes.
+wordpress_db_dump_textfile_dir: /var/lib/node_exporter/textfile_collector
+
 # Database passwords (vault-sourced). Empty leaves the stack uninitialised:
 # mariadb needs them to create the database on first boot. Molecule sets
 # throwaway values; the fleet sources them from the vault.

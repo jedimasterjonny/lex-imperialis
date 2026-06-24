@@ -6,3 +6,11 @@ a new kernel takes effect — `dup` on rolling Tumbleweed, `patch` on Leap
 (`autoupdate_zypper_command`). `zypper`'s 102/103 "reboot/restart recommended"
 codes count as success; a real failure skips the reboot, leaving the system up
 for inspection.
+
+An `ExecStopPost` hook writes each run's outcome to
+`autoupdate_textfile_dir/autoupdate.prom` — `autoupdate_success` (1/0, from
+systemd's `$SERVICE_RESULT`, which 102/103 keep at success) and
+`autoupdate_last_run_timestamp_seconds`. node_exporter scrapes that file (its
+`node_exporter_textfile_directory` must match), and the `prometheus` role's
+`AutoupdateFailed` / `AutoupdateOverdue` rules surface a failed or overdue update
+before the host silently drifts unpatched.
