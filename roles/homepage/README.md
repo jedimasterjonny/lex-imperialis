@@ -32,6 +32,14 @@ config-as-code without shadowing the seeded data. The container runs as the
 The container carries a podman healthcheck against `/api/healthcheck` (status
 only, no restart on failure).
 
+## Hardening
+
+The container runs `NoNewPrivileges` and drops every capability, adding back only
+`CHOWN` (the entrypoint chowns the config volume to `homepage_uid`) and
+`SETUID`/`SETGID` (its `su-exec` drop to that id). It binds `:3000`, so it needs
+no `NET_BIND_SERVICE`. A renovate image bump that needs a new capability surfaces
+as a failed healthcheck.
+
 ## Variables
 
 - `homepage_domain` — apex domain homepage serves at; follows `caddy_domain`.
