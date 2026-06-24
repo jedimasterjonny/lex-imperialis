@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# A logical dump of the WordPress database into the wordpress-db-dump volume.
+# MARIADB_AUTO_UPGRADE migrates the live data dir in place on a renovate mariadb
+# major bump, and the only other net is podman_backup's cold raw copy of
+# /var/lib/mysql — which a newer engine may refuse to mount. This portable
+# mariadb-dump is restorable into any engine; podman_backup's restic sweep then
+# captures the volume. Rootful podman, so run it as root, like the wp wrapper.
+set -euo pipefail
+
+# A daily timer can't absorb a cold-start miss the way 5-minutely wp-cron does,
+# so wait (bounded) for the database to pass its own healthcheck before dumping:
+# on a boot-time catch-up or a fresh restart it may still be inside its
+# HealthStartPeriod, accepting no connections. A database that never recovers (a
+# failed upgrade) times out here and the dump below then fails, last dump intact.
+for _ in {1..36}; do
+	podman healthcheck run wordpress-db >/dev/null 2>&1 && break
+	sleep 5
+done
+
+# Dump over the caddy network through the live database container into the dump
+# volume — never the web docroot. flock serialises concurrent runs (a manual run
+# racing the timer's catch-up) so they can't interleave on the shared temp file.
+# The inner shell writes a consistent single-transaction dump to that temp file
+# and renames it over the last good one only on success (set -e), so a failed run
+# leaves the previous dump intact. Credentials come from the same 0600 env file
+# the quadlets read; MYSQL_PWD keeps the password off the dump command line.
+exec flock /run/wp-db-dump.lock podman run --rm \
+	--env-file /etc/wordpress/wordpress.env \
+	--network caddy \
+	--volume wordpress-db-dump:/dump \
+	{{ wordpress_db_image }} \
+	sh -ec 'MYSQL_PWD="$MARIADB_PASSWORD" mariadb-dump --single-transaction -h wordpress-db -u "$MARIADB_USER" --databases "$MARIADB_DATABASE" >/dump/wordpress.sql.tmp && mv /dump/wordpress.sql.tmp /dump/wordpress.sql'

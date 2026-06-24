@@ -4,6 +4,7 @@
   gather_facts: false
   vars_files:
     - ../../defaults/main.yml
+    - ../../vars/main.yml
   tasks:
     - name: Wait for wordpress to answer through the proxy
       ansible.builtin.uri:
@@ -169,6 +170,32 @@
       register: wordpress_cron_timer
       become: true
       failed_when: wordpress_cron_timer.status.ActiveState != 'active'
+
+    - name: The database-backup timer is active
+      ansible.builtin.systemd_service:
+        name: wordpress-db-dump.timer
+        daemon_reload: true
+      register: wordpress_dump_timer
+      become: true
+      failed_when: wordpress_dump_timer.status.ActiveState != 'active'
+
+    # rc != 0 if the wrapper cannot reach the database, authenticate, or write
+    # the volume, so a clean run proves the whole dump path end to end.
+    - name: Run the database backup wrapper
+      ansible.builtin.command: /usr/local/bin/wp-db-dump
+      become: true
+      changed_when: false
+
+    # The database has no tables until WordPress is installed, but --databases
+    # still emits its CREATE DATABASE, so a dump that carries the db name proves
+    # the dump landed in the volume — not the docroot — and is loadable.
+    - name: The logical dump landed in the dump volume
+      ansible.builtin.command: >-
+        podman run --rm --volume wordpress-db-dump:/dump:ro
+        {{ wordpress_db_image }}
+        grep -qE 'CREATE DATABASE.*{{ wordpress_db_name }}' /dump/wordpress.sql
+      become: true
+      changed_when: false
 
     # podman healthcheck run executes each container's HealthCmd; rc 0 = healthy.
     - name: Each container passes its healthcheck

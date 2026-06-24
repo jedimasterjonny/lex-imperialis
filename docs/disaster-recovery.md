@@ -79,6 +79,17 @@ The VM is provisioned by cloud-init, not a reinstall:
 4. Once its play has converged, on rogue-trader:
    `sudo /usr/local/sbin/podman-restore.sh` — restores the WordPress and
    database volumes.
+5. The database travels as a raw `/var/lib/mysql` copy, which a newer mariadb
+   than it was taken on may refuse to start. If it does, recover the database
+   from the logical dump instead: leave `wordpress-db` to initialise an empty
+   database, then load `wordpress-db-dump`'s engine-portable `wordpress.sql`
+   (written daily by the wordpress role's `wp-db-dump`) into it as root:
+
+   ```
+   podman run --rm --network caddy --env-file /etc/wordpress/wordpress.env \
+     --volume wordpress-db-dump:/dump:ro docker.io/library/mariadb \
+     sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" exec mariadb -h wordpress-db -uroot < /dump/wordpress.sql'
+   ```
 
 ## scholam (control host)
 
