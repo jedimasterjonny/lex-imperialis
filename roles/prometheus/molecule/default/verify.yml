@@ -60,8 +60,9 @@
             | map(attribute='rules') | flatten
             | selectattr('name', 'in', ['InstanceDown', 'PodmanBackupFailed', 'PodmanBackupOverdue',
                                         'WordpressDbDumpFailed', 'WordpressDbDumpOverdue',
-                                        'FilesystemSpaceLow', 'ServiceRestartStorm'])
-            | list | length == 7
+                                        'FilesystemSpaceLow', 'ServiceRestartStorm',
+                                        'AutoupdateFailed', 'AutoupdateOverdue'])
+            | list | length == 9
         fail_msg: not all shipped alert rules are loaded
 
     - name: Read the loaded runtime config

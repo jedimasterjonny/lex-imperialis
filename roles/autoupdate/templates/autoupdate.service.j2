@@ -11,3 +11,7 @@ ExecStart=/usr/bin/zypper --non-interactive {{ autoupdate_zypper_command }} --au
 # exit code) skips ExecStartPost, leaving the system un-rebooted for inspection.
 SuccessExitStatus=102 103
 ExecStartPost=/usr/bin/systemctl reboot
+# Runs whether the update succeeded (then the reboot above) or failed, reading
+# $SERVICE_RESULT to record the outcome as a node_exporter metric — a silently
+# failing update otherwise leaves the host unpatched with no signal.
+ExecStopPost=/usr/local/sbin/autoupdate-metric.sh

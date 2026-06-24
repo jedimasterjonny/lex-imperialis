@@ -8,6 +8,17 @@
     mode: "0644"
   become: true
 
+# autoupdate.service's ExecStopPost hook: records each run's outcome as a
+# node_exporter textfile metric so a silently failing unattended update alerts.
+- name: Install the update metric script
+  ansible.builtin.template:
+    src: autoupdate-metric.sh.j2
+    dest: /usr/local/sbin/autoupdate-metric.sh
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
 # The upgrade command is distro-specific (dup on Tumbleweed, patch on Leap), so
 # the service is templated while the timer stays a static file.
 - name: Install the update service
