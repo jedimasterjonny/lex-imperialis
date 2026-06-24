@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# systemd ExecStopPost hook for wordpress-db-dump.service: record the run's
+# outcome as a node_exporter textfile metric so Prometheus can alert on a failed
+# or overdue dump — the DR fallback for a broken in-place MARIADB_AUTO_UPGRADE,
+# which the wrapper deliberately leaves stale on failure. systemd sets
+# SERVICE_RESULT to "success" iff ExecStart exited 0.
+set -euo pipefail
+
+dir="{{ wordpress_db_dump_textfile_dir }}"
+success=0
+[ "${SERVICE_RESULT:-}" = success ] && success=1
+
+mkdir -p "$dir"
+# Publish atomically: write a temp file the exporter's *.prom glob ignores, then
+# rename it over the target so no scrape reads a half-written file. 0644 so the
+# exporter's unprivileged user can read it.
+tmp="$(mktemp "$dir/.wordpress-db-dump.prom.XXXXXX")"
+cat >"$tmp" <<EOF
+# HELP wordpress_db_dump_success Whether the last WordPress database dump run succeeded (1) or failed (0).
+# TYPE wordpress_db_dump_success gauge
+wordpress_db_dump_success $success
+# HELP wordpress_db_dump_last_run_timestamp_seconds Unix time the last WordPress database dump run finished.
+# TYPE wordpress_db_dump_last_run_timestamp_seconds gauge
+wordpress_db_dump_last_run_timestamp_seconds $(date +%s)
+EOF
+chmod 0644 "$tmp"
+mv "$tmp" "$dir/wordpress-db-dump.prom"

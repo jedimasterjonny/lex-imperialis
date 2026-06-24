@@ -32,6 +32,25 @@ groups:
           summary: "podman backup overdue on {{ $labels.instance }}"
           description: "{{ $labels.instance }} has not run a podman volume backup in over 8 days."
 
+      - alert: WordpressDbDumpFailed
+        expr: wordpress_db_dump_success == 0
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "WordPress database dump failed on {{ $labels.instance }}"
+          description: "The last WordPress database dump on {{ $labels.instance }} failed — the DR fallback for a broken in-place upgrade is now stale."
+      # The daily timer caps a healthy dump at ~1 day old; 2 gives a day's grace
+      # before flagging a dump that stopped advancing.
+      - alert: WordpressDbDumpOverdue
+        expr: time() - wordpress_db_dump_last_run_timestamp_seconds > 2 * 86400
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "WordPress database dump overdue on {{ $labels.instance }}"
+          description: "{{ $labels.instance }} has not produced a WordPress database dump in over 2 days."
+
   - name: filesystem
     rules:
       - alert: FilesystemSpaceLow
