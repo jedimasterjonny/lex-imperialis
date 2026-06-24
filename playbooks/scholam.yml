@@ -3,11 +3,19 @@
   hosts: this_host
   vars:
     common_hostname: scholam
+    # node_exporter, scraped by Prometheus on administratum over the LAN.
+    firewalld_ports:
+      - 9100/tcp
+    # Bind node_exporter to the LAN interface only, so it isn't exposed on
+    # the incus and libvirt bridges.
+    node_exporter_listen_address: "{{ ansible_default_ipv4.address }}:9100"
   roles:
     - common
     - sshd
     - firewalld
+    - podman
     - autoupdate
     - incus
     - libvirt
     - dev
+    - node_exporter
