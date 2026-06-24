@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily logical backup of the WordPress database
+
+[Timer]
+# Daily, ahead of podman_backup's weekly restic sweep (Wed 01:00), so the
+# freshest dump is on the volume when restic snapshots it.
+OnCalendar=*-*-* 00:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

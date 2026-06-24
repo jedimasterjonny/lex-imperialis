@@ -1,0 +1,9 @@
+[Unit]
+Description=WordPress database logical backup
+# Dumps over the network through the live database container, so it must be up.
+Requires=wordpress-db.service
+After=wordpress-db.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/wp-db-dump

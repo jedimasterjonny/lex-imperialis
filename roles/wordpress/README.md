@@ -17,6 +17,19 @@ until mariadb accepts connections, so a cold first boot self-heals.
 than the data dir, so a renovate mariadb bump migrates the system tables on the
 next restart with no manual step.
 
+## Database backups
+
+That in-place upgrade can fail — `HealthOnFailure=kill` + `Restart=on-failure`
+then restart-loops the database — and `podman_backup`'s only net is a cold raw
+`/var/lib/mysql` copy a newer engine may refuse to mount. So
+`wordpress-db-dump.timer` runs `/usr/local/bin/wp-db-dump` daily: a `mariadb-dump
+--single-transaction --databases` of `wordpress_db_name`, authenticating as
+`wordpress_db_user` from the credentials file, into the `wordpress-db-dump`
+volume — never the docroot — which `podman_backup`'s restic sweep then captures
+alongside the raw datadir. The dump is engine-portable SQL;
+`docs/disaster-recovery.md` covers loading it to recover from a broken upgrade.
+Run `wp-db-dump` by hand to dump on demand.
+
 ## Secrets
 
 `wordpress_db_password` and `wordpress_db_root_password` are vault-sourced and
