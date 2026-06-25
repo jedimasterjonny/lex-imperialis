@@ -50,11 +50,6 @@ EnvironmentFile=/etc/arr/{{ item.key }}.env
 {# '-' marks the device optional, so GPU-less molecule containers still start. #}
 AddDevice=-{{ item.value.device }}
 {% endif %}
-{# Host networking already exposes every port natively, so a publish is both #}
-{# redundant and rejected by podman. #}
-{% if item.value.publish | default(false) and item.value.network | default('') != 'host' %}
-PublishPort={{ item.value.port }}:{{ item.value.port }}
-{% endif %}
 {# lscr.io images chown /config themselves; :U hands it to User= for the rest. #}
 Volume={{ item.key }}-config:/config{{ '' if arr_lsio else ':U' }}
 {% for bind in item.value.binds | default([]) %}
