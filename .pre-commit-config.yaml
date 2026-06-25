@@ -40,6 +40,14 @@ repos:
         entry: shellcheck
         language: system
         types: [shell]
+      # identify tags *.sh.j2 as jinja, not shell, so the hook above skips the
+      # riskiest scripts. This one strips the Jinja and pipes the result through
+      # shellcheck so they get analysed too.
+      - id: shellcheck-jinja
+        name: shellcheck-jinja
+        entry: bin/shellcheck-jinja.sh
+        language: script
+        files: '\.sh\.j2$'
       # Every role must ship an incus or libvirt test (libvirt implies hetzner).
       - id: role-test-coverage
         name: role-test-coverage
