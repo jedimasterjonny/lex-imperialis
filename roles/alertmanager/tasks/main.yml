@@ -52,5 +52,4 @@
   ansible.builtin.systemd_service:
     name: alertmanager
     state: started
-    daemon_reload: true
   become: true
