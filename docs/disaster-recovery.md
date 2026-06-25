@@ -101,7 +101,8 @@ Recovery is bootstrap plus its play, run locally.
 2. As root: `bootstrap/host.sh`.
 3. Restore the control-host workspace: clone the repo, drop `.vault_pass` back in
    from the password manager, build the venv (see Prerequisites), then
-   `make hooks`.
+   `make hooks`. Replace `gitops_reconcile`'s two secrets too (see its README) —
+   its guard fails the apply below without them.
 4. Apply its play locally (it targets `this_host` at loopback):
 
    ```
