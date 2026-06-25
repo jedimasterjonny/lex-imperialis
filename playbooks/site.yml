@@ -1,0 +1,12 @@
+---
+# The whole fleet in one run: the gitops_reconcile timer's entry point, and a
+# hand-runnable apply-everything (make apply PLAY=site). scholam (self) is
+# imported last so a reconcile run never restarts its own timer mid-apply.
+- name: Configure solar
+  ansible.builtin.import_playbook: solar.yml
+- name: Configure rogue-trader
+  ansible.builtin.import_playbook: rogue-trader.yml
+- name: Configure administratum
+  ansible.builtin.import_playbook: administratum.yml
+- name: Configure this host
+  ansible.builtin.import_playbook: scholam.yml

@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Reconcile the fleet to origin/{{ gitops_reconcile_branch }}: fetch the branch
+# into the service-owned clone and, when it has advanced, apply every host play
+# from that tree. Runs unattended on gitops-reconcile.timer; the ExecStopPost
+# hook records the outcome. This is the operator's standing unattended-apply path
+# — pause it by touching the pause flag or disabling the timer.
+set -euo pipefail
+
+repo="{{ gitops_reconcile_repo_dir }}"
+venv="{{ gitops_reconcile_venv_dir }}"
+branch="{{ gitops_reconcile_branch }}"
+playbook="{{ gitops_reconcile_playbook }}"
+vault_pass="{{ gitops_reconcile_vault_pass_file }}"
+ssh_key="{{ gitops_reconcile_ssh_key_file }}"
+pause_flag="{{ gitops_reconcile_pause_flag }}"
+last_applied="{{ gitops_reconcile_last_applied_file }}"
+
+export ANSIBLE_HOST_KEY_CHECKING={{ gitops_reconcile_host_key_checking | string | lower }}
+
+# Soft pause: a deliberate hold exits success so it never trips the failure
+# alert. The timer keeps firing as a no-op until the flag is removed.
+if [ -e "$pause_flag" ]; then
+    echo "paused: $pause_flag present, skipping reconcile"
+    exit 0
+fi
+
+# origin/$branch is the only source of truth: fetch just it and discard any drift
+# in the clone — never apply a local or feature branch.
+git -C "$repo" fetch origin "$branch"
+git -C "$repo" reset --hard "origin/$branch"
+target="$(git -C "$repo" rev-parse HEAD)"
+
+# Near-free idle run: apply only when the branch has actually advanced.
+if [ -f "$last_applied" ] && [ "$(cat "$last_applied")" = "$target" ]; then
+    echo "origin/$branch unchanged at ${target:0:12}, nothing to apply"
+    exit 0
+fi
+
+echo "applying ${target:0:12} to the fleet"
+# Run from the clone root so ansible picks up the repo's ansible.cfg (inventory,
+# roles_path), exactly as make apply does.
+cd "$repo" || exit 1
+# Sync the venv to the just-fetched requirements before applying, so a bumped
+# ansible pin is in place up front and the self-apply's own pip task finds it
+# already satisfied — it never reinstalls ansible under the running process.
+"$venv/bin/pip" install --quiet --requirement requirements.txt
+# --diff lands the change set in the journal; the key reaches each host's account;
+# site.yml applies self (scholam) last so this run never restarts its own timer.
+"$venv/bin/ansible-playbook" \
+    --private-key "$ssh_key" \
+    --vault-password-file "$vault_pass" \
+    --diff \
+    "$playbook"
+
+# Record the applied SHA only after a clean full apply; a failure leaves the
+# previous value so the next run retries the same target.
+echo "$target" >"$last_applied"
+echo "applied ${target:0:12}"
