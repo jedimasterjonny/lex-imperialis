@@ -1,0 +1,47 @@
+---
+# Service-owned working state: the git clone the reconciler applies from and the
+# Python venv it runs ansible out of. Under /var/lib, like the node_exporter and
+# prometheus service state.
+gitops_reconcile_state_dir: /var/lib/gitops-reconcile
+gitops_reconcile_repo_dir: "{{ gitops_reconcile_state_dir }}/repo"
+gitops_reconcile_venv_dir: "{{ gitops_reconcile_state_dir }}/venv"
+# The SHA last successfully applied; the unchanged-HEAD short-circuit reads it.
+gitops_reconcile_last_applied_file: "{{ gitops_reconcile_state_dir }}/last-applied-sha"
+# Soft kill-switch: touch this to make the timer fire as a clean no-op (README).
+gitops_reconcile_pause_flag: "{{ gitops_reconcile_state_dir }}/pause"
+
+# Where the repo is pulled from and the branch that is the single source of
+# truth. Public HTTPS — read-only, no deploy key.
+gitops_reconcile_clone_url: https://github.com/jedimasterjonny/lex-imperialis.git
+gitops_reconcile_branch: main
+# Played from the clone root; applies the whole fleet, self (scholam) last.
+gitops_reconcile_playbook: playbooks/site.yml
+
+# Operator-placed secrets the role asserts but never manages: neither can come
+# from the vault (the reconciler needs the password to read the vault) nor the
+# public repo. 0600 root, placed out-of-band (README).
+gitops_reconcile_config_dir: /etc/gitops-reconcile
+gitops_reconcile_vault_pass_file: "{{ gitops_reconcile_config_dir }}/vault_pass"
+gitops_reconcile_ssh_key_file: "{{ gitops_reconcile_config_dir }}/ssh/id_ed25519"
+
+# SSH host-key checking for the unattended apply. Off by default: the root timer
+# has no seeded known_hosts, the fleet is reached only over trusted LAN/WireGuard,
+# and scholam already holds .vault_pass and fleet-wide root. Set true and seed a
+# known_hosts to harden.
+gitops_reconcile_host_key_checking: false
+
+# Installed scripts. /usr/local/sbin: root-only, like podman-backup.
+gitops_reconcile_script: /usr/local/sbin/gitops-reconcile.sh
+gitops_reconcile_metric_script: /usr/local/sbin/gitops-reconcile-metric.sh
+
+# node_exporter textfile-collector directory the outcome metric is written to
+# (gitops-reconcile.prom). Must match the node_exporter role's
+# node_exporter_textfile_directory so Prometheus scrapes what this writes.
+gitops_reconcile_textfile_dir: /var/lib/node_exporter/textfile_collector
+
+# Reconcile cadence. Every 15 min with a 2 min jitter: the unchanged-HEAD
+# short-circuit makes an idle run near-free, so a merge reaches the fleet within
+# ~15 min. Persistent (unlike autoupdate) catches up a run missed across a reboot
+# — it only applies main, never reboots.
+gitops_reconcile_oncalendar: "*:0/15"
+gitops_reconcile_randomized_delay: "2m"

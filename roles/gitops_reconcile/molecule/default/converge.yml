@@ -1,0 +1,29 @@
+---
+- name: Converge
+  hosts: all
+  pre_tasks:
+    # The reconciler's vault password and SSH key are operator-placed out-of-band;
+    # stage throwaway 0600 stand-ins so the role's secret guard passes here. The
+    # reconcile script is never run unpaused in the container, so they are inert.
+    - name: Create the secret directory
+      ansible.builtin.file:
+        path: /etc/gitops-reconcile/ssh
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      become: true
+
+    - name: Stage stand-in secrets
+      ansible.builtin.copy:
+        content: "molecule stand-in\n"
+        dest: "{{ item }}"
+        owner: root
+        group: root
+        mode: "0600"
+      loop:
+        - /etc/gitops-reconcile/vault_pass
+        - /etc/gitops-reconcile/ssh/id_ed25519
+      become: true
+  roles:
+    - role: gitops_reconcile
