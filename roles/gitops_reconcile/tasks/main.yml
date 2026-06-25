@@ -1,0 +1,100 @@
+---
+- name: Install git and the venv builder
+  community.general.zypper:
+    name:
+      - git
+      - python3-pip
+    state: present
+  become: true
+
+- name: Create the service state and secret directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - path: "{{ gitops_reconcile_state_dir }}"
+      mode: "0755"
+    - path: "{{ gitops_reconcile_config_dir }}"
+      mode: "0700"
+    - path: "{{ gitops_reconcile_config_dir }}/ssh"
+      mode: "0700"
+  become: true
+
+# The vault password and fleet SSH key come from neither the vault (circular) nor
+# the public repo, so the operator places them out-of-band (README). Fail loudly
+# here rather than enable a timer that can't decrypt or authenticate.
+- name: Stat the operator-placed secrets
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ gitops_reconcile_vault_pass_file }}"
+    - "{{ gitops_reconcile_ssh_key_file }}"
+  register: gitops_reconcile_secrets
+  become: true
+
+# mode[-2:] == '00' is owner-only: 0600 and a stricter 0400 both pass, a
+# group/world-readable secret fails.
+- name: The vault password and SSH key are present and private
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - item.stat.mode[-2:] == '00'
+    fail_msg: "{{ item.item }} is missing or readable beyond its owner — place it 0600 (README)"
+    quiet: true
+  loop: "{{ gitops_reconcile_secrets.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Clone the repository the reconciler applies from
+  ansible.builtin.git:
+    repo: "{{ gitops_reconcile_clone_url }}"
+    dest: "{{ gitops_reconcile_repo_dir }}"
+    version: "{{ gitops_reconcile_branch }}"
+  become: true
+
+- name: Build the ansible runtime venv from the repo's requirements
+  ansible.builtin.pip:
+    requirements: "{{ gitops_reconcile_repo_dir }}/requirements.txt"
+    virtualenv: "{{ gitops_reconcile_venv_dir }}"
+    virtualenv_command: python3 -m venv
+  become: true
+
+- name: Install the reconcile and metric scripts
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - src: gitops-reconcile.sh.j2
+      dest: "{{ gitops_reconcile_script }}"
+    - src: gitops-reconcile-metric.sh.j2
+      dest: "{{ gitops_reconcile_metric_script }}"
+  become: true
+
+- name: Install the reconcile service and timer
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - gitops-reconcile.service
+    - gitops-reconcile.timer
+  become: true
+
+# daemon_reload picks up unit changes before enabling; it does not itself report
+# changed, so the task stays idempotent. No restart handler: a oneshot timer has
+# nothing to restart, and this way a self-apply never tears down its own run.
+- name: Enable and start the reconcile timer
+  ansible.builtin.systemd_service:
+    name: gitops-reconcile.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true

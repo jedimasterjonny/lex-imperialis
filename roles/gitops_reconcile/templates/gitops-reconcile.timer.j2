@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Reconcile the fleet to origin/{{ gitops_reconcile_branch }}
+
+[Timer]
+OnCalendar={{ gitops_reconcile_oncalendar }}
+RandomizedDelaySec={{ gitops_reconcile_randomized_delay }}
+# Persistent (unlike autoupdate): catching up a reconcile missed across a reboot
+# is safe and wanted — it only applies main, never reboots.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

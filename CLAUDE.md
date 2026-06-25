@@ -116,6 +116,8 @@ Run the gates yourself before presenting or committing — never hand back unver
 
 Write and `molecule`-test code. Against live hosts, only `--check`/`--diff` dry runs (`make check PLAY=<play>`) — never apply. Applying to the real fleet (`make apply`) is the operator's call. Tasks that render secrets set `no_log: true` — otherwise `--diff` prints them in plaintext.
 
+The one standing exception is the `gitops_reconcile` role: once the operator has bootstrapped it on scholam, its root timer is the sanctioned unattended-apply path — it pulls `main` and applies the fleet (`playbooks/site.yml`) on a schedule, the scheduled counterpart of the `unattended-author` skill. Pause it with `systemctl disable --now gitops-reconcile.timer` or by touching `/var/lib/gitops-reconcile/pause`.
+
 ## Documentation style
 
 READMEs must be terse and direct. The reader is a senior engineer who thoroughly understands the domain — skip background, drop illustrative parentheticals, and don't restate what they already know.
