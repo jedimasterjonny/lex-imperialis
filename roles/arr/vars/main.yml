@@ -45,7 +45,7 @@ arr_apps:
     healthcheck:
       cmd: curl -fsS http://127.0.0.1:7878/ping
   sonarr:
-    image: lscr.io/linuxserver/sonarr:4.0.17@sha256:02bc962946fef994e67a38152446df25c10a52f8583aefeeb6467f9dd44cab99
+    image: lscr.io/linuxserver/sonarr:4.0.18@sha256:916844aff737c06c12066be9146cc604c104cec66eb8e07e545cb3719a4b771a
     uid: 1039
     port: 8989
     data: root
