@@ -27,5 +27,4 @@
   ansible.builtin.systemd_service:
     name: cadvisor
     state: started
-    daemon_reload: true
   become: true

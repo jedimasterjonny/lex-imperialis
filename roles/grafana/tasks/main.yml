@@ -97,5 +97,4 @@
   ansible.builtin.systemd_service:
     name: grafana
     state: started
-    daemon_reload: true
   become: true
