@@ -62,7 +62,10 @@ jobs:
             roles=$(find roles -mindepth 1 -maxdepth 1 -type d -printf '%f\n')
             shared=""
           else
-            changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA")
+            # Drop *.md before deriving roles/tiers: a role's README is its only
+            # non-code top-level file, so a doc-only edit must not bill a hetzner
+            # VM (or run any molecule tier).
+            changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" | grep -vE '\.md$' || true)
             roles=$(printf '%s\n' "$changed" | sed -n 's#^roles/\([^/]*\)/.*#\1#p')
             shared=$(printf '%s\n' "$changed" | grep -vE '^roles/' || true)
           fi
