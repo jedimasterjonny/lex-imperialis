@@ -19,3 +19,4 @@
     - libvirt
     - dev
     - node_exporter
+    - gitops_reconcile

@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# systemd ExecStopPost hook for gitops-reconcile.service: record the run's outcome
+# as a node_exporter textfile metric so Prometheus alerts when an unattended fleet
+# apply fails and main silently stops reaching the fleet. systemd sets
+# SERVICE_RESULT to "success" iff ExecStart exited 0.
+set -euo pipefail
+
+dir="{{ gitops_reconcile_textfile_dir }}"
+last_applied="{{ gitops_reconcile_last_applied_file }}"
+success=0
+[ "${SERVICE_RESULT:-}" = success ] && success=1
+
+# The revision now live on the fleet; absent until the first successful apply.
+sha=unknown
+[ -s "$last_applied" ] && sha="$(cut -c1-12 "$last_applied")"
+
+mkdir -p "$dir"
+# Publish atomically: write a temp file the exporter's *.prom glob ignores, then
+# rename it over the target so no scrape reads a half-written file. 0644 so the
+# exporter's unprivileged user can read it.
+tmp="$(mktemp "$dir/.gitops-reconcile.prom.XXXXXX")"
+cat >"$tmp" <<EOF
+# HELP gitops_reconcile_success Whether the last fleet reconcile run succeeded (1) or failed (0).
+# TYPE gitops_reconcile_success gauge
+gitops_reconcile_success $success
+# HELP gitops_reconcile_last_run_timestamp_seconds Unix time the last fleet reconcile run finished.
+# TYPE gitops_reconcile_last_run_timestamp_seconds gauge
+gitops_reconcile_last_run_timestamp_seconds $(date +%s)
+# HELP gitops_reconcile_applied_commit The git SHA last successfully applied to the fleet.
+# TYPE gitops_reconcile_applied_commit gauge
+gitops_reconcile_applied_commit{sha="$sha"} 1
+EOF
+chmod 0644 "$tmp"
+mv "$tmp" "$dir/gitops-reconcile.prom"

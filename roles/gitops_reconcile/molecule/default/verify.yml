@@ -1,0 +1,167 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - ../../defaults/main.yml
+  tasks:
+    - name: Stat the reconcile and metric scripts
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ gitops_reconcile_script }}"
+        - "{{ gitops_reconcile_metric_script }}"
+      register: gitops_reconcile_scripts
+      become: true
+
+    - name: The scripts are installed and executable
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.executable
+        fail_msg: "{{ item.item }} is missing or not executable"
+        quiet: true
+      loop: "{{ gitops_reconcile_scripts.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: The runtime venv runs ansible-playbook
+      ansible.builtin.command: "{{ gitops_reconcile_venv_dir }}/bin/ansible-playbook --version"
+      changed_when: false
+      become: true
+
+    # daemon_reload is a no-op read here: it makes the module gather and return the
+    # timer's systemctl-show properties to assert against; it reads, not mutates.
+    - name: Read the reconcile timer's state
+      ansible.builtin.systemd_service:
+        name: gitops-reconcile.timer
+        daemon_reload: true
+      register: gitops_reconcile_timer
+      become: true
+
+    - name: The timer is enabled and fires on a 15-minute cadence
+      ansible.builtin.assert:
+        that:
+          - gitops_reconcile_timer.status.ActiveState == 'active'
+          - gitops_reconcile_timer.status.UnitFileState == 'enabled'
+          - "'/15' in gitops_reconcile_timer.status.TimersCalendar"
+        fail_msg: "the reconcile timer is not enabled for a 15-minute cadence"
+        quiet: true
+
+    - name: Read the reconcile service's definition
+      ansible.builtin.systemd_service:
+        name: gitops-reconcile.service
+        daemon_reload: true
+      register: gitops_reconcile_service
+      become: true
+
+    - name: The service runs the reconcile script and the metric hook
+      ansible.builtin.assert:
+        that:
+          - "'gitops-reconcile.sh' in gitops_reconcile_service.status.ExecStart"
+          - "'gitops-reconcile-metric.sh' in gitops_reconcile_service.status.ExecStopPost"
+        fail_msg: "the service is not wired to the reconcile script and metric hook"
+        quiet: true
+
+    - name: Run the metric hook as a successful run would
+      ansible.builtin.command: "{{ gitops_reconcile_metric_script }}"
+      environment:
+        SERVICE_RESULT: success
+      changed_when: false
+      become: true
+
+    - name: Read the outcome metric after the successful run
+      ansible.builtin.slurp:
+        src: "{{ gitops_reconcile_textfile_dir }}/gitops-reconcile.prom"
+      register: gitops_reconcile_metric_ok
+      become: true
+
+    - name: A successful run records gitops_reconcile_success 1
+      ansible.builtin.assert:
+        that:
+          - "'gitops_reconcile_success 1' in (gitops_reconcile_metric_ok.content | b64decode)"
+          - "'gitops_reconcile_last_run_timestamp_seconds ' in (gitops_reconcile_metric_ok.content | b64decode)"
+          - "'gitops_reconcile_applied_commit{' in (gitops_reconcile_metric_ok.content | b64decode)"
+        fail_msg: "the outcome metric did not report a successful run"
+        quiet: true
+
+    # Drive the writer the way systemd would on a failed run; an ExecStart failure
+    # can't be forced in a container, so invoke the hook with SERVICE_RESULT set.
+    - name: Run the metric hook as a failed run would
+      ansible.builtin.command: "{{ gitops_reconcile_metric_script }}"
+      environment:
+        SERVICE_RESULT: exit-code
+      changed_when: false
+      become: true
+
+    - name: Read the outcome metric after the simulated failure
+      ansible.builtin.slurp:
+        src: "{{ gitops_reconcile_textfile_dir }}/gitops-reconcile.prom"
+      register: gitops_reconcile_metric_fail
+      become: true
+
+    - name: A failed run records gitops_reconcile_success 0
+      ansible.builtin.assert:
+        that:
+          - "'gitops_reconcile_success 0' in (gitops_reconcile_metric_fail.content | b64decode)"
+        fail_msg: "the outcome metric did not report a failed run"
+        quiet: true
+
+    # Exercise the reconcile script's fetch/reset/unchanged-HEAD path (the apply
+    # itself can't run without a fleet): seed last-applied to the clone's HEAD so
+    # the script short-circuits after the fetch instead of applying.
+    - name: Resolve the clone's origin HEAD
+      ansible.builtin.git:
+        repo: "{{ gitops_reconcile_clone_url }}"
+        dest: "{{ gitops_reconcile_repo_dir }}"
+        version: "{{ gitops_reconcile_branch }}"
+      register: gitops_reconcile_head
+      become: true
+
+    - name: Seed the last-applied SHA to the current HEAD
+      ansible.builtin.copy:
+        content: "{{ gitops_reconcile_head.after }}\n"
+        dest: "{{ gitops_reconcile_last_applied_file }}"
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Run the reconcile script with HEAD unchanged
+      ansible.builtin.command: "{{ gitops_reconcile_script }}"
+      register: gitops_reconcile_unchanged
+      changed_when: false
+      become: true
+
+    - name: The unchanged-HEAD short-circuit fetches but skips the apply
+      ansible.builtin.assert:
+        that:
+          - gitops_reconcile_unchanged.rc == 0
+          - "'nothing to apply' in gitops_reconcile_unchanged.stdout"
+        fail_msg: "the unchanged-HEAD short-circuit did not skip the apply"
+        quiet: true
+
+    # The pause flag must short-circuit before any git or apply work — the only
+    # part of the reconcile script safe to run in a container with no fleet.
+    - name: Set the pause flag
+      ansible.builtin.file:
+        path: "{{ gitops_reconcile_pause_flag }}"
+        state: touch
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Run the reconcile script while paused
+      ansible.builtin.command: "{{ gitops_reconcile_script }}"
+      register: gitops_reconcile_paused
+      changed_when: false
+      become: true
+
+    - name: The pause flag short-circuits the reconcile to a clean no-op
+      ansible.builtin.assert:
+        that:
+          - gitops_reconcile_paused.rc == 0
+          - "'paused' in gitops_reconcile_paused.stdout"
+        fail_msg: "the pause flag did not short-circuit the reconcile"
+        quiet: true
