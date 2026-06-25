@@ -6,11 +6,10 @@
 # account, running it as the image's user. data names what the app mounts under
 # /data — 'root' is the whole tree, so
 # imports hardlink across downloads and media; a list is just those dirs.
-# publish exposes the app's port on the host for native clients; device passes
-# a host device through for hardware transcoding; netns joins another app's
-# container netns (lifecycle follows it); network_alias, caps, sysctls and
-# binds are quadlet passthroughs; healthcheck adds a podman liveness probe (cmd
-# plus optional interval/timeout/start_period/retries/on_failure, all
+# device passes a host device through for hardware transcoding; netns joins
+# another app's container netns (lifecycle follows it); network_alias, caps,
+# sysctls and binds are quadlet passthroughs; healthcheck adds a podman liveness
+# probe (cmd plus optional interval/timeout/start_period/retries/on_failure, all
 # defaulted). prowlarr only manages indexers and recyclarr
 # only talks to the other apps, so neither has a data mount. recyclarr's TRaSH
 # config is operator-managed in its volume; the Servarr API keys it references
