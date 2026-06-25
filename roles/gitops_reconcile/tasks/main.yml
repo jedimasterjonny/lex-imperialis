@@ -1,9 +1,13 @@
 ---
-- name: Install git and the venv builder
+# The pip module imports `packaging` from the interpreter ansible discovered on
+# the host to parse requirements; the system pythons here ship without it, so
+# install the matching flavor's package (e.g. python314-packaging for 3.14).
+- name: Install git, the venv builder, and the pip module's packaging dependency
   community.general.zypper:
     name:
       - git
       - python3-pip
+      - "python{{ ansible_facts['python']['version']['major'] }}{{ ansible_facts['python']['version']['minor'] }}-packaging"
     state: present
   become: true
 
