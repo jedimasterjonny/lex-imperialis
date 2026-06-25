@@ -96,3 +96,25 @@ groups:
         annotations:
           summary: "unattended update overdue on {{ $labels.instance }}"
           description: "{{ $labels.instance }} has not completed an unattended update in over 9 days."
+
+  - name: gitops
+    rules:
+      - alert: GitopsReconcileFailed
+        expr: gitops_reconcile_success == 0
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "fleet reconcile failed on {{ $labels.instance }}"
+          description: "The last unattended fleet reconcile on {{ $labels.instance }} failed — main is no longer reaching the fleet."
+      # The 15-minute timer caps a healthy run at well under an hour old; 2 hours
+      # gives ample grace over a reboot or brief outage before flagging a timer
+      # that has stopped firing (a hard-stopped reconciler).
+      - alert: GitopsReconcileStale
+        expr: time() - gitops_reconcile_last_run_timestamp_seconds > 2 * 3600
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "fleet reconcile stale on {{ $labels.instance }}"
+          description: "{{ $labels.instance }} has not completed a fleet reconcile in over 2 hours."
