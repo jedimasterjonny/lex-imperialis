@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Screen each completed music download with beets, then hand matches to lidarr —
+# without disturbing the seeding torrent. The loop runs inside the beets container
+# so every path is /data/..., matching what lidarr sees.
+#
+# Per album: copy the pristine download into a staging area (beets tags the COPY,
+# so the original keeps seeding intact), then trigger lidarr to hardlink the staged
+# copy into the library on the one filesystem. A no-match copy goes to quarantine
+# for hand-processing; the original download is never modified or moved.
+set -euo pipefail
+# Skip cleanly if beets is down (a boot-time Persistent catch-up firing before the
+# container is up, or beets deliberately stopped) — catch up on the next tick.
+systemctl is-active --quiet beets.service || { echo "beets not running; skipping pipeline"; exit 0; }
+# The lidarr API key comes from EnvironmentFile=-/etc/arr/lidarr.env (the same 0600
+# file the lidarr container reads, rendered by "Deploy the Servarr API keys"). --env
+# with no value passes it through from this process's environment, so the key never
+# appears in the podman exec argv. -i forwards the heredoc as the inner shell's
+# stdin (without it podman feeds /dev/null and the script silently no-ops). The
+# inner script is POSIX sh: the beets image is Alpine/busybox, no bash.
+podman exec -i --user abc --env LIDARR__AUTH__APIKEY beets sh -s <<'INNER'
+set -eu
+# The API key arrives via --env from /etc/arr/lidarr.env; empty => no key => phase 2
+# skips lidarr. The lidarr URL is not a secret, so it is templated straight in.
+KEY="${LIDARR__AUTH__APIKEY:-}"
+URL="{{ arr_beets_lidarr_url }}"
+CFG=/config/managed/pipeline-config.yaml
+DL="{{ arr_beets_download_dir }}"
+STAGING="{{ arr_beets_staging_dir }}"
+QUAR="{{ arr_beets_quarantine_dir }}"
+CAP={{ arr_beets_poke_cap }}
+POKEDIR=/config/pipeline/pokes
+SCREENED=/config/pipeline/screened
+mkdir -p "$POKEDIR" "$SCREENED" "$STAGING" "$QUAR/lidarr-rejected"
+# Clear any copy left half-written by a crash mid-cp, so phase 2 never mistakes a
+# stale ".partial" for a finished staged album. No match => the literal glob is a
+# harmless no-op under rm -f.
+rm -rf "$STAGING"/*.partial
+
+# Ask lidarr to import a staged album. A 2xx means queued, not imported (lidarr has
+# no import callback); Copy import hardlinks the staged copy into the library, so
+# only the staging copy is consumed and the original download keeps seeding. jq
+# builds the body so a path with a quote or backslash can't break the JSON. Returns
+# 0 for a definitive response (2xx queued, or a 4xx that won't fix itself — bad key
+# or request), which counts toward the give-up cap; returns 1 only for a transient
+# failure (5xx or no connection), which is retried without counting.
+trigger_lidarr() {
+  [ -n "$KEY" ] || { echo "no lidarr key; not triggering $1"; return 1; }
+  body="$(jq -nc --arg p "$1" '{name:"DownloadedAlbumsScan",path:$p,importMode:"Copy"}')"
+  code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/api/v1/command" \
+    -H "X-Api-Key: $KEY" -H 'Content-Type: application/json' -d "$body")
+  case "$code" in
+    2*) return 0 ;;
+    4*) echo "lidarr rejected scan of $1 (HTTP $code)"; return 0 ;;
+    *) echo "lidarr unreachable for $1 (HTTP $code); will retry"; return 1 ;;
+  esac
+}
+
+# Has lidarr imported this staged album? Copy import hardlinks the matched audio
+# into the library on the one filesystem, raising the source's link count above 1 —
+# that hardlink is the only reliable "did lidarr import it" signal (the scan's 2xx
+# only means queued). Any hardlinked audio means lidarr processed the album; files
+# it leaves at link count 1 are extras it didn't import, which still live in the
+# seeding download. The 10-minute gap between the poke and this check means lidarr
+# has long finished, so a still-running import is not a concern in practice.
+imported() {
+  [ -n "$(find "$1" -type f -links +1 \( \
+    -iname '*.flac' -o -iname '*.mp3' -o -iname '*.m4a' -o -iname '*.m4b' \
+    -o -iname '*.opus' -o -iname '*.ogg' -o -iname '*.oga' -o -iname '*.wav' \
+    -o -iname '*.wma' -o -iname '*.aac' -o -iname '*.aif' -o -iname '*.aiff' \
+    -o -iname '*.ape' -o -iname '*.wv' -o -iname '*.mpc' -o -iname '*.dsf' \
+    -o -iname '*.dff' \) 2>/dev/null)" ]
+}
+
+# Can MusicBrainz serve matches right now? A connection failure (000) or a 5xx
+# (maintenance/rate-limit) would make beets match nothing, so defer; a healthy
+# server answers ws/2/ with a non-5xx status.
+mb_reachable() {
+  mbcode="$(curl -s -o /dev/null -m 10 -w '%{http_code}' https://musicbrainz.org/ws/2/ 2>/dev/null || true)"
+  case "$mbcode" in
+    ''|000|5*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+# 1) Screen each new download exactly once: copy it, tag the copy, and either stage
+#    it for lidarr or quarantine it. The screened marker (kept while the download
+#    seeds) stops re-processing; it never touches the original download. Skip the
+#    whole phase when MusicBrainz can't match (see mb_reachable): otherwise every
+#    album would match nothing and be quarantined as a false no-match, re-copied
+#    each tick.
+if [ -d "$DL" ]; then
+  if mb_reachable; then
+    for album in "$DL"/*/; do
+      [ -d "$album" ] || continue        # glob matched nothing => literal, skip
+      album="${album%/}"
+      name="$(basename "$album")"
+      [ -e "$SCREENED/$name" ] && continue
+      # settled-download gate: any file touched within the window means it is still
+      # arriving, so leave it for a later tick.
+      if [ -n "$(find "$album" -type f -mmin "-{{ arr_beets_stable_minutes }}")" ]; then
+        echo "unstable, skipping: $name"
+        continue
+      fi
+      stage="$STAGING/$name"
+      rm -rf "$stage" "$stage.partial"
+      cp -r "$album" "$stage.partial"    # pristine copy; the download is never modified => keeps seeding
+      mv "$stage.partial" "$stage"
+      # Tag the COPY in place (quiet; a sub-threshold match skips and writes nothing).
+      # MusicBrainz was reachable above, so a non-zero exit or an empty match here is
+      # album-specific, not a transient outage — quarantine the copy either way.
+      beet -c "$CFG" import "$stage" || echo "import errored: $name"
+      if beet -c "$CFG" ls -p "path:$stage" | grep -q .; then
+        echo "matched, staged: $name"    # phase 2 hands it to lidarr
+      elif [ -e "$QUAR/$name" ]; then
+        rm -rf "$stage"
+        echo "quarantine target exists, dropped copy: $name"
+      else
+        mv "$stage" "$QUAR/$name"
+        echo "quarantined (no match or error): $name"
+      fi
+      touch "$SCREENED/$name"
+    done
+  else
+    echo "musicbrainz unreachable; deferring screening this tick"
+  fi
+  # Drop screened markers whose download is gone (torrent removed), so the set
+  # tracks only what is still on disk. Independent of MusicBrainz, so it runs even
+  # on a deferred tick.
+  for marker in "$SCREENED"/*; do
+    [ -e "$marker" ] || continue
+    [ -d "$DL/$(basename "$marker")" ] || rm -f "$marker"
+  done
+fi
+
+# 2) Drive each staged copy into lidarr. Once imported (audio hardlinked into the
+#    library) drop the staging copy — the library inode survives. A 2xx that never
+#    becomes an import is the silent-reject case (unmonitored artist, profile
+#    mismatch), and a 4xx is a permanent error (bad key/request); both count toward
+#    the cap, then the copy goes to lidarr-rejected. A 5xx / no connection is
+#    transient — leave the count and retry, never quarantine.
+for stage in "$STAGING"/*/; do
+  [ -d "$stage" ] || continue
+  stage="${stage%/}"
+  name="$(basename "$stage")"
+  pokefile="$POKEDIR/$name"
+  if imported "$stage"; then
+    beet -c "$CFG" remove -f "path:$stage" >/dev/null 2>&1 || true
+    rm -rf "$stage"
+    rm -f "$pokefile"
+    echo "imported: $name"
+    continue
+  fi
+  if trigger_lidarr "$stage"; then
+    pokes=$(cat "$pokefile" 2>/dev/null || echo 0)
+    pokes=$((pokes + 1))
+    if [ "$pokes" -ge "$CAP" ]; then
+      beet -c "$CFG" remove -f "path:$stage" >/dev/null 2>&1 || true
+      if [ -e "$QUAR/lidarr-rejected/$name" ]; then
+        rm -rf "$stage"
+        echo "lidarr-rejected target exists, dropped copy: $name"
+      else
+        mv "$stage" "$QUAR/lidarr-rejected/"
+        echo "gave up after $pokes pokes => lidarr-rejected: $name"
+      fi
+      rm -f "$pokefile"
+    else
+      echo "$pokes" > "$pokefile"
+      echo "poked $pokes/$CAP, awaiting import: $name"
+    fi
+  else
+    echo "retry next tick (lidarr transient): $name"
+  fi
+done
+INNER
