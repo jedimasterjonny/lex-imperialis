@@ -323,3 +323,63 @@
           catalog not idempotent: first={{ arr_beets_items_first.stdout_lines | length }}
           again={{ arr_beets_items_again.stdout_lines | length }}
         quiet: true
+
+    # The beets pipeline: a 10-minute timer screens completed downloads, handing
+    # matches to lidarr and quarantining the rest. Molecule has no download tree,
+    # so the wrapper's "no download dir → exit 0" path runs — proving the unit,
+    # wrapper, rendered config, lidarr env file, and that a run is clean.
+    - name: Read the beets pipeline timer state
+      ansible.builtin.systemd_service:
+        name: beets-pipeline.timer
+        daemon_reload: true
+      become: true
+      register: arr_beets_pipeline_timer
+
+    - name: The beets pipeline timer is enabled and active
+      ansible.builtin.assert:
+        that:
+          - arr_beets_pipeline_timer.status.UnitFileState == 'enabled'
+          - arr_beets_pipeline_timer.status.ActiveState == 'active'
+        quiet: true
+
+    - name: Stat the beets pipeline script
+      ansible.builtin.stat:
+        path: /usr/local/sbin/beets-pipeline.sh
+      become: true
+      register: arr_beets_pipeline_script
+
+    - name: The pipeline script is present and executable
+      ansible.builtin.assert:
+        that:
+          - arr_beets_pipeline_script.stat.exists
+          - arr_beets_pipeline_script.stat.mode == '0755'
+        quiet: true
+
+    - name: Read the rendered pipeline config from inside the container
+      ansible.builtin.command: podman exec beets cat /config/managed/pipeline-config.yaml
+      become: true
+      register: arr_beets_pipeline_cfg
+      changed_when: false
+
+    - name: The pipeline config enables the musicbrainz matcher
+      ansible.builtin.assert:
+        that:
+          - "'musicbrainz' in arr_beets_pipeline_cfg.stdout"
+        quiet: true
+
+    # Running the oneshot proves the wrapper resolves beet/find/curl inside the
+    # container and exits 0 on the empty tree (no download dir), creating the
+    # pipeline DB, staging and quarantine dirs as a side effect.
+    - name: Run the beets pipeline over the empty tree
+      ansible.builtin.systemd_service:
+        name: beets-pipeline.service
+        state: started
+      become: true
+
+    - name: The staging and quarantine directories exist after a run
+      ansible.builtin.command: podman exec beets test -d {{ item }}
+      loop:
+        - "{{ arr_beets_staging_dir }}"
+        - "{{ arr_beets_quarantine_dir }}"
+      become: true
+      changed_when: false

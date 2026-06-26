@@ -1,0 +1,10 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Screen completed music downloads through the beets pipeline
+
+[Timer]
+OnCalendar={{ arr_beets_pipeline_oncalendar }}
+Persistent=true
+
+[Install]
+WantedBy=timers.target

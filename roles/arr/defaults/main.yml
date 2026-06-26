@@ -41,6 +41,35 @@ arr_beets_config_dir: /etc/arr/beets
 arr_beets_music_dir: /data/media/music
 arr_beets_library_oncalendar: "*-*-* 04:00:00"
 
+# beets per-download pipeline. A 10-minute timer screens each settled music
+# download: beets copies it to a staging area and tags the copy (so the original
+# keeps seeding intact), then triggers lidarr to hardlink the staged copy into the
+# library; an unmatched album's copy is moved to quarantine for hand-processing
+# instead of reaching lidarr. lidarr keeps completed-download handling OFF so beets
+# gates every import — a runtime *arr setting, not codified here (see README).
+arr_beets_lidarr_url: http://lidarr:8686
+arr_beets_pipeline_oncalendar: "*:0/10"
+# Match thresholds, rendered unquoted into the beets config (it needs numbers):
+# only a strong MusicBrainz match auto-imports, a weaker one skips → quarantine.
+arr_beets_strong_rec_thresh: "0.10"
+arr_beets_rec_gap_thresh: "0.10"
+# An album whose files were all untouched this long counts as settled (download
+# finished), so the pipeline never screens a half-downloaded album.
+arr_beets_stable_minutes: 15
+# How many ticks lidarr may queue a matched album without actually importing it
+# (no hardlink appears) before the wrapper gives up and moves it to
+# quarantine/lidarr-rejected. DownloadedAlbumsScan returns queued, not imported,
+# so a silent reject (unmonitored artist, profile mismatch) is caught only by this
+# cap; lidarr merely being unreachable is transient and never counts against it.
+arr_beets_poke_cap: 6
+# Container paths (arr_data_root mounts at /data in every app): the download dir
+# is lidarr's transmission category; staging holds the tagged copies awaiting
+# lidarr (same filesystem as the library, so the import hardlinks); quarantine
+# takes no-match copies. All three are siblings under downloads, one filesystem.
+arr_beets_download_dir: /data/downloads/completed/music-lidarr
+arr_beets_staging_dir: /data/downloads/staging
+arr_beets_quarantine_dir: /data/downloads/quarantine
+
 # Servarr API keys, vault-sourced and keyed by app. Each key is injected via the
 # app's <APP>__AUTH__APIKEY env var — rendered to a 0600 EnvironmentFile, never
 # the world-readable unit — which overrides the config.xml value at runtime, so

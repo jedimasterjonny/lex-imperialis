@@ -220,6 +220,52 @@
         state: started
         daemon_reload: true
 
+# A 10-minute timer screens each completed music download: beets copies it to a
+# staging area and tags the copy, then the wrapper hands the copy to lidarr to
+# hardlink-import (the original keeps seeding); an unmatched copy is quarantined.
+# Renders alongside the catalog (same /etc/arr/beets bind, created by the catalog
+# block above) but into a separate pipeline DB. The lidarr key is read at runtime
+# from the existing /etc/arr/lidarr.env, so no secret is rendered here. The wrapper
+# execs into the running container, so nothing here needs beets up — it creates its
+# own DB/staging/quarantine dirs on first run.
+- name: Set up the beets pipeline
+  when: "'beets' in arr_enabled"
+  become: true
+  block:
+    - name: Render the beets pipeline config
+      ansible.builtin.template:
+        src: beets-pipeline-config.yaml.j2
+        dest: "{{ arr_beets_config_dir }}/pipeline-config.yaml"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Install the beets pipeline script
+      ansible.builtin.template:
+        src: beets-pipeline.sh.j2
+        dest: /usr/local/sbin/beets-pipeline.sh
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install the beets pipeline service and timer
+      ansible.builtin.template:
+        src: "{{ item }}.j2"
+        dest: "/etc/systemd/system/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - beets-pipeline.service
+        - beets-pipeline.timer
+
+    - name: Enable and start the beets pipeline timer
+      ansible.builtin.systemd_service:
+        name: beets-pipeline.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+
 - name: Install the app container units
   ansible.builtin.template:
     src: app.container.j2

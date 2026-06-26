@@ -69,6 +69,66 @@ down (so a boot-time catch-up can't fail the unit). The oneshot is ordered
 `After=beets.service` and the timer is `Persistent=true`. The container's own
 `beet web` UI keeps using its default `/config` config, untouched.
 
+## Music pipeline
+
+beets screens each completed music download before lidarr imports it, so a
+no-match album never reaches the library. lidarr owns acquisition and the final
+import; beets owns tags and filenames (`renameTracks` stays OFF). beets tags a
+**copy**, not the download, so the torrent keeps seeding the original. Two beets
+DBs: the standing catalog (`/config/musiclibrary.blb`) and a transient pipeline
+ledger (`/config/pipeline/pipeline.blb`).
+
+`beets-pipeline.timer` runs `beets-pipeline.sh` every
+`arr_beets_pipeline_oncalendar` (10 min), inside the beets container (POSIX `sh`;
+paths stay `/data/...`), in two phases:
+
+1. **Screen each download once.** For each *settled* album folder under
+   `arr_beets_download_dir` (untouched for `arr_beets_stable_minutes`), copy it to
+   `arr_beets_staging_dir` and `beet import` the copy. A match is left staged for
+   phase 2; a no-match copy goes to `arr_beets_quarantine_dir`. A
+   `/config/pipeline/screened` marker (kept while the download is on disk) stops
+   re-screening; the download itself is never touched. The phase is skipped when
+   MusicBrainz is unreachable or 5xx, so an outage can't mass-quarantine matchable
+   albums. Loose single files (not in a folder) aren't screened — handle by hand.
+2. **Drive staged copies into lidarr.** The wrapper POSTs `DownloadedAlbumsScan`
+   `importMode: Copy`, so lidarr hardlinks the copy into the library. A 2xx is
+   *queued*, not *imported*, so it re-pokes until the staged audio's link count
+   rises above one (lidarr hardlinked it), then drops the staging copy (the library
+   inode survives) and prunes the ledger. A copy lidarr keeps queuing but never
+   imports (unmonitored artist, profile mismatch) or 4xx-rejects goes to
+   `<quarantine>/lidarr-rejected` after `arr_beets_poke_cap` ticks; a 5xx or
+   unreachable lidarr is transient and never counts against the cap.
+
+The lidarr key is read at runtime from the 0600 `/etc/arr/lidarr.env` the lidarr
+container already uses (`EnvironmentFile=-`), passed in via `podman exec --env
+LIDARR__AUTH__APIKEY` (no value) so it never reaches the exec argv; the non-secret
+URL is templated into the script. Failures surface via node_exporter's
+`beets-pipeline.service` unit state.
+
+### Runtime lidarr invariants (not codified — set via the lidarr API)
+
+The pipeline depends on lidarr settings this role does not manage:
+
+- **Completed-download handling OFF** — beets must screen an album before lidarr
+  commits, so lidarr cannot auto-import (ARR-AUDIT §G).
+- **`renameTracks` OFF** — lidarr keeps beets' filenames (ARR-AUDIT §A).
+- **`copyUsingHardlinks` ON** — so `importMode: Copy` hardlinks the staged copy
+  into the library rather than copying it again. If it is off, no hardlink appears,
+  every album fails the import check, and the pipeline bulk-rejects to
+  `lidarr-rejected` — so this one is load-bearing.
+- **Download client "remove completed" OFF** — keep lidarr from removing the
+  torrent; the pipeline never relies on lidarr touching the download.
+
+Codifying these in-app settings is ARR-AUDIT §H (the arr-config layer), out of
+scope here.
+
+### Quarantine re-injection
+
+Hand-process a quarantined album in place, then move it into
+`arr_beets_staging_dir`; phase 2 finds it there and hands it to lidarr (it needs no
+ledger row — the import is detected by the hardlink, not the DB). Don't move it
+back under `arr_beets_download_dir`: its screened marker would skip it.
+
 ## API keys
 
 The Servarr apps (radarr, sonarr, lidarr, prowlarr) take their API key from the
