@@ -1,0 +1,10 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Refresh the beets music-library catalog
+
+[Timer]
+OnCalendar={{ arr_beets_library_oncalendar }}
+Persistent=true
+
+[Install]
+WantedBy=timers.target

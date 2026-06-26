@@ -215,3 +215,111 @@
       loop: "{{ arr_dirs.results }}"
       loop_control:
         label: "{{ item.item.key }}"
+
+    # The standing beets catalog: a daily timer runs the catalog script against
+    # the running beets container. Prove the unit, script, rendered config, and
+    # that a run completes cleanly over the (empty) molecule music library.
+    - name: Read the beets library catalog timer state
+      ansible.builtin.systemd_service:
+        name: beets-library.timer
+        daemon_reload: true
+      become: true
+      register: arr_beets_timer
+
+    - name: The beets library catalog timer is enabled and active
+      ansible.builtin.assert:
+        that:
+          - arr_beets_timer.status.UnitFileState == 'enabled'
+          - arr_beets_timer.status.ActiveState == 'active'
+        quiet: true
+
+    - name: Stat the beets library catalog script
+      ansible.builtin.stat:
+        path: /usr/local/sbin/beets-library.sh
+      become: true
+      register: arr_beets_script
+
+    - name: The catalog script is present and executable
+      ansible.builtin.assert:
+        that:
+          - arr_beets_script.stat.exists
+          - arr_beets_script.stat.mode == '0755'
+        quiet: true
+
+    # cat (not a separate test -r) proves both readability and the content below;
+    # a missing or unreadable file fails this task.
+    - name: Read the rendered catalog config from inside the container
+      ansible.builtin.command: podman exec beets cat /config/managed/library-config.yaml
+      become: true
+      register: arr_beets_cfg
+      changed_when: false
+
+    - name: The catalog config is catalog-only (no media writes)
+      ansible.builtin.assert:
+        that:
+          - "'write: no' in arr_beets_cfg.stdout"
+        quiet: true
+
+    # Running the oneshot proves the script resolves beet inside the container and
+    # the catalog completes — a non-zero exit fails the start, failing verify.
+    - name: Run the beets library catalog over the empty library
+      ansible.builtin.systemd_service:
+        name: beets-library.service
+        state: started
+      become: true
+
+    # Prove the catalog actually imports — not just that it runs clean on empty —
+    # and that a second run adds nothing (the standing catalog's core contract).
+    # The fixture is generated in-container with ffmpeg (no committed binary), and
+    # import -A is no-autotag so it needs no MusicBrainz network.
+    - name: Generate a tagged music fixture in the library
+      ansible.builtin.command:
+        argv:
+          - podman
+          - exec
+          - --user
+          - abc
+          - beets
+          - sh
+          - -c
+          - >-
+            mkdir -p /data/media/music/TestArtist/TestAlbum &&
+            ffmpeg -hide_banner -loglevel error -f lavfi -i anullsrc=r=44100:cl=mono
+            -t 1 -metadata artist=TestArtist -metadata album=TestAlbum
+            -metadata title=Track1 /data/media/music/TestArtist/TestAlbum/01.mp3
+      become: true
+      changed_when: true
+
+    - name: Run the catalog over the populated library
+      ansible.builtin.systemd_service:
+        name: beets-library.service
+        state: started
+      become: true
+
+    - name: Count catalogued items after the first populated run
+      ansible.builtin.command: podman exec --user abc beets beet -c /config/managed/library-config.yaml ls
+      become: true
+      register: arr_beets_items_first
+      changed_when: false
+
+    - name: Re-run the catalog over the populated library
+      ansible.builtin.systemd_service:
+        name: beets-library.service
+        state: started
+      become: true
+
+    - name: Count catalogued items after the re-run
+      ansible.builtin.command: podman exec --user abc beets beet -c /config/managed/library-config.yaml ls
+      become: true
+      register: arr_beets_items_again
+      changed_when: false
+
+    - name: The catalog imported the album and the re-run added nothing
+      ansible.builtin.assert:
+        that:
+          - arr_beets_items_first.stdout_lines | length >= 1
+          - arr_beets_items_again.stdout_lines | length == arr_beets_items_first.stdout_lines | length
+        fail_msg: >-
+          catalog not idempotent: first={{ arr_beets_items_first.stdout_lines | length }}
+          again={{ arr_beets_items_again.stdout_lines | length }}
+        quiet: true

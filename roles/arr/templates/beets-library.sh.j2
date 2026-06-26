@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Refresh the standing beets catalog over the music library: import -A adds new
+# albums as-is (no autotag, no tag writes), update reconciles moved or changed
+# files. Catalog only — never modifies media. Runs inside the beets container so
+# every path is /data/..., matching what the apps see.
+set -euo pipefail
+# Skip cleanly if beets is down (a boot-time Persistent catch-up firing before
+# the container is up, or beets deliberately stopped): don't fail the unit and
+# don't pull beets in — just catch up on the next run.
+systemctl is-active --quiet beets.service || { echo "beets not running; skipping catalog"; exit 0; }
+podman exec --user abc beets sh -c '
+set -eu
+cfg=/config/managed/library-config.yaml
+# Import new albums first (incremental skips already-cataloged dirs), so a
+# transient update failure can never block new additions. Quiet comes from the
+# rendered config.
+beet -c "$cfg" import -A "{{ arr_beets_music_dir }}"
+# update reconciles moved or changed files already in the catalog; it exits 1 on
+# an empty catalog ("no matching items"), so run it only once there is something.
+# Capture the listing under set -e (not inside the test) so a failed beet ls
+# surfaces as a unit failure instead of masquerading as an empty catalog.
+items=$(beet -c "$cfg" ls)
+if [ -n "$items" ]; then
+  beet -c "$cfg" update
+fi
+'
