@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Screen completed music downloads with beets and hand matches to lidarr
+RequiresMountsFor={{ arr_data_root }}
+After=beets.service
+
+[Service]
+Type=oneshot
+# The lidarr API key, read from the same 0600 file the lidarr container uses
+# ("Deploy the Servarr API keys"). Optional (the leading -): absent with no vault
+# key, so the unit still starts keyless (molecule, fresh host) and phase 2 skips.
+EnvironmentFile=-/etc/arr/lidarr.env
+ExecStart=/usr/local/sbin/beets-pipeline.sh
