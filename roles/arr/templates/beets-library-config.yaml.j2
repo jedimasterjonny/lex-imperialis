@@ -1,0 +1,20 @@
+# {{ ansible_managed }}
+# directory is required: `beet update` reads it (and crashes if unset), even
+# though copy/move are off so the in-place import never writes there.
+directory: {{ arr_beets_music_dir }}
+library: /config/musiclibrary.blb
+# Disable every plugin. `beet -c` overlays the image's /config/config.yaml, which
+# enables write-capable import hooks; the empty list overrides them so the catalog
+# never modifies media.
+plugins: []
+# import -A adds albums as-is (no autotag); write/copy/move off keep the import
+# in-place with no file touched; incremental skips already-cataloged dirs (state
+# in the writable /config) so the daily run only imports new albums; quiet
+# suppresses the import's prompts.
+import:
+  write: no
+  copy: no
+  move: no
+  incremental: yes
+  quiet: yes
+  log: /config/library-import.log
