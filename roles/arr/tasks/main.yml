@@ -166,6 +166,60 @@
   register: arr_api_key_files
   notify: Restart the app containers
 
+# A daily timer catalogs the music library into the standing beets DB so it
+# tracks what lidarr adds — catalog only, no re-tag and no media writes. The
+# config bind-mounts read-only into beets at /config/managed, so its host dir
+# must exist before the unit starts — podman won't auto-create a :ro bind
+# source. Set up here, ahead of the container, so the mount resolves on first
+# start; nothing here needs beets running.
+- name: Set up the beets library catalog
+  when: "'beets' in arr_enabled"
+  become: true
+  block:
+    - name: Create the beets config directory
+      ansible.builtin.file:
+        path: "{{ arr_beets_config_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Render the beets library catalog config
+      ansible.builtin.template:
+        src: beets-library-config.yaml.j2
+        dest: "{{ arr_beets_config_dir }}/library-config.yaml"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Install the beets library catalog script
+      ansible.builtin.template:
+        src: beets-library.sh.j2
+        dest: /usr/local/sbin/beets-library.sh
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install the beets library catalog service and timer
+      ansible.builtin.template:
+        src: "{{ item }}.j2"
+        dest: "/etc/systemd/system/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - beets-library.service
+        - beets-library.timer
+
+    # daemon_reload picks up the new units before enabling; it does not itself
+    # report changed, so the task stays idempotent.
+    - name: Enable and start the beets library catalog timer
+      ansible.builtin.systemd_service:
+        name: beets-library.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+
 - name: Install the app container units
   ansible.builtin.template:
     src: app.container.j2

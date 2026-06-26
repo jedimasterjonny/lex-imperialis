@@ -79,6 +79,10 @@ arr_apps:
     # Whole tree so beets can import (and hardlink) from downloads into the
     # music library — both must be one mount for hardlinks to work.
     data: root
+    # Read-only Ansible-rendered beets configs land at /config/managed; the
+    # catalog timer runs `beet -c /config/managed/...`. ro config under /etc, so
+    # no :Z (container_t reads etc_t).
+    binds: ["{{ arr_beets_config_dir }}:/config/managed:ro"]
     healthcheck:
       cmd: curl -fsS http://127.0.0.1:8337/
   plex:

@@ -30,6 +30,17 @@ arr_enabled: "{{ arr_apps.keys() | list }}"
 # torrent traffic can never leak outside the VPN.
 arr_wireguard_conf: ""
 
+# beets standing-library catalog. A daily timer runs an incremental
+# `beet import -A` then `beet update` over the music library so the standing
+# catalog tracks what lidarr adds — catalog only, no re-tag and no media writes.
+# The rendered config bind-mounts read-only into the beets container at
+# /config/managed (see the beets app's binds in vars/main.yml).
+arr_beets_config_dir: /etc/arr/beets
+# Container path the music library mounts at (arr_data_root is /data inside every
+# app), so it holds regardless of the host's arr_data_root.
+arr_beets_music_dir: /data/media/music
+arr_beets_library_oncalendar: "*-*-* 04:00:00"
+
 # Servarr API keys, vault-sourced and keyed by app. Each key is injected via the
 # app's <APP>__AUTH__APIKEY env var — rendered to a 0600 EnvironmentFile, never
 # the world-readable unit — which overrides the config.xml value at runtime, so

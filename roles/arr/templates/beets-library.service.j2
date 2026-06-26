@@ -1,0 +1,9 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Catalog the music library into the standing beets DB
+RequiresMountsFor={{ arr_data_root }}
+After=beets.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/beets-library.sh
