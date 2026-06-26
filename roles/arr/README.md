@@ -52,6 +52,23 @@ Data dirs are setgid `2775`, each owned by the app that fills it; with
 hardlink across each other's output. plex's membership is read-only —
 `:ro` mounts enforce it.
 
+## Music library catalog
+
+A `beets-library.timer` runs `beets-library.sh` daily (`arr_beets_library_oncalendar`):
+an incremental `beet import -A` then `beet update` over `arr_beets_music_dir`, so
+the standing catalog (`/config/musiclibrary.blb` in the beets volume) tracks what
+lidarr adds. Catalog only — `import -A` adds albums as-is, `plugins: []` disables
+the image config's write-capable hooks, and write/copy/move are off, so no media
+file is ever touched. Import runs before update so a transient `update` failure
+can't block new additions.
+
+The catalog config renders to `arr_beets_config_dir` on the host and bind-mounts
+read-only into beets at `/config/managed`; the script `podman exec`s into the
+running container so every path is `/data/...`. It skips cleanly when beets is
+down (so a boot-time catch-up can't fail the unit). The oneshot is ordered
+`After=beets.service` and the timer is `Persistent=true`. The container's own
+`beet web` UI keeps using its default `/config` config, untouched.
+
 ## API keys
 
 The Servarr apps (radarr, sonarr, lidarr, prowlarr) take their API key from the
