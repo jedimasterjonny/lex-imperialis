@@ -102,3 +102,9 @@ arr_api_keys:
 # molecule converges with no vault.
 arr_transmission_username: ""
 arr_transmission_password: ""
+
+# Recyclarr's TRaSH config — the radarr/sonarr quality-profile + custom-format
+# configs and the !secret api keys — renders here and bind-mounts read-only into
+# the container (on top of the /config volume, which keeps its guide cache).
+# gitops re-renders it, so the repo owns it instead of the volume.
+arr_recyclarr_config_dir: /etc/arr/recyclarr

@@ -97,6 +97,47 @@
           - arr_recyclarr_id.stdout_lines == [arr_apps.recyclarr.uid | string, arr_apps.recyclarr.uid | string]
         quiet: true
 
+    # Recyclarr's config renders to the host and bind-mounts read-only into the
+    # container. cat from inside proves the bind resolves and the User=3007 process
+    # can read each file; a missing or unreadable file fails the task.
+    - name: Read the rendered recyclarr configs from inside the container
+      ansible.builtin.command: podman exec recyclarr sh -c 'cat /config/{{ item }}'
+      loop:
+        - configs/movies.yml
+        - configs/tv.yml
+      become: true
+      register: arr_recyclarr_cfg
+      changed_when: false
+
+    - name: The recyclarr configs carry the instances and !secret key references
+      ansible.builtin.assert:
+        that:
+          - "'!secret radarr_api_key' in arr_recyclarr_cfg.results[0].stdout"
+          - "'!secret sonarr_api_key' in arr_recyclarr_cfg.results[1].stdout"
+        quiet: true
+
+    # secrets.yml renders 0600 owned by the recyclarr uid; test -r as the container
+    # user proves it's readable without dumping the keys into output.
+    - name: The recyclarr secrets file is readable by the container user
+      ansible.builtin.command: podman exec recyclarr sh -c 'test -r /config/secrets.yml'
+      become: true
+      changed_when: false
+
+    - name: Stat the recyclarr secrets file
+      ansible.builtin.stat:
+        path: "{{ arr_recyclarr_config_dir }}/secrets.yml"
+      become: true
+      register: arr_recyclarr_secrets
+
+    - name: The recyclarr secrets file is private to the recyclarr user
+      ansible.builtin.assert:
+        that:
+          - arr_recyclarr_secrets.stat.exists
+          - arr_recyclarr_secrets.stat.mode == '0600'
+          - arr_recyclarr_secrets.stat.pw_name == 'recyclarr'
+        fail_msg: "secrets.yml is missing or not 0600 recyclarr"
+        quiet: true
+
     # exec defaults to container root, which bypasses file perms — drop to the
     # service account so the write exercises the shared group.
     - name: Probe a media write from beets
