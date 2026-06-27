@@ -166,6 +166,26 @@
   register: arr_api_key_files
   notify: Restart the app containers
 
+# Transmission's RPC auth renders to a 0600 EnvironmentFile the unit reads, so the
+# password never lands in the world-readable unit. Only when both creds are set;
+# both empty leaves the image's auth-off default, so molecule converges with no
+# vault. The unit itself is unchanged by a cred rotation, so this notifies a
+# dedicated restart.
+- name: Deploy the transmission RPC credentials
+  ansible.builtin.template:
+    src: transmission.env.j2
+    dest: /etc/arr/transmission.env
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  no_log: true
+  when:
+    - "'transmission' in arr_enabled"
+    - arr_transmission_username | length > 0
+    - arr_transmission_password | length > 0
+  notify: Restart transmission for arr
+
 # A daily timer catalogs the music library into the standing beets DB so it
 # tracks what lidarr adds — catalog only, no re-tag and no media writes. The
 # config bind-mounts read-only into beets at /config/managed, so its host dir
@@ -273,6 +293,47 @@
         enabled: true
         state: started
         daemon_reload: true
+
+# Recyclarr's config renders to /etc/arr/recyclarr and bind-mounts read-only into
+# the container, so the host dir must exist before the unit starts — podman won't
+# auto-create a :ro bind source. Only a secrets.yml change restarts recyclarr: it's
+# a single-file bind, and template's atomic rename swaps the inode the running
+# container holds open. The configs/ directory bind serves re-rendered files live.
+- name: Set up the recyclarr config
+  when: "'recyclarr' in arr_enabled"
+  become: true
+  block:
+    - name: Create the recyclarr config directory
+      ansible.builtin.file:
+        path: "{{ arr_recyclarr_config_dir }}/configs"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Render the recyclarr configs
+      ansible.builtin.template:
+        src: "recyclarr-{{ item }}.yml.j2"
+        dest: "{{ arr_recyclarr_config_dir }}/configs/{{ item }}.yml"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - movies
+        - tv
+
+    # secrets.yml carries the radarr/sonarr api keys the configs reference via
+    # !secret, so it renders 0600 owned by the recyclarr uid — the in-container
+    # process (User=3007) reads the ro bind, which a root-only file would deny.
+    - name: Render the recyclarr secrets
+      ansible.builtin.template:
+        src: recyclarr-secrets.yml.j2
+        dest: "{{ arr_recyclarr_config_dir }}/secrets.yml"
+        owner: recyclarr
+        group: recyclarr
+        mode: "0600"
+      no_log: true
+      notify: Restart recyclarr for arr
 
 - name: Install the app container units
   ansible.builtin.template:

@@ -94,3 +94,17 @@ arr_api_keys:
   sonarr: ""
   lidarr: ""
   prowlarr: ""
+
+# Transmission RPC auth, vault-sourced. The LSIO image forces auth off on every
+# start unless USER/PASS are set, so these render to a 0600 EnvironmentFile the
+# unit reads — never the world-readable unit — which turns RPC auth on and sets
+# the rpc username/password. Both empty leaves the image's auth-off default, so
+# molecule converges with no vault.
+arr_transmission_username: ""
+arr_transmission_password: ""
+
+# Recyclarr's TRaSH config — the radarr/sonarr quality-profile + custom-format
+# configs and the !secret api keys — renders here and bind-mounts read-only into
+# the container (on top of the /config volume, which keeps its guide cache).
+# gitops re-renders it, so the repo owns it instead of the volume.
+arr_recyclarr_config_dir: /etc/arr/recyclarr

@@ -97,6 +97,47 @@
           - arr_recyclarr_id.stdout_lines == [arr_apps.recyclarr.uid | string, arr_apps.recyclarr.uid | string]
         quiet: true
 
+    # Recyclarr's config renders to the host and bind-mounts read-only into the
+    # container. cat from inside proves the bind resolves and the User=3007 process
+    # can read each file; a missing or unreadable file fails the task.
+    - name: Read the rendered recyclarr configs from inside the container
+      ansible.builtin.command: podman exec recyclarr sh -c 'cat /config/{{ item }}'
+      loop:
+        - configs/movies.yml
+        - configs/tv.yml
+      become: true
+      register: arr_recyclarr_cfg
+      changed_when: false
+
+    - name: The recyclarr configs carry the instances and !secret key references
+      ansible.builtin.assert:
+        that:
+          - "'!secret radarr_api_key' in arr_recyclarr_cfg.results[0].stdout"
+          - "'!secret sonarr_api_key' in arr_recyclarr_cfg.results[1].stdout"
+        quiet: true
+
+    # secrets.yml renders 0600 owned by the recyclarr uid; test -r as the container
+    # user proves it's readable without dumping the keys into output.
+    - name: The recyclarr secrets file is readable by the container user
+      ansible.builtin.command: podman exec recyclarr sh -c 'test -r /config/secrets.yml'
+      become: true
+      changed_when: false
+
+    - name: Stat the recyclarr secrets file
+      ansible.builtin.stat:
+        path: "{{ arr_recyclarr_config_dir }}/secrets.yml"
+      become: true
+      register: arr_recyclarr_secrets
+
+    - name: The recyclarr secrets file is private to the recyclarr user
+      ansible.builtin.assert:
+        that:
+          - arr_recyclarr_secrets.stat.exists
+          - arr_recyclarr_secrets.stat.mode == '0600'
+          - arr_recyclarr_secrets.stat.pw_name == 'recyclarr'
+        fail_msg: "secrets.yml is missing or not 0600 recyclarr"
+        quiet: true
+
     # exec defaults to container root, which bypasses file perms — drop to the
     # service account so the write exercises the shared group.
     - name: Probe a media write from beets
@@ -156,6 +197,39 @@
       loop_control:
         label: "{{ item.key }}"
       changed_when: false
+
+    # Transmission RPC auth: the creds render to a 0600 EnvironmentFile (USER/PASS
+    # turn auth on in the image). The healthcheck above already proves the -u probe
+    # authenticates; prove the file is locked down and that auth is enforced.
+    - name: Stat the transmission RPC credentials file
+      ansible.builtin.stat:
+        path: /etc/arr/transmission.env
+      become: true
+      register: arr_transmission_env
+
+    - name: The transmission RPC creds file is private to root
+      ansible.builtin.assert:
+        that:
+          - arr_transmission_env.stat.exists
+          - arr_transmission_env.stat.mode == '0600'
+          - arr_transmission_env.stat.pw_name == 'root'
+        fail_msg: /etc/arr/transmission.env is missing or not 0600 root
+        quiet: true
+
+    - name: Probe transmission RPC without credentials
+      ansible.builtin.command: >-
+        podman exec transmission
+        curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9091/transmission/rpc/
+      become: true
+      register: arr_transmission_noauth
+      changed_when: false
+
+    - name: Transmission RPC rejects unauthenticated access
+      ansible.builtin.assert:
+        that:
+          - arr_transmission_noauth.stdout == '401'
+        fail_msg: "transmission RPC returned {{ arr_transmission_noauth.stdout }}, expected 401 (auth not enforced)"
+        quiet: true
 
     # The Servarr apps take their API key from the repo, injected via a 0600
     # EnvironmentFile so it never lands in the world-readable unit. Prove the

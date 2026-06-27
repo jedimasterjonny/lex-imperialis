@@ -31,7 +31,7 @@ wireguard's probe (below) instead force-restarts the tunnel.
   `/tv`, `/music`) to match its restored database, passes `/dev/dri` through
   for hardware transcoding, and gets a tmpfs `/transcode`.
 - **recyclarr** — TRaSH-guides sync over the importers' APIs; no media
-  mount, no webui. Its TRaSH config stays operator-managed in its volume; the
+  mount, no webui. Its config is repo-rendered (see **Recyclarr config**); the
   importer API keys it talks to are repo-owned (see **API keys**).
 - **transmission** — mounts `downloads` only, keeping the libraries out of
   the torrent client's reach; netns-confined to the tunnel (below).
@@ -146,6 +146,19 @@ to generate its own, so molecule converges with no vault. Vault replaces the
 whole dict; seed it with each app's current key so prowlarr and recyclarr keep
 working across the cutover.
 
+## Recyclarr config
+
+recyclarr's config renders from the repo to `arr_recyclarr_config_dir` and
+bind-mounts read-only over its `/config` volume (which keeps the TRaSH-guide
+cache). `configs/movies.yml` (radarr) and `configs/tv.yml` (sonarr) hold the
+quality profiles, custom-format scores and the local deviations (x265 neutral,
+SDR-no-WEBDL on UHD, DV/HDR10+ boosts); `secrets.yml` renders the `!secret` API
+keys from `arr_api_keys`, 0600 and owned by the recyclarr uid so the container
+user reads it over the bind. A `secrets.yml` change restarts recyclarr (a
+single-file bind, so the recreate picks up the new inode); the config edits ride
+the directory bind and apply on the next scheduled sync. gitops re-renders it,
+so the repo owns recyclarr's config, not the volume.
+
 ## Transmission behind WireGuard
 
 The wireguard container owns the network namespace; transmission joins it
@@ -178,3 +191,11 @@ via `Network=container:wireguard` and has no network of its own.
   modprobed only when `/sys/module/wireguard` is absent. The molecule
   instance is unprivileged with no kmod; prepare loads the module on the host
   instead.
+- **RPC auth** — `arr_transmission_username`/`arr_transmission_password`
+  (vault) render to a 0600 `EnvironmentFile`; the LSIO image turns RPC auth on
+  and sets the rpc user/password from them. Both empty (the default) leaves
+  auth off, so molecule converges with no vault. The healthcheck is
+  credential-free — it treats the auth 401 as "responding". Enabling auth 401s
+  the radarr/sonarr/lidarr download-client connections until each carries the
+  same creds: set those on every app's Transmission client (API/UI) when first
+  enabling auth; the role does not manage the *arr-side download-client config.
