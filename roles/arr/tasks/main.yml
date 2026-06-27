@@ -166,6 +166,26 @@
   register: arr_api_key_files
   notify: Restart the app containers
 
+# Transmission's RPC auth renders to a 0600 EnvironmentFile the unit reads, so the
+# password never lands in the world-readable unit. Only when both creds are set;
+# both empty leaves the image's auth-off default, so molecule converges with no
+# vault. The unit itself is unchanged by a cred rotation, so this notifies a
+# dedicated restart.
+- name: Deploy the transmission RPC credentials
+  ansible.builtin.template:
+    src: transmission.env.j2
+    dest: /etc/arr/transmission.env
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  no_log: true
+  when:
+    - "'transmission' in arr_enabled"
+    - arr_transmission_username | length > 0
+    - arr_transmission_password | length > 0
+  notify: Restart transmission for arr
+
 # A daily timer catalogs the music library into the standing beets DB so it
 # tracks what lidarr adds — catalog only, no re-tag and no media writes. The
 # config bind-mounts read-only into beets at /config/managed, so its host dir

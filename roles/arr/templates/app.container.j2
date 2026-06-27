@@ -46,6 +46,11 @@ User={{ item.value.uid }}:{{ arr_app_gid }}
 {# the world-readable unit; <APP>__AUTH__APIKEY overrides the config.xml key. #}
 EnvironmentFile=/etc/arr/{{ item.key }}.env
 {% endif %}
+{% if item.key == 'transmission' and arr_transmission_username and arr_transmission_password %}
+{# RPC auth creds from a 0600 EnvironmentFile (USER/PASS turn auth on in the LSIO #}
+{# image and set the rpc user/password), kept out of the world-readable unit. #}
+EnvironmentFile=/etc/arr/transmission.env
+{% endif %}
 {% if item.value.device is defined %}
 {# '-' marks the device optional, so GPU-less molecule containers still start. #}
 AddDevice=-{{ item.value.device }}

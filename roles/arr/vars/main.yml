@@ -118,9 +118,12 @@ arr_apps:
     port: 9091
     netns: wireguard
     data: [downloads]
-    # Shares wireguard's netns, so the RPC webui answers on localhost here.
+    # Shares wireguard's netns, so the RPC webui answers on localhost here. A
+    # liveness probe only: -sS without -f treats an auth-on 401 the same as an
+    # auth-off 200 (both mean "responding"), so it needs no credentials — which
+    # would otherwise leak into the probe's argv — and works in either state.
     healthcheck:
-      cmd: curl -fsS http://127.0.0.1:9091/transmission/web/
+      cmd: curl -sS -o /dev/null http://127.0.0.1:9091/transmission/web/
   wireguard:
     image: lscr.io/linuxserver/wireguard:1.0.20250521@sha256:ad0501c857edad4059f90c9b536338cb105bbb5f3fc82070986d36b937c897ca
     uid: 3009
