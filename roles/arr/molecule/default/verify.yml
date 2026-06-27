@@ -157,6 +157,39 @@
         label: "{{ item.key }}"
       changed_when: false
 
+    # Transmission RPC auth: the creds render to a 0600 EnvironmentFile (USER/PASS
+    # turn auth on in the image). The healthcheck above already proves the -u probe
+    # authenticates; prove the file is locked down and that auth is enforced.
+    - name: Stat the transmission RPC credentials file
+      ansible.builtin.stat:
+        path: /etc/arr/transmission.env
+      become: true
+      register: arr_transmission_env
+
+    - name: The transmission RPC creds file is private to root
+      ansible.builtin.assert:
+        that:
+          - arr_transmission_env.stat.exists
+          - arr_transmission_env.stat.mode == '0600'
+          - arr_transmission_env.stat.pw_name == 'root'
+        fail_msg: /etc/arr/transmission.env is missing or not 0600 root
+        quiet: true
+
+    - name: Probe transmission RPC without credentials
+      ansible.builtin.command: >-
+        podman exec transmission
+        curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9091/transmission/rpc/
+      become: true
+      register: arr_transmission_noauth
+      changed_when: false
+
+    - name: Transmission RPC rejects unauthenticated access
+      ansible.builtin.assert:
+        that:
+          - arr_transmission_noauth.stdout == '401'
+        fail_msg: "transmission RPC returned {{ arr_transmission_noauth.stdout }}, expected 401 (auth not enforced)"
+        quiet: true
+
     # The Servarr apps take their API key from the repo, injected via a 0600
     # EnvironmentFile so it never lands in the world-readable unit. Prove the
     # file is locked down and the container actually receives the key.

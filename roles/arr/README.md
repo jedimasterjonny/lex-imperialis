@@ -178,3 +178,11 @@ via `Network=container:wireguard` and has no network of its own.
   modprobed only when `/sys/module/wireguard` is absent. The molecule
   instance is unprivileged with no kmod; prepare loads the module on the host
   instead.
+- **RPC auth** — `arr_transmission_username`/`arr_transmission_password`
+  (vault) render to a 0600 `EnvironmentFile`; the LSIO image turns RPC auth on
+  and sets the rpc user/password from them. Both empty (the default) leaves
+  auth off, so molecule converges with no vault. The healthcheck is
+  credential-free — it treats the auth 401 as "responding". Enabling auth 401s
+  the radarr/sonarr/lidarr download-client connections until each carries the
+  same creds: set those on every app's Transmission client (API/UI) when first
+  enabling auth; the role does not manage the *arr-side download-client config.
