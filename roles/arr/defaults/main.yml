@@ -72,6 +72,14 @@ arr_beets_poke_cap: 6
 arr_beets_download_dir: /data/downloads/completed/music-lidarr
 arr_beets_staging_dir: /data/downloads/staging
 arr_beets_quarantine_dir: /data/downloads/quarantine
+# ExecStopPost hook that records the screening backlog (quarantine + lidarr-rejected
+# album counts) as a node_exporter textfile metric. Same /usr/local/sbin home as the
+# wrapper.
+arr_beets_metric_script: /usr/local/sbin/beets-pipeline-metric.sh
+# node_exporter textfile-collector dir the backlog metric is written to
+# (beets-pipeline.prom). Must match the node_exporter role's
+# node_exporter_textfile_directory so Prometheus scrapes what this writes.
+arr_beets_metric_textfile_dir: /var/lib/node_exporter/textfile_collector
 
 # Servarr API keys, vault-sourced and keyed by app. Each key is injected via the
 # app's <APP>__AUTH__APIKEY env var — rendered to a 0600 EnvironmentFile, never

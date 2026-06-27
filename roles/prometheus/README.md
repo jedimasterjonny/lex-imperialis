@@ -45,10 +45,13 @@ last-run timestamp gone stale) plus the matching `wordpress` db-dump pair
 node_exporter filesystem under 10% free for 15m); `ServiceRestartStorm` (a systemd
 unit that auto-restarted more than three times in 15m, off node_exporter's
 `node_systemd_service_restart_total` counter — covers quadlet containers and every
-other service alike); and the `maintenance` group's `autoupdate` pair
+other service alike); the `maintenance` group's `autoupdate` pair
 `AutoupdateFailed` / `AutoupdateOverdue` (an unattended `zypper` run that failed or
-has not completed in over 9 days). The backup, dump, and update pairs all read an
-`ExecStopPost`-written outcome metric off node_exporter's textfile collector. The
+has not completed in over 9 days); and the `music` group's `BeetsPipelineLidarrRejected`
+(an album beets matched but lidarr refused) and `BeetsPipelineQuarantineBacklog` (a
+standing pile of no-match albums awaiting hand-processing). The backup, dump, and
+update outcome pairs, and the music backlog gauges, all read an `ExecStopPost`-written
+metric off node_exporter's textfile collector. The
 rules sit
 in a directory mount, so a changed rule reaches the container — but, like a config
 change, only a recreate makes Prometheus reload it.
