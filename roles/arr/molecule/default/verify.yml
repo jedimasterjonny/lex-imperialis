@@ -369,7 +369,7 @@
 
     # Running the oneshot proves the wrapper resolves beet/find/curl inside the
     # container and exits 0 on the empty tree (no download dir), creating the
-    # pipeline DB, staging and quarantine dirs as a side effect.
+    # staging and quarantine dirs as a side effect.
     - name: Run the beets pipeline over the empty tree
       ansible.builtin.systemd_service:
         name: beets-pipeline.service
