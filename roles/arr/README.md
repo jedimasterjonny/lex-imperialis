@@ -31,7 +31,7 @@ wireguard's probe (below) instead force-restarts the tunnel.
   `/tv`, `/music`) to match its restored database, passes `/dev/dri` through
   for hardware transcoding, and gets a tmpfs `/transcode`.
 - **recyclarr** — TRaSH-guides sync over the importers' APIs; no media
-  mount, no webui. Its TRaSH config stays operator-managed in its volume; the
+  mount, no webui. Its config is repo-rendered (see **Recyclarr config**); the
   importer API keys it talks to are repo-owned (see **API keys**).
 - **transmission** — mounts `downloads` only, keeping the libraries out of
   the torrent client's reach; netns-confined to the tunnel (below).
@@ -145,6 +145,19 @@ env value overrides the config-file key at runtime. An empty key leaves the app
 to generate its own, so molecule converges with no vault. Vault replaces the
 whole dict; seed it with each app's current key so prowlarr and recyclarr keep
 working across the cutover.
+
+## Recyclarr config
+
+recyclarr's config renders from the repo to `arr_recyclarr_config_dir` and
+bind-mounts read-only over its `/config` volume (which keeps the TRaSH-guide
+cache). `configs/movies.yml` (radarr) and `configs/tv.yml` (sonarr) hold the
+quality profiles, custom-format scores and the local deviations (x265 neutral,
+SDR-no-WEBDL on UHD, DV/HDR10+ boosts); `secrets.yml` renders the `!secret` API
+keys from `arr_api_keys`, 0600 and owned by the recyclarr uid so the container
+user reads it over the bind. A `secrets.yml` change restarts recyclarr (a
+single-file bind, so the recreate picks up the new inode); the config edits ride
+the directory bind and apply on the next scheduled sync. gitops re-renders it,
+so the repo owns recyclarr's config, not the volume.
 
 ## Transmission behind WireGuard
 

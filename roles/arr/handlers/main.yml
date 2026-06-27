@@ -40,3 +40,13 @@
     state: restarted
     daemon_reload: true
   become: true
+
+# secrets.yml is a single-file bind whose inode the running container holds open,
+# so a config change needs a recreate, not just a re-read; daemon_reload folded in
+# per the role's convention.
+- name: Restart recyclarr for arr
+  ansible.builtin.systemd_service:
+    name: recyclarr
+    state: restarted
+    daemon_reload: true
+  become: true
