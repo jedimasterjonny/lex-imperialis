@@ -248,6 +248,14 @@
         group: root
         mode: "0755"
 
+    - name: Install the beets pipeline metric script
+      ansible.builtin.template:
+        src: beets-pipeline-metric.sh.j2
+        dest: "{{ arr_beets_metric_script }}"
+        owner: root
+        group: root
+        mode: "0755"
+
     - name: Install the beets pipeline service and timer
       ansible.builtin.template:
         src: "{{ item }}.j2"

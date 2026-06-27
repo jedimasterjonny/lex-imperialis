@@ -11,3 +11,6 @@ Type=oneshot
 # key, so the unit still starts keyless (molecule, fresh host) and phase 2 skips.
 EnvironmentFile=-/etc/arr/lidarr.env
 ExecStart=/usr/local/sbin/beets-pipeline.sh
+# Records the screening backlog (quarantine + lidarr-rejected counts) as a
+# node_exporter metric whether the run succeeded or not.
+ExecStopPost={{ arr_beets_metric_script }}

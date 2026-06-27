@@ -103,8 +103,13 @@ paths stay `/data/...`), in two phases:
 The lidarr key is read at runtime from the 0600 `/etc/arr/lidarr.env` the lidarr
 container already uses (`EnvironmentFile=-`), passed in via `podman exec --env
 LIDARR__AUTH__APIKEY` (no value) so it never reaches the exec argv; the non-secret
-URL is templated into the script. Failures surface via node_exporter's
-`beets-pipeline.service` unit state.
+URL is templated into the script. A failed *run* surfaces via node_exporter's
+`beets-pipeline.service` unit state; the screening *backlog* does not (a
+quarantine-everything run still exits 0), so an `ExecStopPost` hook
+(`arr_beets_metric_script`) publishes `beets_pipeline_quarantine_albums` (no-match,
+awaiting hand-processing) and `beets_pipeline_lidarr_rejected_albums` (matched but
+lidarr refused) as node_exporter textfile gauges (`arr_beets_metric_textfile_dir`)
+for the prometheus role to alert on.
 
 ### Runtime lidarr invariants (not codified — set via the lidarr API)
 

@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# systemd ExecStopPost hook for beets-pipeline.service: publish the screening
+# backlog as node_exporter textfile metrics so Prometheus can alert on albums the
+# pipeline parked — a run that quarantines everything still exits 0, so the unit
+# state alone never surfaces it. The wrapper runs in-container; this runs on the
+# host, so it reads the host quarantine path (arr_data_root mounts at /data).
+set -euo pipefail
+
+dir="{{ arr_beets_metric_textfile_dir }}"
+quar="{{ arr_data_root }}{{ arr_beets_quarantine_dir | regex_replace('^/data/', '/') }}"
+
+# Count the album dirs the in-container wrapper parks: no-match albums sit directly
+# under quarantine (minus the lidarr-rejected subdir), matched albums lidarr refused
+# sit under lidarr-rejected. A find error is swallowed (|| true) so a fresh host with
+# no dir yet, or a transient NFS read, still yields a count and reaches the publish
+# below rather than aborting the hook under set -e (which would fail the unit).
+quarantine=$({ find "$quar" -mindepth 1 -maxdepth 1 -type d ! -name lidarr-rejected 2>/dev/null || true; } | wc -l)
+rejected=$({ find "$quar/lidarr-rejected" -mindepth 1 -maxdepth 1 -type d 2>/dev/null || true; } | wc -l)
+
+mkdir -p "$dir"
+# Publish atomically: write a temp file the exporter's *.prom glob ignores, then
+# rename it over the target so no scrape reads a half-written file. 0644 so the
+# exporter's unprivileged user can read it.
+tmp="$(mktemp "$dir/.beets-pipeline.prom.XXXXXX")"
+cat >"$tmp" <<EOF
+# HELP beets_pipeline_quarantine_albums Albums the beets screener could not match, parked for hand-processing.
+# TYPE beets_pipeline_quarantine_albums gauge
+beets_pipeline_quarantine_albums $quarantine
+# HELP beets_pipeline_lidarr_rejected_albums Matched albums lidarr refused to import after the poke cap.
+# TYPE beets_pipeline_lidarr_rejected_albums gauge
+beets_pipeline_lidarr_rejected_albums $rejected
+EOF
+chmod 0644 "$tmp"
+mv "$tmp" "$dir/beets-pipeline.prom"
