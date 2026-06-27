@@ -4,10 +4,11 @@
 # without disturbing the seeding torrent. The loop runs inside the beets container
 # so every path is /data/..., matching what lidarr sees.
 #
-# Per album: copy the pristine download into a staging area (beets tags the COPY,
-# so the original keeps seeding intact), then trigger lidarr to hardlink the staged
-# copy into the library on the one filesystem. A no-match copy goes to quarantine
-# for hand-processing; the original download is never modified or moved.
+# Per album: copy the pristine download into a staging area and tag the COPY with
+# beets (metadata only — beets owns the tags), so the original keeps seeding intact;
+# then trigger lidarr to MOVE the staged copy into the library, where lidarr owns
+# the renaming and folder layout (renameTracks on). A no-match copy goes to
+# quarantine for hand-processing; the original download is never modified or moved.
 set -euo pipefail
 # Skip cleanly if beets is down (a boot-time Persistent catch-up firing before the
 # container is up, or beets deliberately stopped) — catch up on the next tick.
@@ -20,6 +21,12 @@ systemctl is-active --quiet beets.service || { echo "beets not running; skipping
 # inner script is POSIX sh: the beets image is Alpine/busybox, no bash.
 podman exec -i --user abc --env LIDARR__AUTH__APIKEY beets sh -s <<'INNER'
 set -eu
+# A podman exec inherits umask 022, but the staged copy must land group-writable:
+# importMode:Move removes each track from the staging dir as it moves it into the
+# library, and that needs group write on the dir (lidarr shares only the arr group
+# here). Match the fleet's UMASK=002 so the cp-created dirs are group-writable —
+# otherwise the Move fails "access denied" and nothing imports.
+umask 002
 # The API key arrives via --env from /etc/arr/lidarr.env; empty => no key => phase 2
 # skips lidarr. The lidarr URL is not a secret, so it is templated straight in.
 KEY="${LIDARR__AUTH__APIKEY:-}"
@@ -32,21 +39,31 @@ CAP={{ arr_beets_poke_cap }}
 POKEDIR=/config/pipeline/pokes
 SCREENED=/config/pipeline/screened
 mkdir -p "$POKEDIR" "$SCREENED" "$STAGING" "$QUAR/lidarr-rejected"
+# beets is a stateless tagger here — it owns no library. But `beet import` still needs
+# a database, and beets resolves the path to a real file (:memory: is expanded, not
+# honoured), so point it at a throwaway under /tmp and discard it every run: phase 1
+# only reads it back within the same run to tell a match from a skip, and phase 2
+# never touches it.
+SCRATCHDB=/tmp/beets-pipeline.blb
+rm -f "$SCRATCHDB"*                      # the .blb and any SQLite -journal/-wal sidecar
+trap 'rm -f "$SCRATCHDB"*' EXIT
 # Clear any copy left half-written by a crash mid-cp, so phase 2 never mistakes a
 # stale ".partial" for a finished staged album. No match => the literal glob is a
 # harmless no-op under rm -f.
 rm -rf "$STAGING"/*.partial
 
-# Ask lidarr to import a staged album. A 2xx means queued, not imported (lidarr has
-# no import callback); Copy import hardlinks the staged copy into the library, so
-# only the staging copy is consumed and the original download keeps seeding. jq
-# builds the body so a path with a quote or backslash can't break the JSON. Returns
-# 0 for a definitive response (2xx queued, or a 4xx that won't fix itself — bad key
-# or request), which counts toward the give-up cap; returns 1 only for a transient
-# failure (5xx or no connection), which is retried without counting.
+# Ask lidarr to import a staged album with importMode:Move — lidarr moves the
+# matched audio out of staging into the library, renaming and organising it, so only
+# the staged copy is consumed and the original download keeps seeding. A 2xx means
+# queued, not done (lidarr has no import callback) — the wrapper instead watches the
+# staged copy empty of audio (imported(), below). jq builds the body so a path with a
+# quote or backslash can't break the JSON. Returns 0 for a definitive response (2xx
+# queued, or a 4xx that won't fix itself — bad key/request), which counts toward the
+# give-up cap; returns 1 only for a transient failure (5xx or no connection), retried
+# without counting.
 trigger_lidarr() {
   [ -n "$KEY" ] || { echo "no lidarr key; not triggering $1"; return 1; }
-  body="$(jq -nc --arg p "$1" '{name:"DownloadedAlbumsScan",path:$p,importMode:"Copy"}')"
+  body="$(jq -nc --arg p "$1" '{name:"DownloadedAlbumsScan",path:$p,importMode:"Move"}')"
   code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/api/v1/command" \
     -H "X-Api-Key: $KEY" -H 'Content-Type: application/json' -d "$body")
   case "$code" in
@@ -56,15 +73,15 @@ trigger_lidarr() {
   esac
 }
 
-# Has lidarr imported this staged album? Copy import hardlinks the matched audio
-# into the library on the one filesystem, raising the source's link count above 1 —
-# that hardlink is the only reliable "did lidarr import it" signal (the scan's 2xx
-# only means queued). Any hardlinked audio means lidarr processed the album; files
-# it leaves at link count 1 are extras it didn't import, which still live in the
-# seeding download. The 10-minute gap between the poke and this check means lidarr
-# has long finished, so a still-running import is not a concern in practice.
+# Has lidarr taken this staged album? Move import lifts the matched audio out of the
+# staging copy and into the library, so the copy emptying of audio is the "did lidarr
+# import it" signal (the scan's 2xx only means queued). Audio still present means
+# lidarr has not taken it — either queued and not yet run, or a silent reject; the
+# 10-minute gap to this check means a queued import has long finished, so leftover
+# audio is a genuine reject, not an in-flight import. Any extras lidarr declines stay
+# behind and trip the poke cap, sending the leftover copy to lidarr-rejected.
 imported() {
-  [ -n "$(find "$1" -type f -links +1 \( \
+  [ -z "$(find "$1" -type f \( \
     -iname '*.flac' -o -iname '*.mp3' -o -iname '*.m4a' -o -iname '*.m4b' \
     -o -iname '*.opus' -o -iname '*.ogg' -o -iname '*.oga' -o -iname '*.wav' \
     -o -iname '*.wma' -o -iname '*.aac' -o -iname '*.aif' -o -iname '*.aiff' \
@@ -108,9 +125,10 @@ if [ -d "$DL" ]; then
       mv "$stage.partial" "$stage"
       # Tag the COPY in place (quiet; a sub-threshold match skips and writes nothing).
       # MusicBrainz was reachable above, so a non-zero exit or an empty match here is
-      # album-specific, not a transient outage — quarantine the copy either way.
-      beet -c "$CFG" import "$stage" || echo "import errored: $name"
-      if beet -c "$CFG" ls -p "path:$stage" | grep -q .; then
+      # album-specific, not a transient outage — quarantine the copy either way. The
+      # scratch DB records a match; querying it back tells a tagged copy from a skip.
+      beet -c "$CFG" -l "$SCRATCHDB" import "$stage" || echo "import errored: $name"
+      if beet -c "$CFG" -l "$SCRATCHDB" ls -p "path:$stage" | grep -q .; then
         echo "matched, staged: $name"    # phase 2 hands it to lidarr
       elif [ -e "$QUAR/$name" ]; then
         rm -rf "$stage"
@@ -133,29 +151,31 @@ if [ -d "$DL" ]; then
   done
 fi
 
-# 2) Drive each staged copy into lidarr. Once imported (audio hardlinked into the
-#    library) drop the staging copy — the library inode survives. A 2xx that never
-#    becomes an import is the silent-reject case (unmonitored artist, profile
-#    mismatch), and a 4xx is a permanent error (bad key/request); both count toward
-#    the cap, then the copy goes to lidarr-rejected. A 5xx / no connection is
-#    transient — leave the count and retry, never quarantine.
+# 2) Drive each staged copy into lidarr. Once imported (lidarr moved its audio into
+#    the library) drop the now-emptied staging dir. A 2xx that never empties the copy
+#    is the silent-reject case (unmonitored artist, profile mismatch), and a 4xx is a
+#    permanent error (bad key/request); both count toward the cap, then the leftover
+#    copy goes to lidarr-rejected. A 5xx / no connection is transient — leave the
+#    count and retry, never quarantine.
 for stage in "$STAGING"/*/; do
   [ -d "$stage" ] || continue
   stage="${stage%/}"
   name="$(basename "$stage")"
   pokefile="$POKEDIR/$name"
-  if imported "$stage"; then
-    beet -c "$CFG" remove -f "path:$stage" >/dev/null 2>&1 || true
+  pokes=$(cat "$pokefile" 2>/dev/null || echo 0)
+  # Treat an emptied copy as imported only after lidarr has been poked at least once:
+  # imported() reads "no audio left", which is also true from the start for an album
+  # whose audio uses an extension it does not list — poking first hands every album to
+  # lidarr (which moves any format) before this branch can drop it.
+  if [ "$pokes" -ge 1 ] && imported "$stage"; then
     rm -rf "$stage"
     rm -f "$pokefile"
     echo "imported: $name"
     continue
   fi
   if trigger_lidarr "$stage"; then
-    pokes=$(cat "$pokefile" 2>/dev/null || echo 0)
     pokes=$((pokes + 1))
     if [ "$pokes" -ge "$CAP" ]; then
-      beet -c "$CFG" remove -f "path:$stage" >/dev/null 2>&1 || true
       if [ -e "$QUAR/lidarr-rejected/$name" ]; then
         rm -rf "$stage"
         echo "lidarr-rejected target exists, dropped copy: $name"

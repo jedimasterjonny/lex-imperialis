@@ -1,20 +1,20 @@
 # {{ ansible_managed }}
-# Per-download screening config (used via `beet -c`). beets matches each staged
-# album copy against MusicBrainz, tags it in place, and records it in its OWN
-# pipeline DB, separate from the standing library catalog. directory points at the
-# staging area (where the tagged copies live); the DB and log live under
-# /config/pipeline, the writable config volume, not the read-only /config/managed
-# bind this file is mounted at.
+# Per-download screening config (used via `beet -c`). beets matches each staged album
+# copy against MusicBrainz and tags it in place — a stateless tagger that keeps no
+# library of its own (the wrapper points `beet` at a throwaway scratch DB it discards
+# each run). directory points at the staging area (where the tagged copies live); the
+# import log lives under /config/pipeline, the writable config volume, not the
+# read-only /config/managed bind this file is mounted at.
 directory: {{ arr_beets_staging_dir }}
-library: /config/pipeline/pipeline.blb
 # musicbrainz is the matcher (a plugin in beets 2.x — without it there are zero
 # candidates and everything skips); chroma fingerprints to aid matching; scrub
 # strips foreign tags before beets writes its own.
 plugins: [musicbrainz, chroma, scrub]
-# beets owns tags and filenames, so write is on but copy/move stay off: the wrapper
-# already placed the copy in staging, beets tags it where it sits, and lidarr
-# hardlinks it into the library. quiet auto-imports a strong match; a weaker one
-# falls back to skip (writes nothing) and the wrapper quarantines the copy.
+# beets owns the tags (lidarr renames and organises the files on import), so write is
+# on but copy/move stay off: the wrapper already placed the copy in staging, beets
+# tags it where it sits, and lidarr moves it into the library. quiet auto-imports a
+# strong match; a weaker one falls back to skip (writes nothing) and the wrapper
+# quarantines the copy.
 import:
   write: yes
   copy: no
