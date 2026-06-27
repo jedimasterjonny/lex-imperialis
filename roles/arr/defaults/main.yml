@@ -43,7 +43,7 @@ arr_beets_library_oncalendar: "*-*-* 04:00:00"
 
 # beets per-download pipeline. A 10-minute timer screens each settled music
 # download: beets copies it to a staging area and tags the copy (so the original
-# keeps seeding intact), then triggers lidarr to hardlink the staged copy into the
+# keeps seeding intact), then triggers lidarr to move the staged copy into the
 # library; an unmatched album's copy is moved to quarantine for hand-processing
 # instead of reaching lidarr. lidarr keeps completed-download handling OFF so beets
 # gates every import — a runtime *arr setting, not codified here (see README).
@@ -57,15 +57,16 @@ arr_beets_rec_gap_thresh: "0.10"
 # finished), so the pipeline never screens a half-downloaded album.
 arr_beets_stable_minutes: 15
 # How many ticks lidarr may queue a matched album without actually importing it
-# (no hardlink appears) before the wrapper gives up and moves it to
-# quarantine/lidarr-rejected. DownloadedAlbumsScan returns queued, not imported,
+# (the staged copy never empties of audio) before the wrapper gives up and moves
+# it to quarantine/lidarr-rejected. DownloadedAlbumsScan returns queued, not imported,
 # so a silent reject (unmonitored artist, profile mismatch) is caught only by this
 # cap; lidarr merely being unreachable is transient and never counts against it.
 arr_beets_poke_cap: 6
 # Container paths (arr_data_root mounts at /data in every app): the download dir
 # is lidarr's transmission category; staging holds the tagged copies awaiting
-# lidarr (same filesystem as the library, so the import hardlinks); quarantine
-# takes no-match copies. All three are siblings under downloads, one filesystem.
+# lidarr (same filesystem as the library, so lidarr's Move is an instant rename);
+# quarantine takes no-match copies. All three are siblings under downloads, one
+# filesystem.
 arr_beets_download_dir: /data/downloads/completed/music-lidarr
 arr_beets_staging_dir: /data/downloads/staging
 arr_beets_quarantine_dir: /data/downloads/quarantine
