@@ -118,3 +118,29 @@ groups:
         annotations:
           summary: "fleet reconcile stale on {{ $labels.instance }}"
           description: "{{ $labels.instance }} has not completed a fleet reconcile in over 2 hours."
+
+  - name: music
+    rules:
+      # lidarr-rejected only fills after the ~1h poke cap of a matched album lidarr
+      # will not take (unmonitored artist, quality-profile mismatch), so the
+      # rejection is already definitive when it appears — alert on the *Failed 15m
+      # cadence, not a longer grace. The original download still seeds.
+      - alert: BeetsPipelineLidarrRejected
+        expr: beets_pipeline_lidarr_rejected_albums > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "beets pipeline imports rejected by lidarr on {{ $labels.instance }}"
+          description: "Albums on {{ $labels.instance }} matched but lidarr refused them; they sit in quarantine/lidarr-rejected and need a look."
+      # No-match albums are normal (new releases, patchy AcoustID) and cleared by
+      # hand; a large standing pile signals a mass-quarantine event or an unworked
+      # backlog. Threshold tuned to the operator's processing cadence.
+      - alert: BeetsPipelineQuarantineBacklog
+        expr: beets_pipeline_quarantine_albums > 10
+        for: 6h
+        labels:
+          severity: warning
+        annotations:
+          summary: "beets pipeline quarantine backlog on {{ $labels.instance }}"
+          description: "Unmatched albums on {{ $labels.instance }} have been awaiting hand-processing for over 6 hours."
