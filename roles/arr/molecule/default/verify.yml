@@ -383,3 +383,49 @@
         - "{{ arr_beets_quarantine_dir }}"
       become: true
       changed_when: false
+
+    # The ExecStopPost hook ran and published the backlog metric; the empty tree
+    # has nothing parked, so both gauges read zero.
+    - name: Read the backlog metric the ExecStopPost published
+      ansible.builtin.command: cat {{ arr_beets_metric_textfile_dir }}/beets-pipeline.prom
+      become: true
+      register: arr_beets_metric_prom
+      changed_when: false
+
+    - name: The backlog metric reports an empty queue
+      ansible.builtin.assert:
+        that:
+          - "'beets_pipeline_quarantine_albums 0' in arr_beets_metric_prom.stdout"
+          - "'beets_pipeline_lidarr_rejected_albums 0' in arr_beets_metric_prom.stdout"
+        quiet: true
+
+    # Exercise the counting itself, not just the empty-tree zero: park one no-match
+    # album and one lidarr-rejected album, re-run the hook, and confirm each gauge
+    # counts its own pile (the lidarr-rejected subdir excluded from the no-match count).
+    - name: Park a no-match album and a lidarr-rejected album
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ arr_data_root }}/downloads/quarantine/Some No-Match Album"
+        - "{{ arr_data_root }}/downloads/quarantine/lidarr-rejected/Some Rejected Album"
+      become: true
+
+    - name: Re-run the metric hook over the parked albums
+      ansible.builtin.command: "{{ arr_beets_metric_script }}"
+      become: true
+      changed_when: false
+
+    - name: Read the backlog metric after parking albums
+      ansible.builtin.command: cat {{ arr_beets_metric_textfile_dir }}/beets-pipeline.prom
+      become: true
+      register: arr_beets_metric_parked
+      changed_when: false
+
+    - name: The metric counts the no-match and lidarr-rejected piles separately
+      ansible.builtin.assert:
+        that:
+          - "'beets_pipeline_quarantine_albums 1' in arr_beets_metric_parked.stdout"
+          - "'beets_pipeline_lidarr_rejected_albums 1' in arr_beets_metric_parked.stdout"
+        quiet: true
