@@ -12,8 +12,8 @@
 # probe (cmd plus optional interval/timeout/start_period/retries/on_failure, all
 # defaulted). prowlarr only manages indexers and recyclarr
 # only talks to the other apps, so neither has a data mount. recyclarr's TRaSH
-# config is operator-managed in its volume; the Servarr API keys it references
-# are repo-owned via arr_api_keys (see defaults).
+# config is repo-rendered and bind-mounted read-only (see defaults/tasks),
+# including the Servarr API keys it references via arr_api_keys.
 #
 # Media-writing apps take their uid from the matching NAS user (filled in as
 # each is migrated) so files written over NFS land owned by an id the NAS
@@ -110,6 +110,12 @@ arr_apps:
   recyclarr:
     image: ghcr.io/recyclarr/recyclarr:8.6.0@sha256:3c38ceeb54438dd8327e4e65c9b48ba601a6d20fff833342d93c9b0bc4b1930b
     uid: 3007
+    # Repo-rendered config bind-mounted read-only on top of the /config volume
+    # (the radarr/sonarr configs plus the !secret api keys in secrets.yml); the
+    # volume keeps recyclarr's TRaSH-guide cache. ro config under /etc, so no :Z.
+    binds:
+      - "{{ arr_recyclarr_config_dir }}/secrets.yml:/config/secrets.yml:ro"
+      - "{{ arr_recyclarr_config_dir }}/configs:/config/configs:ro"
   # Shares the wireguard netns, so every peer connection rides the tunnel;
   # caddy reaches the webui at the wireguard container's transmission alias.
   transmission:
@@ -118,9 +124,12 @@ arr_apps:
     port: 9091
     netns: wireguard
     data: [downloads]
-    # Shares wireguard's netns, so the RPC webui answers on localhost here.
+    # Shares wireguard's netns, so the RPC webui answers on localhost here. A
+    # liveness probe only: -sS without -f treats an auth-on 401 the same as an
+    # auth-off 200 (both mean "responding"), so it needs no credentials — which
+    # would otherwise leak into the probe's argv — and works in either state.
     healthcheck:
-      cmd: curl -fsS http://127.0.0.1:9091/transmission/web/
+      cmd: curl -sS -o /dev/null http://127.0.0.1:9091/transmission/web/
   wireguard:
     image: lscr.io/linuxserver/wireguard:1.0.20250521@sha256:ad0501c857edad4059f90c9b536338cb105bbb5f3fc82070986d36b937c897ca
     uid: 3009

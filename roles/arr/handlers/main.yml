@@ -31,3 +31,22 @@
     name: caddy
     state: restarted
   become: true
+
+# A cred rotation changes only the EnvironmentFile, not the unit, so restart
+# transmission directly; daemon_reload folded in per the role's convention.
+- name: Restart transmission for arr
+  ansible.builtin.systemd_service:
+    name: transmission
+    state: restarted
+    daemon_reload: true
+  become: true
+
+# secrets.yml is a single-file bind whose inode the running container holds open,
+# so a config change needs a recreate, not just a re-read; daemon_reload folded in
+# per the role's convention.
+- name: Restart recyclarr for arr
+  ansible.builtin.systemd_service:
+    name: recyclarr
+    state: restarted
+    daemon_reload: true
+  become: true
