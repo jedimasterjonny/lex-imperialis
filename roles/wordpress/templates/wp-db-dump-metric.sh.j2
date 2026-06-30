@@ -7,7 +7,7 @@
 # SERVICE_RESULT to "success" iff ExecStart exited 0.
 set -euo pipefail
 
-dir="{{ wordpress_db_dump_textfile_dir }}"
+dir="{{ wordpress_textfile_dir }}"
 success=0
 [ "${SERVICE_RESULT:-}" = success ] && success=1
 
