@@ -89,3 +89,19 @@
           loop: "{{ dev_remote_control_files.results }}"
           loop_control:
             label: "{{ item.item }}"
+
+        - name: Read the owner's Claude config
+          ansible.builtin.slurp:
+            src: "{{ dev_claude_config }}"
+          become: true
+          register: dev_claude_config_verify
+
+        - name: Remote Control workspace is pre-trusted and onboarded
+          ansible.builtin.assert:
+            that:
+              - dev_claude_config_project.hasTrustDialogAccepted | default(false) | bool
+              - dev_claude_config_project.hasCompletedProjectOnboarding | default(false) | bool
+            fail_msg: "workspace trust not seeded for {{ dev_remote_control_workdir }}"
+            quiet: true
+          vars:
+            dev_claude_config_project: "{{ (dev_claude_config_verify.content | b64decode | from_json).projects[dev_remote_control_workdir] | default({}) }}"
