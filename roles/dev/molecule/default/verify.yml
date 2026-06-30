@@ -65,17 +65,27 @@
     - name: Verify the Remote Control service
       when: dev_remote_control | bool
       block:
-        - name: Gather service facts
-          ansible.builtin.service_facts:
+        # Enablement is the default.target.wants symlink `systemctl --user enable`
+        # drops, so a pure stat proves the boot contract without the session
+        # needing the owner's credentials (absent in CI, provisioned only by a
+        # one-time interactive /login on the real host). The role lingers the user
+        # manager, installs and enables the unit, but deliberately never starts it.
+        - name: Stat the linger marker, user unit, and enable symlink
+          ansible.builtin.stat:
+            path: "{{ item }}"
+          become: true
+          loop:
+            - "/var/lib/systemd/linger/{{ dev_user }}"
+            - "{{ dev_user_home }}/.config/systemd/user/claude-remote-control.service"
+            - "{{ dev_user_home }}/.config/systemd/user/default.target.wants/claude-remote-control.service"
+          register: dev_remote_control_files
 
-        # The role installs and enables the unit for boot but deliberately never
-        # starts it — the session needs the owner's credentials, absent in CI and
-        # provisioned only by a one-time interactive /login on the real host. So
-        # assert just that positive contract; membership (from list-unit-files)
-        # is itself proof the unit file installed.
-        - name: The Remote Control service is installed and enabled for boot
+        - name: Linger is on and the user unit is installed and enabled
           ansible.builtin.assert:
             that:
-              - "'claude-remote-control.service' in ansible_facts.services"
-              - ansible_facts.services['claude-remote-control.service'].status == 'enabled'
-            fail_msg: "claude-remote-control.service is not installed and enabled for boot"
+              - item.stat.exists
+            fail_msg: "missing: {{ item.item }}"
+            quiet: true
+          loop: "{{ dev_remote_control_files.results }}"
+          loop_control:
+            label: "{{ item.item }}"
