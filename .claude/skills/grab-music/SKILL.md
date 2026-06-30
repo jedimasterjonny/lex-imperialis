@@ -124,8 +124,14 @@ stale count doesn't re-fire the watch.
    pregap; remove the original + cue + log; `chown -R 1040:65537`. **Verify the split produced tracks before
    deleting the original** — a malformed/empty cue makes shnsplit yield nothing yet
    exit 0, and deleting then loses the only copy (leaving just artwork); on zero
-   tracks, leave it parked. Top-level dirs only — flatten a nested album first.
-   **APE images: do not split** — see gotcha — re-grab instead.
+   tracks, leave it parked. shnsplit output is **untagged**, so the `fromfilename`
+   plugin (step 3 config) is what maps it under `--search-id` — without track numbers
+   beets matches by duration alone and, because the config forces apply, silently writes
+   a scrambled order. **Multi-disc nested rip** (`Disc 1/`/`Disc 2/`, each its own
+   image): split each disc, then `metaflac --set-tag=DISCNUMBER=<n> --set-tag=DISCTOTAL=<t>
+   --set-tag=TRACKNUMBER=<nn>` per file and flatten all into one dir (rename
+   `n-NN Title.flac`, `rm -rf` the disc subdirs) so beets sees one album and `--search-id`
+   maps the multi-medium release. **APE images: do not split** — see gotcha — re-grab instead.
 2. **Identify**: per album, `GET /api/v1/manualimport?folder=<path>` → matched
    `album.id`; pick the edition whose `trackCount` equals the audio-file count → its
    `foreignReleaseId` (the MB release id). No album match or no matching edition →
@@ -142,12 +148,14 @@ stale count doesn't re-fire the watch.
 5. **Cleanup**: `shutil.rmtree` each imported dir; refresh the metric
    (`/usr/local/sbin/beets-pipeline-metric.sh`, root — also the service's ExecStopPost).
 
-The `retag-mb.yaml` beets config (musicbrainz is a *plugin* in beets 2.x — without it,
-zero candidates and everything skips):
+The `retag-mb.yaml` beets config — `musicbrainz` is a *plugin* in beets 2.x (without it,
+zero candidates and everything skips); `fromfilename` reads track numbers from the
+`NN Title` filenames shnsplit leaves, so untagged split/multi-disc rips match positionally
+not by duration (a no-op once files carry real tags):
 
 ```yaml
 directory: /data/media/music
-plugins: [musicbrainz, scrub]
+plugins: [musicbrainz, scrub, fromfilename]
 import: { copy: no, move: no, write: yes, quiet: yes, quiet_fallback: skip }
 ui: { color: no }
 match: { strong_rec_thresh: 1.0, rec_gap_thresh: 0.10 }   # permissive so --search-id always applies
@@ -177,9 +185,10 @@ Park and report (do not import sub-standard):
   pack and re-grab only the genuinely-missing ones — the rest are usually already in.
 - **Bonus DVD / video** — a `[DVD]`/`(Bonus DVD)` folder has files=0 (no audio); junk.
   Remove it and blocklist that release; the audio album is a separate download.
-- **Multi-disc nested rip** — disc subdirs (`CD-01`/`CD-02`) make `--search-id` skip and
-  the import leak untagged files into the library; flatten with disc tags, or (simpler)
-  remove the leak and re-grab a single-folder rip.
+- **Multi-disc nested rip** — disc subdirs (`Disc 1/`, `CD-01/`) each holding an image.
+  Split + disc-tag + flatten per Phase 4 step 1, then it imports like any image; left as
+  raw subdirs, `--search-id` skips and untagged files leak into the library. Park (remove +
+  re-grab single-folder) only if Lidarr models no matching multi-disc edition.
 
 When re-grabbing, force-grab the best non-image per-track release
 (`POST /api/v1/release {guid, indexerId}`), preferring FLAC and excluding by title/quality:
