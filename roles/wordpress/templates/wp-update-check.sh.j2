@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# wordpress-update-check.service ExecStart: count the WordPress updates pending —
+# core, plugins, themes, and translations — and publish them as node_exporter
+# textfile metrics so an install that has fallen behind alerts instead of drifting
+# unseen. Runs the cli wrapper against the live stack; on any wp-cli error it still
+# publishes, recording the failure in wordpress_update_check_success and carrying
+# the last-good counts forward — zeroing them would reset the pending-update
+# alert's 24h window on a transient blip. Always exits 0 once it can write the
+# textfile dir: its job is to produce the metric, and the check's own outcome
+# rides in it.
+set -uo pipefail
+
+dir="{{ wordpress_textfile_dir }}"
+prom="$dir/wordpress-updates.prom"
+mkdir -p "$dir"
+
+# Last count published for an update type, empty if none recorded yet — lets a
+# failed check carry the previous counts rather than zero them.
+last_count() {
+	grep -m1 "^wordpress_updates_available{type=\"$1\"} " "$prom" 2>/dev/null | awk '{print $NF}'
+}
+
+# One && chain: any failing query (cli image, database, or wordpress.org API
+# unreachable) short-circuits to the else and flags the run failed. Translations
+# span core, plugins, and themes, so sum the three language scopes to match
+# wp-admin's Updates screen.
+if core=$(wp core check-update --format=count 2>/dev/null) \
+	&& plugins=$(wp plugin list --update=available --format=count 2>/dev/null) \
+	&& themes=$(wp theme list --update=available --format=count 2>/dev/null) \
+	&& tcore=$(wp language core list --update=available --format=count 2>/dev/null) \
+	&& tplugin=$(wp language plugin list --all --update=available --format=count 2>/dev/null) \
+	&& ttheme=$(wp language theme list --all --update=available --format=count 2>/dev/null); then
+	success=1
+	translations=$((${tcore:-0} + ${tplugin:-0} + ${ttheme:-0}))
+else
+	success=0
+	core=$(last_count core)
+	plugins=$(last_count plugins)
+	themes=$(last_count themes)
+	translations=$(last_count translations)
+fi
+
+# Default every count to 0: --format=count yields an integer, but an empty result
+# (an up-to-date item, or no prior file on a first failed run) must not reach the
+# heredoc as a value-less line — node_exporter rejects the whole file if it does.
+core=${core:-0}
+plugins=${plugins:-0}
+themes=${themes:-0}
+translations=${translations:-0}
+
+# Publish atomically: write a temp file the exporter's *.prom glob ignores, then
+# rename it over the target so no scrape reads a half-written file. 0644 so the
+# exporter's unprivileged user can read it.
+tmp="$(mktemp "$dir/.wordpress-updates.prom.XXXXXX")"
+cat >"$tmp" <<EOF
+# HELP wordpress_update_check_success Whether the last WordPress update check completed (1) or errored (0).
+# TYPE wordpress_update_check_success gauge
+wordpress_update_check_success $success
+# HELP wordpress_update_check_last_run_timestamp_seconds Unix time the last WordPress update check finished.
+# TYPE wordpress_update_check_last_run_timestamp_seconds gauge
+wordpress_update_check_last_run_timestamp_seconds $(date +%s)
+# HELP wordpress_updates_available Pending WordPress updates awaiting application, by type.
+# TYPE wordpress_updates_available gauge
+wordpress_updates_available{type="core"} $core
+wordpress_updates_available{type="plugins"} $plugins
+wordpress_updates_available{type="themes"} $themes
+wordpress_updates_available{type="translations"} $translations
+EOF
+chmod 0644 "$tmp"
+mv "$tmp" "$prom"

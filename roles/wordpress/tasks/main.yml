@@ -120,10 +120,23 @@
     mode: "0755"
   become: true
 
-# Static units for the role's two timers: wp-cron takes scheduled tasks off
-# visitor page-loads (DISABLE_WP_CRON in the env), and the daily db-dump writes a
-# logical backup podman_backup's restic sweep then captures alongside the datadir.
-- name: Install the wp-cron and database-backup units
+# wordpress-update-check.service's ExecStart: counts the pending core, plugin,
+# theme, and translation updates and writes them as a node_exporter textfile
+# metric so an install falling behind alerts instead of drifting unseen.
+- name: Install the update-check metric script
+  ansible.builtin.template:
+    src: wp-update-check.sh.j2
+    dest: /usr/local/sbin/wp-update-check.sh
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+# Static units for the role's three timers: wp-cron takes scheduled tasks off
+# visitor page-loads (DISABLE_WP_CRON in the env), the daily db-dump writes a
+# logical backup podman_backup's restic sweep then captures alongside the
+# datadir, and the six-hourly update-check publishes the pending-update metric.
+- name: Install the wp-cron, database-backup, and update-check units
   ansible.builtin.copy:
     src: "{{ item }}"
     dest: "/etc/systemd/system/{{ item }}"
@@ -135,6 +148,8 @@
     - wordpress-cron.timer
     - wordpress-db-dump.service
     - wordpress-db-dump.timer
+    - wordpress-update-check.service
+    - wordpress-update-check.timer
   become: true
 
 # Quadlet units only exist after the daemon reload, so apply pending restarts
@@ -166,6 +181,14 @@
 - name: Enable the database-backup timer
   ansible.builtin.systemd_service:
     name: wordpress-db-dump.timer
+    enabled: true
+    state: started
+  become: true
+
+# Registered by the same reload, so enabling it needs no further daemon_reload.
+- name: Enable the update-check timer
+  ansible.builtin.systemd_service:
+    name: wordpress-update-check.timer
     enabled: true
     state: started
   become: true

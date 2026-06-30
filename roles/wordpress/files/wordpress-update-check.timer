@@ -1,0 +1,12 @@
+[Unit]
+Description=Six-hourly WordPress update check
+
+[Timer]
+# Every six hours, near WordPress's own twice-daily check cadence, keeps the
+# pending-update gauge fresh enough that a minor core release WordPress
+# auto-applies clears well before the 24h alert threshold.
+OnCalendar=*-*-* 00/6:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
