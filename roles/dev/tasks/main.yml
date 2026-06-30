@@ -40,26 +40,53 @@
       - git
       - nvim
 
-- name: Install the Claude Code Remote Control service
-  ansible.builtin.template:
-    src: claude-remote-control.service.j2
-    dest: /etc/systemd/system/claude-remote-control.service
-    owner: root
-    group: root
-    mode: "0644"
-  become: true
+# Remote Control runs under the owner's own `systemd --user` manager, not a
+# system unit: on the SELinux-enforcing fleet PID 1 (init_t) cannot read or exec
+# the claude binary under the owner's home (home_bin_t), so a system service
+# restart-storms with 203/EXEC. The user manager runs in the owner's unconfined
+# domain, where the binary execs.
+- name: Configure the Claude Code Remote Control session
   when: dev_remote_control | bool
+  become: true
+  become_user: "{{ dev_user }}"
+  block:
+    - name: Enable lingering so the owner's user manager runs at boot
+      ansible.builtin.command:
+        cmd: loginctl enable-linger {{ dev_user }}
+        creates: "/var/lib/systemd/linger/{{ dev_user }}"
+      become: true
+      become_user: root
 
-# Enabled only, never started here: the session needs the owner's claude.ai
-# credentials, which only exist on the real host after a one-time interactive
-# /login. WantedBy=multi-user.target brings it up at the next boot; starting it
-# in molecule (no credentials) would crash-loop. Unit edits take effect at the
-# next restart or boot — there is deliberately no restart handler, so applying a
-# change never tears down a live remote session.
-- name: Enable the Claude Code Remote Control service for boot
-  ansible.builtin.systemd_service:
-    name: claude-remote-control.service
-    enabled: true
-    daemon_reload: true
-  become: true
-  when: dev_remote_control | bool
+    - name: Create the owner's user systemd unit directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ dev_user }}"
+        group: users
+        mode: "0755"
+      loop:
+        - "{{ dev_user_home }}/.config/systemd/user"
+        - "{{ dev_user_home }}/.config/systemd/user/default.target.wants"
+
+    - name: Render the Claude Code Remote Control user unit
+      ansible.builtin.template:
+        src: claude-remote-control.service.j2
+        dest: "{{ dev_user_home }}/.config/systemd/user/claude-remote-control.service"
+        owner: "{{ dev_user }}"
+        group: users
+        mode: "0644"
+
+    # Enabled only, never started here: enablement is just the
+    # default.target.wants symlink the lingering user manager pulls in at boot.
+    # Dropping it in directly rather than via `systemctl --user enable` means the
+    # role needs no running user manager at converge — nothing to race, no bus to
+    # reach. The session needs the owner's claude.ai credentials from a one-time
+    # interactive /login (absent in molecule), so the role never starts it;
+    # starting it credential-less would crash-loop. There is deliberately no
+    # restart handler, so applying a change never tears down a live remote session
+    # — edits take effect at the next restart or boot.
+    - name: Enable the Claude Code Remote Control user service for boot
+      ansible.builtin.file:
+        src: ../claude-remote-control.service
+        dest: "{{ dev_user_home }}/.config/systemd/user/default.target.wants/claude-remote-control.service"
+        state: link
