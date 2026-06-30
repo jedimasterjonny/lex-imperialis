@@ -31,13 +31,33 @@ alongside the raw datadir. The dump is engine-portable SQL;
 Run `wp-db-dump` by hand to dump on demand.
 
 An `ExecStopPost` hook on the service writes each run's outcome to
-`wordpress_db_dump_textfile_dir/wordpress-db-dump.prom` — `wordpress_db_dump_success`
+`wordpress_textfile_dir/wordpress-db-dump.prom` — `wordpress_db_dump_success`
 (1/0, from systemd's `$SERVICE_RESULT`) and
 `wordpress_db_dump_last_run_timestamp_seconds`. node_exporter scrapes that file (its
 `node_exporter_textfile_directory` must match), and the `prometheus` role's
 `WordpressDbDumpFailed` / `WordpressDbDumpOverdue` rules turn a failed or stale DR
 dump into an alert — without it the wrapper's keep-the-last-good-dump-on-failure
 behaviour hides a broken dump until the disaster it exists to cover.
+
+## Update alerting
+
+`wordpress-update-check.timer` runs `/usr/local/sbin/wp-update-check.sh` every six
+hours: through the `wp` wrapper it counts the pending core, plugin, theme, and
+translation updates — translations summed across the core, plugin, and theme
+language scopes, matching wp-admin's Updates screen — and writes them to
+`wordpress_textfile_dir/wordpress-updates.prom` as
+`wordpress_updates_available{type="core|plugins|themes|translations"}`, alongside
+`wordpress_update_check_success` (1/0) and
+`wordpress_update_check_last_run_timestamp_seconds`. A failed check still publishes:
+success flips to 0 and the last-good counts carry forward, so a transient wp-cli or
+wordpress.org blip neither masks a pending update nor resets its alert window.
+node_exporter scrapes the file (its `node_exporter_textfile_directory` must match),
+and the `prometheus` role's `WordpressUpdateAvailable` rule alerts per type once an
+update has been pending for a day — long enough for WordPress's own minor-core
+auto-updates to clear first. `WordpressUpdateCheckFailed` /
+`WordpressUpdateCheckOverdue` cover a check that errored or stopped running, so a
+broken checker can't mask a real pending update. The role only reports updates;
+apply them with `wp core update`, `wp plugin update` (and so on) or through wp-admin.
 
 ## Secrets
 

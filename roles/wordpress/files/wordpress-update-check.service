@@ -1,0 +1,10 @@
+[Unit]
+Description=WordPress update check
+# Ordered after the stack but not bound to it: if wordpress is down the check
+# still runs and records success=0, so a broken install surfaces through
+# WordpressUpdateCheckFailed rather than publishing no metric at all.
+After=wordpress.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/wp-update-check.sh

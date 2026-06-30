@@ -213,7 +213,7 @@
     # metric node_exporter scrapes.
     - name: Read the dump outcome metric after the successful run
       ansible.builtin.slurp:
-        src: "{{ wordpress_db_dump_textfile_dir }}/wordpress-db-dump.prom"
+        src: "{{ wordpress_textfile_dir }}/wordpress-db-dump.prom"
       register: wordpress_dump_metric_ok
       become: true
 
@@ -236,7 +236,7 @@
 
     - name: Read the dump outcome metric after the simulated failure
       ansible.builtin.slurp:
-        src: "{{ wordpress_db_dump_textfile_dir }}/wordpress-db-dump.prom"
+        src: "{{ wordpress_textfile_dir }}/wordpress-db-dump.prom"
       register: wordpress_dump_metric_fail
       become: true
 
@@ -245,6 +245,54 @@
         that:
           - "'wordpress_db_dump_success 0' in (wordpress_dump_metric_fail.content | b64decode)"
         fail_msg: "the dump outcome metric did not report a failed run"
+        quiet: true
+
+    - name: The update-check timer is active
+      ansible.builtin.systemd_service:
+        name: wordpress-update-check.timer
+        daemon_reload: true
+      register: wordpress_update_timer
+      become: true
+      failed_when: wordpress_update_timer.status.ActiveState != 'active'
+
+    # Stop it so a live six-hourly fire can't clobber the .prom the metric check
+    # below writes and reads back.
+    - name: Stop the update-check timer for the metric check
+      ansible.builtin.systemd_service:
+        name: wordpress-update-check.timer
+        state: stopped
+      become: true
+
+    # Start the oneshot the timer drives — not the script directly — so this also
+    # exercises the unit wiring. Starting a oneshot blocks until it exits; the
+    # script always exits 0, so a clean run proves only that it published.
+    - name: Run the update-check service
+      ansible.builtin.systemd_service:
+        name: wordpress-update-check.service
+        state: started
+      become: true
+
+    - name: Read the update-check metric after the run
+      ansible.builtin.slurp:
+        src: "{{ wordpress_textfile_dir }}/wordpress-updates.prom"
+      register: wordpress_update_metric
+      become: true
+
+    # The uninstalled molecule site yields no real counts (wp-cli may not reach
+    # the database or wordpress.org), so assert the metric's structure, not its
+    # values: the success and timestamp lines and a gauge for every update type.
+    - name: The update-check metric publishes the success, timestamp, and per-type gauges
+      vars:
+        wordpress_update_metric_text: "{{ wordpress_update_metric.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'wordpress_update_check_success ' in wordpress_update_metric_text"
+          - "'wordpress_update_check_last_run_timestamp_seconds ' in wordpress_update_metric_text"
+          - "'wordpress_updates_available{type=\"core\"}' in wordpress_update_metric_text"
+          - "'wordpress_updates_available{type=\"plugins\"}' in wordpress_update_metric_text"
+          - "'wordpress_updates_available{type=\"themes\"}' in wordpress_update_metric_text"
+          - "'wordpress_updates_available{type=\"translations\"}' in wordpress_update_metric_text"
+        fail_msg: "the update-check metric is missing a success, timestamp, or per-type gauge line"
         quiet: true
 
     # podman healthcheck run executes each container's HealthCmd; rc 0 = healthy.

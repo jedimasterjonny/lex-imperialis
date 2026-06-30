@@ -97,6 +97,44 @@ groups:
           summary: "unattended update overdue on {{ $labels.instance }}"
           description: "{{ $labels.instance }} has not completed an unattended update in over 9 days."
 
+      # WordPress auto-applies minor core releases (and any plugins or themes the
+      # operator opted into) on its own twice-daily cadence; the 24h for: plus the
+      # six-hourly check keeps the gauge fresh enough that those clear first, so
+      # only updates actually awaiting a hand — majors, and anything not opted into
+      # auto-update — ever alert.
+      - alert: WordpressUpdateAvailable
+        expr: wordpress_updates_available > 0
+        for: 24h
+        labels:
+          severity: warning
+        annotations:
+          summary: "WordPress {{ $labels.type }} update available on {{ $labels.instance }}"
+          description: "{{ $value }} {{ $labels.type }} update(s) are pending on {{ $labels.instance }} — apply via wp-cli or wp-admin."
+
+      # The six-hourly metric holds success=0 constant until the next run, so a
+      # single transient wp-cli or wordpress.org blip would satisfy a short for:;
+      # 12h (over two checks) fires only on a sustained failure, not a self-healing
+      # one-off.
+      - alert: WordpressUpdateCheckFailed
+        expr: wordpress_update_check_success == 0
+        for: 12h
+        labels:
+          severity: warning
+        annotations:
+          summary: "WordPress update check failed on {{ $labels.instance }}"
+          description: "The last WordPress update check on {{ $labels.instance }} errored — pending core, plugin, theme, or translation updates may be missed."
+      # The six-hourly timer caps a healthy check at ~6h old; over a day (four
+      # missed runs) gives ample grace before flagging a stalled checker whose
+      # metric has stopped advancing.
+      - alert: WordpressUpdateCheckOverdue
+        expr: time() - wordpress_update_check_last_run_timestamp_seconds > 1 * 86400
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "WordPress update check overdue on {{ $labels.instance }}"
+          description: "{{ $labels.instance }} has not completed a WordPress update check in over a day."
+
   - name: gitops
     rules:
       - alert: GitopsReconcileFailed

@@ -61,8 +61,10 @@
             | selectattr('name', 'in', ['InstanceDown', 'PodmanBackupFailed', 'PodmanBackupOverdue',
                                         'WordpressDbDumpFailed', 'WordpressDbDumpOverdue',
                                         'FilesystemSpaceLow', 'ServiceRestartStorm',
-                                        'AutoupdateFailed', 'AutoupdateOverdue'])
-            | list | length == 9
+                                        'AutoupdateFailed', 'AutoupdateOverdue',
+                                        'WordpressUpdateAvailable', 'WordpressUpdateCheckFailed',
+                                        'WordpressUpdateCheckOverdue'])
+            | list | length == 12
         fail_msg: not all shipped alert rules are loaded
 
     - name: Read the loaded runtime config
