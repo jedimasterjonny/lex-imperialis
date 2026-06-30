@@ -1,6 +1,6 @@
 -r requirements.txt
 ansible-lint==26.6.0
-molecule==26.4.0
+molecule==26.6.0
 pre-commit==4.6.0
 # requests + python-dateutil: hetzner.hcloud's runtime deps, for the hetzner
 # molecule scenario (the collection ships in ansible but not these).
