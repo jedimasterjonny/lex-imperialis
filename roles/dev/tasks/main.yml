@@ -90,3 +90,43 @@
         src: ../claude-remote-control.service
         dest: "{{ dev_user_home }}/.config/systemd/user/default.target.wants/claude-remote-control.service"
         state: link
+
+    # Claude refuses to run in an untrusted directory, so without this the boot
+    # session exits "Workspace not trusted" and Restart=always crash-loops the
+    # unit. Seed the per-directory trust keys (an interactively trusted project
+    # carries both) into the owner's app-managed ~/.claude.json for the workdir.
+    # The when-guard writes only when a key is missing, so once seeded a converge
+    # skips it — no churn, no clobber of Claude's live writes; an absent file is
+    # created minimal and Claude merges its own state on first run. no_log keeps
+    # the owner's stored OAuth token (same file) out of --diff.
+    - name: Stat the owner's Claude Code config
+      ansible.builtin.stat:
+        path: "{{ dev_claude_config }}"
+      register: dev_claude_config_stat
+
+    - name: Read the owner's Claude Code config when present
+      ansible.builtin.slurp:
+        src: "{{ dev_claude_config }}"
+      register: dev_claude_config_slurp
+      when: dev_claude_config_stat.stat.exists
+      no_log: true
+
+    - name: Trust the Remote Control workspace in the owner's Claude config
+      ansible.builtin.copy:
+        dest: "{{ dev_claude_config }}"
+        content: "{{ dev_claude_config_existing | combine(dev_claude_trust_patch, recursive=true) | to_nice_json }}\n"
+        mode: "0600"
+      vars:
+        dev_claude_config_existing: >-
+          {{ (dev_claude_config_slurp.content | b64decode | from_json)
+             if dev_claude_config_stat.stat.exists else {} }}
+        dev_claude_config_project: "{{ dev_claude_config_existing.projects[dev_remote_control_workdir] | default({}) }}"
+        # A templated YAML key is not rendered, so build the patch as a Jinja
+        # literal where the workdir is the key expression.
+        dev_claude_trust_patch: >-
+          {{ {'projects': {dev_remote_control_workdir: {'hasTrustDialogAccepted': true,
+             'hasCompletedProjectOnboarding': true}}} }}
+      when: >-
+        not (dev_claude_config_project.hasTrustDialogAccepted | default(false) | bool
+             and dev_claude_config_project.hasCompletedProjectOnboarding | default(false) | bool)
+      no_log: true

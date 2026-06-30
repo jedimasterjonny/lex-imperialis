@@ -29,14 +29,14 @@ manager runs without a login session, and installs the unit at
 `~/.config/systemd/user/claude-remote-control.service`. `Restart=always` with no
 start-limit recovers it after the ~10-minute network-outage timeout.
 
-The unit is enabled for boot but never started by the role: Remote Control needs
-the owner's claude.ai credentials, which the role cannot provision. One-time, on
-the host as `dev_user`:
+The role pre-seeds workspace trust for `dev_remote_control_workdir` (a per-project
+key in the owner's `~/.claude.json`), so the one step it cannot automate is the
+owner's claude.ai login. The unit is enabled for boot but never started by the
+role. One-time, on the host as `dev_user`:
 
 1. `claude` then `/login` (claude.ai OAuth — a Pro or Max plan; API keys and
    `setup-token`/`CLAUDE_CODE_OAUTH_TOKEN` are rejected).
-2. Run `claude` once in `dev_remote_control_workdir` to accept workspace trust.
-3. `systemctl --user start claude-remote-control.service` to bring it up now; the
+2. `systemctl --user start claude-remote-control.service` to bring it up now; the
    lingering manager starts it on every subsequent boot.
 
 Unit edits apply at the next restart or boot — there is no restart handler, so a
