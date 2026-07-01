@@ -5,6 +5,10 @@ Description=Grafana
 ContainerName=grafana
 Image={{ grafana_image }}
 Network=caddy.network
+NoNewPrivileges=true
+DropCapability=all
+{# grafana runs non-root as its own user (472) on an unprivileged port, so it #}
+{# needs no capability back. #}
 EnvironmentFile=/etc/grafana/env
 Volume=/etc/grafana/provisioning:/etc/grafana/provisioning:ro
 Volume=/etc/grafana/dashboards:/etc/grafana/dashboards:ro

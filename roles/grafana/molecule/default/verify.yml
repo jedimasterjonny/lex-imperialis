@@ -67,3 +67,24 @@
       ansible.builtin.command: podman healthcheck run grafana
       become: true
       changed_when: false
+
+    # The checks above prove grafana works; they can't prove its capability set
+    # is minimal. Assert the posture directly so a regression that widens the
+    # caps or drops the restriction fails here, not silently in production.
+    - name: Read grafana's security posture
+      ansible.builtin.command: podman inspect grafana
+      become: true
+      register: grafana_inspect
+      changed_when: false
+
+    # grafana runs non-root (uid 472), so EffectiveCaps is always empty — only
+    # BoundingCaps reflects DropCapability=all. Assert the bounding set.
+    - name: Grafana keeps no capabilities and bars privilege escalation
+      vars:
+        grafana: "{{ grafana_inspect.stdout | from_json | first }}"
+      ansible.builtin.assert:
+        that:
+          - "grafana.BoundingCaps | default([], true) | sort == []"
+          - "'no-new-privileges' in (grafana.HostConfig.SecurityOpt | default([], true))"
+        fail_msg: "grafana's capability or no-new-privileges posture has regressed"
+        quiet: true
