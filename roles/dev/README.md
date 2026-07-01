@@ -13,6 +13,18 @@ published checksum or datasource, so a hand-bumped hash would break converge on
 every upstream tweak (YAGNI); the trust anchor is `claude.ai` over TLS, accepted
 knowingly on the host that holds `.vault_pass` and fleet-wide NOPASSWD root.
 
+## Passwordless sudo
+
+`dev_passwordless_sudo` (default `true`) grants the owner passwordless sudo on
+the workstation via `/etc/sudoers.d/wheel-<owner>-nopasswd`. The name matters:
+sudoers.d loads in sorted lexical order and the last match wins, so the drop-in
+must sort after common's `wheel` file to override that file's own-password
+`%wheel` rule. It supersedes and removes a legacy hand-rolled `wheel-nopasswd`.
+
+This is the owner's convenience only. The `ansible` automation account escalates
+via its own `/etc/sudoers.d/ansible` (fleet-standard, set by `bootstrap/host.sh`),
+untouched here.
+
 ## Remote Control
 
 `dev_remote_control` (default `true`) runs `claude remote-control` as `dev_user`

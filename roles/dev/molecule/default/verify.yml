@@ -62,6 +62,48 @@
       loop_control:
         label: "{{ item.item }}"
 
+    # The legacy %wheel NOPASSWD drop-in is removed unconditionally, so its
+    # absence is verified outside the gate that guards the owner's drop-in.
+    - name: Stat the superseded sudoers drop-in
+      ansible.builtin.stat:
+        path: /etc/sudoers.d/wheel-nopasswd
+      become: true
+      register: dev_legacy_sudoers
+
+    - name: The superseded wheel-wide sudoers drop-in is gone
+      ansible.builtin.assert:
+        that:
+          - not dev_legacy_sudoers.stat.exists
+        fail_msg: "/etc/sudoers.d/wheel-nopasswd should have been removed"
+        quiet: true
+
+    - name: Verify the owner's passwordless sudo
+      when: dev_passwordless_sudo | bool
+      block:
+        - name: Stat the owner's sudoers drop-in
+          ansible.builtin.stat:
+            path: "/etc/sudoers.d/wheel-{{ dev_user }}-nopasswd"
+          become: true
+          register: dev_owner_sudoers
+
+        - name: The owner drop-in is installed root:root 0440
+          ansible.builtin.assert:
+            that:
+              - dev_owner_sudoers.stat.exists
+              - dev_owner_sudoers.stat.mode == '0440'
+              - dev_owner_sudoers.stat.pw_name == 'root'
+              - dev_owner_sudoers.stat.gr_name == 'root'
+            fail_msg: "wheel-{{ dev_user }}-nopasswd missing or not root:root 0440"
+            quiet: true
+
+        # Functional proof the drop-in's NOPASSWD is the last match and wins over
+        # common's own-password %wheel rule: the owner sudoes with no password.
+        - name: The owner sudoes without a password
+          ansible.builtin.command: sudo -n true
+          become: true
+          become_user: "{{ dev_user }}"
+          changed_when: false
+
     - name: Verify the Remote Control service
       when: dev_remote_control | bool
       block:

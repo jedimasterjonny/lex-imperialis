@@ -18,6 +18,10 @@ dev_user: jonny
 dev_user_home: "/home/{{ dev_user }}"
 dev_claude_bin: "{{ dev_user_home }}/.local/bin/claude"
 
+# Install the owner's passwordless-sudo drop-in on the workstation; set false on
+# a host that should keep common's own-password %wheel policy instead.
+dev_passwordless_sudo: true
+
 # A boot-start Claude Code Remote Control session under the owner's own lingering
 # `systemd --user` manager, so the workstation is remotely steerable from
 # claude.ai/code or the Claude app the moment it is up. A system unit can't host
