@@ -28,6 +28,11 @@ user (472) with `:U`.
 The container carries a podman healthcheck against `/api/health` (status only,
 no restart on failure).
 
+## Hardening
+
+The container runs `NoNewPrivileges` and drops every capability. The image runs
+non-root as its own user (472) on an unprivileged port, so it adds none back.
+
 ## Variables
 
 - `grafana_prometheus_url` — Prometheus datasource URL (default datasource).
