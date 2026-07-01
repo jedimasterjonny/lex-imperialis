@@ -8,6 +8,9 @@ Image={{ alertmanager_image }}
 # like the node and cadvisor exporters. The image's default command already points
 # at the mounted config and storage paths. Opening the port is the play's job.
 Network=host
+NoNewPrivileges=true
+DropCapability=all
+{# alertmanager runs non-root as nobody (65534), so it needs no capability back. #}
 Volume=/etc/alertmanager:/etc/alertmanager:ro
 # :U hands the named volume to the image's nobody user (65534), which owns the
 # silences and notification log under /alertmanager; rootful podman would

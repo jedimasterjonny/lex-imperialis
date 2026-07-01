@@ -33,3 +33,24 @@
       ansible.builtin.command: podman healthcheck run alertmanager
       become: true
       changed_when: false
+
+    # The checks above prove alertmanager works; they can't prove its capability
+    # set is minimal. Assert the posture directly so a regression that widens the
+    # caps or drops the restriction fails here, not silently in production.
+    - name: Read alertmanager's security posture
+      ansible.builtin.command: podman inspect alertmanager
+      become: true
+      register: alertmanager_inspect
+      changed_when: false
+
+    # alertmanager runs non-root (nobody, 65534), so EffectiveCaps is always
+    # empty — only BoundingCaps reflects DropCapability=all. Assert the bounding set.
+    - name: Alertmanager keeps no capabilities and bars privilege escalation
+      vars:
+        alertmanager: "{{ alertmanager_inspect.stdout | from_json | first }}"
+      ansible.builtin.assert:
+        that:
+          - "alertmanager.BoundingCaps | default([], true) | sort == []"
+          - "'no-new-privileges' in (alertmanager.HostConfig.SecurityOpt | default([], true))"
+        fail_msg: "alertmanager's capability or no-new-privileges posture has regressed"
+        quiet: true
