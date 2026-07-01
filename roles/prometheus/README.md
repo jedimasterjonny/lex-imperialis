@@ -48,11 +48,13 @@ unit that auto-restarted more than three times in 15m, off node_exporter's
 other service alike, suppressed for the first 15m of uptime so boot restart
 churn isn't a false storm); the `maintenance` group's `autoupdate` pair
 `AutoupdateFailed` / `AutoupdateOverdue` (an unattended `zypper` run that failed or
-has not completed in over 9 days); and the `music` group's `BeetsPipelineLidarrRejected`
+has not completed in over 9 days); the `gitops` group's `GitopsReconcileFailed` /
+`GitopsReconcileStale` (an unattended fleet reconcile that failed or has not completed
+in over 2 hours); and the `music` group's `BeetsPipelineLidarrRejected`
 (an album beets matched but lidarr refused) and `BeetsPipelineQuarantineBacklog` (a
-standing pile of no-match albums awaiting hand-processing). The backup, dump, and
-update outcome pairs, and the music backlog gauges, all read an `ExecStopPost`-written
-metric off node_exporter's textfile collector. The
+standing pile of no-match albums awaiting hand-processing). The backup, dump,
+update, and reconcile outcome pairs, and the music backlog gauges, all read an
+`ExecStopPost`-written metric off node_exporter's textfile collector. The
 rules sit
 in a directory mount, so a changed rule reaches the container — but, like a config
 change, only a recreate makes Prometheus reload it.
