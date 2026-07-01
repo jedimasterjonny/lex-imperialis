@@ -62,7 +62,9 @@ NAS and you lose all podman backups with it.
 
 ## rogue-trader (Hetzner VM)
 
-The VM is provisioned by cloud-init, not a reinstall:
+The VM is provisioned by cloud-init, not a reinstall. SSH is not exposed
+publicly, so if the WireGuard tunnel can't be brought up, the Hetzner web console
+is the only way in.
 
 1. Re-provision from the repo root (recreates the server and brings up the
    WireGuard tunnel at first boot):
