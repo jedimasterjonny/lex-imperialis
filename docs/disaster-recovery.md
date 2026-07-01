@@ -83,14 +83,30 @@ is the only way in.
    database volumes.
 5. The database travels as a raw `/var/lib/mysql` copy, which a newer mariadb
    than it was taken on may refuse to start. If it does, recover the database
-   from the logical dump instead: leave `wordpress-db` to initialise an empty
-   database, then load `wordpress-db-dump`'s engine-portable `wordpress.sql`
-   (written daily by the wordpress role's `wp-db-dump`) into it as root:
+   from the logical dump instead. Step 4 restored the raw copy into
+   `wordpress-db`, so wipe that volume first:
+
+   ```
+   sudo systemctl stop wordpress-db
+   sudo podman volume rm wordpress-db
+   sudo systemctl start wordpress-db
+   ```
+
+   Once it is healthy (`podman healthcheck run wordpress-db`), load
+   `wordpress-db-dump`'s engine-portable `wordpress.sql` (written daily by the
+   wordpress role's `wp-db-dump`) into it as root:
 
    ```
    podman run --rm --network caddy --env-file /etc/wordpress/wordpress.env \
      --volume wordpress-db-dump:/dump:ro docker.io/library/mariadb \
      sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" exec mariadb -h wordpress-db -uroot < /dump/wordpress.sql'
+   ```
+
+   Finally, restart the WordPress container, which the database stop took down
+   with it (`Requires=`):
+
+   ```
+   sudo systemctl start wordpress
    ```
 
 ## scholam (control host)
