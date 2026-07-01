@@ -22,7 +22,12 @@ dev_claude_bin: "{{ dev_user_home }}/.local/bin/claude"
 # `systemd --user` manager, so the workstation is remotely steerable from
 # claude.ai/code or the Claude app the moment it is up. A system unit can't host
 # it — on the SELinux-enforcing fleet PID 1 cannot exec the owner's home-installed
-# binary. Requires a one-time interactive `claude` /login (claude.ai OAuth,
-# Pro/Max) and workspace-trust acceptance the role cannot automate — see README.
+# binary. The role pre-seeds workspace trust for the workdir; the one remaining
+# manual step is a one-time interactive `claude` /login (claude.ai OAuth, Pro/Max —
+# API keys and CLAUDE_CODE_OAUTH_TOKEN are rejected) — see README.
 dev_remote_control: true
 dev_remote_control_workdir: "{{ dev_user_home }}"
+
+# The owner's Claude Code config; the role seeds workspace trust into its projects
+# map so the boot session clears the trust gate instead of crash-looping.
+dev_claude_config: "{{ dev_user_home }}/.claude.json"
