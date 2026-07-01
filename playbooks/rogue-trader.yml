@@ -24,9 +24,9 @@
       - www.emmasedit.com
     wordpress_db_password: "{{ rogue_trader_wordpress_db_password }}"
     wordpress_db_root_password: "{{ rogue_trader_wordpress_db_root_password }}"
-    # The public site needs 80/443 inbound; ssh stays for management.
+    # 80/443 for the public site. SSH is not opened here; a rich rule below
+    # scopes it to the LAN subnet instead.
     firewalld_services:
-      - ssh
       - http
       - https
     # node_exporter and cadvisor bind the WireGuard address only, so the public
@@ -39,14 +39,17 @@
     cadvisor_listen_ip: 192.168.3.3
     cadvisor_after: wg-quick@wg0.service
     firewalld_rich_rules:
+      # SSH reaches the box only over the tunnel (LAN source), so scope it to the
+      # LAN subnet rather than opening 22 on the public interface.
+      - rule family="ipv4" source address="192.168.1.0/24" service name="ssh" accept
       - rule family="ipv4" source address="192.168.1.0/24" port port="9100" protocol="tcp" accept
       - rule family="ipv4" source address="192.168.1.0/24" port port="8080" protocol="tcp" accept
   roles:
     - common
     - sshd
-    # WireGuard client: ssh for management plus http/https for the public site.
-    # The tunnel initiates outbound to the router, so its return traffic rides
-    # conntrack — no inbound 51820/udp needed.
+    # WireGuard client: http/https public, SSH scoped to the LAN (rich rule
+    # above). The tunnel initiates outbound to the router, so its return traffic
+    # rides conntrack — no inbound 51820/udp needed.
     - firewalld
     # Keep the tunnel up across a home WAN-IP change: re-resolve the endpoint
     # when the handshake goes stale. NFS and the metrics binds below ride it.
