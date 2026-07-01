@@ -18,6 +18,32 @@
     state: present
   become: true
 
+# sudoers.d loads in sorted lexical order and the last match wins, so this
+# drop-in must sort after common's `wheel` file for its NOPASSWD to override that
+# file's own-password `%wheel` rule — `wheel-<owner>-` sorts after `wheel`.
+# validate keeps a broken policy from ever reaching disk and locking out sudo.
+- name: Grant the owner passwordless sudo on the workstation
+  ansible.builtin.copy:
+    dest: "/etc/sudoers.d/wheel-{{ dev_user }}-nopasswd"
+    content: |
+      ## The workstation owner runs any command without a password, overriding
+      ## common's own-password %wheel rule (this file sorts after wheel).
+      {{ dev_user }} ALL=(ALL:ALL) NOPASSWD: ALL
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s
+  become: true
+  when: dev_passwordless_sudo | bool
+
+# Retire the hand-rolled %wheel NOPASSWD drop-in this supersedes; a no-op on any
+# host that never carried it.
+- name: Remove the superseded wheel-wide passwordless sudo drop-in
+  ansible.builtin.file:
+    path: /etc/sudoers.d/wheel-nopasswd
+    state: absent
+  become: true
+
 # The native installer self-updates in the background, so it runs once and
 # never again — creates guards re-runs. HOME is set explicitly because
 # become_user does not reliably export it for the script.
