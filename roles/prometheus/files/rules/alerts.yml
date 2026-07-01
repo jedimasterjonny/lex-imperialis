@@ -66,8 +66,11 @@ groups:
     rules:
       # node_exporter's systemd collector exposes a true per-unit restart counter,
       # robust to the cgroup-id churn that defeats a cadvisor start-time proxy.
+      # The counter zeroes on boot and dependency-ordered units restart a few times
+      # during startup; gate on uptime past the 15m window so that churn stays out of
+      # the increase.
       - alert: ServiceRestartStorm
-        expr: increase(node_systemd_service_restart_total[15m]) > 3
+        expr: increase(node_systemd_service_restart_total[15m]) > 3 and on(instance) time() - node_boot_time_seconds > 15 * 60
         for: 5m
         labels:
           severity: warning
