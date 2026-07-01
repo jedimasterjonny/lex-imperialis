@@ -23,6 +23,11 @@ image's `nobody` user (65534) with `:U`.
 The container carries a podman healthcheck against `/-/healthy` (status only, no
 restart on failure).
 
+## Hardening
+
+The container runs `NoNewPrivileges` and drops every capability. The image runs
+non-root as `nobody` (65534) on an unprivileged port, so it adds none back.
+
 ## Variables
 
 - `alertmanager_discord_webhook_url` — Discord incoming-webhook URL, vault-sourced,
