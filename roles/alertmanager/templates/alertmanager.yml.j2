@@ -5,6 +5,19 @@ route:
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
+  routes:
+    # The Watchdog fires on every evaluation; route it to its own deadman
+    # receiver. continue defaults to false, so it never falls through to the
+    # discord/default receiver. It inherits the parent's 5m group_interval —
+    # Alertmanager flushes a group only every group_interval and never repeats
+    # faster than that, so 5m is the beat, matched by the healthchecks.io check's
+    # 5m expected period. Only repeat_interval is overridden, kept below
+    # group_interval so every 5m flush re-sends; the inherited 4h would beat far
+    # too slowly to keep the check green.
+    - matchers:
+        - 'alertname="Watchdog"'
+      receiver: deadman
+      repeat_interval: 4m
 
 receivers:
   - name: default
@@ -13,4 +26,16 @@ receivers:
       # URL kept out of this world-readable file; the role renders it no_log into
       # the referenced 0600 file.
       - webhook_url_file: /etc/alertmanager/discord_webhook_url
+{% endif %}
+  - name: deadman
+{% if alertmanager_deadman_ping_url %}
+    webhook_configs:
+      # URL kept out of this world-readable file; the role renders it no_log into
+      # the referenced 0600 file.
+      # send_resolved off: vector(1) only resolves when the pipeline dies, and a
+      # resolved POST is indistinguishable from a healthy beat — it would reset
+      # the healthchecks.io timer mid-outage and mask the very failure this
+      # detects. Death must be a clean cessation of pings.
+      - url_file: /etc/alertmanager/deadman_url
+        send_resolved: false
 {% endif %}

@@ -33,6 +33,22 @@
   when: alertmanager_discord_webhook_url | length > 0
   notify: Restart alertmanager
 
+# The heartbeat ping URL is a bearer token — anyone with it can spoof the beat
+# and silence the alarm — so it lands in its own 0600 file the container reads
+# via the webhook url_file, never in the world-readable config. Owned by 65534
+# (the image's nobody) so the rootful container's process can read it.
+- name: Deploy the deadman ping URL secret
+  ansible.builtin.copy:
+    content: "{{ alertmanager_deadman_ping_url }}\n"
+    dest: /etc/alertmanager/deadman_url
+    owner: "65534"
+    group: root
+    mode: "0600"
+  become: true
+  no_log: true
+  when: alertmanager_deadman_ping_url | length > 0
+  notify: Restart alertmanager
+
 - name: Install the alertmanager container unit
   ansible.builtin.template:
     src: alertmanager.container.j2
