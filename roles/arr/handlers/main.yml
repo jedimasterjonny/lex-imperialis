@@ -19,7 +19,8 @@
     | selectattr('changed') | map(attribute='item.key') | unique | list }}
   become: true
 
-# Config changes restart wireguard directly; PartOf bounces transmission too.
+# Config changes restart wireguard directly; PartOf bounces every app that
+# shares its netns too.
 - name: Restart wireguard
   ansible.builtin.systemd_service:
     name: wireguard

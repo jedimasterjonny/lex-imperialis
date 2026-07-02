@@ -160,9 +160,11 @@
           - arr_plex_write.rc != 0
         quiet: true
 
-    - name: Read each side of the shared netns
+    - name: Read the wireguard netns and each app that joins it
       ansible.builtin.command: podman exec {{ item }} readlink /proc/self/ns/net
-      loop: [wireguard, transmission]
+      loop: >-
+        {{ ['wireguard'] + (arr_apps | dict2items | selectattr('key', 'in', arr_enabled)
+        | selectattr('value.netns', 'defined') | map(attribute='key') | list) }}
       become: true
       register: arr_netns
       changed_when: false
@@ -173,14 +175,23 @@
       register: arr_tunnel_route
       changed_when: false
 
-    # The proxy wait above already proves the webui path skips the tunnel: the
-    # blackhole config molecule converges with would eat a proxied request.
-    - name: Transmission lives in the wireguard netns and routes via the tunnel
+    - name: The tunnel netns routes its default out of wg0
       ansible.builtin.assert:
         that:
-          - arr_netns.results[0].stdout == arr_netns.results[1].stdout
           - "'dev wg0' in arr_tunnel_route.stdout"
         quiet: true
+
+    # The proxy wait above already proves each webui path skips the tunnel: the
+    # blackhole config molecule converges with would eat a proxied request.
+    - name: Wireguard and every app that joins its netns share one net namespace
+      ansible.builtin.assert:
+        that:
+          - item.stdout == arr_netns.results[0].stdout
+        fail_msg: "{{ item.item }} is not in the wireguard netns"
+        quiet: true
+      loop: "{{ arr_netns.results }}"
+      loop_control:
+        label: "{{ item.item }}"
 
     - name: Wireguard carries the auto-recovery healthcheck
       ansible.builtin.command: grep -q '^HealthCmd=' /etc/containers/systemd/wireguard.container
