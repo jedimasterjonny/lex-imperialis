@@ -24,10 +24,11 @@ Network=container:{{ item.value.netns }}
 {% else %}
 Network=caddy.network
 {% endif %}
-{# A netns owner advertises every enabled app that joins its netns as a network #}
-{# alias, so caddy resolves <app> to this container and reaches the app's port #}
-{# inside the shared netns. #}
-{% for peer in arr_apps | dict2items | selectattr('key', 'in', arr_enabled) if peer.value.netns | default('') == item.key %}
+{# A netns owner advertises each enabled joiner that has a proxied port as a #}
+{# network alias, so caddy resolves <app> to this container and reaches its #}
+{# port inside the shared netns. A portless joiner (flaresolverr) needs none — #}
+{# its netns mates reach it on localhost. #}
+{% for peer in arr_apps | dict2items | selectattr('key', 'in', arr_enabled) if peer.value.netns | default('') == item.key and peer.value.port is defined %}
 NetworkAlias={{ peer.key }}
 {% endfor %}
 {% for cap in item.value.caps | default([]) %}
