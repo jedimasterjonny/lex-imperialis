@@ -29,6 +29,7 @@ Exec=--path.rootfs=/host --web.listen-address={{ node_exporter_listen_address }}
 
 [Service]
 Restart=on-failure
+TimeoutStartSec=900
 
 [Install]
 WantedBy=multi-user.target
