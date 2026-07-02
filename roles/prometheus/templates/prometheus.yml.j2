@@ -27,3 +27,9 @@ scrape_configs:
     scrape_interval: 30s
     static_configs:
       - targets: {{ prometheus_cadvisor_targets | to_json }}
+{% if prometheus_alertmanager_targets %}
+
+  - job_name: alertmanager
+    static_configs:
+      - targets: {{ prometheus_alertmanager_targets | to_json }}
+{% endif %}
