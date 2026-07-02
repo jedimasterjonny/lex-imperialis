@@ -139,7 +139,7 @@ arr_apps:
     healthcheck:
       cmd: curl -sS -o /dev/null http://127.0.0.1:9091/transmission/web/
   wireguard:
-    image: lscr.io/linuxserver/wireguard:1.0.20250521@sha256:ad0501c857edad4059f90c9b536338cb105bbb5f3fc82070986d36b937c897ca
+    image: lscr.io/linuxserver/wireguard:1.0.20250521@sha256:f33891344345b1f78705e723b633e3a3f94d08ae75ca1a5f48c5a449c35bf460
     uid: 3009
     caps: [NET_ADMIN]
     sysctls: [net.ipv4.conf.all.src_valid_mark=1]
