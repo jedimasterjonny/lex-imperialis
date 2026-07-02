@@ -63,9 +63,14 @@
                                         'FilesystemSpaceLow', 'ServiceRestartStorm',
                                         'AutoupdateFailed', 'AutoupdateOverdue',
                                         'WordpressUpdateAvailable', 'WordpressUpdateCheckFailed',
-                                        'WordpressUpdateCheckOverdue'])
-            | list | length == 12
-        fail_msg: not all shipped alert rules are loaded
+                                        'WordpressUpdateCheckOverdue', 'GitopsReconcileFailed',
+                                        'GitopsReconcileStale', 'BeetsPipelineLidarrRejected',
+                                        'BeetsPipelineQuarantineBacklog'])
+            | list | length == 16
+          - >-
+            prometheus_loaded_rules.json.data.groups
+            | map(attribute='rules') | flatten | list | length == 16
+        fail_msg: the loaded alert rules don't match those shipped in alerts.yml
 
     - name: Read the loaded runtime config
       ansible.builtin.uri:
