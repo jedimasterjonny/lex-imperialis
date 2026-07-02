@@ -13,6 +13,8 @@ non-zero listing every gap; runs on every commit, ignoring filenames.
 
 ## shellcheck-jinja.sh
 
-Shellchecks the `*.sh.j2` templates the plain `shellcheck` hook skips —
-`identify` tags them jinja, not shell. Rewrites Jinja to valid shell first
-(`{% … %}` → `:`, `{{ … }}` → `X`), then pipes the result through shellcheck.
+Shellchecks the shell-in-Jinja templates the plain `shellcheck` hook skips —
+`identify` tags them jinja, not shell: every `*.sh.j2`, plus the
+extensionless-bash `wp`/`wp-db-dump` templates. Rewrites Jinja to valid shell
+first (`{% … %}` → `:`, `{{ … }}` → `X`), then pipes the result through
+shellcheck.

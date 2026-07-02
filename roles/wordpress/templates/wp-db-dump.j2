@@ -24,6 +24,8 @@ done
 # and renames it over the last good one only on success (set -e), so a failed run
 # leaves the previous dump intact. Credentials come from the same 0600 env file
 # the quadlets read; MYSQL_PWD keeps the password off the dump command line.
+# The $MARIADB_* refs are single-quoted for the inner sh -ec to expand, not here.
+# shellcheck disable=SC2016
 exec flock /run/wp-db-dump.lock podman run --rm \
 	--env-file /etc/wordpress/wordpress.env \
 	--network caddy \
