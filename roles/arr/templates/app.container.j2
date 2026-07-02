@@ -24,9 +24,12 @@ Network=container:{{ item.value.netns }}
 {% else %}
 Network=caddy.network
 {% endif %}
-{% if item.value.network_alias is defined %}
-NetworkAlias={{ item.value.network_alias }}
-{% endif %}
+{# A netns owner advertises every enabled app that joins its netns as a network #}
+{# alias, so caddy resolves <app> to this container and reaches the app's port #}
+{# inside the shared netns. #}
+{% for peer in arr_apps | dict2items | selectattr('key', 'in', arr_enabled) if peer.value.netns | default('') == item.key %}
+NetworkAlias={{ peer.key }}
+{% endfor %}
 {% for cap in item.value.caps | default([]) %}
 AddCapability={{ cap }}
 {% endfor %}
