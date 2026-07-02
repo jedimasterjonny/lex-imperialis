@@ -17,13 +17,13 @@ wireguard's probe (below) instead force-restarts the tunnel.
 
 - **radarr / sonarr / lidarr** — the importers; mount the whole data tree,
   so imports hardlink from `downloads` into the libraries on one
-  filesystem.
+  filesystem; netns-confined to the tunnel (below).
 - **prowlarr** — indexer management; talks only to the other apps' APIs,
-  no media mount.
+  no media mount; netns-confined to the tunnel (below).
 - **flaresolverr** — Cloudflare-challenge solver for prowlarr; a
   headless-browser proxy with no media mount and, being an unauthenticated
-  URL-fetcher, no proxy snippet — prowlarr reaches it by container name on
-  `caddy.network`.
+  URL-fetcher, no proxy snippet. It stays on `caddy.network`; prowlarr, in the
+  wireguard netns, reaches it by container name over that shared interface.
 - **beets** — mounts the whole tree (`data: root`) to catalog the music
   library and screen `downloads` into staging for lidarr to import.
 - **plex** — host-networked (so GDM/DLNA discovery works; not proxied),
@@ -159,33 +159,40 @@ single-file bind, so the recreate picks up the new inode); the config edits ride
 the directory bind and apply on the next scheduled sync. gitops re-renders it,
 so the repo owns recyclarr's config, not the volume.
 
-## Transmission behind WireGuard
+## Apps behind WireGuard
 
-The wireguard container owns the network namespace; transmission joins it
-via `Network=container:wireguard` and has no network of its own.
+The wireguard container owns the network namespace; radarr, sonarr, lidarr,
+prowlarr and transmission each join it via `Network=container:wireguard` and
+have no network of their own. Their internet traffic (indexers, trackers,
+metadata lookups, torrent peers) rides the tunnel; local traffic does not.
 
-- **Namespace owner** — wireguard sits on `caddy.network` with
-  `NetworkAlias=transmission`, carries `NET_ADMIN` and
-  `net.ipv4.conf.all.src_valid_mark=1`, and bind-mounts
-  `/etc/wireguard/wg0.conf` read-only into wg-quick's conf dir.
+- **Namespace owner** — wireguard sits on `caddy.network`, carries `NET_ADMIN`
+  and `net.ipv4.conf.all.src_valid_mark=1`, and bind-mounts
+  `/etc/wireguard/wg0.conf` read-only into wg-quick's conf dir. It advertises a
+  `NetworkAlias` for each enabled app that joins its netns, computed from the
+  `netns:` membership rather than a hand-kept list. That owner membership is
+  load-bearing: a joiner has no `caddy.network` interface of its own, so the
+  owner's is what lets caddy proxy each webui and lets a joiner reach an
+  on-network backend like flaresolverr.
 - **Routing split** — wg-quick's `suppress_prefixlength 0` policy rule pushes
-  only default-route traffic into wg0: peers and trackers ride the tunnel,
-  while the podman subnet resolves from the main table, so caddy proxies the
-  webui at the `transmission` alias without touching the VPN.
-- **Lifecycle** — transmission is `Requires`/`After`/`PartOf` the wireguard
+  only default-route traffic into wg0: each app's internet traffic rides the
+  tunnel, while the podman subnet resolves from the main table, so caddy
+  proxies every webui at its alias — and prowlarr reaches flaresolverr —
+  without touching the VPN.
+- **Lifecycle** — each joiner is `Requires`/`After`/`PartOf` the wireguard
   service: it starts after the tunnel exists and restarts whenever wireguard
-  does. A config change notifies `Restart wireguard`; PartOf carries
-  transmission with it.
+  does. A config change notifies `Restart wireguard`; PartOf carries every
+  joiner with it.
 - **Auto-recovery** — wireguard carries a healthcheck (`ping` through wg0);
   sustained failure kills the container so systemd's `Restart=on-failure`
-  rebuilds it and PartOf bounces transmission into the fresh netns. The
+  rebuilds it and PartOf bounces every joiner into the fresh netns. The
   template forces it off when `arr_wireguard_conf` is empty, so the blackhole
   isn't restart-looped.
 - **Kill-switch** — with `arr_wireguard_conf` empty, the role generates a
   blackhole config: random keys, `AllowedIPs = 0.0.0.0/0`, a TEST-NET
-  endpoint. wg0 comes up with a dead default route, so torrent traffic cannot
-  leak from first boot. The real config arrives whole from vault via
-  `arr_wireguard_conf`, installed under `no_log`. Molecule converges and
+  endpoint. wg0 comes up with a dead default route, so no confined app's
+  traffic can leak from first boot. The real config arrives whole from vault
+  via `arr_wireguard_conf`, installed under `no_log`. Molecule converges and
   verifies the blackhole state.
 - **Kernel module** — persisted via `/etc/modules-load.d/wireguard.conf`,
   modprobed only when `/sys/module/wireguard` is absent. The molecule
