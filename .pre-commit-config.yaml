@@ -47,7 +47,7 @@ repos:
         name: shellcheck-jinja
         entry: bin/shellcheck-jinja.sh
         language: script
-        files: '\.sh\.j2$'
+        files: '(\.sh\.j2$|/(wp|wp-db-dump)\.j2$)'
       # Every role must ship an incus or libvirt test (libvirt implies hetzner).
       - id: role-test-coverage
         name: role-test-coverage
