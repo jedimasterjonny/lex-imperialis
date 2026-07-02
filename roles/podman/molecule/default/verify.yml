@@ -16,19 +16,6 @@
         fail_msg: "podman is not using the netavark network backend"
         quiet: true
 
-    - name: Stat the image prune script
-      ansible.builtin.stat:
-        path: /usr/local/bin/podman-image-prune
-      register: podman_prune_script
-
-    - name: The prune script is installed and executable
-      ansible.builtin.assert:
-        that:
-          - podman_prune_script.stat.exists
-          - podman_prune_script.stat.executable
-        fail_msg: "/usr/local/bin/podman-image-prune is missing or not executable"
-        quiet: true
-
     # daemon_reload is a no-op that just makes the module gather and return the
     # timer's systemctl-show properties to assert against; it reads, not mutates.
     - name: Read the prune timer's state
@@ -64,34 +51,36 @@
         dest: /tmp/podman-prune-probe/Containerfile
         mode: "0644"
 
-    - name: Build an untagged image to strand as dangling
-      ansible.builtin.command: podman build /tmp/podman-prune-probe
+    # Tagged, so not dangling: only --all reclaims it, since no container uses
+    # it. This is the regression guard the old dangling-only prune would fail.
+    - name: Build a tagged image that no container uses
+      ansible.builtin.command: podman build --tag podman-prune-probe:local /tmp/podman-prune-probe
       become: true
       changed_when: false
 
-    - name: List dangling images before the prune
-      ansible.builtin.command: podman images --filter dangling=true --quiet
+    - name: List the probe image before the prune
+      ansible.builtin.command: podman images --quiet podman-prune-probe:local
       become: true
-      register: podman_dangling_before
+      register: podman_probe_before
       changed_when: false
 
     # Starting a oneshot unit blocks until it exits, so success means the
-    # script ran clean.
+    # prune ran clean.
     - name: Fire the prune service
       ansible.builtin.systemd_service:
         name: podman-image-prune.service
         state: started
       become: true
 
-    - name: List dangling images after the prune
-      ansible.builtin.command: podman images --filter dangling=true --quiet
+    - name: List the probe image after the prune
+      ansible.builtin.command: podman images --quiet podman-prune-probe:local
       become: true
-      register: podman_dangling_after
+      register: podman_probe_after
       changed_when: false
 
-    - name: The prune removed the stranded image
+    - name: The prune reclaimed the unused tagged image
       ansible.builtin.assert:
         that:
-          - podman_dangling_before.stdout_lines | length > 0
-          - podman_dangling_after.stdout_lines | length == 0
+          - podman_probe_before.stdout_lines | length > 0
+          - podman_probe_after.stdout_lines | length == 0
         quiet: true
