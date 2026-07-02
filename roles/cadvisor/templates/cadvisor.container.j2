@@ -29,6 +29,7 @@ Exec=--port={{ cadvisor_port }}{% if cadvisor_listen_ip %} --listen_ip={{ cadvis
 
 [Service]
 Restart=on-failure
+TimeoutStartSec=900
 
 [Install]
 WantedBy=multi-user.target
