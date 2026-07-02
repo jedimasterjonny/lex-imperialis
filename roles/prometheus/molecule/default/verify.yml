@@ -65,11 +65,11 @@
                                         'WordpressUpdateAvailable', 'WordpressUpdateCheckFailed',
                                         'WordpressUpdateCheckOverdue', 'GitopsReconcileFailed',
                                         'GitopsReconcileStale', 'BeetsPipelineLidarrRejected',
-                                        'BeetsPipelineQuarantineBacklog'])
-            | list | length == 16
+                                        'BeetsPipelineQuarantineBacklog', 'Watchdog'])
+            | list | length == 17
           - >-
             prometheus_loaded_rules.json.data.groups
-            | map(attribute='rules') | flatten | list | length == 16
+            | map(attribute='rules') | flatten | list | length == 17
         fail_msg: the loaded alert rules don't match those shipped in alerts.yml
 
     - name: Read the loaded runtime config

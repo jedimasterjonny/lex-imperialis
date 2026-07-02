@@ -185,3 +185,18 @@ groups:
         annotations:
           summary: "beets pipeline quarantine backlog on {{ $labels.instance }}"
           description: "Unmatched albums on {{ $labels.instance }} have been awaiting hand-processing for over 6 hours."
+
+  - name: watchdog
+    rules:
+      # Always-firing heartbeat: its arrival at the deadman receiver proves the
+      # whole alerting path (Prometheus -> Alertmanager -> heartbeat) is live, so
+      # its ABSENCE is the signal — a missed beat means the pipeline is broken,
+      # not that anything here is wrong. No for:, so it fires on the first
+      # evaluation; severity none, as a firing Watchdog is never itself a problem.
+      - alert: Watchdog
+        expr: vector(1)
+        labels:
+          severity: none
+        annotations:
+          summary: "alerting pipeline heartbeat"
+          description: "This alert always fires; if it stops reaching the deadman receiver, the Prometheus -> Alertmanager -> heartbeat pipeline is broken."
