@@ -50,9 +50,12 @@ churn isn't a false storm); the `maintenance` group's `autoupdate` pair
 `AutoupdateFailed` / `AutoupdateOverdue` (an unattended `zypper` run that failed or
 has not completed in over 9 days); the `gitops` group's `GitopsReconcileFailed` /
 `GitopsReconcileStale` (an unattended fleet reconcile that failed or has not completed
-in over 2 hours); and the `music` group's `BeetsPipelineLidarrRejected`
+in over 2 hours); the `music` group's `BeetsPipelineLidarrRejected`
 (an album beets matched but lidarr refused) and `BeetsPipelineQuarantineBacklog` (a
-standing pile of no-match albums awaiting hand-processing). The backup, dump,
+standing pile of no-match albums awaiting hand-processing); and the `watchdog`
+group's always-firing `Watchdog` (`vector(1)`, no `for:`), whose silence at the
+deadman receiver signals a broken Prometheus -> Alertmanager -> heartbeat
+pipeline. The backup, dump,
 update, and reconcile outcome pairs, and the music backlog gauges, all read an
 `ExecStopPost`-written metric off node_exporter's textfile collector. The
 rules sit
