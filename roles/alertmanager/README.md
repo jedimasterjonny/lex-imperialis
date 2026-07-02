@@ -7,13 +7,22 @@ the LAN; opening the port for that scraper is the playbook's job, not the role's
 ## Config
 
 `alertmanager.yml` is Ansible-rendered to `/etc/alertmanager` and bind-mounted
-read-only. It routes every alert to one `default` receiver:
+read-only. Every alert routes to the `default` receiver, except the always-firing
+`Watchdog`, which a dedicated route sends to the `deadman` receiver:
 
-- With `alertmanager_discord_webhook_url` set, the receiver carries a
+- With `alertmanager_discord_webhook_url` set, the `default` receiver carries a
   `discord_configs` entry whose `webhook_url_file` points at a 0600 file holding
   the URL — the secret stays out of the world-readable config.
-- Empty (the default), the receiver is null: the route fires nothing. This keeps
-  molecule self-contained, so set the URL on the real host.
+- With `alertmanager_deadman_ping_url` set, the `deadman` receiver carries a
+  `webhook_configs` entry whose `url_file` points at a 0600 file holding the
+  hc-ping URL; every beat POSTs to it (`send_resolved` off, or a resolved POST
+  would read as a healthy beat and mask an outage). The Watchdog route inherits
+  the parent's 5m `group_interval` — the beat, as Alertmanager never repeats a
+  group faster than that — and overrides only `repeat_interval` to `4m` so every
+  flush re-sends. The healthchecks.io check must track this cadence: period 5m,
+  grace 10m. Retune both halves together or the check flaps.
+- Empty (the default), the matching receiver is null: its route fires nothing.
+  This keeps molecule self-contained, so set the URLs on the real host.
 
 The image's default command already targets `/etc/alertmanager/alertmanager.yml`
 and `/alertmanager`, so the unit overrides no `Exec`. State (silences, the
@@ -33,5 +42,9 @@ non-root as `nobody` (65534) on an unprivileged port, so it adds none back.
 - `alertmanager_discord_webhook_url` — Discord incoming-webhook URL, vault-sourced,
   rendered `no_log` into `/etc/alertmanager/discord_webhook_url`. Empty leaves a
   null receiver.
+- `alertmanager_deadman_ping_url` — healthchecks.io hc-ping heartbeat URL the
+  `Watchdog` alert pings, vault-sourced, rendered `no_log` into
+  `/etc/alertmanager/deadman_url`. A bearer token: anyone with it can spoof the
+  beat and silence the alarm. Empty leaves the `deadman` receiver null.
 
 The image (`alertmanager_image`) is pinned by digest; renovate bumps it.
