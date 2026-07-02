@@ -2,9 +2,9 @@
 
 Prometheus as a single Docker container, deployed from a templated compose
 project with `community.docker.docker_compose_v2`. It scrapes itself, the
-`node_exporter` targets in `prometheus_node_targets`, and the `cadvisor` targets
-in `prometheus_cadvisor_targets`, and routes alerts to the `alertmanager` targets
-in `prometheus_alertmanager_targets`.
+`node_exporter` targets in `prometheus_node_targets`, the `cadvisor` targets
+in `prometheus_cadvisor_targets`, and the `alertmanager` targets in
+`prometheus_alertmanager_targets` — to which it also routes alerts.
 
 ## Target: administratum (Synology)
 
@@ -29,9 +29,12 @@ The role's host is the NAS, not a fleet openSUSE node, which shapes it:
 - `prometheus_node_targets` — list of `host:9100` scrape targets.
 - `prometheus_cadvisor_targets` — list of `host:8080` scrape targets, scraped at
   30s to match cadvisor's housekeeping interval.
-- `prometheus_alertmanager_targets` — list of `host:9093` Alertmanager targets.
-  Empty configures no alerting; non-empty adds the `alerting` block and loads the
-  shipped rule files.
+- `prometheus_alertmanager_targets` — list of `host:9093` Alertmanager targets,
+  both scraped and sent alerts. Scraping gives `up{job="alertmanager"}`, so a
+  dead Alertmanager trips `InstanceDown` in Prometheus — but delivering that
+  alert needs a live Alertmanager, so the `Watchdog` deadman heartbeat is what
+  surfaces a wholly dead one. Empty configures no alerting and no scrape job;
+  non-empty adds the `alerting` block and loads the shipped rule files.
 
 ## Alerting
 
