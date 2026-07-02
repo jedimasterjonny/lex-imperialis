@@ -50,9 +50,12 @@
         - item.stat.exists
         - not item.stat.islnk
 
+    # --no-folding forces every target to a leaf symlink; a folded directory
+    # symlink would let the skel-removal above resolve through it and delete the
+    # real file in the clone, which update: false then never restores.
     - name: Deploy the packages with stow
       ansible.builtin.command:
-        cmd: "stow --verbose --target {{ stow_user_home }} {{ stow_packages | join(' ') }}"
+        cmd: "stow --verbose --no-folding --target {{ stow_user_home }} {{ stow_packages | join(' ') }}"
         chdir: "{{ stow_dots_dir }}"
       register: stow_result
       changed_when: "'LINK:' in stow_result.stderr"
