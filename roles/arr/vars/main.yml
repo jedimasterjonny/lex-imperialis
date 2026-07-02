@@ -73,8 +73,11 @@ arr_apps:
   # face the public reverse proxy. No uid: it patches its bundled chromedriver in
   # place under /app, writable only to the image's own user, so it runs as that
   # user with no host account. /health answers 200 without launching the browser.
+  # Joins the wireguard netns like the apps it serves, so prowlarr reaches it on
+  # localhost and its own indexer fetches ride the tunnel.
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:v3.5.0@sha256:139dfee1c6f89249c8d665d1333a42e8ec74ec0a86bc6bb1c8461e10d3a66a47
+    netns: wireguard
     healthcheck:
       cmd: curl -fsS http://127.0.0.1:8191/health
   beets:
