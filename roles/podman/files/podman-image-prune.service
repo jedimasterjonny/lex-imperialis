@@ -1,6 +1,6 @@
 [Unit]
-Description=Prune dangling podman images
+Description=Prune unused podman images
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/podman-image-prune
+ExecStart=/usr/bin/podman image prune --all --force

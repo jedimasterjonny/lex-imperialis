@@ -1,5 +1,5 @@
 [Unit]
-Description=Weekly prune of dangling podman images
+Description=Weekly prune of unused podman images
 
 [Timer]
 OnCalendar=Sat *-*-* 06:00:00
