@@ -7,8 +7,9 @@
 # /data — 'root' is the whole tree, so
 # imports hardlink across downloads and media; a list is just those dirs.
 # device passes a host device through for hardware transcoding; netns joins
-# another app's container netns (lifecycle follows it); network_alias, caps,
-# sysctls and binds are quadlet passthroughs; healthcheck adds a podman liveness
+# another app's container netns (lifecycle follows it, and that owner advertises
+# each joiner as a network alias so caddy reaches it); caps, sysctls and binds
+# are quadlet passthroughs; healthcheck adds a podman liveness
 # probe (cmd plus optional interval/timeout/start_period/retries/on_failure, all
 # defaulted). prowlarr only manages indexers and recyclarr
 # only talks to the other apps, so neither has a data mount. recyclarr's TRaSH
@@ -40,6 +41,7 @@ arr_apps:
     image: lscr.io/linuxserver/radarr:6.2.1@sha256:39da107b5a9371fdaa651bd188049b863716a815385eb3a30d41071b7e1aeb33
     uid: 1038
     port: 7878
+    netns: wireguard
     data: root
     healthcheck:
       cmd: curl -fsS http://127.0.0.1:7878/ping
@@ -47,6 +49,7 @@ arr_apps:
     image: lscr.io/linuxserver/sonarr:4.0.19@sha256:fbb15bb4fb14d1ffe017f6be0e3fed8f1b300e4687e329767da0b61f36ba1eed
     uid: 1039
     port: 8989
+    netns: wireguard
     data: root
     healthcheck:
       cmd: curl -fsS http://127.0.0.1:8989/ping
@@ -54,6 +57,7 @@ arr_apps:
     image: lscr.io/linuxserver/lidarr:3.1.0@sha256:ba7d43fd5d7de790c38c2dc8f2b2b54c1ac00a452784891c37385a43a039907a
     uid: 1037
     port: 8686
+    netns: wireguard
     data: root
     healthcheck:
       cmd: curl -fsS http://127.0.0.1:8686/ping
@@ -61,6 +65,7 @@ arr_apps:
     image: lscr.io/linuxserver/prowlarr:2.4.0@sha256:3e9bd62ca90c97c5df75b7012e10a29f6926e62807deeddc1dc89e6e2fd141e1
     uid: 3004
     port: 9696
+    netns: wireguard
     healthcheck:
       cmd: curl -fsS http://127.0.0.1:9696/ping
   # Prowlarr's Cloudflare-challenge solver. No port, so no proxy snippet: this
@@ -133,7 +138,6 @@ arr_apps:
   wireguard:
     image: lscr.io/linuxserver/wireguard:1.0.20250521@sha256:ad0501c857edad4059f90c9b536338cb105bbb5f3fc82070986d36b937c897ca
     uid: 3009
-    network_alias: transmission
     caps: [NET_ADMIN]
     sysctls: [net.ipv4.conf.all.src_valid_mark=1]
     binds: ["{{ arr_wireguard_conf_path }}:/config/wg_confs/wg0.conf:ro"]
