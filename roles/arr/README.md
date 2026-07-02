@@ -22,8 +22,9 @@ wireguard's probe (below) instead force-restarts the tunnel.
   no media mount; netns-confined to the tunnel (below).
 - **flaresolverr** — Cloudflare-challenge solver for prowlarr; a
   headless-browser proxy with no media mount and, being an unauthenticated
-  URL-fetcher, no proxy snippet. It stays on `caddy.network`; prowlarr, in the
-  wireguard netns, reaches it by container name over that shared interface.
+  URL-fetcher, no proxy snippet. Netns-confined to the tunnel like the apps it
+  serves (below), so prowlarr reaches it on localhost and its own fetches ride
+  the VPN.
 - **beets** — mounts the whole tree (`data: root`) to catalog the music
   library and screen `downloads` into staging for lidarr to import.
 - **plex** — host-networked (so GDM/DLNA discovery works; not proxied),
@@ -162,23 +163,24 @@ so the repo owns recyclarr's config, not the volume.
 ## Apps behind WireGuard
 
 The wireguard container owns the network namespace; radarr, sonarr, lidarr,
-prowlarr and transmission each join it via `Network=container:wireguard` and
-have no network of their own. Their internet traffic (indexers, trackers,
-metadata lookups, torrent peers) rides the tunnel; local traffic does not.
+prowlarr, flaresolverr and transmission each join it via
+`Network=container:wireguard` and have no network of their own. Their internet
+traffic (indexers, trackers, metadata lookups, torrent peers) rides the tunnel;
+local traffic does not.
 
 - **Namespace owner** — wireguard sits on `caddy.network`, carries `NET_ADMIN`
   and `net.ipv4.conf.all.src_valid_mark=1`, and bind-mounts
   `/etc/wireguard/wg0.conf` read-only into wg-quick's conf dir. It advertises a
-  `NetworkAlias` for each enabled app that joins its netns, computed from the
+  `NetworkAlias` for each enabled joiner with a proxied port, computed from the
   `netns:` membership rather than a hand-kept list. That owner membership is
   load-bearing: a joiner has no `caddy.network` interface of its own, so the
-  owner's is what lets caddy proxy each webui and lets a joiner reach an
-  on-network backend like flaresolverr.
+  owner's alias is what lets caddy reach each webui; joiners reach each other on
+  localhost in the shared netns (so prowlarr reaches flaresolverr, which carries
+  no port and so no alias).
 - **Routing split** — wg-quick's `suppress_prefixlength 0` policy rule pushes
   only default-route traffic into wg0: each app's internet traffic rides the
   tunnel, while the podman subnet resolves from the main table, so caddy
-  proxies every webui at its alias — and prowlarr reaches flaresolverr —
-  without touching the VPN.
+  proxies every webui at its alias without touching the VPN.
 - **Lifecycle** — each joiner is `Requires`/`After`/`PartOf` the wireguard
   service: it starts after the tunnel exists and restarts whenever wireguard
   does. A config change notifies `Restart wireguard`; PartOf carries every
