@@ -138,6 +138,33 @@ groups:
           summary: "WordPress update check overdue on {{ $labels.instance }}"
           description: "{{ $labels.instance }} has not completed a WordPress update check in over a day."
 
+      # wp-cron overwrites the metric every 5 minutes, so a one-off failure clears
+      # on the next run; 15m (three cycles) fires only on a sustained failure — the
+      # run reached wp-cli but errored (the database unreachable), since an
+      # individual scheduled hook failing still exits the run 0. A wholly down stack
+      # never runs the job (Requires=/After=wordpress.service), freezing the metric
+      # for WordpressCronOverdue to catch instead.
+      - alert: WordpressCronFailed
+        expr: wordpress_cron_success == 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "WordPress cron failed on {{ $labels.instance }}"
+          description: "The last WordPress cron run on {{ $labels.instance }} errored — the database is unreachable or wp-cli otherwise failed."
+      # The 5-minute timer caps a healthy run at minutes old; an hour (twelve
+      # missed fires) gives ample grace before flagging a timer that has stopped —
+      # a stopped timer silently stalls every scheduled post and task, and its
+      # still-firing-but-failing counterpart is caught by WordpressCronFailed.
+      - alert: WordpressCronOverdue
+        expr: time() - wordpress_cron_last_run_timestamp_seconds > 1 * 3600
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "WordPress cron overdue on {{ $labels.instance }}"
+          description: "{{ $labels.instance }} has not run WordPress cron in over an hour — scheduled posts and tasks have stalled."
+
   - name: gitops
     rules:
       - alert: GitopsReconcileFailed

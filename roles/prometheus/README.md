@@ -58,7 +58,9 @@ has not completed in over 9 days) plus the WordPress-update rules
 `WordpressUpdateAvailable` (an update awaiting a hand — a major, or anything not
 opted into auto-update) and the update-check pair `WordpressUpdateCheckFailed` /
 `WordpressUpdateCheckOverdue` (a six-hourly update check that errored or has not
-completed in over a day); the `gitops` group's `GitopsReconcileFailed` /
+completed in over a day) and the cron pair `WordpressCronFailed` /
+`WordpressCronOverdue` (the 5-minute wp-cron run that hard-failed or has not run
+in over an hour); the `gitops` group's `GitopsReconcileFailed` /
 `GitopsReconcileStale` (an unattended fleet reconcile that failed or has not completed
 in over 2 hours); the `music` group's `BeetsPipelineLidarrRejected`
 (an album beets matched but lidarr refused) and `BeetsPipelineQuarantineBacklog` (a
@@ -66,7 +68,7 @@ standing pile of no-match albums awaiting hand-processing); and the `watchdog`
 group's always-firing `Watchdog` (`vector(1)`, no `for:`), whose silence at the
 deadman receiver signals a broken Prometheus -> Alertmanager -> heartbeat
 pipeline. The backup, dump,
-update, and reconcile outcome pairs, and the music backlog gauges, all read an
+update, cron, and reconcile outcome pairs, and the music backlog gauges, all read an
 `ExecStopPost`-written metric off node_exporter's textfile collector; the
 WordPress update gauge and its check pair read the same collector, but from a
 metric `wp-update-check.sh` writes itself rather than via an `ExecStopPost` hook. The
