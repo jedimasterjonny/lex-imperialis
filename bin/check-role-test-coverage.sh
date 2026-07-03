@@ -19,19 +19,19 @@ for role_path in "$roles_dir"/*/; do
 	role="$(basename "$role_path")"
 	molecule_dir="${role_path}molecule"
 
-	if [ ! -d "$molecule_dir/default" ] && [ ! -d "$molecule_dir/libvirt" ]; then
+	if [ ! -f "$molecule_dir/default/molecule.yml" ] && [ ! -f "$molecule_dir/libvirt/molecule.yml" ]; then
 		echo "ERROR: role '$role' ships no test; add a molecule/default (incus) or molecule/libvirt scenario." >&2
 		status=1
 	fi
 
-	if [ -d "$molecule_dir/libvirt" ] && [ ! -d "$molecule_dir/hetzner" ]; then
+	if [ -f "$molecule_dir/libvirt/molecule.yml" ] && [ ! -f "$molecule_dir/hetzner/molecule.yml" ]; then
 		echo "ERROR: role '$role' has a libvirt scenario but no molecule/hetzner (its CI realisation on a real VM)." >&2
 		status=1
 	fi
 done
 
 for role in $leap_roles; do
-	if [ ! -d "$roles_dir/$role/molecule/leap" ]; then
+	if [ ! -f "$roles_dir/$role/molecule/leap/molecule.yml" ]; then
 		echo "ERROR: role '$role' is in the Leap-16 subset but ships no molecule/leap scenario." >&2
 		status=1
 	fi
