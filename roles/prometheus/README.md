@@ -67,7 +67,9 @@ group's always-firing `Watchdog` (`vector(1)`, no `for:`), whose silence at the
 deadman receiver signals a broken Prometheus -> Alertmanager -> heartbeat
 pipeline. The backup, dump,
 update, and reconcile outcome pairs, and the music backlog gauges, all read an
-`ExecStopPost`-written metric off node_exporter's textfile collector. The
+`ExecStopPost`-written metric off node_exporter's textfile collector; the
+WordPress update gauge and its check pair read the same collector, but from a
+metric `wp-update-check.sh` writes itself rather than via an `ExecStopPost` hook. The
 rules sit
 in a directory mount, so a changed rule reaches the container — but, like a config
 change, only a recreate makes Prometheus reload it.
