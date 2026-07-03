@@ -6,12 +6,16 @@ services:
     # Host network: the container resolves scrape targets and routes to them
     # exactly as the host does, and Prometheus serves on the host's :9090.
     network_mode: host
-{% if prometheus_security_opt %}
+    # Prometheus reads its config, writes its TSDB, and serves HTTP — it needs no
+    # Linux capabilities and never needs to escalate privilege, so drop every
+    # capability and bar new ones even on the host network.
+    cap_drop:
+      - ALL
     security_opt:
-{% for opt in prometheus_security_opt %}
+      - no-new-privileges:true
+{% for opt in prometheus_security_opt_extra %}
       - {{ opt }}
 {% endfor %}
-{% endif %}
     restart: unless-stopped
     command:
       - --config.file=/etc/prometheus/prometheus.yml
