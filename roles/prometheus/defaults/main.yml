@@ -17,7 +17,8 @@ prometheus_cadvisor_targets: []
 # so no alerting block or rule files are configured until a host sets them.
 prometheus_alertmanager_targets: []
 
-# Container security options (compose security_opt). Empty keeps docker's default
-# profiles; the molecule scenario sets apparmor=unconfined because its nested CI
-# container cannot load an AppArmor profile.
-prometheus_security_opt: []
+# Extra compose security_opt entries, appended to the no-new-privileges the
+# template hardcodes (alongside cap_drop: ALL). Empty in production; the molecule
+# scenario sets apparmor=unconfined because its nested CI container cannot load an
+# AppArmor profile.
+prometheus_security_opt_extra: []

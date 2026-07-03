@@ -20,5 +20,5 @@
           - localhost:8080
         prometheus_alertmanager_targets:
           - localhost:9093
-        prometheus_security_opt:
+        prometheus_security_opt_extra:
           - apparmor=unconfined
