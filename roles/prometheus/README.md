@@ -54,7 +54,11 @@ unit that auto-restarted more than three times in 15m, off node_exporter's
 other service alike, suppressed for the first 15m of uptime so boot restart
 churn isn't a false storm); the `maintenance` group's `autoupdate` pair
 `AutoupdateFailed` / `AutoupdateOverdue` (an unattended `zypper` run that failed or
-has not completed in over 9 days); the `gitops` group's `GitopsReconcileFailed` /
+has not completed in over 9 days) plus the WordPress-update rules
+`WordpressUpdateAvailable` (an update awaiting a hand — a major, or anything not
+opted into auto-update) and the update-check pair `WordpressUpdateCheckFailed` /
+`WordpressUpdateCheckOverdue` (a six-hourly update check that errored or has not
+completed in over a day); the `gitops` group's `GitopsReconcileFailed` /
 `GitopsReconcileStale` (an unattended fleet reconcile that failed or has not completed
 in over 2 hours); the `music` group's `BeetsPipelineLidarrRejected`
 (an album beets matched but lidarr refused) and `BeetsPipelineQuarantineBacklog` (a
