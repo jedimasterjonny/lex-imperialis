@@ -29,8 +29,9 @@ mount and lets `podman_backup` capture it.
 
 Ansible owns only `settings.yaml` (the title), rendered to `/etc/homepage` and
 mounted read-only as a single file on top of the volume, so it stays
-config-as-code without shadowing the seeded data. The container runs as the
-`homepage` host id (`homepage_uid`, PUID/PGID), which owns that file.
+config-as-code without shadowing the seeded data. Root owns the mode-0644 file;
+the container reads it as its own id (`homepage_uid`, PUID/PGID) over the `:ro`
+bind regardless of host owner.
 
 The container carries a podman healthcheck against `/api/healthcheck` (status
 only, no restart on failure).
@@ -49,6 +50,6 @@ as a failed healthcheck.
 - `homepage_tls` — front the apex with an `acme_dns` cert (needs caddy's `caddy_cloudflare_api_token`); `false` serves plain HTTP (molecule).
 - `homepage_title` — dashboard title, rendered into `settings.yaml`.
 - `homepage_timezone` — container timezone for date/time display.
-- `homepage_uid` — host id the container runs as and that owns `settings.yaml`.
+- `homepage_uid` — host id the container runs as (PUID/PGID).
 
 The image (`homepage_image`) is pinned by digest; renovate bumps it.
