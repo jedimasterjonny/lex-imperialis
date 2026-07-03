@@ -132,6 +132,18 @@
     mode: "0755"
   become: true
 
+# wordpress-cron.service's ExecStopPost hook: records each cron run's outcome as a
+# node_exporter textfile metric so a wp-cron timer that stops firing alerts
+# instead of silently stalling scheduled tasks.
+- name: Install the cron metric script
+  ansible.builtin.template:
+    src: wp-cron-metric.sh.j2
+    dest: /usr/local/sbin/wp-cron-metric.sh
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
 # Static units for the role's three timers: wp-cron takes scheduled tasks off
 # visitor page-loads (DISABLE_WP_CRON in the env), the daily db-dump writes a
 # logical backup podman_backup's restic sweep then captures alongside the
