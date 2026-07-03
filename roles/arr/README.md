@@ -48,6 +48,19 @@ images drop their service to `PUID`/`PGID`; recyclarr runs under quadlet
 it patches its bundled chromedriver in place under `/app`, writable only to that
 user, and mounts nothing on the host.
 
+Every container also drops all capabilities and sets `NoNewPrivileges=true`, then
+adds back only its minimum. The lscr.io s6 images keep `CHOWN`, `SETGID` and
+`SETUID` to chown `/config` and drop to `PUID`/`PGID`, plus `KILL` so the root s6
+supervisor can still signal that dropped service on shutdown (without it a stop
+hangs to the timeout, then a hard kill); beets, transmission and plex also add
+`DAC_OVERRIDE` because their init writes into the already-chowned `/config` as
+root. wireguard runs its service as root, so it needs no `KILL`, and adds
+`NET_ADMIN` for the tunnel. flaresolverr and recyclarr run as a non-root user and
+add nothing back. Molecule asserts each set — `EffectiveCaps` for the lscr.io
+images (root at the container level), `BoundingCaps` for the non-root-user
+flaresolverr and recyclarr where `EffectiveCaps` is always empty — so widening
+the caps or dropping `NoNewPrivileges` fails CI.
+
 Data dirs are setgid `2775`, each owned by the app that fills it; with
 `UMASK=002` files land group-writable, so the rw apps co-write and
 hardlink across each other's output. plex's membership is read-only —
