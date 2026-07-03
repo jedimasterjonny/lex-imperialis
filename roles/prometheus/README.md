@@ -35,6 +35,9 @@ The role's host is the NAS, not a fleet openSUSE node, which shapes it:
   alert needs a live Alertmanager, so the `Watchdog` deadman heartbeat is what
   surfaces a wholly dead one. Empty configures no alerting and no scrape job;
   non-empty adds the `alerting` block and loads the shipped rule files.
+- `prometheus_security_opt_extra` — extra compose `security_opt` entries, appended
+  to the `no-new-privileges` the template hardcodes (alongside `cap_drop: ALL`);
+  empty in production.
 
 ## Alerting
 
