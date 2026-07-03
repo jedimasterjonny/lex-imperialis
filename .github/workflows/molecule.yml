@@ -16,6 +16,7 @@ name: molecule
       - 'inventory/group_vars/all/vault.yml'
       - 'requirements.txt'
       - 'requirements-dev.txt'
+      - 'Makefile'
       - 'bin/check-role-test-coverage.sh'
       - '.github/workflows/molecule.yml'
   workflow_dispatch:
@@ -48,8 +49,8 @@ jobs:
       # tiers; shared infra (anything outside roles/) is exercised via the motd
       # harness. The incus tiers (Tumbleweed default + Leap) are free, so any
       # shared change runs them; the billable hetzner VM validates real-machine
-      # behaviour, so a requirements-dev.txt (test/lint toolchain) bump alone
-      # stays on the free incus tiers.
+      # behaviour, so a toolchain-only bump (requirements-dev.txt or the
+      # Makefile) stays on the free incus tiers.
       - name: Determine roles and tiers
         id: set
         env:
@@ -74,7 +75,7 @@ jobs:
           hetzner_cand="$roles"
           if [ -n "$shared" ]; then
             incus_cand=$(printf '%s\nmotd' "$roles")
-            if printf '%s\n' "$shared" | grep -qvE '^requirements-dev\.txt$'; then
+            if printf '%s\n' "$shared" | grep -qvE '^(requirements-dev\.txt|Makefile)$'; then
               hetzner_cand=$(printf '%s\nmotd' "$roles")
             fi
           fi
