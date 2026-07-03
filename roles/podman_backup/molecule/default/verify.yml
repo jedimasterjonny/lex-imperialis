@@ -14,6 +14,22 @@
       register: podman_backup_restic
       changed_when: false
 
+    # side_effect ran podman-restore.sh, which quiesced (stopped) the probe unit
+    # and must have restarted it via its EXIT trap. If the trap were broken the
+    # unit would still be down here, before verify fires anything.
+    - name: Read the probe unit's state after the side-effect restore
+      ansible.builtin.systemd_service:
+        name: lex-probe
+      register: podman_backup_probe_after_restore
+      become: true
+
+    - name: The restore restarted the quiesced probe unit
+      ansible.builtin.assert:
+        that:
+          - podman_backup_probe_after_restore.status.ActiveState == 'active'
+        fail_msg: "the restore did not restart the quiesced probe unit"
+        quiet: true
+
     - name: Stat the backup script
       ansible.builtin.stat:
         path: "{{ podman_backup_script }}"
@@ -76,6 +92,21 @@
         name: podman-backup.service
         state: started
       become: true
+
+    # The backup quiesced (stopped) the probe unit and must have restarted it via
+    # its EXIT trap; a broken trap would leave the container down after the run.
+    - name: Read the probe unit's state after the backup
+      ansible.builtin.systemd_service:
+        name: lex-probe
+      register: podman_backup_probe_after_backup
+      become: true
+
+    - name: The backup restarted the quiesced probe unit
+      ansible.builtin.assert:
+        that:
+          - podman_backup_probe_after_backup.status.ActiveState == 'active'
+        fail_msg: "the backup did not restart the quiesced probe unit"
+        quiet: true
 
     - name: Restore the latest snapshot to a scratch directory
       ansible.builtin.command: "restic --insecure-no-password --repo {{ podman_backup_repo }} restore latest --target /var/tmp/restore"
