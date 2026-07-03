@@ -48,3 +48,21 @@ jobs:
 
       - name: Run lint gate
         run: make pre-commit
+
+  secret-scan:
+    name: secret-scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      # The pre-commit gitleaks hook scans the staged index (--staged); on CI's
+      # fresh checkout nothing is staged, so it scans zero bytes and passes
+      # vacuously. Run the same git-mode scan without --staged — the real
+      # push-time backstop over the checked-out commit. Version tracks the hook,
+      # the single source of truth.
+      - name: Scan the checked-out commit for secrets
+        run: |
+          version=$(grep -A1 'repo: https://github.com/gitleaks/gitleaks' .pre-commit-config.yaml | sed -n 's/.*rev: v//p')
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz" | tar -xz gitleaks
+          ./gitleaks git . --no-banner --redact
