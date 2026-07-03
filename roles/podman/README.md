@@ -9,5 +9,5 @@ The netavark firewalld-reload listener is enabled, so a firewalld reload
 reapplies netavark's rules instead of dropping published ports and
 inter-container networking.
 
-A weekly timer (Saturday 06:00, persistent) prunes dangling images, so
+A weekly timer (Saturday 06:00, persistent) prunes unused images, so
 superseded quadlet image pulls don't accumulate.
