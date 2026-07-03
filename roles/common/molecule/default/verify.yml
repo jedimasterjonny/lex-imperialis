@@ -48,6 +48,23 @@
           - common_sudoers_wheel.stat.gr_name == 'root'
         fail_msg: "/etc/sudoers.d/wheel is missing or not owned root:root mode 0440"
 
+    # The stat proves the file exists and is sudo-readable; slurp it to prove the
+    # policy itself — wheel gets full sudo and authenticates with its own password
+    # (targetpw off), the two lines that make the drop-in load-bearing.
+    - name: Read the wheel sudoers drop-in
+      ansible.builtin.slurp:
+        src: /etc/sudoers.d/wheel
+      register: common_sudoers_wheel_content
+      become: true
+
+    - name: Wheel sudoers grants own-password sudo
+      ansible.builtin.assert:
+        that:
+          - "'%wheel ALL=(ALL:ALL) ALL' in (common_sudoers_wheel_content.content | b64decode)"
+          - "'Defaults:%wheel !targetpw' in (common_sudoers_wheel_content.content | b64decode)"
+        fail_msg: "the wheel sudoers drop-in does not grant own-password sudo"
+        quiet: true
+
     - name: Gather installed package facts
       ansible.builtin.package_facts:
         manager: auto
