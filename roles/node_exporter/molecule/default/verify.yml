@@ -41,3 +41,15 @@
       until: "'node_textfile_probe 42' in node_exporter_textfile.content"
       retries: 15
       delay: 2
+
+    # The systemd collector reads the host D-Bus bus; its restart counter feeds
+    # prometheus's ServiceRestartStorm alert. success 1 proves the collector is
+    # enabled and connected — 0 (or absent) means the alert has no data to fire on.
+    - name: The systemd collector is scraping successfully
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9100/metrics
+        return_content: true
+      register: node_exporter_systemd
+      until: "'node_scrape_collector_success{collector=\"systemd\"} 1' in node_exporter_systemd.content"
+      retries: 15
+      delay: 2
