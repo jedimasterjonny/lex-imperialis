@@ -9,3 +9,10 @@
     - name: Apply the alertmanager role
       ansible.builtin.include_role:
         name: alertmanager
+      vars:
+        # Non-empty dummies exercise the production render: both secret gates in
+        # alertmanager.yml.j2 fire, so the discord and deadman receivers get their
+        # *_file references. Alertmanager reads those files only when it sends, so
+        # the dummy URLs never egress.
+        alertmanager_discord_webhook_url: https://discord.example/api/webhooks/0/molecule
+        alertmanager_deadman_ping_url: https://hc-ping.example/molecule
