@@ -90,3 +90,29 @@
         fail_msg: >-
           The running prometheus did not pick up the config change — the container
           was not recreated (stale single-file bind mount).
+
+    # The checks above prove prometheus works; they can't prove its capability set
+    # is minimal. Assert the posture directly so a regression that widens the caps
+    # or drops the restriction fails here, not silently in production.
+    - name: Read prometheus's security posture
+      ansible.builtin.command: docker inspect prometheus
+      register: prometheus_inspect
+      changed_when: false
+
+    # docker inspect exposes the request (HostConfig), not podman's EffectiveCaps/
+    # BoundingCaps: CapDrop == [ALL] with an empty CapAdd is the docker equivalent
+    # of "no capabilities" (either half missing widens them). Match no-new-privileges
+    # as a substring — docker's rendering of the :true suffix is not guaranteed
+    # (podman drops it, docker may not).
+    - name: Prometheus keeps no capabilities and bars privilege escalation
+      vars:
+        prometheus: "{{ prometheus_inspect.stdout | from_json | first }}"
+      ansible.builtin.assert:
+        that:
+          - "prometheus.HostConfig.CapDrop | default([], true) | sort == ['ALL']"
+          - "prometheus.HostConfig.CapAdd | default([], true) == []"
+          - >-
+            prometheus.HostConfig.SecurityOpt | default([], true)
+            | select('search', 'no-new-privileges') | list | length > 0
+        fail_msg: "prometheus's capability or no-new-privileges posture has regressed"
+        quiet: true

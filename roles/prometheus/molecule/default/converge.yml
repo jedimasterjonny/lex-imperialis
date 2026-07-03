@@ -49,7 +49,7 @@
         # alerting block and rule files to load, which verify asserts.
         prometheus_alertmanager_targets:
           - localhost:9093
-        # The nested container cannot load an AppArmor profile, so run the
-        # container unconfined; production keeps docker's default.
-        prometheus_security_opt:
+        # The nested CI container cannot load an AppArmor profile, so run it
+        # unconfined; the template's hardcoded posture still applies on top.
+        prometheus_security_opt_extra:
           - apparmor=unconfined
