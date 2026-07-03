@@ -3,12 +3,40 @@
   hosts: all
   vars:
     common_hostname: "{{ inventory_hostname }}"
+  vars_files:
+    - ../../defaults/main.yml
   tasks:
     # dev installs per-user tooling and dotfiles, so the owner account from
     # common must exist first — the workstation always carries both roles.
     - name: Apply the common role
       ansible.builtin.include_role:
         name: common
+
+    # Seed a pre-existing config so the dev role reaches its recursive-merge
+    # branch — the create-from-scratch else-branch is all molecule covers
+    # otherwise, and the merge is the only path that can clobber the owner's live
+    # OAuth token. force:false seeds once, so the role's own write and the
+    # idempotence converge leave it intact.
+    - name: Seed a pre-existing Claude config with unrelated live state
+      ansible.builtin.copy:
+        dest: "{{ dev_claude_config }}"
+        content: |
+          {
+            "oauthAccount": {
+              "accountUuid": "molecule-sentinel"
+            },
+            "projects": {
+              "/opt/unrelated-molecule-project": {
+                "hasTrustDialogAccepted": true,
+                "hasCompletedProjectOnboarding": true
+              }
+            }
+          }
+        owner: "{{ dev_user }}"
+        group: users
+        mode: "0600"
+        force: false
+      become: true
 
     - name: Apply the dev role
       ansible.builtin.include_role:
