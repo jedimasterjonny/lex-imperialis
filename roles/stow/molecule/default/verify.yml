@@ -1,17 +1,45 @@
 ---
+# Runs after molecule's idempotence step, i.e. after a second converge, so these
+# assertions also prove the deploy did not delete through a folded parent.
 - name: Verify
   hosts: all
   gather_facts: false
+  become: true
   tasks:
-    - name: Stat the stowed gitconfig
+    - name: Stat the flat package target
       ansible.builtin.stat:
         path: /home/tester/.gitconfig
-      become: true
+        follow: false
       register: stow_gitconfig
 
-    - name: Gitconfig is a stow symlink
+    - name: Stat the nested package parent directory
+      ansible.builtin.stat:
+        path: /home/tester/.config/nvim
+        follow: false
+      register: stow_nvim_dir
+
+    - name: Stat the nested package target
+      ansible.builtin.stat:
+        path: /home/tester/.config/nvim/init.lua
+        follow: false
+      register: stow_nvim_init
+
+    - name: Stat the nested source file in the clone
+      ansible.builtin.stat:
+        path: /home/tester/dots/nvim/.config/nvim/init.lua
+        follow: false
+      register: stow_nvim_source
+
+    - name: Targets are leaf symlinks and the dotfiles source survived
       ansible.builtin.assert:
         that:
           - stow_gitconfig.stat.exists
           - stow_gitconfig.stat.islnk
-        fail_msg: "the git package was not stowed for tester"
+          - stow_nvim_dir.stat.isdir
+          - not stow_nvim_dir.stat.islnk
+          - stow_nvim_init.stat.exists
+          - stow_nvim_init.stat.islnk
+          - stow_nvim_source.stat.exists
+        fail_msg: >-
+          folded deploy: the nested target is not a leaf symlink, or the skel
+          removal deleted the source through a folded parent symlink

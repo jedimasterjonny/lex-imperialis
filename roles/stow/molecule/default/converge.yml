@@ -14,11 +14,71 @@
         state: present
       become: true
 
-    - name: Deploy a stow package
+    - name: Set up the dotfiles fixture and the tester home
+      become: true
+      become_user: tester
+      vars:
+        stow_fixture_dir: /home/tester/dots-src
+      block:
+        # A local fixture stands in for the dots repo: a flat package (git) and
+        # a nested one (nvim, the tree-folding case), shipping no .stowrc — so
+        # the role's own --no-folding is the only thing keeping the deploy
+        # unfolded, which is exactly what this scenario must exercise.
+        - name: Create the fixture package directories
+          ansible.builtin.file:
+            path: "{{ stow_fixture_dir }}/{{ item }}"
+            state: directory
+            mode: "0755"
+          loop:
+            - git
+            - nvim/.config/nvim
+
+        - name: Write the fixture package files
+          ansible.builtin.copy:
+            dest: "{{ stow_fixture_dir }}/{{ item.path }}"
+            content: "{{ item.content }}"
+            mode: "0644"
+          loop:
+            - path: git/.gitconfig
+              content: "[user]\n  name = Fixture\n"
+            - path: nvim/.config/nvim/init.lua
+              content: "vim.o.number = true\n"
+
+        - name: Initialise the fixture as a git repository
+          ansible.builtin.shell:
+            chdir: "{{ stow_fixture_dir }}"
+            cmd: |
+              set -e
+              git init -q -b main
+              git add -A
+              git -c user.email=fixture@example.com -c user.name=Fixture commit -qm 'fixture'
+            creates: "{{ stow_fixture_dir }}/.git/refs/heads/main"
+
+        # Pre-create ~/.config as a real directory so a folded deploy would fold
+        # at ~/.config/nvim (the bug's shape), not higher up at ~/.config.
+        - name: Pre-create the nested target's parent directory
+          ansible.builtin.file:
+            path: /home/tester/.config
+            state: directory
+            mode: "0755"
+
+        # A plain (non-symlink) file the skel-removal must clear before stow can
+        # own the target; force: false then leaves the resulting symlink
+        # untouched on the idempotence re-converge.
+        - name: Seed a plain skel file at a package target
+          ansible.builtin.copy:
+            dest: /home/tester/.gitconfig
+            content: "# skel gitconfig\n"
+            force: false
+            mode: "0644"
+
+    - name: Deploy the fixture stow packages
       ansible.builtin.include_role:
         name: stow
       vars:
         stow_user: tester
         stow_user_home: /home/tester
+        stow_dots_repo: /home/tester/dots-src
         stow_packages:
           - git
+          - nvim
