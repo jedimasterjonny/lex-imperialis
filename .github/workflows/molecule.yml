@@ -80,10 +80,10 @@ jobs:
             fi
           fi
 
-          tier_matrix() {  # $1: candidate roles  $2: scenario dir gating the tier
+          tier_matrix() {  # $1: candidate roles  $2: scenario whose molecule.yml gates the tier
             local out="" r
             for r in $(printf '%s\n' "$1" | sort -u); do
-              if [ -n "$r" ] && [ -d "roles/$r/molecule/$2" ]; then
+              if [ -n "$r" ] && [ -f "roles/$r/molecule/$2/molecule.yml" ]; then
                 out="${out}${r}"$'\n'
               fi
             done
