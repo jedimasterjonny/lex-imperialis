@@ -2,6 +2,8 @@
 - name: Verify
   hosts: all
   gather_facts: false
+  vars_files:
+    - ../../defaults/main.yml
   tasks:
     # name="cadvisor" proves the whole chain: --cgroupns=host lets it see its own
     # cgroup, and the podman factory (fed by the mounted socket) labels it by name
@@ -24,3 +26,23 @@
           - "'cadvisor_version_info' in cadvisor_metrics.content"
           - "'container_cpu_usage_seconds_total{' in cadvisor_metrics.content"
         fail_msg: cadvisor served no container_cpu_usage_seconds_total metric
+
+    # The disable_metrics list is the role's cardinality contract, but it cannot be
+    # proven by metric absence: the three collectors it disables beyond cadvisor's
+    # stock defaults — percpu, app, perf_event — emit nothing in a cgroups-v2
+    # container with no perf/app config, so their absence is vacuous (percpu on
+    # cgroup v2 is aggregate-only regardless; app and perf need config to emit).
+    # Assert instead that the exact list reached the running cadvisor, so a
+    # regression that drops or narrows it fails here.
+    - name: Read cadvisor's runtime configuration
+      ansible.builtin.command: podman inspect cadvisor
+      become: true
+      register: cadvisor_inspect
+      changed_when: false
+
+    - name: The high-cardinality collectors are disabled
+      ansible.builtin.assert:
+        that:
+          - "('--disable_metrics=' ~ cadvisor_disable_metrics) in cadvisor_inspect.stdout"
+        fail_msg: "cadvisor is not running with the role's disable_metrics list"
+        quiet: true
