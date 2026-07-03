@@ -27,6 +27,21 @@
           - "'receiver: default' in alertmanager_status.json.config.original"
         fail_msg: alertmanager did not load the templated config
 
+    # Empty secret vars leave both receivers null and neither *_file gate firing;
+    # converge sets dummies, so this proves the production render — both secret-file
+    # references present and the Watchdog routed to its own deadman receiver.
+    - name: The secret-gated receivers and Watchdog route are rendered
+      vars:
+        alertmanager_config: "{{ alertmanager_status.json.config.original }}"
+      ansible.builtin.assert:
+        that:
+          - "'webhook_url_file: /etc/alertmanager/discord_webhook_url' in alertmanager_config"
+          - "'url_file: /etc/alertmanager/deadman_url' in alertmanager_config"
+          - "'receiver: deadman' in alertmanager_config"
+          - "'alertname=\"Watchdog\"' in alertmanager_config"
+        fail_msg: alertmanager did not render the secret-gated receivers or the Watchdog route
+        quiet: true
+
     # A non-zero exit fails the task, proving wget resolves in the image and the
     # health endpoint reports healthy.
     - name: The healthcheck passes

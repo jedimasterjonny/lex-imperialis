@@ -5,9 +5,11 @@ platforms:
   - name: "lex-podman-backup-incus-${MOLECULE_RUN_ID:-local}"
     image: images:opensuse/tumbleweed/cloud
     # podman mounts overlays for its storage, which incus only permits in a
-    # nested-container-capable instance.
+    # nested-container-capable instance. The CI runner's AppArmor denies nested
+    # runc's sysctl fd-reopen, so drop the profile — the instance is throwaway.
     config:
       security.nesting: "true"
+      raw.lxc: lxc.apparmor.profile=unconfined
 provisioner:
   name: ansible
   # Provisioning is role-agnostic and shared at the repo root; ../../../.. is

@@ -16,6 +16,16 @@
         fail_msg: "podman is not using the netavark network backend"
         quiet: true
 
+    # aardvark-dns is only *recommended* by the podman package, so the role
+    # installs it explicitly; podman info lists it under the backend's dns only
+    # when present. netavark ships regardless, so it cannot stand in for this.
+    - name: The aardvark-dns resolver is present for the network backend
+      ansible.builtin.assert:
+        that:
+          - "'aardvark' in podman_info.stdout"
+        fail_msg: "aardvark-dns is not present for the netavark backend"
+        quiet: true
+
     # daemon_reload is a no-op that just makes the module gather and return the
     # timer's systemctl-show properties to assert against; it reads, not mutates.
     - name: Read the prune timer's state

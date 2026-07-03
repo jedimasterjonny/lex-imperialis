@@ -30,5 +30,49 @@
         group: root
         mode: "0644"
       become: true
+
+    - name: Ensure the quadlet unit directory exists
+      ansible.builtin.file:
+        path: /etc/containers/systemd
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      become: true
+
+    # Without a running .container unit, podman-backup's discovery loop matches
+    # nothing and the whole quiesce→stop→restart path is dead code the test never
+    # exercises. This minimal always-up container gives it a unit to quiesce (the
+    # volume mounted read-only, so the probe never perturbs the round-trip data).
+    - name: Install a probe quadlet for the quiesce path
+      ansible.builtin.copy:
+        content: |
+          [Container]
+          Image=docker.io/library/busybox:latest@sha256:fd8d9aa63ba2f0982b5304e1ee8d3b90a210bc1ffb5314d980eb6962f1a9715d
+          Volume=lex-probe:/data:ro
+          Exec=/bin/sh -c "while true; do sleep 3600; done"
+        dest: /etc/containers/systemd/lex-probe.container
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+      notify: Restart the probe unit
+
+    - name: Apply the probe quadlet
+      ansible.builtin.meta: flush_handlers
+
+    - name: Start the probe unit
+      ansible.builtin.systemd_service:
+        name: lex-probe
+        state: started
+      become: true
   roles:
     - role: podman_backup
+  handlers:
+    # daemon-reload folded in: the quadlet-generated unit exists only after it.
+    - name: Restart the probe unit
+      ansible.builtin.systemd_service:
+        name: lex-probe
+        state: restarted
+        daemon_reload: true
+      become: true

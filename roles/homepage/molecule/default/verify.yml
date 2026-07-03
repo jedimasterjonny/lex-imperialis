@@ -29,12 +29,24 @@
         fail_msg: "a security header is missing from the proxied response"
         quiet: true
 
-    # The configured title reaches the rendered page, proving the managed
-    # settings.yaml is mounted and read.
-    - name: The provisioned title is served
+    # The single-file settings.yaml mount is the config-as-code contract: Ansible
+    # renders it and podman mounts it read-only on top of the seeded config volume.
+    # The title is applied client-side, so it never reaches the served HTML — read
+    # the file from inside the container instead. The distinctive title is present
+    # only if the mount landed at /app/config/settings.yaml over the volume rather
+    # than being shadowed by the container's own seeded skeleton.
+    - name: Read the mounted settings from inside the container
+      ansible.builtin.command: podman exec homepage cat /app/config/settings.yaml
+      become: true
+      register: homepage_settings
+      changed_when: false
+
+    - name: The provisioned settings.yaml is mounted over the config volume
       ansible.builtin.assert:
-        that: homepage_title in homepage_page.content
-        fail_msg: The configured title is not in the served page
+        that:
+          - "'Adeptus Molecularum' in homepage_settings.stdout"
+        fail_msg: the managed settings.yaml is not mounted at /app/config/settings.yaml
+        quiet: true
 
     # A non-zero exit fails the task, proving the health endpoint answers and its
     # loopback Host is allowed.
