@@ -93,8 +93,10 @@ is the only way in.
    ```
 
    Once it is healthy (`podman healthcheck run wordpress-db`), load
-   `wordpress-db-dump`'s engine-portable `wordpress.sql` (written daily by the
-   wordpress role's `wp-db-dump`) into it as root:
+   `wordpress-db-dump`'s engine-portable `wordpress.sql` — the wordpress role's
+   `wp-db-dump` runs on a daily timer, so this fallback restores the last
+   completed dump, not a point-in-time state, and loses up to a day's writes
+   (more if the dump had been failing) — into it as root:
 
    ```
    podman run --rm --network caddy --env-file /etc/wordpress/wordpress.env \
