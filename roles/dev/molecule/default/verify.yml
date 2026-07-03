@@ -147,3 +147,16 @@
             quiet: true
           vars:
             dev_claude_config_project: "{{ (dev_claude_config_verify.content | b64decode | from_json).projects[dev_remote_control_workdir] | default({}) }}"
+
+        # converge seeded a pre-existing config, so the role reached it via its
+        # recursive-merge branch. Pre-existing state — the owner's OAuth token and
+        # an unrelated project's trust — must survive the workspace-trust seeding.
+        - name: Pre-existing config state survives the recursive merge
+          ansible.builtin.assert:
+            that:
+              - dev_claude_config_all.oauthAccount.accountUuid | default('') == 'molecule-sentinel'
+              - dev_claude_config_all.projects['/opt/unrelated-molecule-project'].hasTrustDialogAccepted | default(false) | bool
+            fail_msg: "the trust seeding clobbered pre-existing Claude config state"
+            quiet: true
+          vars:
+            dev_claude_config_all: "{{ dev_claude_config_verify.content | b64decode | from_json }}"

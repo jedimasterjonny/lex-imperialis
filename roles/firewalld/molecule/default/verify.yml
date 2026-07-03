@@ -52,3 +52,38 @@
             | select('search', '192.168.3.0/24') | select('search', '9100')
             | list | length > 0
         fail_msg: the source-scoped 9100 rich rule is absent
+
+    # The immediate half. The --permanent queries above prove each opening
+    # survives a reload; these mirror them without --permanent to prove the role
+    # also applied each to the running firewall (immediate:true) — a regression to
+    # permanent-only would pass above but fail here.
+    - name: The configured services are open in the running firewall
+      ansible.builtin.command: "firewall-cmd --query-service={{ item }}"
+      changed_when: false
+      become: true
+      loop:
+        - ssh
+        - http
+
+    - name: The configured ports are open in the running firewall
+      ansible.builtin.command: "firewall-cmd --query-port={{ item }}"
+      changed_when: false
+      become: true
+      loop:
+        - 443/udp
+        - 32412-32414/udp
+
+    - name: Read the running rich rules
+      ansible.builtin.command: firewall-cmd --list-rich-rules
+      changed_when: false
+      become: true
+      register: firewalld_runtime_rich_rules_out
+
+    - name: The source-scoped rich rule is present in the running firewall
+      ansible.builtin.assert:
+        that:
+          - >-
+            firewalld_runtime_rich_rules_out.stdout_lines
+            | select('search', '192.168.3.0/24') | select('search', '9100')
+            | list | length > 0
+        fail_msg: the source-scoped 9100 rich rule is absent from the running firewall

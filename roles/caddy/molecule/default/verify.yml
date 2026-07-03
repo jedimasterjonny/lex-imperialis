@@ -43,6 +43,51 @@
       changed_when: false
       failed_when: "'dns.providers.cloudflare' not in caddy_modules.stdout"
 
+    # The token-set branch (global acme_dns + TLS wildcard vhost) never renders in
+    # converge — the token is empty — so its syntax goes unproven. Render it with a
+    # dummy token/domain and validate it. Serving it live would trigger a real
+    # DNS-01 provision and break the plain-HTTP wildcard checks above, so it is
+    # validated out-of-band: caddy validate parses and loads modules but never
+    # reaches ACME (the {env.*} token is a runtime placeholder), so a dummy is safe.
+    # /etc/caddy is bind-mounted into the container, so the probe file is reachable.
+    - name: Render the DNS-01 (token-set) Caddyfile variant
+      ansible.builtin.template:
+        src: "{{ playbook_dir | dirname | dirname }}/templates/Caddyfile.j2"
+        dest: /etc/caddy/Caddyfile.dns01-probe
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+      vars:
+        # Only truthiness matters here (it fires the {% if %} gate); the value
+        # itself never reaches the file — the Caddyfile references {env.*}.
+        caddy_cloudflare_api_token: molecule-dummy-token-molecule-dummy-token
+        caddy_domain: molecule.example
+
+    - name: Read the rendered DNS-01 variant
+      ansible.builtin.slurp:
+        src: /etc/caddy/Caddyfile.dns01-probe
+      register: caddy_dns01_render
+      become: true
+
+    - name: The token-set branch rendered the global acme_dns block
+      ansible.builtin.assert:
+        that:
+          - "'acme_dns cloudflare' in (caddy_dns01_render.content | b64decode)"
+        fail_msg: "the DNS-01 branch did not render the acme_dns block"
+        quiet: true
+
+    # validate provisions the cloudflare module, which validates the token's format
+    # (35-50 chars of [A-Za-z0-9_-]), so feed the {env.*} placeholder a dummy of
+    # that shape via --env. The format is all it checks — validate never calls the
+    # API — so this fake token is safe.
+    - name: The DNS-01 Caddyfile is valid
+      ansible.builtin.command: >-
+        podman exec --env CLOUDFLARE_API_TOKEN=molecule-dummy-token-molecule-dummy-token
+        caddy caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile.dns01-probe
+      become: true
+      changed_when: false
+
     # A non-zero exit fails the task, proving curl resolves in the image and the
     # 204 health endpoint answers.
     - name: The healthcheck passes

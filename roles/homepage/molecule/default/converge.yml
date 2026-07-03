@@ -4,6 +4,10 @@
   vars:
     # No real domain or ACME in the container: serve the apex over plain HTTP.
     homepage_tls: false
+    # A distinctive title so "the title is served" proves the mounted settings.yaml
+    # is read: the default "Homepage" is also the app's built-in fallback, so it
+    # matches even when the single-file mount is broken.
+    homepage_title: Adeptus Molecularum
   tasks:
     - name: Apply the podman role
       ansible.builtin.include_role:
