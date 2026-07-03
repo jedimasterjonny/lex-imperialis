@@ -260,6 +260,18 @@
         group: root
         mode: "0644"
 
+    # Fed into the beets container over stdin by the wrapper — read data, not
+    # executed on the host, so 0644 with no shebang. Rendered before the wrapper so
+    # the redirect target exists first, even on an in-place upgrade with the timer
+    # live.
+    - name: Install the beets pipeline inner script
+      ansible.builtin.template:
+        src: beets-pipeline-inner.sh.j2
+        dest: "{{ arr_beets_pipeline_inner_script }}"
+        owner: root
+        group: root
+        mode: "0644"
+
     - name: Install the beets pipeline script
       ansible.builtin.template:
         src: beets-pipeline.sh.j2
