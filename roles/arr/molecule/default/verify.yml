@@ -97,6 +97,55 @@
           - arr_recyclarr_id.stdout_lines == [arr_apps.recyclarr.uid | string, arr_apps.recyclarr.uid | string]
         quiet: true
 
+    # The checks above prove each app works; they can't prove its capability set
+    # is minimal. Assert the posture directly so a regression that widens the caps
+    # or drops NoNewPrivileges fails here, not silently in production. The lscr.io
+    # images start as root at the container level and drop internally, so their
+    # EffectiveCaps reflect the add-back; flaresolverr and recyclarr run as a
+    # non-root user, whose EffectiveCaps are always empty regardless of the drop,
+    # so only BoundingCaps has teeth — assert whichever field is meaningful per app.
+    - name: Read each app's security posture
+      ansible.builtin.command: podman inspect {{ item.name }}
+      become: true
+      loop:
+        - {name: radarr, field: EffectiveCaps, caps: [CAP_CHOWN, CAP_KILL, CAP_SETGID, CAP_SETUID]}
+        - {name: sonarr, field: EffectiveCaps, caps: [CAP_CHOWN, CAP_KILL, CAP_SETGID, CAP_SETUID]}
+        - {name: lidarr, field: EffectiveCaps, caps: [CAP_CHOWN, CAP_KILL, CAP_SETGID, CAP_SETUID]}
+        - {name: prowlarr, field: EffectiveCaps, caps: [CAP_CHOWN, CAP_KILL, CAP_SETGID, CAP_SETUID]}
+        - {name: transmission, field: EffectiveCaps, caps: [CAP_CHOWN, CAP_DAC_OVERRIDE, CAP_KILL, CAP_SETGID, CAP_SETUID]}
+        - {name: beets, field: EffectiveCaps, caps: [CAP_CHOWN, CAP_DAC_OVERRIDE, CAP_KILL, CAP_SETGID, CAP_SETUID]}
+        - {name: plex, field: EffectiveCaps, caps: [CAP_CHOWN, CAP_DAC_OVERRIDE, CAP_KILL, CAP_SETGID, CAP_SETUID]}
+        - {name: wireguard, field: EffectiveCaps, caps: [CAP_CHOWN, CAP_NET_ADMIN, CAP_SETGID, CAP_SETUID]}
+        - {name: flaresolverr, field: BoundingCaps, caps: []}
+        - {name: recyclarr, field: BoundingCaps, caps: []}
+      loop_control:
+        label: "{{ item.name }}"
+      register: arr_posture
+      changed_when: false
+
+    - name: Each app keeps only its minimal capabilities and bars privilege escalation
+      vars:
+        container: "{{ item.stdout | from_json | first }}"
+      ansible.builtin.assert:
+        that:
+          - "container[item.item.field] | default([], true) | sort == item.item.caps | sort"
+          - "'no-new-privileges' in (container.HostConfig.SecurityOpt | default([], true))"
+        fail_msg: "{{ item.item.name }}'s capability or no-new-privileges posture has regressed"
+        quiet: true
+      loop: "{{ arr_posture.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+
+    # The posture list is hand-maintained, unlike the loops above that iterate
+    # arr_apps — so a newly-added app would be hardened by the template but escape
+    # the one assert that guards the minimal set. Fail if the two fall out of sync.
+    - name: The posture check covers every app
+      ansible.builtin.assert:
+        that:
+          - "(arr_posture.results | map(attribute='item.name') | sort) == (arr_apps.keys() | sort)"
+        fail_msg: "the capability posture list is out of sync with arr_apps — add the new app to it"
+        quiet: true
+
     # Recyclarr's config renders to the host and bind-mounts read-only into the
     # container. cat from inside proves the bind resolves and the User=3007 process
     # can read each file; a missing or unreadable file fails the task.
