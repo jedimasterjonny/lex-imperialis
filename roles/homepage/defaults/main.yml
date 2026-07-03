@@ -13,6 +13,6 @@ homepage_title: Homepage
 # Container timezone, for the dashboard's date/time display.
 homepage_timezone: Etc/UTC
 
-# Least-privilege host id the container drops to (PUID/PGID) and that owns the
-# config dir. Avoids 1000, which the cloud image's default user holds.
+# Least-privilege host id the container drops to (PUID/PGID). Avoids 1000, which
+# the cloud image's default user holds.
 homepage_uid: 3010

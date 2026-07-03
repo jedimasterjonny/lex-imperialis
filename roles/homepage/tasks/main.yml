@@ -1,34 +1,16 @@
 ---
-# The container runs as its own least-privilege id (PUID/PGID = homepage_uid);
-# the host-side settings.yaml is owned by it so the read-only mount matches the
-# uid the container reads it as.
-- name: Create the homepage group
-  ansible.builtin.group:
-    name: homepage
-    gid: "{{ homepage_uid }}"
-    system: true
-  become: true
-
-- name: Create the homepage user
-  ansible.builtin.user:
-    name: homepage
-    uid: "{{ homepage_uid }}"
-    group: homepage
-    shell: /usr/sbin/nologin
-    create_home: false
-    system: true
-  become: true
-
 # Holds only the managed settings.yaml, mounted read-only on top of the
 # homepage-config volume; the container seeds the skeleton services/widgets/
 # bookmarks into the volume for the operator to fill in (kept out of this
-# public repo).
+# public repo). Owned by root, not the container's PUID: the mode-0644 file is
+# world-readable, so the container reads it over the :ro bind regardless of host
+# owner (as sibling wordpress mounts its config-as-code).
 - name: Create the config directory
   ansible.builtin.file:
     path: /etc/homepage
     state: directory
-    owner: homepage
-    group: homepage
+    owner: root
+    group: root
     mode: "0755"
   become: true
 
@@ -36,8 +18,8 @@
   ansible.builtin.template:
     src: settings.yaml.j2
     dest: /etc/homepage/settings.yaml
-    owner: homepage
-    group: homepage
+    owner: root
+    group: root
     mode: "0644"
   become: true
   notify: Restart homepage
