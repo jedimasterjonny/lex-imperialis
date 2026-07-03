@@ -8,8 +8,9 @@
 # imports hardlink across downloads and media; a list is just those dirs.
 # device passes a host device through for hardware transcoding; netns joins
 # another app's container netns (lifecycle follows it, and that owner advertises
-# each joiner as a network alias so caddy reaches it); caps, sysctls and binds
-# are quadlet passthroughs; healthcheck adds a podman liveness
+# each joiner as a network alias so caddy reaches it); caps is the minimal
+# capability set the app adds back over the template's DropCapability=all
+# baseline; sysctls and binds are quadlet passthroughs; healthcheck adds a podman liveness
 # probe (cmd plus optional interval/timeout/start_period/retries/on_failure, all
 # defaulted). prowlarr only manages indexers and recyclarr
 # only talks to the other apps, so neither has a data mount. recyclarr's TRaSH
@@ -40,6 +41,7 @@ arr_apps:
   radarr:
     image: lscr.io/linuxserver/radarr:6.2.1@sha256:39da107b5a9371fdaa651bd188049b863716a815385eb3a30d41071b7e1aeb33
     uid: 1038
+    caps: [CHOWN, KILL, SETGID, SETUID]
     port: 7878
     netns: wireguard
     data: root
@@ -48,6 +50,7 @@ arr_apps:
   sonarr:
     image: lscr.io/linuxserver/sonarr:4.0.19@sha256:fbb15bb4fb14d1ffe017f6be0e3fed8f1b300e4687e329767da0b61f36ba1eed
     uid: 1039
+    caps: [CHOWN, KILL, SETGID, SETUID]
     port: 8989
     netns: wireguard
     data: root
@@ -56,6 +59,7 @@ arr_apps:
   lidarr:
     image: lscr.io/linuxserver/lidarr:3.1.0@sha256:ba7d43fd5d7de790c38c2dc8f2b2b54c1ac00a452784891c37385a43a039907a
     uid: 1037
+    caps: [CHOWN, KILL, SETGID, SETUID]
     port: 8686
     netns: wireguard
     data: root
@@ -64,6 +68,7 @@ arr_apps:
   prowlarr:
     image: lscr.io/linuxserver/prowlarr:2.4.0@sha256:3e9bd62ca90c97c5df75b7012e10a29f6926e62807deeddc1dc89e6e2fd141e1
     uid: 3004
+    caps: [CHOWN, KILL, SETGID, SETUID]
     port: 9696
     netns: wireguard
     healthcheck:
@@ -83,6 +88,7 @@ arr_apps:
   beets:
     image: lscr.io/linuxserver/beets:2.12.0@sha256:9d7953d6afc7469e6314c25d9952374338de792171857dc5ff6dc482d488c658
     uid: 1040
+    caps: [CHOWN, DAC_OVERRIDE, KILL, SETGID, SETUID]
     port: 8337
     # Whole tree so beets can import (and hardlink) from downloads into the
     # music library — both must be one mount for hardlinks to work.
@@ -96,6 +102,7 @@ arr_apps:
   plex:
     image: lscr.io/linuxserver/plex:1.43.2@sha256:5a2dca89f4b53222ba2565ffa9ede3f320f37a69ac4b7fd475b492f772c5523b
     uid: 3006
+    caps: [CHOWN, DAC_OVERRIDE, KILL, SETGID, SETUID]
     port: 32400
     # Host networking replicates the proven ynarri setup: GDM/DLNA discovery and
     # the full port range, not just 32400. Not on caddy.network, so the proxy
@@ -129,6 +136,7 @@ arr_apps:
   transmission:
     image: lscr.io/linuxserver/transmission:4.1.3@sha256:30d59b253993df8c7634fe03cbb33e22324d00d200ff3d3cc30e6184fa55f96b
     uid: 1041
+    caps: [CHOWN, DAC_OVERRIDE, KILL, SETGID, SETUID]
     port: 9091
     netns: wireguard
     data: [downloads]
@@ -141,7 +149,7 @@ arr_apps:
   wireguard:
     image: lscr.io/linuxserver/wireguard:1.0.20250521@sha256:f33891344345b1f78705e723b633e3a3f94d08ae75ca1a5f48c5a449c35bf460
     uid: 3009
-    caps: [NET_ADMIN]
+    caps: [CHOWN, NET_ADMIN, SETGID, SETUID]
     sysctls: [net.ipv4.conf.all.src_valid_mark=1]
     binds: ["{{ arr_wireguard_conf_path }}:/config/wg_confs/wg0.conf:ro"]
     # Auto-recover a dropped tunnel: probe connectivity through wg0 and, on

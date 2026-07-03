@@ -31,6 +31,10 @@ Network=caddy.network
 {% for peer in arr_apps | dict2items | selectattr('key', 'in', arr_enabled) if peer.value.netns | default('') == item.key and peer.value.port is defined %}
 NetworkAlias={{ peer.key }}
 {% endfor %}
+{# Drop every capability and bar privilege escalation; each app's caps add back #}
+{# only the minimum its init needs. #}
+NoNewPrivileges=true
+DropCapability=all
 {% for cap in item.value.caps | default([]) %}
 AddCapability={{ cap }}
 {% endfor %}
