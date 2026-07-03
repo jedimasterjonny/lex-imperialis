@@ -1,19 +1,26 @@
 # GitHub Actions workflows
 
-Two workflows guard every PR: **lint** runs the pre-commit hook set on all
-changes; **molecule** runs the role tests, gated to the tiers and roles a PR
-actually touches. Both pin actions by commit SHA (version in a trailing
-comment) and request a read-only `contents` token.
+Two workflows guard every PR: **lint** runs the pre-commit hook set plus a
+push-time secret scan on all changes; **molecule** runs the role tests, gated to
+the tiers and roles a PR actually touches. Both pin actions by commit SHA
+(version in a trailing comment) and request a read-only `contents` token.
 
 ## lint
 
-Fires on every PR and every push to `main`. One job: build the venv from
-`requirements-dev.txt`, then `make pre-commit` (`pre-commit run --all-files`) —
-yamllint, ansible-lint, shellcheck, the secret scans, the file-hygiene hooks,
-and `check-role-test-coverage.sh`. The pip cache keys on the requirements
-files; the pre-commit environment cache on `.pre-commit-config.yaml`. A re-push
-cancels the superseded PR run; `main` runs finish, so every commit on `main`
-carries a check.
+Fires on every PR and every push to `main`. Two jobs. **pre-commit** builds the
+venv from `requirements-dev.txt`, then `make pre-commit`
+(`pre-commit run --all-files`) — yamllint, ansible-lint, shellcheck,
+`detect-private-key`, the file-hygiene hooks, and `check-role-test-coverage.sh`.
+The pip cache keys on the requirements files; the pre-commit environment cache on
+`.pre-commit-config.yaml`.
+
+**secret-scan** is the push-time gitleaks backstop. The `gitleaks` hook scans the
+staged index, which is empty on CI's fresh checkout, so it passes vacuously; this
+job downloads the pinned gitleaks — version tracked from `.pre-commit-config.yaml`,
+the single source of truth — and scans the checked-out commit's content instead.
+
+A re-push cancels the superseded PR run; `main` runs finish, so every commit on
+`main` carries a check.
 
 ## molecule
 
