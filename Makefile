@@ -8,7 +8,7 @@ export MOLECULE_RUN_ID
 # PLAY selects which playbook in playbooks/ to run, e.g. make check PLAY=solar.
 PLAY ?= scholam
 
-.PHONY: lint ansible-lint yamllint hooks pre-commit test test-leap test-vm test-hetzner destroy-hetzner check apply
+.PHONY: lint ansible-lint yamllint hooks pre-commit test test-leap test-vm test-hetzner destroy-hetzner check apply tofu-fmt tofu-validate tofu-lint tofu-plan tofu-apply
 
 lint: yamllint ansible-lint
 
@@ -51,3 +51,23 @@ check:
 # Real apply to the live fleet — the operator's call, not part of any automated flow.
 apply:
 	. .venv/bin/activate && ansible-playbook playbooks/$(PLAY).yml --vault-password-file .vault_pass
+
+# OpenTofu (terraform/); tofu and tflint are on PATH, no venv. fmt/validate/lint
+# are the local forms of the pre-commit gates (fmt writes, unlike the -check hook).
+tofu-fmt:
+	tofu fmt -recursive terraform
+
+tofu-validate:
+	bin/tofu-validate.sh
+
+tofu-lint:
+	tflint --chdir=terraform
+
+# plan/apply run against HCP Terraform Cloud, so they need a prior `tofu init` and
+# its credentials (TF_CLOUD_ORGANIZATION, TF_WORKSPACE, tofu login, and
+# TF_VAR_hcloud_token for local execution) — see terraform/README.md.
+tofu-plan:
+	tofu -chdir=terraform plan
+
+tofu-apply:
+	tofu -chdir=terraform apply

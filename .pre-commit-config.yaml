@@ -55,3 +55,23 @@ repos:
         language: script
         pass_filenames: false
         always_run: true
+      # OpenTofu gates for terraform/, mirroring the yamllint/ansible-lint style:
+      # local hooks calling the tofu on PATH (zypper-installed; setup-opentofu in CI).
+      - id: tofu-fmt
+        name: tofu-fmt
+        entry: tofu fmt -check -recursive terraform
+        language: system
+        pass_filenames: false
+        files: '\.tf$'
+      - id: tofu-validate
+        name: tofu-validate
+        entry: bin/tofu-validate.sh
+        language: script
+        pass_filenames: false
+        files: '\.tf$'
+      - id: tflint
+        name: tflint
+        entry: tflint --chdir=terraform
+        language: system
+        pass_filenames: false
+        files: '(\.tf$|\.tflint\.hcl$)'
