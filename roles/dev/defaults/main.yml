@@ -6,6 +6,7 @@ dev_packages:
   - git
   - make
   - neovim
+  - opentofu
   - python3
   - python3-pip
 
