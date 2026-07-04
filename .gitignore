@@ -13,3 +13,12 @@ __pycache__/
 
 # Vault password file
 .vault_pass
+
+# OpenTofu/Terraform (state and *.tfvars hold secrets; .terraform.lock.hcl is committed)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log

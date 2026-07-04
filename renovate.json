@@ -24,6 +24,14 @@
       "description": "Grafana dashboard revisions pinned in role vars; the role fetches them from grafana.com at converge.",
       "managerFilePatterns": ["/^roles/.+/vars/main\\.yml$/"],
       "matchStrings": ["# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+) packageName=(?<packageName>\\S+)\\s+\\S+: (?<currentValue>\\d+)"]
+    },
+    {
+      "customType": "regex",
+      "description": "tflint pinned in the lint workflow; setup-tflint installs it, the pre-commit hook runs it (no zypper package).",
+      "managerFilePatterns": ["/^\\.github/workflows/lint\\.yml$/"],
+      "matchStrings": ["tflint_version:\\s*\"(?<currentValue>v[^\"]+)\""],
+      "depNameTemplate": "terraform-linters/tflint",
+      "datasourceTemplate": "github-releases"
     }
   ],
   "customDatasources": {
