@@ -171,6 +171,88 @@
       become: true
       failed_when: wordpress_cron_timer.status.ActiveState != 'active'
 
+    # Verified active above; stop it now so a live 5-minute fire can't clobber the
+    # .prom the metric checks below write and read back (the timer fires every
+    # 5 minutes and is Persistent).
+    - name: Stop the wp-cron timer for the metric checks
+      ansible.builtin.systemd_service:
+        name: wordpress-cron.timer
+        state: stopped
+      become: true
+
+    # Start the oneshot the timer drives so this exercises the ExecStopPost metric
+    # hook. wp cron event run needs an installed site, which the molecule instance
+    # is not, so the ExecStart may exit non-zero — but ExecStopPost fires either
+    # way, so ignore the start's result and prove the hook wrote the metric.
+    - name: Run the wp-cron service
+      ansible.builtin.systemd_service:
+        name: wordpress-cron.service
+        state: started
+      failed_when: false
+      become: true
+
+    - name: Read the cron outcome metric after the service run
+      ansible.builtin.slurp:
+        src: "{{ wordpress_textfile_dir }}/wordpress-cron.prom"
+      register: wordpress_cron_metric_run
+      become: true
+
+    # The ExecStopPost hook fired regardless of the ExecStart outcome, so assert
+    # the metric's structure — the success gauge and a timestamp — not a value the
+    # uninstalled site's run can't pin down.
+    - name: The cron service run records the outcome metric
+      vars:
+        wordpress_cron_metric_text: "{{ wordpress_cron_metric_run.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'wordpress_cron_success ' in wordpress_cron_metric_text"
+          - "'wordpress_cron_last_run_timestamp_seconds ' in wordpress_cron_metric_text"
+        fail_msg: "the cron service run did not record the outcome metric"
+        quiet: true
+
+    # Drive the writer the way systemd would on each outcome — the uninstalled site
+    # can't force a clean ExecStart — to prove both success values.
+    - name: Simulate a successful cron run's ExecStopPost
+      ansible.builtin.command: /usr/local/sbin/wp-cron-metric.sh
+      environment:
+        SERVICE_RESULT: success
+      changed_when: false
+      become: true
+
+    - name: Read the cron outcome metric after the simulated success
+      ansible.builtin.slurp:
+        src: "{{ wordpress_textfile_dir }}/wordpress-cron.prom"
+      register: wordpress_cron_metric_ok
+      become: true
+
+    - name: A successful cron run records wordpress_cron_success 1
+      ansible.builtin.assert:
+        that:
+          - "'wordpress_cron_success 1' in (wordpress_cron_metric_ok.content | b64decode)"
+          - "'wordpress_cron_last_run_timestamp_seconds ' in (wordpress_cron_metric_ok.content | b64decode)"
+        fail_msg: "the cron outcome metric did not report a successful run"
+        quiet: true
+
+    - name: Simulate a failed cron run's ExecStopPost
+      ansible.builtin.command: /usr/local/sbin/wp-cron-metric.sh
+      environment:
+        SERVICE_RESULT: exit-code
+      changed_when: false
+      become: true
+
+    - name: Read the cron outcome metric after the simulated failure
+      ansible.builtin.slurp:
+        src: "{{ wordpress_textfile_dir }}/wordpress-cron.prom"
+      register: wordpress_cron_metric_fail
+      become: true
+
+    - name: A failed cron run records wordpress_cron_success 0
+      ansible.builtin.assert:
+        that:
+          - "'wordpress_cron_success 0' in (wordpress_cron_metric_fail.content | b64decode)"
+        fail_msg: "the cron outcome metric did not report a failed run"
+        quiet: true
+
     - name: The database-backup timer is active
       ansible.builtin.systemd_service:
         name: wordpress-db-dump.timer

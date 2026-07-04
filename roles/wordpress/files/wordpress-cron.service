@@ -7,3 +7,7 @@ After=wordpress.service
 [Service]
 Type=oneshot
 ExecStart=/usr/local/bin/wp cron event run --due-now
+# Runs whether the run succeeded or failed, reading $SERVICE_RESULT to record the
+# outcome as a node_exporter metric — a wp-cron timer that silently stops firing
+# otherwise stalls every scheduled task unseen.
+ExecStopPost=/usr/local/sbin/wp-cron-metric.sh
