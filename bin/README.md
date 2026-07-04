@@ -1,7 +1,7 @@
 # bin
 
-Bespoke pre-commit checks (`.pre-commit-config.yaml` local hooks); `make
-pre-commit` runs them in the lint CI gate.
+Scripts backing the pre-commit hooks (`.pre-commit-config.yaml`, run by `make
+pre-commit` in the lint CI gate) and the Makefile.
 
 ## check-role-test-coverage.sh
 
@@ -24,3 +24,10 @@ shellcheck.
 Validates `terraform/` offline: `tofu init -backend=false` (skips HCP Terraform,
 so no cloud credentials are needed) then `tofu validate`. Backs the
 `tofu-validate` hook.
+
+## vault-var.sh
+
+Prints one top-level variable's value from the ansible-vault, bridging a vault
+secret into a `TF_VAR_`/`TF_TOKEN_` (Terraform can't read the vault). Backs the
+`tofu-plan`/`tofu-apply` make targets and the `terraform.yml` plan workflow.
+Needs the venv and `.vault_pass`.

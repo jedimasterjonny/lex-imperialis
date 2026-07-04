@@ -19,7 +19,7 @@ This repo is public: every commit is world-readable and permanent, including git
 
 ## Secrets
 
-The vault is `inventory/group_vars/all/vault.yml`, decrypted locally with a gitignored `.vault_pass`. Vault var names are host/purpose-scoped (`emmasedit_cloudflare_api_token`) and mapped to a role's generic var in a play's `vars:` block; a vault var named identically to a role's default is read straight from `group_vars/all`.
+The vault is `inventory/group_vars/all/vault.yml`, decrypted locally with a gitignored `.vault_pass`. Vault var names are host/purpose-scoped (`emmasedit_cloudflare_api_token`) and mapped to a role's generic var in a play's `vars:` block; a vault var named identically to a role's default is read straight from `group_vars/all`. Terraform can't read the vault, so it sources its secrets (`terraform_hcp_token`, `terraform_cloudflare_api_token`) through `bin/vault-var.sh` into `TF_VAR_`/`TF_TOKEN_` at run time.
 
 ## Writing code
 
