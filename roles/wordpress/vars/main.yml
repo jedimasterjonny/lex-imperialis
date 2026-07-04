@@ -4,4 +4,4 @@ wordpress_image: docker.io/library/wordpress:7.0.0@sha256:b2ceeaabb8fa90e12f32fd
 wordpress_db_image: docker.io/library/mariadb:12.3.2@sha256:628f228f0fd5913a220438693576b29b6fe4dc1fa0a1298c0e98579fae28635f
 wordpress_redis_image: docker.io/library/redis:8.8.0-alpine@sha256:9d317178eceac8454a2284a9e6df2466b93c745529947f0cd42a0fa9609d7005
 # Tag stays bare 'cli' (not semver) so renovate digest-pins it to current wp-cli.
-wordpress_cli_image: docker.io/library/wordpress:cli@sha256:efa0047b3540f5c1d7383ff75bbcb95ed50cf706764d2e48848ab258d45b250e
+wordpress_cli_image: docker.io/library/wordpress:cli@sha256:f8aeb68164c6a04f5dcc91da30d8ffa096b0f7fafb7a65f144c2dd62587caca0
