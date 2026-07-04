@@ -46,6 +46,23 @@ jobs:
           key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
           restore-keys: pre-commit-
 
+      # The tofu-fmt/tofu-validate hooks call the tofu on PATH; on the fleet it is
+      # zypper-installed, here the action provides it. Renovate can't track the
+      # openSUSE rolling package, so bump this by hand when the fleet's tofu moves.
+      - name: Set up OpenTofu
+        uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: "1.12.3"
+          tofu_wrapper: false
+
+      # tflint has no zypper package; the action installs the pinned release the
+      # tflint hook runs. github_token lifts the release-download rate limit.
+      - name: Set up tflint
+        uses: terraform-linters/setup-tflint@6e1e0642c0289bd619021bf6b34e3c08ed1e005a # v6.3.0
+        with:
+          tflint_version: "v0.63.1"
+          github_token: ${{ github.token }}
+
       - name: Run lint gate
         run: make pre-commit
 
