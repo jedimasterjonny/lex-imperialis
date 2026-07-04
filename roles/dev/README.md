@@ -13,6 +13,16 @@ published checksum or datasource, so a hand-bumped hash would break converge on
 every upstream tweak (YAGNI); the trust anchor is `claude.ai` over TLS, accepted
 knowingly on the host that holds `.vault_pass` and fleet-wide NOPASSWD root.
 
+## Terraform gate tools
+
+The `terraform/` pre-commit gates need `tofu` and `tflint` on PATH, so the
+workstation provisions both: OpenTofu from zypper (`opentofu` in `dev_packages`),
+and tflint — which has no zypper package — via its upstream install script
+(which checksum-verifies the download), pinned by `dev_tflint_version`. That pin
+matches the CI gate (`.github/workflows/lint.yml`), kept in sync by one renovate
+custom manager that bumps both. Unlike Claude Code, tflint does not self-update,
+so a version check drives the install, not `creates:`.
+
 ## Passwordless sudo
 
 `dev_passwordless_sudo` (default `true`) grants the owner passwordless sudo on

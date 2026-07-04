@@ -26,11 +26,12 @@ Gates (also enforced in CI and pre-commit):
 tofu-plan` / `tofu-apply` drive HCP Terraform Cloud after `tofu init`.
 
 The gates need `tofu` and `tflint` on PATH — provisioned in CI by
-`setup-opentofu`/`setup-tflint`. Locally, `tofu` comes from zypper
-(`zypper install opentofu`); `tflint` has no zypper package, so install the
-pinned release binary (the version in `.github/workflows/lint.yml`), which
-renovate keeps current. `tofu validate` fetches the hcloud provider into the
-gitignored `.terraform/` on first run, so the initial validate needs network.
+`setup-opentofu`/`setup-tflint`, and on the workstation by the `dev` role
+(OpenTofu from zypper, tflint pinned to the CI version). Elsewhere, install by
+hand: `zypper install opentofu`, and tflint's pinned release (the version in
+`.github/workflows/lint.yml`) via its upstream script. `tofu validate` fetches
+the hcloud provider into the gitignored `.terraform/` on first run, so the
+initial validate needs network.
 
 `.terraform.lock.hcl` is committed; `.terraform/` and any state or `*.tfvars`
 are gitignored.

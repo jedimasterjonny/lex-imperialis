@@ -4,6 +4,7 @@
   gather_facts: false
   vars_files:
     - ../../defaults/main.yml
+    - ../../vars/main.yml
   tasks:
     - name: Gather installed package facts
       ansible.builtin.package_facts:
@@ -28,6 +29,27 @@
       ansible.builtin.command: npm --version
       changed_when: false
       when: dev_npm | bool
+
+    - name: OpenTofu is usable
+      ansible.builtin.command: tofu version
+      changed_when: false
+
+    # Bare tflint (PATH-resolved), matching how the pre-commit gate and Makefile
+    # invoke it — proves the version the gate will actually run, not just the file
+    # the role installs.
+    - name: Query the tflint version
+      ansible.builtin.command: tflint --version
+      register: dev_tflint_verify
+      changed_when: false
+
+    - name: Verify tflint is the pinned version
+      ansible.builtin.assert:
+        that:
+          - dev_tflint_wanted in dev_tflint_verify.stdout_lines
+        fail_msg: "tflint is not the pinned {{ dev_tflint_version }}"
+        quiet: true
+      vars:
+        dev_tflint_wanted: "TFLint version {{ dev_tflint_version | regex_replace('^v', '') }}"
 
     - name: Stat the Claude Code binary
       ansible.builtin.stat:

@@ -18,6 +18,34 @@
     state: present
   become: true
 
+- name: Ensure unzip is present for the tflint installer
+  community.general.zypper:
+    name: unzip
+    state: present
+  become: true
+
+# tflint has no zypper package, and does not self-update, so a version check
+# (not creates:) drives idempotence and picks up renovate bumps. The upstream
+# script checksum-verifies the download.
+- name: Check the installed tflint version
+  ansible.builtin.command: /usr/local/bin/tflint --version
+  register: dev_tflint_installed
+  changed_when: false
+  failed_when: false
+
+- name: Install tflint at the pinned version
+  ansible.builtin.shell:
+    cmd: set -o pipefail && curl -fsSL https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
+  become: true
+  environment:
+    TFLINT_VERSION: "{{ dev_tflint_version }}"
+  vars:
+    dev_tflint_wanted: "TFLint version {{ dev_tflint_version | regex_replace('^v', '') }}"
+  # stdout_lines (exact line match), not stdout (substring), so pin 0.63.1 is not
+  # falsely satisfied by an installed 0.63.10.
+  when: dev_tflint_wanted not in dev_tflint_installed.stdout_lines
+  changed_when: true
+
 # sudoers.d loads in sorted lexical order and the last match wins, so this
 # drop-in must sort after common's `wheel` file for its NOPASSWD to override that
 # file's own-password `%wheel` rule — `wheel-<owner>-` sorts after `wheel`.
