@@ -63,11 +63,13 @@ tofu-validate:
 tofu-lint:
 	tflint --chdir=terraform
 
-# plan/apply run against HCP Terraform Cloud, so they need a prior `tofu init` and
-# its credentials (TF_CLOUD_ORGANIZATION, TF_WORKSPACE, tofu login, and
-# TF_VAR_hcloud_token for local execution) — see terraform/README.md.
+# plan/apply run against HCP Terraform Cloud (org/workspace pinned in the cloud
+# block). Both the HCP and Cloudflare tokens come from the vault via
+# bin/vault-var.sh — no `tofu login` needed. See terraform/README.md.
+TOFU_VAULT_TOKENS = TF_TOKEN_app_terraform_io="$$(bin/vault-var.sh terraform_hcp_token)" TF_VAR_cloudflare_api_token="$$(bin/vault-var.sh terraform_cloudflare_api_token)"
+
 tofu-plan:
-	tofu -chdir=terraform plan
+	$(TOFU_VAULT_TOKENS) tofu -chdir=terraform plan
 
 tofu-apply:
-	tofu -chdir=terraform apply
+	$(TOFU_VAULT_TOKENS) tofu -chdir=terraform apply
