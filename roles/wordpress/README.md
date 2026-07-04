@@ -86,6 +86,15 @@ fire on a fixed cadence regardless of traffic. On a migrated install set it in
 wp-config directly (`wp config set DISABLE_WP_CRON true --raw`) — the bundled
 constant only lands on a fresh, role-generated config.
 
+An `ExecStopPost` hook on the service writes each run's outcome to
+`wordpress_textfile_dir/wordpress-cron.prom` — `wordpress_cron_success` (1/0, from
+systemd's `$SERVICE_RESULT`) and `wordpress_cron_last_run_timestamp_seconds`.
+node_exporter scrapes that file (its `node_exporter_textfile_directory` must
+match), and the `prometheus` role's `WordpressCronFailed` / `WordpressCronOverdue`
+rules alert on a run that hard-failed or a timer that has stopped firing — so a
+silently stalled cron surfaces instead of scheduled posts and tasks quietly
+ceasing.
+
 ## Behind Caddy
 
 Caddy forwards plain HTTP to `wordpress:80`, terminating TLS at the edge when
