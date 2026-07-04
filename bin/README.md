@@ -18,3 +18,9 @@ Shellchecks the shell-in-Jinja templates the plain `shellcheck` hook skips —
 extensionless-bash `wp`/`wp-db-dump` templates. Rewrites Jinja to valid shell
 first (`{% … %}` → `:`, `{{ … }}` → `X`), then pipes the result through
 shellcheck.
+
+## tofu-validate.sh
+
+Validates `terraform/` offline: `tofu init -backend=false` (skips HCP Terraform,
+so no cloud credentials are needed) then `tofu validate`. Backs the
+`tofu-validate` hook.
