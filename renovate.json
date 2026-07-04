@@ -27,9 +27,9 @@
     },
     {
       "customType": "regex",
-      "description": "tflint pinned in the lint workflow; setup-tflint installs it, the pre-commit hook runs it (no zypper package).",
-      "managerFilePatterns": ["/^\\.github/workflows/lint\\.yml$/"],
-      "matchStrings": ["tflint_version:\\s*\"(?<currentValue>v[^\"]+)\""],
+      "description": "tflint pinned for CI (the lint workflow's setup-tflint) and the workstation (roles/dev/vars); no zypper package. Same depName, so both bump together; the pattern matches tflint_version and dev_tflint_version.",
+      "managerFilePatterns": ["/^\\.github/workflows/lint\\.yml$/", "/^roles/dev/vars/main\\.yml$/"],
+      "matchStrings": ["(?:dev_)?tflint_version:\\s*\"(?<currentValue>v[^\"]+)\""],
       "depNameTemplate": "terraform-linters/tflint",
       "datasourceTemplate": "github-releases"
     }

@@ -107,7 +107,7 @@ Run the gates yourself before presenting or committing — never hand back unver
 
 ## Commands
 
-- **Setup**: `python -m venv .venv && . .venv/bin/activate && pip install -r requirements-dev.txt`, then `make hooks` to install the pre-commit hooks. The `terraform/` gates additionally need `tofu` (zypper `opentofu`) and `tflint` (a pinned release binary) on PATH — see `terraform/README.md`.
+- **Setup**: `python -m venv .venv && . .venv/bin/activate && pip install -r requirements-dev.txt`, then `make hooks` to install the pre-commit hooks. The `terraform/` gates additionally need `tofu` and `tflint` on PATH — the `dev` role provisions both on the workstation; see `terraform/README.md` to install them elsewhere.
 - **Iterate on one role** without the full create→destroy lifecycle — from `roles/<role>/` with the venv active: `molecule converge` (apply), `molecule verify` (assertions), `molecule login` (shell in), `molecule destroy`; add `-s <scenario>` for a non-`default` tier. `make test ROLE=<role>` runs the whole lifecycle.
 - **Bootstrap**: a fresh Tumbleweed host runs `bootstrap/host.sh` (creates the `ansible` account + sshd) before it joins the inventory; `bootstrap/incus.yml` sets up the molecule runner; `bootstrap/rogue-trader.yml` provisions the Hetzner VM.
 - The `ansible` MCP server (`.mcp.json`) and the project-local skills (`ansible-author`, `refine`, `branch-finaliser`) are the intended authoring → review → finalise workflow.
