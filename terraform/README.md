@@ -2,7 +2,10 @@
 
 OpenTofu (`tofu`) configuration for cloud infrastructure — Cloudflare and Hetzner
 in one workspace, so a Hetzner VM's IP can feed a Cloudflare DNS record directly.
-Currently manages the `jonnyoc.uk` and `jonnyoc.co.uk` Cloudflare zones.
+Currently manages the `jonnyoc.uk`, `jonnyoc.co.uk`, and `emmasedit.com`
+Cloudflare zones — one `dns-<zone>.tf` per zone. Not every record is managed:
+those that expose an origin IP Cloudflare's proxy hides, or that the provider
+reports read-only (Email Routing), are noted in the zone file's header.
 
 State lives in HCP Terraform (Terraform Cloud): remote state and locking, local
 CLI-driven execution (org `jonnyoc`, workspace `jonnyoc-master`, both pinned in
