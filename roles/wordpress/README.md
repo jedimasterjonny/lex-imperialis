@@ -109,7 +109,12 @@ on the TLS vhost adds a one-year `Strict-Transport-Security` header with
 immutable `Cache-Control`; `readme.html` and `license.txt` 404 so they can't
 leak the core version. A read-only must-use plugin
 (`files/wordpress-hardening.php`, mounted at `wp-content/mu-plugins/`) drops the
-generator meta for the same reason. Point DNS for each name at the host.
+generator meta for the same reason, narrows the user-disclosure surface —
+denying anonymous `/wp-json/wp/v2/users` enumeration and redirecting `?author=N`
+and the `/author/<slug>/` archives home before they leak a login slug — and
+neuters the XML-RPC pingback vector by stripping its methods and their
+`X-Pingback` header (XML-RPC itself stays on for Jetpack). Point DNS for each
+name at the host.
 
 ## wp-cli
 
