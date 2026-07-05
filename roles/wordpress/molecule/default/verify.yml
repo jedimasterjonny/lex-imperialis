@@ -418,3 +418,90 @@
       loop: "{{ wordpress_posture.results }}"
       loop_control:
         label: "{{ item.item.name }}"
+
+    # --- Enumeration and pingback hardening ---
+    # This block installs the site, so it stays last: every task above asserts
+    # against the uninstalled molecule instance.
+
+    # The mu-plugin loads on every request, so a syntax error takes the whole
+    # site down; lint it inside the container before trusting anything else.
+    - name: The hardening plugin is valid PHP
+      ansible.builtin.command: >-
+        podman exec wordpress php -l
+        /var/www/html/wp-content/mu-plugins/wordpress-hardening.php
+      become: true
+      changed_when: false
+
+    # The enumeration checks need a real author with a published post — a fresh
+    # install's admin and sample post — so install the site (guarded, so a repeat
+    # verify skips it). Pretty permalinks make ?author=N resolve to the
+    # /author/<slug>/ archive it leaks on the live site.
+    - name: Check whether the molecule site is already installed
+      ansible.builtin.command: /usr/local/bin/wp core is-installed
+      register: wordpress_installed
+      failed_when: false
+      changed_when: false
+      become: true
+
+    - name: Install the site to exercise the enumeration hardening
+      ansible.builtin.command: >-
+        /usr/local/bin/wp core install
+        --url=http://{{ wordpress_domains[0] }} --title=molecule
+        --admin_user=molecule_admin --admin_password=molecule-admin-pw
+        --admin_email=admin@wordpress.home.arpa --skip-email
+      when: wordpress_installed.rc != 0
+      changed_when: true
+      become: true
+
+    - name: Turn on pretty permalinks
+      ansible.builtin.command: /usr/local/bin/wp rewrite structure '/%postname%/' --hard
+      changed_when: true
+      become: true
+
+    # A stock install answers this 200 with the admin's login slug; the mu-plugin
+    # unsets the route so it 404s. The ?rest_route form dispatches through
+    # index.php, so the 404 proves the unset, not a missing rewrite rule.
+    - name: The REST API denies anonymous user enumeration
+      ansible.builtin.uri:
+        url: http://127.0.0.1/?rest_route=/wp/v2/users
+        headers:
+          Host: "{{ wordpress_domains[0] }}"
+        status_code: [404]
+
+    - name: The ?author=N probe does not resolve to the author archive
+      ansible.builtin.uri:
+        url: http://127.0.0.1/?author=1
+        headers:
+          Host: "{{ wordpress_domains[0] }}"
+        follow_redirects: none
+        status_code: [301, 302]
+      register: wordpress_author_probe
+
+    # Stock WordPress 301s ?author=1 to /author/<slug>/, disclosing the username;
+    # the mu-plugin redirects home before that, so the location leaks no slug.
+    - name: The author probe redirects home, not to /author/<slug>/
+      ansible.builtin.assert:
+        that:
+          - "'/author/' not in (wordpress_author_probe.location | default(''))"
+        fail_msg: "?author=1 leaked an author-archive URL"
+        quiet: true
+
+    - name: The sample post answers for the pingback-header check
+      ansible.builtin.uri:
+        url: http://127.0.0.1/hello-world/
+        headers:
+          Host: "{{ wordpress_domains[0] }}"
+        follow_redirects: none
+      register: wordpress_post
+      until: wordpress_post.status == 200
+      retries: 10
+      delay: 3
+
+    # Stock WordPress advertises the pingback endpoint via X-Pingback on singular
+    # posts; the mu-plugin strips it so the pingback vector is not advertised.
+    - name: The X-Pingback advertisement is stripped from a singular post
+      ansible.builtin.assert:
+        that:
+          - wordpress_post.x_pingback is not defined
+        fail_msg: "X-Pingback leaked on a singular post"
+        quiet: true
