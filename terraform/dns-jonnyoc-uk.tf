@@ -92,3 +92,31 @@ resource "cloudflare_dns_record" "dmarc" {
   ttl     = 1
   proxied = false
 }
+
+# --- Security: CAA (restrict issuance to Firebase's rotating CAs) ---
+
+resource "cloudflare_dns_record" "caa_pki_goog" {
+  zone_id = local.jonnyoc_uk_zone_id
+  name    = "jonnyoc.uk"
+  type    = "CAA"
+  ttl     = 1
+  proxied = false
+  data = {
+    flags = 0
+    tag   = "issue"
+    value = "pki.goog"
+  }
+}
+
+resource "cloudflare_dns_record" "caa_letsencrypt" {
+  zone_id = local.jonnyoc_uk_zone_id
+  name    = "jonnyoc.uk"
+  type    = "CAA"
+  ttl     = 1
+  proxied = false
+  data = {
+    flags = 0
+    tag   = "issue"
+    value = "letsencrypt.org"
+  }
+}
