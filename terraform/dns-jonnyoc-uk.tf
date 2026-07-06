@@ -88,7 +88,42 @@ resource "cloudflare_dns_record" "dmarc" {
   zone_id = local.jonnyoc_uk_zone_id
   name    = "_dmarc.jonnyoc.uk"
   type    = "TXT"
-  content = "\"v=DMARC1; p=quarantine; rua=mailto:dd6600e2f33a4eb5a1f1b96efa135234@dmarc-reports.cloudflare.net\""
+  content = "\"v=DMARC1; p=reject; rua=mailto:dd6600e2f33a4eb5a1f1b96efa135234@dmarc-reports.cloudflare.net\""
   ttl     = 1
   proxied = false
+}
+
+# --- Security: CAA (restrict issuance to Firebase's rotating CAs) ---
+
+resource "cloudflare_dns_record" "caa_pki_goog" {
+  zone_id = local.jonnyoc_uk_zone_id
+  name    = "jonnyoc.uk"
+  type    = "CAA"
+  ttl     = 1
+  proxied = false
+  data = {
+    flags = 0
+    tag   = "issue"
+    value = "pki.goog"
+  }
+}
+
+resource "cloudflare_dns_record" "caa_letsencrypt" {
+  zone_id = local.jonnyoc_uk_zone_id
+  name    = "jonnyoc.uk"
+  type    = "CAA"
+  ttl     = 1
+  proxied = false
+  data = {
+    flags = 0
+    tag   = "issue"
+    value = "letsencrypt.org"
+  }
+}
+
+# --- Security: DNSSEC (Cloudflare signs the zone; as registrar it auto-submits the DS) ---
+
+resource "cloudflare_zone_dnssec" "jonnyoc_uk" {
+  zone_id = local.jonnyoc_uk_zone_id
+  status  = "active"
 }
