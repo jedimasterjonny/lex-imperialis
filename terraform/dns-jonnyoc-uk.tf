@@ -17,15 +17,6 @@ resource "cloudflare_dns_record" "apex_a" {
   proxied = false
 }
 
-resource "cloudflare_dns_record" "www" {
-  zone_id = local.jonnyoc_uk_zone_id
-  name    = "www.jonnyoc.uk"
-  type    = "CNAME"
-  content = "jonnyoc-website.web.app"
-  ttl     = 1
-  proxied = false
-}
-
 resource "cloudflare_dns_record" "firebase_verification" {
   zone_id = local.jonnyoc_uk_zone_id
   name    = "jonnyoc.uk"
@@ -33,6 +24,21 @@ resource "cloudflare_dns_record" "firebase_verification" {
   content = "\"hosting-site=jonnyoc-website\""
   ttl     = 1
   proxied = false
+}
+
+# --- Web: 301-redirect www to the canonical apex ---
+#
+# www resolves to a proxied placeholder; the dynamic redirect rule in
+# edge-jonnyoc-uk.tf answers at the edge, so the placeholder origin is never
+# contacted. The apex above stays on Firebase Hosting.
+
+resource "cloudflare_dns_record" "www" {
+  zone_id = local.jonnyoc_uk_zone_id
+  name    = "www.jonnyoc.uk"
+  type    = "A"
+  content = "192.0.2.1"
+  ttl     = 1
+  proxied = true
 }
 
 # --- Email: iCloud Custom Email Domain ---
