@@ -31,3 +31,22 @@ resource "cloudflare_ruleset" "www_redirect" {
     },
   ]
 }
+
+# --- TLS ---
+#
+# These apply only to the proxied www redirect endpoint; the apex is served
+# Firebase-direct (DNS-only) and is unaffected. ssl=strict is a safe default
+# even though the placeholder origin is never contacted; min_tls_version=1.2
+# stops a TLS 1.0/1.1 client reaching the redirect, matching emmasedit.com.
+
+resource "cloudflare_zone_setting" "jonnyoc_uk_ssl" {
+  zone_id    = local.jonnyoc_uk_zone_id
+  setting_id = "ssl"
+  value      = "strict"
+}
+
+resource "cloudflare_zone_setting" "jonnyoc_uk_min_tls_version" {
+  zone_id    = local.jonnyoc_uk_zone_id
+  setting_id = "min_tls_version"
+  value      = "1.2"
+}
