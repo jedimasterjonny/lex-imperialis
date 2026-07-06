@@ -36,7 +36,7 @@ resource "cloudflare_dns_record" "couk_www" {
   proxied = true
 }
 
-# --- Email: Cloudflare Email Routing (SPF only; MX + DKIM are read_only) ---
+# --- Email: Cloudflare Email Routing (SPF + DMARC managed; MX + DKIM are read_only) ---
 
 resource "cloudflare_dns_record" "couk_spf" {
   zone_id = local.jonnyoc_co_uk_zone_id
@@ -45,4 +45,51 @@ resource "cloudflare_dns_record" "couk_spf" {
   content = "\"v=spf1 include:_spf.mx.cloudflare.net ~all\""
   ttl     = 1
   proxied = false
+}
+
+# The zone forwards mail but never originates it, so reject outright. No
+# aggregate-report (rua) address: nothing legitimate to monitor, and a
+# cross-zone rua would need an authorisation record on the reporting domain.
+resource "cloudflare_dns_record" "couk_dmarc" {
+  zone_id = local.jonnyoc_co_uk_zone_id
+  name    = "_dmarc.jonnyoc.co.uk"
+  type    = "TXT"
+  content = "\"v=DMARC1; p=reject\""
+  ttl     = 1
+  proxied = false
+}
+
+# --- Security: CAA (restrict issuance to Cloudflare Universal SSL's CAs) ---
+
+resource "cloudflare_dns_record" "couk_caa_pki_goog" {
+  zone_id = local.jonnyoc_co_uk_zone_id
+  name    = "jonnyoc.co.uk"
+  type    = "CAA"
+  ttl     = 1
+  proxied = false
+  data = {
+    flags = 0
+    tag   = "issue"
+    value = "pki.goog"
+  }
+}
+
+resource "cloudflare_dns_record" "couk_caa_letsencrypt" {
+  zone_id = local.jonnyoc_co_uk_zone_id
+  name    = "jonnyoc.co.uk"
+  type    = "CAA"
+  ttl     = 1
+  proxied = false
+  data = {
+    flags = 0
+    tag   = "issue"
+    value = "letsencrypt.org"
+  }
+}
+
+# --- Security: DNSSEC (Cloudflare signs the zone; as registrar it auto-submits the DS) ---
+
+resource "cloudflare_zone_dnssec" "jonnyoc_co_uk" {
+  zone_id = local.jonnyoc_co_uk_zone_id
+  status  = "active"
 }
