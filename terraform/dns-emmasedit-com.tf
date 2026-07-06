@@ -114,16 +114,22 @@ resource "cloudflare_dns_record" "emmas_brevo_dkim2" {
   proxied = false
 }
 
+# p=reject: 30 days of Cloudflare aggregate reports showed every real sender
+# (Google Workspace + Brevo) DKIM-aligned and the only failure was a spoof, so
+# rejecting is safe. Alignment stays relaxed (Brevo only relaxed-aligns). The
+# Cloudflare rua is kept for ongoing monitoring; sp=reject covers subdomains.
 resource "cloudflare_dns_record" "emmas_dmarc" {
   zone_id = local.emmasedit_com_zone_id
   name    = "_dmarc.emmasedit.com"
   type    = "TXT"
-  content = "\"v=DMARC1; p=none; rua=mailto:0fdca29454ac4c7dbe57a0284f476d35@dmarc-reports.cloudflare.net\""
+  content = "\"v=DMARC1; p=reject; sp=reject; rua=mailto:0fdca29454ac4c7dbe57a0284f476d35@dmarc-reports.cloudflare.net\""
   ttl     = 1
   proxied = false
 }
 
-# --- Domain verification ---
+# --- Domain verification (all three required — do not prune) ---
+# Brevo, plus two google-site-verification tokens: one for Google Workspace and
+# one for Google Search Console.
 
 resource "cloudflare_dns_record" "emmas_brevo_verification" {
   zone_id = local.emmasedit_com_zone_id
@@ -139,7 +145,7 @@ resource "cloudflare_dns_record" "emmas_google_verification_1" {
   name    = "emmasedit.com"
   type    = "TXT"
   content = "\"google-site-verification=waenfQEYIM-EblgSGDA1jRXOTtsuEmEbLyc9C1v2c_c\""
-  ttl     = 3600
+  ttl     = 1
   proxied = false
 }
 
@@ -152,7 +158,12 @@ resource "cloudflare_dns_record" "emmas_google_verification_2" {
   proxied = false
 }
 
-# --- Security: CAA (incident contact only; no issuance restriction) ---
+# --- Security: CAA ---
+#
+# Restrict issuance to letsencrypt.org (the origin's caddy cert) and pki.goog
+# (Cloudflare Universal SSL / Google Trust Services), plus an iodef incident
+# contact. Cloudflare auto-injects its full CA pool once any CAA record exists,
+# so these are for explicit, deterministic parity with the sibling zones.
 
 resource "cloudflare_dns_record" "emmas_caa" {
   zone_id = local.emmasedit_com_zone_id
@@ -165,4 +176,40 @@ resource "cloudflare_dns_record" "emmas_caa" {
     tag   = "iodef"
     value = "mailto:emma@emmasedit.com"
   }
+}
+
+resource "cloudflare_dns_record" "emmas_caa_pki_goog" {
+  zone_id = local.emmasedit_com_zone_id
+  name    = "emmasedit.com"
+  type    = "CAA"
+  ttl     = 1
+  proxied = false
+  data = {
+    flags = 0
+    tag   = "issue"
+    value = "pki.goog"
+  }
+}
+
+resource "cloudflare_dns_record" "emmas_caa_letsencrypt" {
+  zone_id = local.emmasedit_com_zone_id
+  name    = "emmasedit.com"
+  type    = "CAA"
+  ttl     = 1
+  proxied = false
+  data = {
+    flags = 0
+    tag   = "issue"
+    value = "letsencrypt.org"
+  }
+}
+
+# --- Security: DNSSEC ---
+#
+# Signing was enabled out-of-band and is already active/validating; this resource
+# brings it under Terraform (imported), matching the sibling zones. No live change.
+
+resource "cloudflare_zone_dnssec" "emmasedit_com" {
+  zone_id = local.emmasedit_com_zone_id
+  status  = "active"
 }
