@@ -88,7 +88,7 @@ resource "cloudflare_dns_record" "dmarc" {
   zone_id = local.jonnyoc_uk_zone_id
   name    = "_dmarc.jonnyoc.uk"
   type    = "TXT"
-  content = "\"v=DMARC1; p=quarantine; rua=mailto:dd6600e2f33a4eb5a1f1b96efa135234@dmarc-reports.cloudflare.net\""
+  content = "\"v=DMARC1; p=reject; rua=mailto:dd6600e2f33a4eb5a1f1b96efa135234@dmarc-reports.cloudflare.net\""
   ttl     = 1
   proxied = false
 }
