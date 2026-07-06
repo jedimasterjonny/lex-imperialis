@@ -120,3 +120,10 @@ resource "cloudflare_dns_record" "caa_letsencrypt" {
     value = "letsencrypt.org"
   }
 }
+
+# --- Security: DNSSEC (Cloudflare signs the zone; as registrar it auto-submits the DS) ---
+
+resource "cloudflare_zone_dnssec" "jonnyoc_uk" {
+  zone_id = local.jonnyoc_uk_zone_id
+  status  = "active"
+}
