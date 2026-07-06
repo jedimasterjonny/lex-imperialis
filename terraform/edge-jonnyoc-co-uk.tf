@@ -32,3 +32,22 @@ resource "cloudflare_ruleset" "couk_redirect" {
     },
   ]
 }
+
+# --- TLS ---
+#
+# Both apex and www are proxied redirect endpoints here, so these apply to the
+# whole zone's edge. ssl=strict is a safe default even though the placeholder
+# origin is never contacted; min_tls_version=1.2 stops a TLS 1.0/1.1 client
+# reaching the redirect, matching emmasedit.com.
+
+resource "cloudflare_zone_setting" "couk_ssl" {
+  zone_id    = local.jonnyoc_co_uk_zone_id
+  setting_id = "ssl"
+  value      = "strict"
+}
+
+resource "cloudflare_zone_setting" "couk_min_tls_version" {
+  zone_id    = local.jonnyoc_co_uk_zone_id
+  setting_id = "min_tls_version"
+  value      = "1.2"
+}
