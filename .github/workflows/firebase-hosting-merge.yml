@@ -1,0 +1,63 @@
+---
+name: firebase (merge)
+
+# Build jonnyoc-site with Hugo and deploy to the Firebase live channel on merge
+# to main. Path-filtered to the site; FIREBASE_SERVICE_ACCOUNT_JONNYOC_WEBSITE is
+# the one CI secret outside the vault. Actions pinned by SHA (version in a
+# trailing comment); hugo-version is renovate-tracked (see renovate.json).
+"on":
+  push:
+    branches: [main]
+    paths:
+      - 'jonnyoc-site/**'
+      - '.github/workflows/firebase-hosting-merge.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build_and_deploy:
+    name: build and deploy
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./jonnyoc-site
+    steps:
+      - name: Check out
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      # Hugo Modules resolve the theme via Go; pin it rather than use the runner's
+      # ambient Go. Both paths are relative to the workspace root; the module go.sum
+      # lives under jonnyoc-site/, so point the cache key there too.
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: jonnyoc-site/go.mod
+          cache-dependency-path: jonnyoc-site/go.sum
+
+      - name: Set up Hugo
+        uses: peaceiris/actions-hugo@2752ce1d29631191ea3f27c23495fa06139a5b78 # v3.2.1
+        with:
+          hugo-version: "0.161.1"
+          extended: true
+
+      # No -E/-F: the live deploy honours hugo.toml's buildFuture=false and
+      # expiryDate, so future-dated and expired content stays unpublished.
+      - name: Build with Hugo
+        env:
+          HUGO_ENVIRONMENT: production
+          HUGO_ENV: production
+        run: hugo --minify -d public
+
+      - name: Deploy to the live channel
+        uses: FirebaseExtended/action-hosting-deploy@500ac625ca2dd40cbd15f7659af953801858032a # v0.11.0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JONNYOC_WEBSITE }}
+          entryPoint: ./jonnyoc-site
+          channelId: live
+          projectId: jonnyoc-website
