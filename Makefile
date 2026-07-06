@@ -8,7 +8,7 @@ export MOLECULE_RUN_ID
 # PLAY selects which playbook in playbooks/ to run, e.g. make check PLAY=solar.
 PLAY ?= scholam
 
-.PHONY: lint ansible-lint yamllint hooks pre-commit test test-leap test-vm test-hetzner destroy-hetzner check apply tofu-fmt tofu-validate tofu-lint tofu-plan tofu-apply
+.PHONY: lint ansible-lint yamllint hooks pre-commit test test-leap test-vm test-hetzner destroy-hetzner check apply tofu-fmt tofu-validate tofu-lint tofu-plan tofu-apply hugo-serve hugo-build
 
 lint: yamllint ansible-lint
 
@@ -73,3 +73,11 @@ tofu-plan:
 
 tofu-apply:
 	$(TOFU_VAULT_TOKENS) tofu -chdir=terraform apply
+
+# Hugo (jonnyoc-site); needs hugo and go on PATH (module theme fetch), no venv.
+# serve for local preview; build mirrors the live deploy (honours buildFuture=false).
+hugo-serve:
+	cd jonnyoc-site && hugo server
+
+hugo-build:
+	cd jonnyoc-site && hugo --minify -d public
