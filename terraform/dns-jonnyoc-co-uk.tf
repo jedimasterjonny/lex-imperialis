@@ -1,6 +1,7 @@
-# jonnyoc.co.uk DNS records, imported from Cloudflare. The zone serves the same
-# Firebase Hosting site as jonnyoc.uk (apex A, www, hosting TXT) and forwards email
-# to the primary via Cloudflare Email Routing.
+# jonnyoc.co.uk DNS records, imported from Cloudflare. The zone no longer serves
+# the website: apex and www are 301-redirected to the canonical jonnyoc.uk by an
+# edge redirect rule (edge-jonnyoc-co-uk.tf), fronted by a proxied placeholder
+# origin. Email still forwards to the primary via Cloudflare Email Routing.
 #
 # Email Routing's MX and DKIM records are meta.read_only in Cloudflare's API — it
 # owns and rotates them and rejects writes — so they are deliberately left
@@ -11,33 +12,28 @@ locals {
   jonnyoc_co_uk_zone_id = "4827f6bf281be34b6875330347412734"
 }
 
-# --- Website: Firebase Hosting (same site as jonnyoc.uk) ---
+# --- Web: 301-redirect to canonical jonnyoc.uk ---
+#
+# Apex and www resolve to a proxied RFC 5737 placeholder; the dynamic redirect
+# rule in edge-jonnyoc-co-uk.tf answers at the edge, so the placeholder origin is
+# never contacted. Proxying is what lets the edge rule run.
 
 resource "cloudflare_dns_record" "couk_apex_a" {
   zone_id = local.jonnyoc_co_uk_zone_id
   name    = "jonnyoc.co.uk"
   type    = "A"
-  content = "199.36.158.100"
+  content = "192.0.2.1"
   ttl     = 1
-  proxied = false
+  proxied = true
 }
 
 resource "cloudflare_dns_record" "couk_www" {
   zone_id = local.jonnyoc_co_uk_zone_id
   name    = "www.jonnyoc.co.uk"
-  type    = "CNAME"
-  content = "jonnyoc-website.web.app"
+  type    = "A"
+  content = "192.0.2.1"
   ttl     = 1
-  proxied = false
-}
-
-resource "cloudflare_dns_record" "couk_firebase_verification" {
-  zone_id = local.jonnyoc_co_uk_zone_id
-  name    = "jonnyoc.co.uk"
-  type    = "TXT"
-  content = "\"hosting-site=jonnyoc-website\""
-  ttl     = 1
-  proxied = false
+  proxied = true
 }
 
 # --- Email: Cloudflare Email Routing (SPF only; MX + DKIM are read_only) ---
