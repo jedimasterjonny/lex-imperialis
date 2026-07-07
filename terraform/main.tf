@@ -24,5 +24,13 @@ terraform {
       source  = "hetznercloud/hcloud"
       version = "~> 1.66"
     }
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 7.34"
+    }
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = "~> 7.34"
+    }
   }
 }
