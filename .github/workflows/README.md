@@ -1,9 +1,10 @@
 # GitHub Actions workflows
 
-Two workflows guard every PR: **lint** runs the pre-commit hook set plus a
-push-time secret scan on all changes; **molecule** runs the role tests, gated to
-the tiers and roles a PR actually touches. Both pin actions by commit SHA
-(version in a trailing comment) and request a read-only `contents` token.
+The workflows guarding PRs pin actions by commit SHA (version in a trailing
+comment) and request a read-only `contents` token by default: **lint** runs the
+pre-commit hook set plus a push-time secret scan on all changes; **molecule**
+runs the role tests, gated to the tiers and roles a PR actually touches;
+**firebase** builds and deploys the `jonnyoc-site` website.
 
 ## lint
 
@@ -68,3 +69,13 @@ writes `.vault_pass` from the `VAULT_PASSWORD` secret — the only secret CI
 needs, decrypting the in-repo hcloud token — sets `MOLECULE_RUN_ID` per run so
 concurrent VM and SSH-key names never collide, and carries an `if: cancelled()`
 teardown so a killed run never orphans a billable VM.
+
+## firebase
+
+Two path-filtered workflows deploy the `jonnyoc-site` Hugo site to Firebase
+Hosting (project `jonnyoc-website`): **firebase (merge)** on a push to `main`
+under `jonnyoc-site/**` deploys the live channel; **firebase (preview)** on a PR
+deploys a 30-day `preview-<PR#>` channel, skipped for fork PRs. Both set up Go
+(for the Hugo Module theme fetch) and a pinned Hugo, then
+`hugo -E -F --minify`. The deploy needs `FIREBASE_SERVICE_ACCOUNT_JONNYOC_WEBSITE`
+— the one CI secret outside the vault. `hugo-version` is renovate-tracked.

@@ -22,3 +22,9 @@ __pycache__/
 *.tfvars.json
 crash.log
 crash.*.log
+
+# Hugo (jonnyoc-site)
+/jonnyoc-site/public/
+/jonnyoc-site/resources/_gen/
+.hugo_build.lock
+.firebase/
