@@ -32,6 +32,15 @@
       "matchStrings": ["(?:dev_)?tflint_version:\\s*\"(?<currentValue>v[^\"]+)\""],
       "depNameTemplate": "terraform-linters/tflint",
       "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "description": "Hugo pinned in the Firebase deploy workflows (peaceiris/actions-hugo hugo-version); no zypper/pip package.",
+      "managerFilePatterns": ["/^\\.github/workflows/firebase-hosting-(merge|pull-request)\\.yml$/"],
+      "matchStrings": ["hugo-version:\\s*\"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "gohugoio/hugo",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.+)$"
     }
   ],
   "customDatasources": {
@@ -71,6 +80,19 @@
       "description": "python-dateutil is a hard dep of hetzner.hcloud (its vendored hcloud SDK imports dateutil.parser.isoparse); upstream tried datetime.fromisoformat and reverted over the ISO-8601 Z suffix. It's stable, not abandoned, just release-inactive.",
       "matchPackageNames": ["python-dateutil"],
       "abandonmentThreshold": null
+    },
+    {
+      "description": "Blowfish (the Hugo theme) is an indirect gomod require in jonnyoc-site; config:best-practices skips indirect gomod deps, so enable them for that go.mod or the theme never updates. Keep it off automerge — Blowfish and Hugo share a compatibility range renovate can't see, so review the pair together (mirrors the gohugoio/hugo rule).",
+      "matchManagers": ["gomod"],
+      "matchFileNames": ["jonnyoc-site/go.mod"],
+      "matchDepTypes": ["indirect"],
+      "enabled": true,
+      "automerge": false
+    },
+    {
+      "description": "Hugo and the Blowfish theme share a compatibility range (Blowfish's module.hugoVersion) renovate can't see; review Hugo bumps against it rather than automerging.",
+      "matchPackageNames": ["gohugoio/hugo"],
+      "automerge": false
     }
   ]
 }
