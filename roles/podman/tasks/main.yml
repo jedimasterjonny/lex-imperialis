@@ -14,6 +14,26 @@
     state: started
   become: true
 
+# podman/netavark manage the container bridges themselves; NetworkManager must
+# not. Otherwise deleting the last bridge — a run that stops every container, as
+# podman_backup does — fires an NM event that unmounts the _netdev NFS shares
+# mid-run. Skipped where NetworkManager is absent (the molecule containers).
+- name: Detect NetworkManager
+  ansible.builtin.stat:
+    path: /etc/NetworkManager/conf.d
+  register: podman_nm_confd
+
+- name: Leave podman's bridges unmanaged by NetworkManager
+  ansible.builtin.template:
+    src: networkmanager-podman.conf.j2
+    dest: /etc/NetworkManager/conf.d/podman.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  when: podman_nm_confd.stat.exists
+  notify: Reload NetworkManager for podman
+
 - name: Create the quadlet directory
   ansible.builtin.file:
     path: /etc/containers/systemd
