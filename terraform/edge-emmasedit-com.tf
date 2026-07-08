@@ -144,3 +144,66 @@ resource "cloudflare_ruleset" "emmas_cache" {
     },
   ]
 }
+
+# --- WAF custom rules ---
+
+# Challenge the WordPress login POST and XML-RPC at the edge, before the origin.
+# The login GET and front-end stay clean, so only credential submission and the
+# XML-RPC machine endpoint are gated.
+resource "cloudflare_ruleset" "emmas_waf" {
+  zone_id = local.emmasedit_com_zone_id
+  name    = "emmasedit.com WordPress login protection"
+  kind    = "zone"
+  phase   = "http_request_firewall_custom"
+
+  rules = [
+    {
+      ref         = "challenge_wp_login_post"
+      description = "Managed-challenge credential POSTs to wp-login.php; GET renders clean"
+      expression  = "http.request.method eq \"POST\" and http.request.uri.path eq \"/wp-login.php\""
+      action      = "managed_challenge"
+      enabled     = true
+    },
+    # challenge, not block: the conservative posture — automated brute-force and
+    # pingback/multicall abuse can't solve it, and a hard block is avoided.
+    # Jetpack/WP.com (AS2635) can't solve any challenge, so exclude it inline
+    # (KISS: only one consumer needs the bypass) by ASN — its IPs churn, and an
+    # ASN keeps origin topology out of this public repo.
+    {
+      ref         = "challenge_xmlrpc"
+      description = "Challenge xmlrpc.php, excluding Jetpack/WP.com (AS2635)"
+      expression  = "http.request.uri.path eq \"/xmlrpc.php\" and not (http.request.uri.query contains \"for=jetpack\" and ip.src.asnum eq 2635)"
+      action      = "challenge"
+      enabled     = true
+    },
+  ]
+}
+
+# --- Rate limiting ---
+
+# Per-IP throttle on the login. Free allows one rate-limit rule and only the URI
+# path in its expression — no method match, so it counts GET and POST alike.
+# Spent on wp-login.php; xmlrpc.php is left to the WAF challenge. cf.colo.id is a
+# mandatory counting characteristic (per-colo edge count) the API requires.
+resource "cloudflare_ruleset" "emmas_ratelimit" {
+  zone_id = local.emmasedit_com_zone_id
+  name    = "emmasedit.com WordPress login rate limit"
+  kind    = "zone"
+  phase   = "http_ratelimit"
+
+  rules = [
+    {
+      ref         = "ratelimit_wp_login"
+      description = "Throttle wp-login.php per IP"
+      expression  = "http.request.uri.path eq \"/wp-login.php\""
+      action      = "block"
+      enabled     = true
+      ratelimit = {
+        characteristics     = ["cf.colo.id", "ip.src"]
+        period              = 10
+        requests_per_period = 5
+        mitigation_timeout  = 10
+      }
+    },
+  ]
+}
