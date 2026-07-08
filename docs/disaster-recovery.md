@@ -29,8 +29,10 @@ shares is not in the repo; it lives on the NAS and is the NAS's own concern.
 has no repo — its state is the repo plus `.vault_pass`. `administratum` (the NAS)
 is the backup *target*; its DR is DSM's job (see below).
 
-**Single point of failure:** every restic repo lives on `administratum`. Lose the
-NAS and you lose all podman backups with it.
+**Off-site copy:** the restic repos all live on `administratum`, but a weekly
+Synology Hyper Backup task replicates the `*-podman-backup` folders off-site to a
+storage box (Wednesday 02:00, an hour after the restic run). A lost NAS is
+recoverable from it — see [administratum](#administratum-nas).
 
 ## solar (and any openSUSE podman host)
 
@@ -144,5 +146,7 @@ redeploy the compose projects:
 make apply PLAY=administratum
 ```
 
-Losing the NAS also loses every host's restic repo, so a NAS rebuild is the one
-case where solar's and rogue-trader's podman volumes cannot be restored.
+The `*-podman-backup` restic repos are also replicated off-site by a weekly
+Synology Hyper Backup task (Wednesday 02:00, to a storage box). After rebuilding
+the NAS, restore that task's set to return the repos to `/volume2/astropath/`;
+solar's and rogue-trader's podman volumes can then be restored as normal.

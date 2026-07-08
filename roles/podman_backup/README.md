@@ -19,6 +19,12 @@ spurious ENOENT mid-run that would otherwise fail an isolated operation.
 The repo is unencrypted (`--insecure-no-password`): the NAS share is trusted.
 Assumes `podman` is installed and the `nfs` role has mounted the target.
 
+The on-NAS repos are replicated off-site out of band by a Synology Hyper Backup
+task that copies the `*-podman-backup` folders to a storage box weekly (Wednesday
+02:00), encrypted in transit but stored unencrypted — the box, like the NAS
+share, is trusted with the repo contents. That job is NAS-side, not managed by
+this role — see [`docs/disaster-recovery.md`](../../docs/disaster-recovery.md).
+
 ## Restore
 
 The role also installs `podman-restore.sh` (`podman_backup_restore_script`), the
