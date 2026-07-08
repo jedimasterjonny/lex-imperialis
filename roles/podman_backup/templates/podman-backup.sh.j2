@@ -14,6 +14,19 @@ export RESTIC_REPOSITORY="$repo"
 # systemd runs this with no $HOME, so pin restic's cache somewhere it can find it.
 export RESTIC_CACHE_DIR=/var/cache/restic
 restic() { command restic --insecure-no-password "$@"; }
+
+# The astropath NFS mount intermittently serves a spurious ENOENT for a file that
+# exists — a lock, or the repo config — aborting a restic call mid-run. Retry each
+# call a few times to ride out the blip rather than fail the whole backup.
+retry() {
+    for _ in 1 2 3; do
+        if "$@"; then
+            return 0
+        fi
+        sleep 5
+    done
+    return 1
+}
 {% raw %}
 # Each podman volume's mountpoint. Capturing into a variable (rather than a
 # process substitution, which would mask a failure) lets set -e abort here if
@@ -52,8 +65,8 @@ if ((${#units[@]})); then
 fi
 
 mkdir -p "$repo" "$RESTIC_CACHE_DIR"
-restic snapshots >/dev/null 2>&1 || restic init
-restic backup --tag podman-volumes "${sources[@]}"
-restic forget --tag podman-volumes \
+retry restic snapshots >/dev/null 2>&1 || retry restic init
+retry restic backup --tag podman-volumes "${sources[@]}"
+retry restic forget --tag podman-volumes \
     --keep-weekly "$keep_weekly" --keep-monthly "$keep_monthly" --prune
 {% endraw %}
