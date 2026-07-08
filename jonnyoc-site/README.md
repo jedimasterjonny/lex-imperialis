@@ -7,7 +7,8 @@ the live channel, a PR a 30-day preview channel
 (`.github/workflows/firebase-hosting-*.yml`).
 
 Local preview needs `hugo` **and** `go` on PATH (the theme is a Hugo Module,
-fetched via the Go toolchain):
+fetched via the Go toolchain) — the `dev` role provisions both on the
+workstation:
 
     make hugo-serve      # serves on http://localhost:1313
     make hugo-build      # renders to public/, exactly as CI does
