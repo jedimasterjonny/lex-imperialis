@@ -137,7 +137,8 @@ Recovery is bootstrap plus its play, run locally.
 Out of this repo's recovery flow — it is the backup target, not a managed
 openSUSE host, and it has no podman repo. Recover the appliance with DSM (Hyper
 Backup / the RAID), which also returns Prometheus's TSDB (a local bind mount at
-`/volume2/astropath/prometheus/data`). Then redeploy the compose project:
+`/volume2/astropath/prometheus/data`; blackbox_exporter is stateless). Then
+redeploy the compose projects:
 
 ```
 make apply PLAY=administratum
