@@ -23,6 +23,12 @@ matches the CI gate (`.github/workflows/lint.yml`), kept in sync by one renovate
 custom manager that bumps both. Unlike Claude Code, tflint does not self-update,
 so a version check drives the install, not `creates:`.
 
+## Google Cloud CLI
+
+`gcloud` has no openSUSE package, so the role imports Google's package-signing
+key and adds Google's own repo (an el9 yum repo zypper consumes) before
+installing `google-cloud-cli` from it.
+
 ## Passwordless sudo
 
 `dev_passwordless_sudo` (default `true`) grants the owner passwordless sudo on

@@ -24,6 +24,31 @@
     state: present
   become: true
 
+# gcloud has no openSUSE package, so it comes from Google's own repo. rpm_key
+# trusts the package signature (RPM keyring), the repo add's auto_import_keys
+# trusts the metadata signature (zypp keyring) -- both non-interactively;
+# autorefresh is off so a Google-repo outage can't fail an unrelated zypper run.
+- name: Import the Google Cloud package-signing key
+  ansible.builtin.rpm_key:
+    key: https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+    state: present
+  become: true
+
+- name: Add the Google Cloud CLI repository
+  community.general.zypper_repository:
+    name: google-cloud-cli
+    repo: https://packages.cloud.google.com/yum/repos/cloud-sdk-el9-x86_64
+    auto_import_keys: true
+    autorefresh: false
+    state: present
+  become: true
+
+- name: Install the Google Cloud CLI
+  community.general.zypper:
+    name: google-cloud-cli
+    state: present
+  become: true
+
 # tflint has no zypper package, and does not self-update, so a version check
 # (not creates:) drives idempotence and picks up renovate bumps. The upstream
 # script checksum-verifies the download.
