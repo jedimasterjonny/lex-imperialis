@@ -10,9 +10,11 @@ every record or setting is managed: an origin IP with no Terraform-visible sourc
 or a setting the provider reports read-only (Email Routing, Tiered Cache on Free),
 is left out and noted in the file's header.
 
-An `hcloud_server` data source (in `dns-emmasedit-com.tf`) is the Hetzner side: it
-reads rogue-trader's live IP to set the `emmasedit.com` apex A/AAAA — fetching at
-plan time the origin IP Cloudflare's proxy hides, so it is never committed.
+`firewall-rogue-trader.tf` and an `hcloud_server` data source (in
+`dns-emmasedit-com.tf`) are the Hetzner side: the data source reads rogue-trader's
+live IP to set the `emmasedit.com` apex A/AAAA — fetching at plan time the origin
+IP Cloudflare's proxy hides, so it is never committed — and its server id attaches
+rogue-trader's `vpc-firewall`, moved here from the Ansible bootstrap.
 
 `firebase-jonnyoc-website.tf` adds the Google side: the `jonnyoc-website` GCP
 project that serves the `jonnyoc.uk` apex from Firebase Hosting — the project
@@ -45,7 +47,7 @@ the `cloud` block). The tokens come from the vault — no `tofu login` needed:
     tofu -chdir=terraform plan
 
 `TF_VAR_hcloud_token` is the emmas-edit project's Hetzner token — it backs the
-`hcloud_server` data source above.
+`hcloud_server` data source and `vpc-firewall` above.
 
 The Google provider reads credentials by execution context: locally it uses your
 own Application Default Credentials — run `gcloud auth application-default login`

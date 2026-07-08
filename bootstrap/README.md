@@ -31,8 +31,9 @@ ansible-playbook bootstrap/incus.yml --ask-become-pass
 ## rogue-trader.yml
 
 Provisions the persistent Hetzner VM serving the public site: uploads the SSH
-key, sets the cloud firewall, and creates the server with a cloud-init that
-joins it to the home VPN as a split tunnel at first boot. Provision-once —
+key and creates the server with a cloud-init that joins it to the home VPN as a
+split tunnel at first boot. Its cloud firewall lives in `terraform/`
+(`firewall-rogue-trader.tf`), not here. Provision-once —
 `user_data` applies only on first boot, so a re-run won't re-render the tunnel
 config on a live server. Requires the operator's `~/.ssh/id_ed25519.pub`
 locally — that public key is uploaded and authorised on the server. Run from

@@ -85,9 +85,9 @@ jobs:
 
       # TF_TOKEN_app_terraform_io is the non-interactive form of `tofu login`; it
       # authenticates init/plan to the HCP workspace. The Cloudflare and Hetzner
-      # tokens feed their providers (Hetzner for the rogue-trader lookup). set +e
-      # captures the output and exit code so the next step can post the plan and
-      # still fail the job on a real error.
+      # tokens feed their providers (Hetzner for the rogue-trader lookup and
+      # firewall). set +e captures the output and exit code so the next step can
+      # post the plan and still fail the job on a real error.
       - name: Plan
         id: plan
         if: github.event_name != 'push'

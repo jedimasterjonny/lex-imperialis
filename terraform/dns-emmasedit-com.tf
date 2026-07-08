@@ -11,8 +11,9 @@ locals {
   emmasedit_com_zone_id = "b6791c95e583b4af99fd5eb01f183bc4"
 }
 
-# rogue-trader's origin IP from the Hetzner API for the apex records below —
-# never committed, as Cloudflare's proxy hides it.
+# rogue-trader's live attributes from the Hetzner API: the origin IP for the
+# apex records below (never committed — Cloudflare's proxy hides it) and the
+# server id for the firewall's apply_to (firewall-rogue-trader.tf).
 data "hcloud_server" "rogue_trader" {
   name = "rogue-trader"
 }
