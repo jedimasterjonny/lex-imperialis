@@ -75,7 +75,7 @@ Integrate with a merge commit — always `--no-ff`, never fast-forward or squash
 Conventional Commits. Two project specifics:
 
 - `scope` is the role name — mandatory except for cross-cutting changes, never an issue identifier.
-- Extra type `ops` (infrastructure, deployment, CI/CD, backups, monitoring, recovery), distinct from `build` (build tooling, dependencies, version).
+- Extra type `ops` for operating the fleet — wiring a role onto a host, CI/CD, backups, recovery, and standing up the monitoring stack — distinct from `build` (build tooling, dependencies, version). Authoring a capability inside a role is `feat`, not `ops`, even a monitoring one (an alert rule, a metric, a scrape target, container hardening, config-as-code): `feat` writes the role, `ops` deploys it.
 
 ## Bisect safety
 
