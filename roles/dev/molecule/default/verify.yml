@@ -34,6 +34,10 @@
       ansible.builtin.command: tofu version
       changed_when: false
 
+    - name: The Google Cloud CLI is usable
+      ansible.builtin.command: gcloud version
+      changed_when: false
+
     # Bare tflint (PATH-resolved), matching how the pre-commit gate and Makefile
     # invoke it — proves the version the gate will actually run, not just the file
     # the role installs.
