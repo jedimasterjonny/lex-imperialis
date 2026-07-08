@@ -4,10 +4,17 @@ Weekly restic backup of this host's podman volumes to
 `<podman_backup_root>/<hostname>-podman-backup` (default root `/nfs/astropath`,
 the astropath NFS share). A systemd timer (Wednesday 01:00, persistent — clear of
 every other scheduled job) quiesces the quadlet container units, snapshots every
-volume with restic, restarts the units (via a trap, so they return even if the
-backup fails), then prunes to `podman_backup_keep_weekly` / `_keep_monthly`. Each
-restic call is retried: the NFS mount intermittently serves a spurious ENOENT
-mid-run that would otherwise fail an isolated operation.
+volume with restic, prunes to `podman_backup_keep_weekly` / `_keep_monthly`,
+restarts the units (via a trap, so they return even if the backup fails), then
+runs `restic check` to verify repository integrity — a failed check fails the
+service, so the `PodmanBackupFailed` alert catches silent structural corruption
+that the snapshot and prune steps leave unverified, instead of it surfacing only
+at restore. The check runs after the restart, so it adds no container downtime.
+It is metadata-only by default; set `podman_backup_check_read_data_subset` to a
+restic `--read-data-subset` percentage (e.g. `10%`) to also re-hash a random
+slice of data packs each run, accruing the bit-rot coverage the metadata check
+cannot reach. Each restic call is retried: the NFS mount intermittently serves a
+spurious ENOENT mid-run that would otherwise fail an isolated operation.
 
 The repo is unencrypted (`--insecure-no-password`): the NAS share is trusted.
 Assumes `podman` is installed and the `nfs` role has mounted the target.
@@ -31,3 +38,8 @@ from systemd's `$SERVICE_RESULT`) and `podman_backup_last_run_timestamp_seconds`
 node_exporter scrapes that file (its `node_exporter_textfile_directory` must
 match), and the `prometheus` role's `PodmanBackupFailed` / `PodmanBackupOverdue`
 rules turn a failed or missed run into an Alertmanager notification.
+
+A failed `restic check` trips the same metric, so a `PodmanBackupFailed` that
+persists while fresh snapshots still land points at repository corruption rather
+than a failed run — inspect `journalctl -u podman-backup` and recover per
+[`docs/disaster-recovery.md`](../../docs/disaster-recovery.md).

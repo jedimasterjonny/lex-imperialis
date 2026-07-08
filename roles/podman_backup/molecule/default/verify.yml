@@ -192,3 +192,52 @@
           - not podman_backup_stray.stat.exists
         fail_msg: "the restore left a stray file the snapshot did not contain"
         quiet: true
+
+    # The green backup run above ended in restic check, so the service already
+    # exercises the check on a sound repo. Assert it is wired into the installed
+    # script, then that the role's invocation is a real gate, not a no-op: the
+    # same check must reject a repo whose data is gone. Corrupt a copy, not the
+    # live repo, so a standalone `molecule verify` re-run still starts sound.
+    - name: Read the installed backup script
+      ansible.builtin.slurp:
+        src: "{{ podman_backup_script }}"
+      register: podman_backup_script_content
+      become: true
+
+    - name: The backup script runs a restic integrity check
+      ansible.builtin.assert:
+        that:
+          - "'restic check' in (podman_backup_script_content.content | b64decode)"
+        fail_msg: "the backup script does not run restic check"
+        quiet: true
+
+    - name: Discard any prior corrupt copy
+      ansible.builtin.file:
+        path: "{{ podman_backup_repo }}-corrupt"
+        state: absent
+      become: true
+
+    - name: Copy the scratch repo to corrupt in isolation
+      ansible.builtin.command: "cp -a {{ podman_backup_repo }} {{ podman_backup_repo }}-corrupt"
+      changed_when: true
+      become: true
+
+    - name: Remove the copy's data to corrupt it
+      ansible.builtin.file:
+        path: "{{ podman_backup_repo }}-corrupt/data"
+        state: absent
+      become: true
+
+    - name: Run the integrity check against the corrupt copy
+      ansible.builtin.command: "restic --insecure-no-password --repo {{ podman_backup_repo }}-corrupt check"
+      register: podman_backup_corrupt_check
+      changed_when: false
+      failed_when: false
+      become: true
+
+    - name: A corrupt repo fails the integrity check
+      ansible.builtin.assert:
+        that:
+          - podman_backup_corrupt_check.rc != 0
+        fail_msg: "restic check passed a repo with its data removed"
+        quiet: true
