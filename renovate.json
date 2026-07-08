@@ -35,8 +35,8 @@
     },
     {
       "customType": "regex",
-      "description": "Hugo pinned in the Firebase deploy workflows (peaceiris/actions-hugo hugo-version); no zypper/pip package.",
-      "managerFilePatterns": ["/^\\.github/workflows/firebase-hosting-(merge|pull-request)\\.yml$/"],
+      "description": "Hugo pinned in the Firebase deploy workflows and the go.sum autofix workflow (peaceiris/actions-hugo hugo-version); no zypper/pip package.",
+      "managerFilePatterns": ["/^\\.github/workflows/(firebase-hosting-(merge|pull-request)|hugo-gosum-autofix)\\.yml$/"],
       "matchStrings": ["hugo-version:\\s*\"(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "gohugoio/hugo",
       "datasourceTemplate": "github-releases",
