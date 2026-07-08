@@ -2,14 +2,58 @@
 groups:
   - name: availability
     rules:
+      # Excludes the blackbox job: its targets are probe URLs that all scrape the
+      # one co-located exporter, so up==0 there means the exporter is unreachable,
+      # not that the sites are down. BlackboxExporterDown catches that once, and
+      # ProbeDown catches an actually-failing site.
       - alert: InstanceDown
-        expr: up == 0
+        expr: up{job != "blackbox"} == 0
         for: 5m
         labels:
           severity: critical
         annotations:
           summary: "{{ $labels.instance }} ({{ $labels.job }}) is down"
           description: "{{ $labels.instance }} has been unreachable for over 5 minutes."
+
+  - name: probes
+    rules:
+      # The probe targets all scrape the one co-located exporter, so up==0 across
+      # them means the exporter is unreachable, not the sites. Aggregate to a
+      # single alert (InstanceDown skips this job); a dead exporter blinds all
+      # probing, so it is critical.
+      - alert: BlackboxExporterDown
+        expr: max(up{job="blackbox"}) == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "the blackbox exporter is unreachable — public-site probing is blind"
+          description: "Prometheus cannot scrape the blackbox exporter, so no public site is being probed."
+      # Blackbox probe of a public site: probe_success == 0 means the site did not
+      # answer with a 2xx (through Cloudflare/Firebase, following redirects) — down,
+      # DNS broken, or TLS failed. 5m rides out a transient blip or a deploy.
+      - alert: ProbeDown
+        expr: probe_success == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "probe of {{ $labels.instance }} is failing"
+          description: "The blackbox probe of {{ $labels.instance }} has not returned a 2xx for over 5 minutes."
+      # Edge certs (Cloudflare, Firebase) auto-renew well before expiry; 14 days
+      # left means renewal has silently stalled, with time to intervene by hand.
+      # Guarded on the expiry being > 0: blackbox exports 0 both for a failed probe
+      # and for a successful non-TLS one, and 0 - time() is hugely negative — it
+      # would satisfy the threshold and fire spuriously. Only warn when a real cert
+      # was measured.
+      - alert: ProbeSSLCertExpiringSoon
+        expr: probe_ssl_earliest_cert_expiry - time() < 14 * 86400 and probe_ssl_earliest_cert_expiry > 0
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "TLS certificate for {{ $labels.instance }} expiring soon"
+          description: "The TLS certificate served by {{ $labels.instance }} expires in under 14 days — auto-renewal may have stalled."
 
   - name: backups
     rules:

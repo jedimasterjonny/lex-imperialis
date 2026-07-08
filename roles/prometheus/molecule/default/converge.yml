@@ -49,6 +49,11 @@
         # alerting block and rule files to load, which verify asserts.
         prometheus_alertmanager_targets:
           - localhost:9093
+        # Exercises the blackbox job template. No exporter runs on 9115 here, so
+        # the target registers (down) but need only be discovered — verify asserts
+        # the job registered, not that the probe succeeded.
+        prometheus_probe_targets:
+          - https://example.com
         # The nested CI container cannot load an AppArmor profile, so run it
         # unconfined; the template's hardcoded posture still applies on top.
         prometheus_security_opt_extra:

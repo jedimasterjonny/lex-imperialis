@@ -17,6 +17,16 @@ prometheus_cadvisor_targets: []
 # so no alerting block or rule files are configured until a host sets them.
 prometheus_alertmanager_targets: []
 
+# Blackbox probe targets, each a full URL the blackbox_exporter probes for a 2xx
+# (following redirects). Empty by default, so the blackbox job carries no targets
+# until a host sets them.
+prometheus_probe_targets: []
+
+# host:port of the blackbox_exporter the blackbox job scrapes. Must match the
+# blackbox_exporter role's blackbox_exporter_listen_address — two independent
+# defaults on the co-located roles, agreeing here at the exporter's loopback bind.
+prometheus_blackbox_address: 127.0.0.1:9115
+
 # Extra compose security_opt entries, appended to the no-new-privileges the
 # template hardcodes (alongside cap_drop: ALL). Empty in production; the molecule
 # scenario sets apparmor=unconfined because its nested CI container cannot load an
