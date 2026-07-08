@@ -1,0 +1,87 @@
+---
+name: hugo go.sum autofix
+
+# Blowfish (the Hugo theme) is an indirect gomod require that no Go package
+# imports, so `go get` records only its /go.mod hash — never the content h1 hash
+# — and leaves the superseded version's lines behind. Only Hugo's own tooling
+# records the content hash, and the Mend-hosted Renovate app can't run it
+# (postUpgradeTasks need self-hosted allowedCommands). So the fix lives in CI: on
+# any PR that touches jonnyoc-site/go.{mod,sum}, regenerate a complete, tidy
+# go.sum and fold it into the Renovate commit (amend + force-push), so each bump
+# stays a single clean commit rather than growing a checksum-fixup churn.
+#
+# The force-push uses GITHUB_TOKEN, which by design does not re-trigger workflows,
+# so this never loops on its own commit. Trade-off: the corrected commit gets no
+# fresh check runs — fine here, where merges are manual and the preview build
+# already passed on the original commit. A required-status-check branch
+# protection would need a PAT to re-trigger instead.
+"on":
+  pull_request:
+    paths:
+      - 'jonnyoc-site/go.mod'
+      - 'jonnyoc-site/go.sum'
+
+permissions:
+  contents: write # commit the corrected go.sum back to the PR branch
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  autofix:
+    name: complete go.sum
+    # Fork PRs get a read-only token and an unpushable branch; skip them.
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./jonnyoc-site
+    steps:
+      - name: Check out the PR branch
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0 # full history so the amend + force-push is clean
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: jonnyoc-site/go.mod
+          cache-dependency-path: jonnyoc-site/go.sum
+
+      - name: Set up Hugo
+        uses: peaceiris/actions-hugo@2752ce1d29631191ea3f27c23495fa06139a5b78 # v3.2.1
+        with:
+          hugo-version: "0.164.0"
+          extended: true
+
+      # `hugo mod tidy` drops the superseded lines; the build downloads the theme
+      # and records its content hash — the same completion the preview build does
+      # — so together they yield the canonical two-line entry. Abort if tidy ever
+      # drops the theme require rather than commit a broken go.mod.
+      - name: Regenerate a complete, tidy go.sum
+        env:
+          HUGO_ENVIRONMENT: production
+        run: |
+          hugo mod tidy
+          hugo --minify -d "${RUNNER_TEMP}/gosum-build" >/dev/null
+          grep -q 'nunocoracao/blowfish' go.mod \
+            || { echo '::error::theme require missing after hugo mod tidy — aborting'; exit 1; }
+
+      - name: Fold the corrected go.sum into the Renovate commit
+        run: |
+          if git diff --quiet -- go.mod go.sum; then
+            echo 'go.sum already complete — nothing to fix.'
+            exit 0
+          fi
+          orig="$(git rev-parse HEAD)"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add go.mod go.sum
+          # Amend rather than stack a fixup commit, so each bump stays one clean
+          # commit (Renovate's — author preserved). The force-push is safe: a
+          # GITHUB_TOKEN push never re-triggers workflows (so no loop), and the
+          # lease rejects the push if the branch moved since checkout.
+          git commit --amend --no-edit
+          git push --force-with-lease="${GITHUB_HEAD_REF}:${orig}" origin HEAD:"${GITHUB_HEAD_REF}"
