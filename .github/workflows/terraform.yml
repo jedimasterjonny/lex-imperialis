@@ -5,8 +5,8 @@ name: terraform
 # so this runs on the runner rather than via HCP's remote runs: a PR plans (as
 # the read-only tofu-plan SA) and comments the plan; a merge to main applies (as
 # the write tofu-apply SA). tofu, the venv (for ansible-vault), and .vault_pass
-# are all it needs — the HCP and Cloudflare tokens come from the vault and GCP
-# auth is keyless via WIF, so VAULT_PASSWORD is the only secret. Offline
+# are all it needs — the HCP, Cloudflare, and Hetzner tokens come from the vault
+# and GCP auth is keyless via WIF, so VAULT_PASSWORD is the only secret. Offline
 # fmt/validate/tflint stay in the lint workflow.
 "on":
   pull_request:
@@ -84,9 +84,10 @@ jobs:
           chmod 600 .vault_pass
 
       # TF_TOKEN_app_terraform_io is the non-interactive form of `tofu login`; it
-      # authenticates init/plan to the HCP workspace. The Cloudflare token feeds
-      # the provider. set +e captures the output and exit code so the next step
-      # can post the plan and still fail the job on a real error.
+      # authenticates init/plan to the HCP workspace. The Cloudflare and Hetzner
+      # tokens feed their providers (Hetzner for the rogue-trader lookup). set +e
+      # captures the output and exit code so the next step can post the plan and
+      # still fail the job on a real error.
       - name: Plan
         id: plan
         if: github.event_name != 'push'
@@ -94,6 +95,7 @@ jobs:
           set +e
           export TF_TOKEN_app_terraform_io="$(bin/vault-var.sh terraform_hcp_token)"
           export TF_VAR_cloudflare_api_token="$(bin/vault-var.sh terraform_cloudflare_api_token)"
+          export TF_VAR_hcloud_token="$(bin/vault-var.sh hcloud_token_emmas_edit)"
           # -lock=false: this plan is read-only, and cancel-in-progress could kill
           # it mid-run and orphan the HCP state lock (local execution holds it).
           # -no-color on both: the combined output is teed into the PR comment.
@@ -149,6 +151,7 @@ jobs:
           # vault lookup under `set -e` (export's own exit status is 0).
           TF_TOKEN_app_terraform_io="$(bin/vault-var.sh terraform_hcp_token)"
           TF_VAR_cloudflare_api_token="$(bin/vault-var.sh terraform_cloudflare_api_token)"
-          export TF_TOKEN_app_terraform_io TF_VAR_cloudflare_api_token
+          TF_VAR_hcloud_token="$(bin/vault-var.sh hcloud_token_emmas_edit)"
+          export TF_TOKEN_app_terraform_io TF_VAR_cloudflare_api_token TF_VAR_hcloud_token
           tofu -chdir=terraform init -input=false
           tofu -chdir=terraform apply -input=false -no-color -auto-approve

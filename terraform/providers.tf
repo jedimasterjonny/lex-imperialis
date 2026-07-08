@@ -2,8 +2,8 @@ provider "cloudflare" {
   api_token = var.cloudflare_api_token
 }
 
-# Wired for the cross-provider VM->DNS work to come; stays unconfigured (its
-# token unneeded) until a resource uses it.
+# Serves rogue-trader's data source. Token is the emmas-edit project's
+# (TF_VAR_hcloud_token), sourced from the vault.
 provider "hcloud" {
   token = var.hcloud_token
 }
