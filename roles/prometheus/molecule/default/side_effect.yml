@@ -9,9 +9,9 @@
       ansible.builtin.include_role:
         name: prometheus
       # node_targets is the change under test; the others mirror converge and must
-      # stay — defaults would drop the cadvisor job and the alerting config verify
-      # checks for, and the apparmor=unconfined the nested incus container needs to
-      # start.
+      # stay — defaults would drop the cadvisor and blackbox jobs and the alerting
+      # config verify checks for, and the apparmor=unconfined the nested incus
+      # container needs to start.
       vars:
         prometheus_node_targets:
           - localhost:9100
@@ -20,5 +20,7 @@
           - localhost:8080
         prometheus_alertmanager_targets:
           - localhost:9093
+        prometheus_probe_targets:
+          - https://example.com
         prometheus_security_opt_extra:
           - apparmor=unconfined

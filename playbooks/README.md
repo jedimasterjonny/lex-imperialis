@@ -9,8 +9,9 @@ descriptive:
   workstation; runs the `gitops_reconcile` timer.
 - **solar** — the main homelab server: NFS client, the arr media stack behind
   caddy, plus grafana, homepage, monitoring agents, and backups.
-- **administratum** — the Synology NAS, the one non-openSUSE host: runs only
-  Prometheus, unprivileged, via Docker Compose.
+- **administratum** — the Synology NAS, the one non-openSUSE host: runs
+  Prometheus and blackbox_exporter (external probing of the public sites),
+  unprivileged, via Docker Compose.
 - **rogue-trader** — the Hetzner VPS serving the public WordPress site.
 
 ## site.yml

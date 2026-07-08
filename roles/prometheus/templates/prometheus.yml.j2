@@ -27,6 +27,31 @@ scrape_configs:
     scrape_interval: 30s
     static_configs:
       - targets: {{ prometheus_cadvisor_targets | to_json }}
+{% if prometheus_probe_targets %}
+
+  # Blackbox probes: each target is passed to the blackbox_exporter as ?target=,
+  # and the scrape hits the exporter, not the site. The relabelling moves the URL
+  # into the target param and the instance label, then rewrites __address__ to the
+  # exporter so the scrape lands there.
+  - job_name: blackbox
+    # Each scrape is a live external probe (DNS + TLS + redirect-follow) against a
+    # public site, so scrape at 60s, not the global 15s: the probe alerts key off
+    # minutes to hours (probe_success for 5m, cert expiry for 1h), so a faster
+    # cadence only hammers the sites and their edge for no gain.
+    scrape_interval: 60s
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets: {{ prometheus_probe_targets | to_json }}
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: {{ prometheus_blackbox_address }}
+{% endif %}
 {% if prometheus_alertmanager_targets %}
 
   - job_name: alertmanager

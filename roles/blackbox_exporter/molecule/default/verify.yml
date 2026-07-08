@@ -1,0 +1,80 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Wait for blackbox_exporter to be ready
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9115/-/healthy
+        status_code: 200
+      register: blackbox_exporter_ready
+      until: blackbox_exporter_ready.status == 200
+      retries: 30
+      delay: 2
+
+    - name: Read the config the exporter actually loaded
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9115/config
+        return_content: true
+      register: blackbox_exporter_loaded_config
+
+    # /config is the parsed config the exporter is running, not the file on disk:
+    # finding the module here proves the mounted config loaded, not merely that it
+    # was written.
+    # Match the delimited YAML key, not a bare substring: 'http_2xx' alone is also
+    # satisfied by 'http_2xx_sentinel', so it couldn't catch the real module being
+    # dropped.
+    - name: The http_2xx module is loaded
+      ansible.builtin.assert:
+        that:
+          - "'http_2xx:' in blackbox_exporter_loaded_config.content"
+        fail_msg: the running blackbox_exporter did not load the http_2xx module
+
+    # side_effect added this module; finding it in the LOADED config proves the
+    # recreate applied the change — a stale single-file bind mount would not.
+    - name: The side-effect config change reached the running exporter
+      ansible.builtin.assert:
+        that:
+          - "'http_2xx_sentinel:' in blackbox_exporter_loaded_config.content"
+        fail_msg: >-
+          The running blackbox_exporter did not pick up the config change — the
+          container was not recreated (stale single-file bind mount).
+
+    # Probe the exporter's own endpoint through the module: a self-contained 2xx
+    # with no external dependency, exercising the http_2xx prober end to end.
+    - name: Probe a known-good target through the http_2xx module
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:9115/probe?target=http://127.0.0.1:9115/-/healthy&module=http_2xx"
+        return_content: true
+      register: blackbox_exporter_probe
+
+    - name: The probe reports success
+      ansible.builtin.assert:
+        that:
+          - "'probe_success 1' in blackbox_exporter_probe.content"
+        fail_msg: the http_2xx probe of a known-good target did not succeed
+
+    # The checks above prove the exporter works; they can't prove its capability
+    # set is minimal. Assert the posture directly so a regression that widens the
+    # caps or drops the restriction fails here, not silently in production.
+    - name: Read blackbox_exporter's security posture
+      ansible.builtin.command: docker inspect blackbox_exporter
+      register: blackbox_exporter_inspect
+      changed_when: false
+
+    # docker inspect exposes the request (HostConfig), not podman's EffectiveCaps/
+    # BoundingCaps: CapDrop == [ALL] with an empty CapAdd is the docker equivalent
+    # of "no capabilities" (either half missing widens them). Match no-new-privileges
+    # as a substring — docker's rendering of the :true suffix is not guaranteed.
+    - name: Blackbox keeps no capabilities and bars privilege escalation
+      vars:
+        blackbox_exporter: "{{ blackbox_exporter_inspect.stdout | from_json | first }}"
+      ansible.builtin.assert:
+        that:
+          - "blackbox_exporter.HostConfig.CapDrop | default([], true) | sort == ['ALL']"
+          - "blackbox_exporter.HostConfig.CapAdd | default([], true) == []"
+          - >-
+            blackbox_exporter.HostConfig.SecurityOpt | default([], true)
+            | select('search', 'no-new-privileges') | list | length > 0
+        fail_msg: "blackbox_exporter's capability or no-new-privileges posture has regressed"
+        quiet: true

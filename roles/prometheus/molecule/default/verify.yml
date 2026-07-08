@@ -15,7 +15,7 @@
     # Poll, not a one-shot read: verify runs right after side_effect recreates the
     # container, and /-/ready goes green before the scrape pools register their
     # targets.
-    - name: Wait for the node, cadvisor and alertmanager scrape jobs to register
+    - name: Wait for the node, cadvisor, blackbox and alertmanager scrape jobs to register
       ansible.builtin.uri:
         url: http://127.0.0.1:9090/api/v1/targets
         return_content: true
@@ -27,6 +27,9 @@
         - >-
           prometheus_targets.json.data.activeTargets
           | selectattr('labels.job', 'eq', 'cadvisor') | list | length > 0
+        - >-
+          prometheus_targets.json.data.activeTargets
+          | selectattr('labels.job', 'eq', 'blackbox') | list | length > 0
         - >-
           prometheus_targets.json.data.activeTargets
           | selectattr('labels.job', 'eq', 'alertmanager') | list | length > 0
@@ -61,7 +64,9 @@
           - >-
             prometheus_loaded_rules.json.data.groups
             | map(attribute='rules') | flatten
-            | selectattr('name', 'in', ['InstanceDown', 'PodmanBackupFailed', 'PodmanBackupOverdue',
+            | selectattr('name', 'in', ['InstanceDown', 'BlackboxExporterDown', 'ProbeDown',
+                                        'ProbeSSLCertExpiringSoon',
+                                        'PodmanBackupFailed', 'PodmanBackupOverdue',
                                         'WordpressDbDumpFailed', 'WordpressDbDumpOverdue',
                                         'FilesystemSpaceLow', 'ServiceRestartStorm',
                                         'AutoupdateFailed', 'AutoupdateOverdue',
@@ -70,10 +75,10 @@
                                         'WordpressCronOverdue', 'GitopsReconcileFailed',
                                         'GitopsReconcileStale', 'BeetsPipelineLidarrRejected',
                                         'BeetsPipelineQuarantineBacklog', 'Watchdog'])
-            | list | length == 19
+            | list | length == 22
           - >-
             prometheus_loaded_rules.json.data.groups
-            | map(attribute='rules') | flatten | list | length == 19
+            | map(attribute='rules') | flatten | list | length == 22
         fail_msg: the loaded alert rules don't match those shipped in alerts.yml
 
     - name: Read the loaded runtime config

@@ -35,16 +35,37 @@ The role's host is the NAS, not a fleet openSUSE node, which shapes it:
   alert needs a live Alertmanager, so the `Watchdog` deadman heartbeat is what
   surfaces a wholly dead one. Empty configures no alerting and no scrape job;
   non-empty adds the `alerting` block and loads the shipped rule files.
+- `prometheus_probe_targets` — list of full URLs blackbox-probed for a 2xx. Each
+  is handed to the `blackbox_exporter` (the `blackbox_exporter` role) via `?target=`
+  and relabelled into the `instance` label, so the scrape hits the exporter, not
+  the site. Empty adds no `blackbox` job.
+- `prometheus_blackbox_address` — `host:port` of the `blackbox_exporter` the
+  `blackbox` job scrapes; the exporter's loopback listen address on this host.
 - `prometheus_security_opt_extra` — extra compose `security_opt` entries, appended
   to the `no-new-privileges` the template hardcodes (alongside `cap_drop: ALL`);
   empty in production.
+
+## Blackbox probing
+
+When `prometheus_probe_targets` is set, the role adds a `blackbox` job: for each
+URL it scrapes the `blackbox_exporter` at `prometheus_blackbox_address` with
+`?target=<url>&module=http_2xx` and `metrics_path: /probe`, so Prometheus records
+`probe_success` and `probe_ssl_earliest_cert_expiry` per site end-to-end (through
+Cloudflare/Firebase, following redirects). The exporter itself is the
+`blackbox_exporter` role, co-located on the NAS.
 
 ## Alerting
 
 When `prometheus_alertmanager_targets` is set, the role adds the `alerting` block
 and a `rule_files` glob, mounts its `files/rules/` at `/etc/prometheus/rules`, and
 routes alerts to the targets. The shipped rules are `InstanceDown` (a target
-unreachable for 5m); the `backups` group — the `podman_backup` pair
+unreachable for 5m, the `blackbox` job excluded — its targets share one exporter,
+so `up == 0` there is not a down site); the `probes` group — `BlackboxExporterDown`
+(that exporter unreachable, aggregated to one alert so it doesn't fan out per
+site), `ProbeDown` (a public site that stopped returning a 2xx for 5m) and
+`ProbeSSLCertExpiringSoon` (its TLS cert under 14 days from expiry, guarded on a
+non-zero expiry so a probe that measured no cert doesn't trip it), the latter two
+off the `blackbox` probe job; the `backups` group — the `podman_backup` pair
 `PodmanBackupFailed` (`podman_backup_success == 0`) and `PodmanBackupOverdue` (the
 last-run timestamp gone stale) plus the matching `wordpress` db-dump pair
 `WordpressDbDumpFailed` / `WordpressDbDumpOverdue`; `FilesystemSpaceLow` (a

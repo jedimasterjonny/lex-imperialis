@@ -1,0 +1,25 @@
+---
+# Where the compose project (compose.yaml + blackbox.yml) is written.
+blackbox_exporter_project_dir: /opt/blackbox_exporter
+
+# Address the exporter binds and serves /probe and /metrics on. Loopback by
+# default so only the co-located Prometheus reaches it, never the LAN — the
+# exporter takes an arbitrary target= parameter, so it must not be exposed. Must
+# match the prometheus role's prometheus_blackbox_address (the scrape side).
+blackbox_exporter_listen_address: 127.0.0.1:9115
+
+# Prober modules rendered into blackbox.yml. The http_2xx module follows redirects
+# (the redirect zones answer 3xx before the final 2xx) and probes over IPv4.
+blackbox_exporter_modules:
+  http_2xx:
+    prober: http
+    timeout: 5s
+    http:
+      follow_redirects: true
+      preferred_ip_protocol: ip4
+
+# Extra compose security_opt entries, appended to the no-new-privileges the
+# template hardcodes (alongside cap_drop: ALL). Empty in production; the molecule
+# scenario sets apparmor=unconfined because its nested CI container cannot load an
+# AppArmor profile.
+blackbox_exporter_security_opt_extra: []
