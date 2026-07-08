@@ -1,0 +1,6 @@
+---
+- name: Reload NetworkManager for podman
+  ansible.builtin.systemd_service:
+    name: NetworkManager
+    state: reloaded
+  become: true

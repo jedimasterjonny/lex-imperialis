@@ -1,0 +1,4 @@
+# {{ ansible_managed }}
+# podman/netavark own the container bridges; NetworkManager must not manage them.
+[keyfile]
+unmanaged-devices+=interface-name:podman*
