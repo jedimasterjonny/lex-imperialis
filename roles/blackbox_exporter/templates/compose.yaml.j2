@@ -1,0 +1,25 @@
+# Managed by Ansible (blackbox_exporter role).
+services:
+  blackbox_exporter:
+    image: {{ blackbox_exporter_image }}
+    container_name: blackbox_exporter
+    # Host network: the exporter resolves and routes to probe targets exactly as
+    # the host does. It binds the loopback listen address (see the command), so
+    # only the co-located Prometheus scrapes /probe — never the LAN.
+    network_mode: host
+    # The exporter reads its config and makes outbound HTTP probes — it needs no
+    # Linux capabilities and never escalates privilege, so drop every capability
+    # and bar new ones even on the host network.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+{% for opt in blackbox_exporter_security_opt_extra %}
+      - {{ opt }}
+{% endfor %}
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/blackbox_exporter/blackbox.yml
+      - --web.listen-address={{ blackbox_exporter_listen_address }}
+    volumes:
+      - {{ blackbox_exporter_project_dir }}/blackbox.yml:/etc/blackbox_exporter/blackbox.yml:ro

@@ -1,0 +1,35 @@
+---
+- name: Create the project directory
+  ansible.builtin.file:
+    path: "{{ blackbox_exporter_project_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Deploy the blackbox config
+  ansible.builtin.template:
+    src: blackbox.yml.j2
+    dest: "{{ blackbox_exporter_project_dir }}/blackbox.yml"
+    mode: "0644"
+  register: blackbox_exporter_config
+
+- name: Deploy the compose file
+  ansible.builtin.template:
+    src: compose.yaml.j2
+    dest: "{{ blackbox_exporter_project_dir }}/compose.yaml"
+    mode: "0644"
+
+# No become: on the NAS sudo needs a password, so the deploy runs as the
+# docker-group user. PATH carries /usr/local/bin, where the DSM docker CLI lives
+# off the non-interactive PATH; harmless on a host where docker is already found.
+#
+# recreate on a config change: blackbox.yml is bind-mounted as a single file, so
+# Ansible's atomic write gives it a new inode the pinned mount never sees — the
+# running container keeps reading the stale file. A compose change recreates via
+# auto.
+- name: Bring the blackbox_exporter stack up
+  community.docker.docker_compose_v2:
+    project_src: "{{ blackbox_exporter_project_dir }}"
+    state: present
+    recreate: "{{ 'always' if blackbox_exporter_config.changed else 'auto' }}"
+  environment:
+    PATH: "/usr/local/bin:{{ ansible_facts.env.PATH }}"
