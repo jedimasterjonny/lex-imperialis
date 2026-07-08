@@ -4,6 +4,8 @@ dev_packages:
   - direnv
   - gh
   - git
+  - go
+  - hugo
   - make
   - neovim
   - opentofu
