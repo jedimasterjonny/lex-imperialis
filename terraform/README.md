@@ -4,8 +4,9 @@ OpenTofu (`tofu`) configuration for cloud infrastructure — Cloudflare and Hetz
 in one workspace, so a Hetzner VM's IP can feed a Cloudflare DNS record directly.
 Currently manages the `jonnyoc.uk`, `jonnyoc.co.uk`, and `emmasedit.com`
 Cloudflare zones — one `dns-<zone>.tf` per zone, plus an `edge-<zone>.tf` for a
-zone's non-DNS config (settings and cache rules) where there is any;
-`emmasedit.com` has one for its WordPress TLS, security, and caching posture. Not
+zone's non-DNS config (settings and rulesets) where there is any; `emmasedit.com`
+has one for its WordPress TLS, security, caching, and login-protection posture —
+the last a WAF challenge on the login/XML-RPC plus a per-IP rate limit. Not
 every record or setting is managed: an origin IP with no Terraform-visible source,
 or a setting the provider reports read-only (Email Routing, Tiered Cache on Free),
 is left out and noted in the file's header.
