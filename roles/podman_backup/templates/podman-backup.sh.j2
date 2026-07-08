@@ -27,6 +27,14 @@ retry() {
     done
     return 1
 }
+
+{% if podman_backup_check_read_data_subset %}
+# Re-hash a slice of data packs during the integrity check to catch bit-rot; see
+# podman_backup_check_read_data_subset. Empty by default (structural check only).
+check_args=(--read-data-subset="{{ podman_backup_check_read_data_subset }}")
+{% else %}
+check_args=()
+{% endif %}
 {% raw %}
 # Each podman volume's mountpoint. Capturing into a variable (rather than a
 # process substitution, which would mask a failure) lets set -e abort here if
@@ -69,4 +77,14 @@ retry restic snapshots >/dev/null 2>&1 || retry restic init
 retry restic backup --tag podman-volumes "${sources[@]}"
 retry restic forget --tag podman-volumes \
     --keep-weekly "$keep_weekly" --keep-monthly "$keep_monthly" --prune
+
+# Bring the quiesced containers back up before verifying the repository: the
+# check only reads the repo, so running it post-restart holds downtime to the
+# backup window. The EXIT trap's restart is then a no-op (systemctl start is
+# idempotent).
+restart_units
+
+# Verify repository integrity so silent structural corruption on the NFS store
+# fails the service instead of lying dormant until a restore.
+retry restic check "${check_args[@]}"
 {% endraw %}

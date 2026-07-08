@@ -31,3 +31,11 @@ podman_backup_oncalendar: "Wed *-*-* 01:00:00"
 # restic retention: weeks then months of history kept, older snapshots pruned.
 podman_backup_keep_weekly: 8
 podman_backup_keep_monthly: 6
+
+# restic check runs on every backup, failing the service (and so the
+# PodmanBackupFailed alert) on structural repository corruption that the snapshot
+# and prune steps leave unverified. Set this to a restic --read-data-subset
+# percentage ("10%") to additionally re-hash a random slice of data packs each
+# run, accruing the bit-rot coverage the metadata check cannot; empty keeps the
+# check metadata-only, sparing the flaky astropath NFS mount any data re-read.
+podman_backup_check_read_data_subset: ""
