@@ -1,8 +1,9 @@
 ---
 # Provision rogue-trader: a persistent Hetzner cx33 in the emmas-edit project,
-# joined to the home VPN at boot, behind a cloud firewall. cloud-init installs
-# the tooling, writes the tunnel config, then brings it up; it is a split
-# tunnel (AllowedIPs 192.168.0.0/16), so only home-network traffic uses the VPN
+# joined to the home VPN at boot. Its cloud firewall lives in terraform/
+# (firewall-rogue-trader.tf), not here. cloud-init installs the tooling, writes
+# the tunnel config, then brings it up; it is a split tunnel
+# (AllowedIPs 192.168.0.0/16), so only home-network traffic uses the VPN
 # and the public interface stays up. Provision-once: user_data applies only at
 # first boot, so re-running is a no-op (ssh_key and server state=started are
 # idempotent) and does not re-render wg0.conf on an existing server. Run from
@@ -19,7 +20,6 @@
     rogue_trader_location: hel1
     rogue_trader_image: opensuse-16
     rogue_trader_vpn_address: 192.168.3.3
-    rogue_trader_firewall_name: vpc-firewall
     # openresolv backs wg-quick's DNS= line; python3 lets Ansible drive the box
     # over the VPN afterwards.
     rogue_trader_cloud_config:
@@ -45,31 +45,11 @@
         public_key: "{{ lookup('file', '~/.ssh/id_ed25519.pub') }}"
         state: present
 
-    # http/https for the public WordPress site; no public 22 — SSH rides the
-    # WireGuard tunnel (outbound-initiated, kept warm by PersistentKeepalive, so
-    # conntrack allows the return traffic; no inbound 51820 either).
-    - name: Configure the cloud firewall
-      hetzner.hcloud.firewall:
-        api_token: "{{ hcloud_token_emmas_edit }}"
-        name: "{{ rogue_trader_firewall_name }}"
-        state: present
-        rules:
-          - direction: in
-            protocol: tcp
-            port: "80"
-            source_ips:
-              - 0.0.0.0/0
-              - "::/0"
-          - direction: in
-            protocol: tcp
-            port: "443"
-            source_ips:
-              - 0.0.0.0/0
-              - "::/0"
-
     # user_data carries the WireGuard config, which holds a private key, so the
     # task is no_log; api_token is already redacted by the module spec. firewalls
-    # attaches the firewall above; the tunnel rides conntrack, no inbound port.
+    # is omitted (unmanaged here) so terraform's apply_to owns the attachment: run
+    # `tofu apply` right after a from-zero rebuild, which is otherwise
+    # firewall-less (all inbound open) until it does.
     - name: Create the server
       hetzner.hcloud.server:
         api_token: "{{ hcloud_token_emmas_edit }}"
@@ -79,8 +59,6 @@
         location: "{{ rogue_trader_location }}"
         ssh_keys:
           - "{{ rogue_trader_name }}-key"
-        firewalls:
-          - "{{ rogue_trader_firewall_name }}"
         user_data: "#cloud-config\n{{ rogue_trader_cloud_config | to_nice_yaml }}"
         state: started
       no_log: true

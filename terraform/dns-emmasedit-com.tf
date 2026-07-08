@@ -2,16 +2,41 @@
 # sits behind Cloudflare's proxy; mail is received via Google Workspace, and SPF +
 # DKIM also authorise Brevo for transactional sending.
 #
-# The apex A and AAAA are deliberately left unmanaged: their content is the origin
-# IP that Cloudflare's proxy hides, so committing it to this public repo would
-# defeat that. They are updated out-of-band, as jonnyoc.uk's dynamic-DNS A record
-# is.
+# The apex A and AAAA carry rogue-trader's origin IP — the address Cloudflare's
+# proxy hides. Committing it to this public repo would defeat that, so the content
+# is read from the Hetzner API at plan time via the hcloud_server data source
+# below, never hardcoded.
 
 locals {
   emmasedit_com_zone_id = "b6791c95e583b4af99fd5eb01f183bc4"
 }
 
+# rogue-trader's live attributes from the Hetzner API: the origin IP for the
+# apex records below (never committed — Cloudflare's proxy hides it) and the
+# server id for the firewall's apply_to (firewall-rogue-trader.tf).
+data "hcloud_server" "rogue_trader" {
+  name = "rogue-trader"
+}
+
 # --- Website: WordPress on rogue-trader, behind Cloudflare (proxied) ---
+
+resource "cloudflare_dns_record" "emmas_apex_a" {
+  zone_id = local.emmasedit_com_zone_id
+  name    = "emmasedit.com"
+  type    = "A"
+  content = data.hcloud_server.rogue_trader.ipv4_address
+  ttl     = 1
+  proxied = true
+}
+
+resource "cloudflare_dns_record" "emmas_apex_aaaa" {
+  zone_id = local.emmasedit_com_zone_id
+  name    = "emmasedit.com"
+  type    = "AAAA"
+  content = data.hcloud_server.rogue_trader.ipv6_address
+  ttl     = 1
+  proxied = true
+}
 
 resource "cloudflare_dns_record" "emmas_www" {
   zone_id = local.emmasedit_com_zone_id
