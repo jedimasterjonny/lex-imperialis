@@ -2,8 +2,8 @@ provider "cloudflare" {
   api_token = var.cloudflare_api_token
 }
 
-# Serves rogue-trader's data source. Token is the emmas-edit project's
-# (TF_VAR_hcloud_token), sourced from the vault.
+# Serves rogue-trader's data source and firewall. Token is the emmas-edit
+# project's (TF_VAR_hcloud_token), sourced from the vault.
 provider "hcloud" {
   token = var.hcloud_token
 }
