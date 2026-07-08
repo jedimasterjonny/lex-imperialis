@@ -76,6 +76,8 @@ Two path-filtered workflows deploy the `jonnyoc-site` Hugo site to Firebase
 Hosting (project `jonnyoc-website`): **firebase (merge)** on a push to `main`
 under `jonnyoc-site/**` deploys the live channel; **firebase (preview)** on a PR
 deploys a 30-day `preview-<PR#>` channel, skipped for fork PRs. Both set up Go
-(for the Hugo Module theme fetch) and a pinned Hugo, then
-`hugo -E -F --minify`. The deploy needs `FIREBASE_SERVICE_ACCOUNT_JONNYOC_WEBSITE`
-— the one CI secret outside the vault. `hugo-version` is renovate-tracked.
+(for the Hugo Module theme fetch) and a pinned Hugo; preview builds with
+`hugo -E -F --minify` (expired/future content included for review), merge with
+`hugo --minify`. Auth is keyless via Workload Identity Federation (the deploy SA
+in `terraform/`), so no Firebase secret is needed. The deploy runs a pinned
+`firebase-tools`; both it and `hugo-version` are renovate-tracked.

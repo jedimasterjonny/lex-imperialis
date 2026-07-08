@@ -12,6 +12,6 @@ fetched via the Go toolchain):
     make hugo-serve      # serves on http://localhost:1313
     make hugo-build      # renders to public/, exactly as CI does
 
-The deploy needs the `FIREBASE_SERVICE_ACCOUNT_JONNYOC_WEBSITE` repo GitHub
-Actions secret. `jonnyoc.uk` DNS and the Firebase verification TXT are managed in
-`terraform/`.
+The deploy authenticates to GCP keylessly via Workload Identity Federation, so it
+needs no secret; the deploy service account, WIF binding, `jonnyoc.uk` DNS, and
+the Firebase verification TXT are all managed in `terraform/`.
