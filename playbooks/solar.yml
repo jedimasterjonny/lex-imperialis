@@ -54,9 +54,10 @@
       - 8080/tcp
       # alertmanager, receives alerts from Prometheus on administratum over the LAN.
       - 9093/tcp
-    # Bind node_exporter to the LAN interface only, so it isn't exposed on
-    # solar's podman container networks.
+    # Bind node_exporter and cadvisor to the LAN interface only, so they aren't
+    # exposed on solar's podman container networks.
     node_exporter_listen_address: "{{ ansible_facts['default_ipv4']['address'] }}:9100"
+    cadvisor_listen_ip: "{{ ansible_facts['default_ipv4']['address'] }}"
     # Grafana reads the Prometheus on administratum (the NAS) over the LAN.
     grafana_prometheus_url: http://administratum:9090
   roles:
