@@ -9,8 +9,12 @@
     # stack here, so scriptorum stays unmounted. The backup runs as root, which
     # the NAS squashes to the admin uid its astropath ACL grants.
     nfs_shares:
+      # By the NAS's stable LAN IP, not its hostname: over WireGuard rogue-trader
+      # resolves LAN names only via wg-quick's DNS, which NetworkManager drops on
+      # any reload (e.g. the podman conf.d drop-in), breaking a hostname mount. The
+      # IP carries no such dependency.
       - name: astropath
-        server: administratum
+        server: 192.168.1.225
         export: /volume2/astropath
     # caddy + wordpress serve emmasedit.com (apex + www) publicly. The Cloudflare
     # token is scoped to the emmasedit.com zone — distinct from the global caddy
