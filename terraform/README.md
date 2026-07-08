@@ -6,9 +6,15 @@ Currently manages the `jonnyoc.uk`, `jonnyoc.co.uk`, and `emmasedit.com`
 Cloudflare zones — one `dns-<zone>.tf` per zone, plus an `edge-<zone>.tf` for a
 zone's non-DNS config (settings and cache rules) where there is any;
 `emmasedit.com` has one for its WordPress TLS, security, and caching posture. Not
-every record or setting is managed: those that expose an origin IP Cloudflare's
-proxy hides, or that the provider reports read-only (Email Routing, Tiered Cache
-on Free), are noted in the file's header.
+every record or setting is managed: an origin IP with no Terraform-visible source,
+or a setting the provider reports read-only (Email Routing, Tiered Cache on Free),
+is left out and noted in the file's header.
+
+`firewall-rogue-trader.tf` and an `hcloud_server` data source (in
+`dns-emmasedit-com.tf`) are the Hetzner side: the data source reads rogue-trader's
+live IP to set the `emmasedit.com` apex A/AAAA — fetching at plan time the origin
+IP Cloudflare's proxy hides, so it is never committed — and its server id attaches
+rogue-trader's `vpc-firewall`, moved here from the Ansible bootstrap.
 
 `firebase-jonnyoc-website.tf` adds the Google side: the `jonnyoc-website` GCP
 project that serves the `jonnyoc.uk` apex from Firebase Hosting — the project
@@ -32,15 +38,16 @@ provider resource name and the SA emails for the workflows' `auth` steps.
 
 State lives in HCP Terraform (Terraform Cloud): remote state and locking, local
 CLI-driven execution (org `jonnyoc`, workspace `jonnyoc-master`, both pinned in
-the `cloud` block). Both tokens come from the vault — no `tofu login` needed:
+the `cloud` block). The tokens come from the vault — no `tofu login` needed:
 
     export TF_TOKEN_app_terraform_io="$(bin/vault-var.sh terraform_hcp_token)"
     export TF_VAR_cloudflare_api_token="$(bin/vault-var.sh terraform_cloudflare_api_token)"
+    export TF_VAR_hcloud_token="$(bin/vault-var.sh hcloud_token_emmas_edit)"
     tofu -chdir=terraform init
     tofu -chdir=terraform plan
 
-The Hetzner token defaults empty and is only needed once Terraform manages
-Hetzner resources (`TF_VAR_hcloud_token`).
+`TF_VAR_hcloud_token` is the emmas-edit project's Hetzner token — it backs the
+`hcloud_server` data source and `vpc-firewall` above.
 
 The Google provider reads credentials by execution context: locally it uses your
 own Application Default Credentials — run `gcloud auth application-default login`
@@ -69,13 +76,14 @@ Gates (also enforced in CI and pre-commit):
     tflint --chdir=terraform      # bundled terraform ruleset; see .tflint.hcl
 
 `make tofu-fmt` / `tofu-validate` / `tofu-lint` wrap these (fmt writes); `make
-tofu-plan` / `tofu-apply` drive HCP Terraform Cloud, sourcing both tokens from
-the vault via `bin/vault-var.sh`.
+tofu-plan` / `tofu-apply` drive HCP Terraform Cloud, sourcing all three tokens
+from the vault via `bin/vault-var.sh`.
 
 PRs touching `terraform/` get a `tofu plan` in CI
 (`.github/workflows/terraform.yml`), posted as a PR comment; a merge to main then
-runs `tofu apply` (ungated). Both authenticate to HCP and Cloudflare from the
-vault and to GCP keylessly via WIF, so `VAULT_PASSWORD` stays the only CI secret.
+runs `tofu apply` (ungated). Both authenticate to HCP, Cloudflare, and Hetzner
+from the vault and to GCP keylessly via WIF, so `VAULT_PASSWORD` stays the only
+CI secret.
 `make tofu-apply` still applies locally for the rare change CI's scoped SA can't
 make (project creation, billing).
 
