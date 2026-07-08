@@ -10,6 +10,26 @@ every record or setting is managed: those that expose an origin IP Cloudflare's
 proxy hides, or that the provider reports read-only (Email Routing, Tiered Cache
 on Free), are noted in the file's header.
 
+`firebase-jonnyoc-website.tf` adds the Google side: the `jonnyoc-website` GCP
+project that serves the `jonnyoc.uk` apex from Firebase Hosting — the project
+itself, its prerequisite APIs, the Firebase enablement, the Hosting site, and the
+GitHub Actions deploy service account with its IAM. Only *infrastructure* is
+managed; Remote Config, deployed Hosting content, and Auth data have no Terraform
+resource and stay in the Firebase CLI / the site's repo (the file header lists
+the commands). `google_project` carries `prevent_destroy` + `deletion_policy =
+"PREVENT"` so the retained project can't be torn down by accident.
+
+`infra-shared.tf` is the keyless-CI plumbing: a dedicated `jonnyoc-infra-shared`
+project holding a Workload Identity Federation pool that lets GitHub Actions
+authenticate to GCP with no service-account keys. Three CI identities in
+`jedimasterjonny/lex-imperialis` federate in — the Firebase Hosting deploy
+impersonates the deploy SA in `jonnyoc-website`, a PR's `tofu plan` impersonates
+a read-only `tofu-plan` SA, and a merge's `tofu apply` impersonates a write
+`tofu-apply` SA (scoped to the two managed projects — no project create/delete or
+billing changes, which stay local operator applies). The pool/provider trust the
+whole owner; per-SA bindings pin the exact repo. `outputs.tf` exposes the
+provider resource name and the SA emails for the workflows' `auth` steps.
+
 State lives in HCP Terraform (Terraform Cloud): remote state and locking, local
 CLI-driven execution (org `jonnyoc`, workspace `jonnyoc-master`, both pinned in
 the `cloud` block). Both tokens come from the vault — no `tofu login` needed:
@@ -22,6 +42,26 @@ the `cloud` block). Both tokens come from the vault — no `tofu login` needed:
 The Hetzner token defaults empty and is only needed once Terraform manages
 Hetzner resources (`TF_VAR_hcloud_token`).
 
+The Google provider reads credentials by execution context: locally it uses your
+own Application Default Credentials — run `gcloud auth application-default login`
+as `me@jonnyoc.uk` once (the account holds org-level owner); in CI it reads
+short-lived credentials from WIF — the read-only `tofu-plan` SA on a PR, the
+write `tofu-apply` SA on a merge (see `infra-shared.tf`) — so no key ever leaves
+GCP. A from-zero rebuild has a bootstrap wrinkle: `user_project_override` +
+`billing_project = "jonnyoc-website"` bills quota to that project on every call,
+including `google_project.website`'s own create — which fails because the quota
+project does not exist yet. So create it with the override temporarily off, then
+apply the rest normally:
+
+    # comment out user_project_override + billing_project in providers.tf, then:
+    tofu -chdir=terraform apply -target=google_project.website
+    # restore providers.tf, then:
+    tofu -chdir=terraform apply
+
+The WIF pool, provider, and SAs (`infra-shared.tf`) are part of that full apply,
+and both GitHub Actions workflows' `auth` steps fail until they exist live — so a
+from-zero rebuild must run the local apply before CI can authenticate.
+
 Gates (also enforced in CI and pre-commit):
 
     tofu fmt -check -recursive terraform
@@ -33,9 +73,11 @@ tofu-plan` / `tofu-apply` drive HCP Terraform Cloud, sourcing both tokens from
 the vault via `bin/vault-var.sh`.
 
 PRs touching `terraform/` get a `tofu plan` in CI
-(`.github/workflows/terraform.yml`), posted as a PR comment; it authenticates to
-HCP and Cloudflare from the vault, so `VAULT_PASSWORD` is the only CI secret.
-Applies stay manual (`make tofu-apply`).
+(`.github/workflows/terraform.yml`), posted as a PR comment; a merge to main then
+runs `tofu apply` (ungated). Both authenticate to HCP and Cloudflare from the
+vault and to GCP keylessly via WIF, so `VAULT_PASSWORD` stays the only CI secret.
+`make tofu-apply` still applies locally for the rare change CI's scoped SA can't
+make (project creation, billing).
 
 The gates need `tofu` and `tflint` on PATH — provisioned in CI by
 `setup-opentofu`/`setup-tflint`, and on the workstation by the `dev` role
