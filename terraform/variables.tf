@@ -7,6 +7,5 @@ variable "cloudflare_api_token" {
 variable "hcloud_token" {
   type        = string
   sensitive   = true
-  default     = ""
-  description = "Hetzner Cloud API token; empty until Terraform manages Hetzner resources, then supply via TF_VAR_hcloud_token."
+  description = "Hetzner Cloud API token for the emmas-edit project (rogue-trader); supply via TF_VAR_hcloud_token (sourced from the vault by bin/vault-var.sh)."
 }
