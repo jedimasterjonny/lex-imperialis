@@ -2,8 +2,11 @@
 name: firebase (merge)
 
 # Build jonnyoc-site with Hugo and deploy to the Firebase live channel on merge
-# to main. Path-filtered to the site; FIREBASE_SERVICE_ACCOUNT_JONNYOC_WEBSITE is
-# the one CI secret outside the vault. Actions pinned by SHA (version in a
+# to main. Path-filtered to the site. Auth is keyless via Workload Identity
+# Federation: google-github-actions/auth exchanges the runner's OIDC token for
+# short-lived credentials for the deploy SA, which the Firebase CLI reads as ADC
+# — no SA key. The WIF pool/binding live in terraform/infra-shared.tf, the SA in
+# terraform/firebase-jonnyoc-website.tf. Actions pinned by SHA (version in a
 # trailing comment); hugo-version is renovate-tracked (see renovate.json).
 "on":
   push:
@@ -14,6 +17,7 @@ name: firebase (merge)
 
 permissions:
   contents: read
+  id-token: write # mint the OIDC token WIF exchanges for GCP credentials
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -53,11 +57,13 @@ jobs:
           HUGO_ENV: production
         run: hugo --minify -d public
 
-      - name: Deploy to the live channel
-        uses: FirebaseExtended/action-hosting-deploy@500ac625ca2dd40cbd15f7659af953801858032a # v0.11.0
+      # Keyless auth: exchanges the runner's OIDC token for credentials for the
+      # deploy SA, exported as ADC for the Firebase CLI in the next step.
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7b53cdc2a387814ed14eec026287aac689ae8c9b # v2.1.9
         with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JONNYOC_WEBSITE }}
-          entryPoint: ./jonnyoc-site
-          channelId: live
-          projectId: jonnyoc-website
+          workload_identity_provider: projects/1052179412171/locations/global/workloadIdentityPools/github/providers/github
+          service_account: github-action-815812811@jonnyoc-website.iam.gserviceaccount.com
+
+      - name: Deploy to the live channel
+        run: npx --yes firebase-tools@15.22.4 deploy --only hosting --project jonnyoc-website --non-interactive

@@ -41,6 +41,14 @@
       "depNameTemplate": "gohugoio/hugo",
       "datasourceTemplate": "github-releases",
       "extractVersionTemplate": "^v(?<version>.+)$"
+    },
+    {
+      "customType": "regex",
+      "description": "firebase-tools pinned in the Firebase deploy workflows (npx firebase-tools@<version>); the CLI does the keyless deploy.",
+      "managerFilePatterns": ["/^\\.github/workflows/firebase-hosting-(merge|pull-request)\\.yml$/"],
+      "matchStrings": ["firebase-tools@(?<currentValue>\\S+)"],
+      "depNameTemplate": "firebase-tools",
+      "datasourceTemplate": "npm"
     }
   ],
   "customDatasources": {

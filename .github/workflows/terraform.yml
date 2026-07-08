@@ -2,12 +2,20 @@
 name: terraform
 
 # terraform/ runs OpenTofu locally against the HCP workspace (Local execution),
-# so this plans on the runner rather than via HCP's remote runs. tofu, the venv
-# (for ansible-vault), and .vault_pass are all it needs — the HCP and Cloudflare
-# tokens come from the vault, so VAULT_PASSWORD is the only secret. Offline
+# so this runs on the runner rather than via HCP's remote runs: a PR plans (as
+# the read-only tofu-plan SA) and comments the plan; a merge to main applies (as
+# the write tofu-apply SA). tofu, the venv (for ansible-vault), and .vault_pass
+# are all it needs — the HCP and Cloudflare tokens come from the vault and GCP
+# auth is keyless via WIF, so VAULT_PASSWORD is the only secret. Offline
 # fmt/validate/tflint stay in the lint workflow.
 "on":
   pull_request:
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/terraform.yml'
+  push:
+    branches:
+      - main
     paths:
       - 'terraform/**'
       - '.github/workflows/terraform.yml'
@@ -16,6 +24,7 @@ name: terraform
 permissions:
   contents: read
   pull-requests: write
+  id-token: write # mint the OIDC token that WIF exchanges for GCP credentials
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -25,6 +34,9 @@ jobs:
   plan:
     name: plan
     runs-on: ubuntu-latest
+    # Fork PRs can't mint the WIF id-token, so skip them cleanly (as the firebase
+    # preview job does) rather than fail red at the auth step. Push/dispatch always run.
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     steps:
       - name: Check out
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
@@ -50,6 +62,20 @@ jobs:
           tofu_version: "1.12.3"
           tofu_wrapper: false
 
+      # Authenticate to GCP via Workload Identity Federation (no key): the
+      # runner's OIDC token is exchanged for short-lived credentials, which the
+      # google provider reads as ADC. A PR impersonates the read-only tofu-plan
+      # SA; a push to main impersonates the write tofu-apply SA. Both, and the
+      # pool/provider, are defined in terraform/infra-shared.tf.
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7b53cdc2a387814ed14eec026287aac689ae8c9b # v2.1.9
+        with:
+          workload_identity_provider: projects/1052179412171/locations/global/workloadIdentityPools/github/providers/github
+          service_account: >-
+            ${{ github.event_name == 'push'
+            && 'tofu-apply@jonnyoc-infra-shared.iam.gserviceaccount.com'
+            || 'tofu-plan@jonnyoc-infra-shared.iam.gserviceaccount.com' }}
+
       - name: Write the vault password file
         env:
           VAULT_PASSWORD: ${{ secrets.VAULT_PASSWORD }}
@@ -63,17 +89,21 @@ jobs:
       # can post the plan and still fail the job on a real error.
       - name: Plan
         id: plan
+        if: github.event_name != 'push'
         run: |
           set +e
           export TF_TOKEN_app_terraform_io="$(bin/vault-var.sh terraform_hcp_token)"
           export TF_VAR_cloudflare_api_token="$(bin/vault-var.sh terraform_cloudflare_api_token)"
           # -lock=false: this plan is read-only, and cancel-in-progress could kill
           # it mid-run and orphan the HCP state lock (local execution holds it).
-          { tofu -chdir=terraform init -input=false \
+          # -no-color on both: the combined output is teed into the PR comment.
+          { tofu -chdir=terraform init -input=false -no-color \
             && tofu -chdir=terraform plan -input=false -no-color -lock=false; } 2>&1 | tee plan.txt
           echo "exitcode=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
 
-      # One comment per PR, edited in place on re-push. Truncated to stay under
+      # One comment per PR, edited in place on re-push. Found by a hidden marker,
+      # not --edit-last, so it never clobbers the firebase preview comment (same
+      # bot author) on a PR that touches both trees. Truncated to stay under
       # GitHub's 65536-char comment limit; the full plan is in the run log.
       - name: Comment the plan on the PR
         if: github.event_name == 'pull_request'
@@ -84,6 +114,7 @@ jobs:
         run: |
           status=$([ "$CODE" = 0 ] && echo 'ok' || echo "failed (exit $CODE)")
           {
+            echo '<!-- tofu-plan -->'
             echo "### OpenTofu plan — $status"
             echo '<details><summary>Show plan</summary>'
             echo
@@ -95,8 +126,29 @@ jobs:
             echo
             echo '_Full output in the run log._'
           } > comment.md
-          gh pr comment "$PR" --body-file comment.md --edit-last --create-if-none
+          id=$(gh pr view "$PR" --json comments \
+            --jq '[.comments[] | select(.body | contains("<!-- tofu-plan -->"))] | last | .url // empty')
+          if [ -n "$id" ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/${id##*-}" -f body="$(cat comment.md)" >/dev/null
+          else
+            gh pr comment "$PR" --body-file comment.md
+          fi
 
       - name: Fail if the plan errored
-        if: steps.plan.outputs.exitcode != '0'
+        if: github.event_name != 'push' && steps.plan.outputs.exitcode != '0'
         run: exit 1
+
+      # Merge to main: apply. Unlike the PR plan this locks the HCP state. The
+      # concurrency group serialises main runs and never auto-cancels them; a
+      # manual cancel, job timeout, or runner death mid-apply can still orphan the
+      # lock, recoverable with `tofu force-unlock`.
+      - name: Apply
+        if: github.event_name == 'push'
+        run: |
+          # Assign then export separately: `export VAR=$(...)` would mask a failed
+          # vault lookup under `set -e` (export's own exit status is 0).
+          TF_TOKEN_app_terraform_io="$(bin/vault-var.sh terraform_hcp_token)"
+          TF_VAR_cloudflare_api_token="$(bin/vault-var.sh terraform_cloudflare_api_token)"
+          export TF_TOKEN_app_terraform_io TF_VAR_cloudflare_api_token
+          tofu -chdir=terraform init -input=false
+          tofu -chdir=terraform apply -input=false -no-color -auto-approve

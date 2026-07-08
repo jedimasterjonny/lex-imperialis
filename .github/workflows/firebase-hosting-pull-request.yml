@@ -2,8 +2,9 @@
 name: firebase (preview)
 
 # Build jonnyoc-site and deploy a 30-day preview channel for PRs touching the
-# site. Skipped for fork PRs (no access to the deploy secret). See the merge
-# workflow for the shared build; hugo-version is renovate-tracked.
+# site, commenting its URL on the PR. Skipped for fork PRs (no id-token for WIF).
+# Auth is keyless via Workload Identity Federation — see the merge workflow.
+# hugo-version is renovate-tracked.
 "on":
   pull_request:
     paths:
@@ -11,9 +12,9 @@ name: firebase (preview)
       - '.github/workflows/firebase-hosting-pull-request.yml'
 
 permissions:
-  checks: write
   contents: read
-  pull-requests: write
+  id-token: write # mint the OIDC token WIF exchanges for GCP credentials
+  pull-requests: write # comment the preview-channel URL on the PR
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -51,12 +52,37 @@ jobs:
           HUGO_ENV: production
         run: hugo -E -F --minify -d public
 
-      - name: Deploy a preview channel
-        uses: FirebaseExtended/action-hosting-deploy@500ac625ca2dd40cbd15f7659af953801858032a # v0.11.0
+      # Keyless auth: exchanges the runner's OIDC token for credentials for the
+      # deploy SA, exported as ADC for the Firebase CLI in the next step.
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7b53cdc2a387814ed14eec026287aac689ae8c9b # v2.1.9
         with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JONNYOC_WEBSITE }}
-          entryPoint: ./jonnyoc-site
-          expires: 30d
-          channelId: preview-${{ github.event.number }}
-          projectId: jonnyoc-website
+          workload_identity_provider: projects/1052179412171/locations/global/workloadIdentityPools/github/providers/github
+          service_account: github-action-815812811@jonnyoc-website.iam.gserviceaccount.com
+
+      # Deploy to an ephemeral preview channel (auto-expires) and comment its URL
+      # on the PR. Found by a hidden marker, not --edit-last, so it never clobbers
+      # the terraform plan comment (same bot author) on a PR touching both trees.
+      - name: Deploy a preview channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.number }}
+        run: |
+          npx --yes firebase-tools@15.22.4 hosting:channel:deploy "preview-${PR}" \
+            --project jonnyoc-website --expires 30d --json > channel.json
+          url=$(jq -r '.result[].url' channel.json)
+          {
+            echo '<!-- firebase-preview -->'
+            echo "### Firebase Hosting preview"
+            echo
+            echo "This PR is deployed to a 30-day preview channel:"
+            echo
+            echo "$url"
+          } > preview.md
+          id=$(gh pr view "$PR" --json comments \
+            --jq '[.comments[] | select(.body | contains("<!-- firebase-preview -->"))] | last | .url // empty')
+          if [ -n "$id" ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/${id##*-}" -f body="$(cat preview.md)" >/dev/null
+          else
+            gh pr comment "$PR" --body-file preview.md
+          fi
