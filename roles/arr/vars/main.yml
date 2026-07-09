@@ -39,7 +39,7 @@ arr_media_access:
 
 arr_apps:
   radarr:
-    image: lscr.io/linuxserver/radarr:6.2.1@sha256:39da107b5a9371fdaa651bd188049b863716a815385eb3a30d41071b7e1aeb33
+    image: lscr.io/linuxserver/radarr:6.2.1@sha256:28852d0eacababc206762af48fe86d78594a4f434cc46b358f9764a857098662
     uid: 1038
     caps: [CHOWN, KILL, SETGID, SETUID]
     port: 7878
