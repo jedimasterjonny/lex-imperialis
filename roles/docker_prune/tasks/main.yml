@@ -1,0 +1,25 @@
+---
+- name: Create the project directory
+  ansible.builtin.file:
+    path: "{{ docker_prune_project_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Deploy the compose file
+  ansible.builtin.template:
+    src: compose.yaml.j2
+    dest: "{{ docker_prune_project_dir }}/compose.yaml"
+    mode: "0644"
+
+# No become: on the NAS sudo needs a password, so the deploy runs as the
+# docker-group user. PATH carries /usr/local/bin, where the DSM docker CLI lives
+# off the non-interactive PATH; harmless on a host where docker is already found.
+#
+# No recreate dance: the container carries no bind-mounted config file, so a
+# compose change recreates it via auto and there is nothing else to re-resolve.
+- name: Bring the docker_prune stack up
+  community.docker.docker_compose_v2:
+    project_src: "{{ docker_prune_project_dir }}"
+    state: present
+  environment:
+    PATH: "/usr/local/bin:{{ ansible_facts.env.PATH }}"
