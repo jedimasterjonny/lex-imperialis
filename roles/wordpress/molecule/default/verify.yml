@@ -49,6 +49,61 @@
         - /readme.html
         - /license.txt
 
+    # Prove PHP never executes under uploads, across every vector the drop-in must
+    # cover: a dropped .php, the evil.php/x.jpg PATH_INFO form, and an attacker
+    # .htaccess AddType trick on a .png. The marker (42*42 = 1764) must never
+    # return. The nested subpath is arbitrary — the Directory match is recursive.
+    - name: Plant webshells and a legitimate media file under uploads
+      ansible.builtin.command: >-
+        podman exec wordpress sh -c 'd=/var/www/html/wp-content/uploads/2026/07;
+        mkdir -p "$d";
+        printf "<?php echo 42*42; ?>" > "$d/evil.php";
+        printf "AddType application/x-httpd-php .png\n" > "$d/.htaccess";
+        printf "<?php echo 42*42; ?>" > "$d/shell.png";
+        printf "genuine-media" > "$d/photo.png"'
+      become: true
+      changed_when: true
+
+    - name: Fetch the planted webshells through the proxy
+      ansible.builtin.uri:
+        url: "http://127.0.0.1{{ item }}"
+        headers:
+          Host: "{{ wordpress_domains[0] }}"
+        return_content: true
+        status_code: [200, 403, 404]
+      register: wordpress_uploads_exec
+      loop:
+        - /wp-content/uploads/2026/07/evil.php
+        - /wp-content/uploads/2026/07/evil.php/x.jpg
+        - /wp-content/uploads/2026/07/shell.png
+
+    - name: No planted webshell executed
+      ansible.builtin.assert:
+        that:
+          - "'1764' not in (item.content | default(''))"
+        fail_msg: "a planted uploads webshell executed"
+        quiet: true
+      loop: "{{ wordpress_uploads_exec.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    # The other half of the contract: disabling PHP must not over-block, so a
+    # genuine media file under uploads still serves its bytes.
+    - name: A legitimate media file under uploads still serves
+      ansible.builtin.uri:
+        url: http://127.0.0.1/wp-content/uploads/2026/07/photo.png
+        headers:
+          Host: "{{ wordpress_domains[0] }}"
+        return_content: true
+      register: wordpress_uploads_media
+
+    - name: The media file served its bytes, not a block
+      ansible.builtin.assert:
+        that:
+          - "'genuine-media' in (wordpress_uploads_media.content | default(''))"
+        fail_msg: "a legitimate uploads media file did not serve"
+        quiet: true
+
     # blank.gif is core's healthcheck target, so it is present; caddy stamps the
     # one-year immutable cache header on it as a static asset.
     - name: A static asset answers for the cache-header check

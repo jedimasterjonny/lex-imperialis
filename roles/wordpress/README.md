@@ -137,6 +137,12 @@ ownership) and `SETUID`/`SETGID` (the entrypoint's drop to the mysql user);
 on `:80`); `wordpress-redis` keeps none. A renovate image bump that needs a new
 capability surfaces as a failed healthcheck.
 
+An apache drop-in (`files/uploads-no-exec.conf`, mounted into `conf-enabled/`)
+sets `php_admin_flag engine off` and `AllowOverride None` on `wp-content/uploads`,
+so a webshell uploaded into the writable docroot can't execute and no attacker
+`.htaccess` can re-enable it. Enforced in apache, not the caddy edge, because an
+attacker `.htaccess` `AddType` would slip a `.png` webshell past any edge rule.
+
 ## Deploy
 
 Wire it after `podman` and `caddy` on a Leap host. Set `wordpress_domains` to
