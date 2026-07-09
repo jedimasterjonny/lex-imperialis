@@ -1,0 +1,41 @@
+# Managed by Ansible (docker_prune role).
+services:
+  docker_prune:
+    image: {{ docker_prune_image }}
+    container_name: docker_prune
+    # The container is the schedule — the docker-side reciprocal of the podman
+    # role's systemd timer. busybox crond installs the weekly entry below and
+    # runs it in the foreground; a fired job execs `docker image prune -af`
+    # against the mounted socket and echoes what it reclaimed to the container's
+    # stdout (crond otherwise buries a job's output in an undeliverable mail).
+    entrypoint:
+      - /bin/sh
+      - -c
+    command:
+      - |
+        mkdir -p /etc/crontabs
+        printf '%s\n' '{{ docker_prune_schedule }} docker image prune -af > /proc/1/fd/1 2>&1' > /etc/crontabs/root
+        exec busybox crond -f -c /etc/crontabs
+    # No network: the prune reaches dockerd only through the socket below, a
+    # filesystem path — so a socket-privileged container gets no egress on top.
+    network_mode: none
+    # The read-write docker.sock mount is the container's real privilege — it is
+    # root-equivalent on the host, the same power the podman side's root systemd
+    # unit wields. cap_drop ALL + no-new-privileges harden the crond/CLI process
+    # itself; they cannot fence the socket. SETGID is the one capability kept:
+    # crond forks each job through change_identity(), whose setgroups() needs
+    # CAP_SETGID even for a root→root change — without it the job dies before
+    # exec and the prune silently never runs (crond stays up, so the container
+    # still looks healthy).
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETGID
+    security_opt:
+      - no-new-privileges:true
+{% for opt in docker_prune_security_opt_extra %}
+      - {{ opt }}
+{% endfor %}
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

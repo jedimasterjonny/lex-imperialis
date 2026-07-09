@@ -1,0 +1,14 @@
+---
+# Where the compose project (compose.yaml) is written. The administratum play
+# overrides this to a subdir of the NAS astropath volume, beside the other stacks.
+docker_prune_project_dir: /opt/docker_prune
+
+# When the weekly prune fires, as a five-field crontab schedule. Saturday 06:00,
+# matching the podman role's image-prune timer.
+docker_prune_schedule: "0 6 * * 6"
+
+# Extra compose security_opt entries, appended to the no-new-privileges the
+# template hardcodes (alongside cap_drop: ALL). Empty in production; the molecule
+# scenario sets apparmor=unconfined because its nested CI container cannot load an
+# AppArmor profile.
+docker_prune_security_opt_extra: []

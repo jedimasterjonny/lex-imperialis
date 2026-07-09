@@ -1,0 +1,56 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Read the docker_prune container state
+      ansible.builtin.command: docker inspect docker_prune
+      register: docker_prune_inspect
+      changed_when: false
+
+    - name: Parse the inspect JSON once for the asserts below
+      ansible.builtin.set_fact:
+        docker_prune_container: "{{ docker_prune_inspect.stdout | from_json | first }}"
+
+    # crond is the container's PID 1 (the entrypoint execs it), so a running
+    # container is itself proof the scheduler is alive — a crond that failed to
+    # start or crash-looped would take the container down with it.
+    - name: The container is running
+      ansible.builtin.assert:
+        that:
+          - docker_prune_container.State.Running
+        fail_msg: the docker_prune container is not running
+        quiet: true
+
+    # The role's real contract, end to end: pull an unused image and wait for the
+    # container's crond to fire the (every-minute molecule) prune and reclaim it.
+    # A broken schedule, a crond that can't fork its job (missing CAP_SETGID), or
+    # a lost socket all surface here as the image never being reclaimed. Kept
+    # exec-free — host `docker` + `inspect` only, like the sibling NAS roles: a
+    # `docker exec` into the container trips an AppArmor-profile check the nested
+    # CI runner denies.
+    - name: Pull a throwaway image that no container uses
+      ansible.builtin.command: docker pull hello-world:latest
+      changed_when: false
+
+    - name: The scheduled crond prune reclaims the unused image
+      ansible.builtin.command: docker images --quiet hello-world:latest
+      register: docker_prune_probe
+      changed_when: false
+      until: docker_prune_probe.stdout_lines | length == 0
+      retries: 18
+      delay: 10
+
+    # The checks above prove it works; they can't prove the capability set is
+    # minimal. Assert the posture directly so a regression that widens the caps or
+    # drops the restriction fails here, not silently in production.
+    - name: Read docker_prune's security posture
+      ansible.builtin.assert:
+        that:
+          - "docker_prune_container.HostConfig.CapDrop | default([], true) | sort == ['ALL']"
+          - "docker_prune_container.HostConfig.CapAdd | default([], true) | sort == ['CAP_SETGID']"
+          - >-
+            docker_prune_container.HostConfig.SecurityOpt | default([], true)
+            | select('search', 'no-new-privileges') | list | length > 0
+        fail_msg: "docker_prune's capability or no-new-privileges posture has regressed"
+        quiet: true
