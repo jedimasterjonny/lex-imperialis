@@ -29,6 +29,18 @@
   become: true
   notify: Restart wordpress
 
+# The apache drop-in that disables PHP under wp-content/uploads (the file explains
+# why); container.j2 mounts it into apache's conf-enabled.
+- name: Deploy the uploads no-exec apache config
+  ansible.builtin.copy:
+    src: uploads-no-exec.conf
+    dest: /etc/wordpress/uploads-no-exec.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart wordpress
+
 # Both quadlets read the database credentials via EnvironmentFile=, so the
 # passwords never land in the world-readable unit files.
 - name: Deploy the database credentials

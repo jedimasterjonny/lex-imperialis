@@ -23,6 +23,9 @@ Volume=wordpress-html:/var/www/html
 {# Read-only must-use plugin, mounted as a single file so it never shadows the #}
 {# site's own mu-plugins already in the volume. #}
 Volume=/etc/wordpress/mu-plugins/wordpress-hardening.php:/var/www/html/wp-content/mu-plugins/wordpress-hardening.php:ro,Z
+{# Read-only apache drop-in disabling PHP under wp-content/uploads, so a webshell #}
+{# written into that writable tree can't execute. #}
+Volume=/etc/wordpress/uploads-no-exec.conf:/etc/apache2/conf-enabled/uploads-no-exec.conf:ro,Z
 {# DB-independent liveness — a static asset, so a database blip never #}
 {# restart-loops apache; HealthOnFailure=kill + Restart=on-failure self-heals. #}
 HealthCmd=curl -fsS http://127.0.0.1/wp-includes/images/blank.gif -o /dev/null
