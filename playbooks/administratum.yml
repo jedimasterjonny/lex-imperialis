@@ -12,6 +12,7 @@
     blackbox_exporter_project_dir: /volume2/astropath/blackbox_exporter
     prometheus_project_dir: /volume2/astropath/prometheus
     prometheus_data_dir: /volume2/astropath/prometheus/data
+    docker_prune_project_dir: /volume2/astropath/docker_prune
     # Scrape three node_exporters: solar and scholam over the LAN, rogue-trader
     # over WireGuard (the NAS can't resolve its name, so use the WG address
     # already in the repo).
@@ -42,3 +43,6 @@
     # so this is ordering for tidiness, not a hard dependency.
     - blackbox_exporter
     - prometheus
+    # Weekly docker image prune — the reciprocal of the podman role's timer on
+    # the podman hosts. Order-independent of the stacks above.
+    - docker_prune
