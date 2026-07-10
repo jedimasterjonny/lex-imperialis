@@ -24,15 +24,26 @@
     state: present
   become: true
 
-# gcloud has no openSUSE package, so it comes from Google's own repo. rpm_key
-# trusts the package signature (RPM keyring), the repo add's auto_import_keys
-# trusts the metadata signature (zypp keyring) -- both non-interactively;
-# autorefresh is off so a Google-repo outage can't fail an unrelated zypper run.
+# gcloud has no openSUSE package, so it comes from Google's own repo. The signing
+# key must reach the RPM keyring to verify the package itself; the repo add's
+# auto_import_keys covers only the metadata's zypp keyring, and autorefresh is off
+# so a Google-repo outage can't fail an unrelated zypper run. ansible.builtin.rpm_key
+# is avoided: its rpm 4.20 librpm binding aborts parsing this key ("Unable to parse
+# PGP key armor"), so import through rpmkeys, keyed to a present-check on the key's
+# short id (3e1ba8d5) for idempotence.
 - name: Import the Google Cloud package-signing key
-  ansible.builtin.rpm_key:
-    key: https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
-    state: present
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      rpm -q gpg-pubkey-3e1ba8d5 >/dev/null 2>&1 && exit 0
+      key="$(mktemp)"
+      trap 'rm -f "$key"' EXIT
+      curl -fsSL https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg -o "$key"
+      rpmkeys --import "$key"
+      echo imported
   become: true
+  register: dev_gcloud_key_import
+  changed_when: "'imported' in dev_gcloud_key_import.stdout"
 
 - name: Add the Google Cloud CLI repository
   community.general.zypper_repository:
