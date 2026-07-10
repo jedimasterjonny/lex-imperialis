@@ -5,6 +5,9 @@
     common_hostname: rogue-trader
     # Leap 16's sles cloud user holds uid 1000, so the owner takes a free uid.
     common_user_uid: 1026
+    # Staggered autoupdate: the public VPS updates mid-week, after solar's canary
+    # run, so one bad rolling snapshot can't brick the whole fleet in one night.
+    autoupdate_oncalendar: "Wed *-*-* 03:00:00"
     # podman_backup writes to the astropath share; mount it from the NAS. No arr
     # stack here, so scriptorum stays unmounted. The backup runs as root, which
     # the NAS squashes to the admin uid its astropath ACL grants.

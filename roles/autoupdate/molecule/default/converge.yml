@@ -5,3 +5,7 @@
     - name: Apply the autoupdate role
       ansible.builtin.include_role:
         name: autoupdate
+      vars:
+        # A non-default schedule, so verify proves autoupdate_oncalendar drives
+        # the rendered timer rather than the default happening to match.
+        autoupdate_oncalendar: "Wed *-*-* 04:00:00"

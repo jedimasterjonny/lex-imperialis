@@ -8,3 +8,7 @@ autoupdate_zypper_command: "{{ 'dup' if ansible_facts['distribution'] == 'openSU
 # to (autoupdate.prom). Must match the node_exporter role's
 # node_exporter_textfile_directory so Prometheus scrapes what this writes.
 autoupdate_textfile_dir: /var/lib/node_exporter/textfile_collector
+
+# The timer's systemd OnCalendar schedule. Set per host so the fleet updates on
+# staggered days; the default keeps the original fleet-wide Monday 03:00 slot.
+autoupdate_oncalendar: "Mon *-*-* 03:00:00"

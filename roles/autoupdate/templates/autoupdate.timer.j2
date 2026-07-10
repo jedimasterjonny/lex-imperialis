@@ -2,7 +2,7 @@
 Description=Weekly unattended zypper dup
 
 [Timer]
-OnCalendar=Mon *-*-* 03:00:00
+OnCalendar={{ autoupdate_oncalendar }}
 RandomizedDelaySec=2h
 # No Persistent=: if the box is off at the scheduled time, wait for next week
 # rather than fire an unattended dup+reboot at an unpredictable post-boot moment.

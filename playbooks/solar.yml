@@ -7,6 +7,9 @@
     # matches) so NFS ownership reconciles — the v4 mounts use numeric sec=sys,
     # which carries raw uids and bypasses name-based idmapping.
     common_user_uid: 1026
+    # Staggered autoupdate: solar (media server) updates first as the canary, so a
+    # bad rolling snapshot surfaces here before the rest of the fleet takes it.
+    autoupdate_oncalendar: "Mon *-*-* 03:00:00"
     # NFS exports from the NAS (administratum), each mounted at /nfs/<name>.
     nfs_shares:
       - name: scriptorum

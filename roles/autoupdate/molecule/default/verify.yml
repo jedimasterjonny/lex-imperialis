@@ -17,13 +17,15 @@
       register: autoupdate_timer
       become: true
 
-    - name: The timer is enabled and fires early Monday
+    - name: The timer is enabled and fires on the configured schedule
       ansible.builtin.assert:
         that:
           - autoupdate_timer.status.ActiveState == 'active'
           - autoupdate_timer.status.UnitFileState == 'enabled'
-          - "'Mon *-*-* 03:00:00' in autoupdate_timer.status.TimersCalendar"
-        fail_msg: "the update timer is not enabled for Mon 03:00"
+          # converge sets a non-default autoupdate_oncalendar, so matching it here
+          # proves the variable drives the rendered timer.
+          - "'Wed *-*-* 04:00:00' in autoupdate_timer.status.TimersCalendar"
+        fail_msg: "the update timer is not enabled for the configured schedule"
         quiet: true
 
     - name: Read the update service definition
