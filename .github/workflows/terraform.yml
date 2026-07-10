@@ -20,6 +20,10 @@ name: terraform
       - 'terraform/**'
       - '.github/workflows/terraform.yml'
   workflow_dispatch:
+  # Weekly drift check: plan main against live infra and fail on any diff. An
+  # off-:00 minute — GitHub delays or drops on-the-hour crons.
+  schedule:
+    - cron: '41 6 * * 1' # Mondays 06:41 UTC
 
 permissions:
   contents: read
@@ -93,6 +97,11 @@ jobs:
         if: github.event_name != 'push'
         run: |
           set +e
+          # Scheduled runs only: -detailed-exitcode makes plan exit 2 on any diff,
+          # so the fail step flags drift. A PR plan with changes is expected, so it
+          # stays a plain plan (exit 0) and must not start failing.
+          detail=""
+          [ "${{ github.event_name }}" = "schedule" ] && detail="-detailed-exitcode"
           export TF_TOKEN_app_terraform_io="$(bin/vault-var.sh terraform_hcp_token)"
           export TF_VAR_cloudflare_api_token="$(bin/vault-var.sh terraform_cloudflare_api_token)"
           export TF_VAR_hcloud_token="$(bin/vault-var.sh hcloud_token_emmas_edit)"
@@ -100,7 +109,7 @@ jobs:
           # it mid-run and orphan the HCP state lock (local execution holds it).
           # -no-color on both: the combined output is teed into the PR comment.
           { tofu -chdir=terraform init -input=false -no-color \
-            && tofu -chdir=terraform plan -input=false -no-color -lock=false; } 2>&1 | tee plan.txt
+            && tofu -chdir=terraform plan -input=false -no-color -lock=false $detail; } 2>&1 | tee plan.txt
           echo "exitcode=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
 
       # One comment per PR, edited in place on re-push. Found by a hidden marker,
@@ -136,9 +145,17 @@ jobs:
             gh pr comment "$PR" --body-file comment.md
           fi
 
-      - name: Fail if the plan errored
+      # exitcode 2 only ever occurs on a scheduled run (-detailed-exitcode), so
+      # the drift branch can't misfire on a PR or dispatch.
+      - name: Fail on plan error or drift
         if: github.event_name != 'push' && steps.plan.outputs.exitcode != '0'
-        run: exit 1
+        run: |
+          if [ "${{ steps.plan.outputs.exitcode }}" = 2 ]; then
+            echo "::error::OpenTofu drift — live infra differs from terraform/ on main; see the plan output."
+          else
+            echo "::error::OpenTofu plan errored (exit ${{ steps.plan.outputs.exitcode }})."
+          fi
+          exit 1
 
       # Merge to main: apply. Unlike the PR plan this locks the HCP state. The
       # concurrency group serialises main runs and never auto-cancels them; a
