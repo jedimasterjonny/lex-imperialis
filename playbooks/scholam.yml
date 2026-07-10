@@ -3,6 +3,9 @@
   hosts: this_host
   vars:
     common_hostname: scholam
+    # Staggered autoupdate: the control host updates last, after the other hosts
+    # have taken the week's snapshots, so a brick surfaces before scholam reboots.
+    autoupdate_oncalendar: "Fri *-*-* 03:00:00"
     # node_exporter, scraped by Prometheus on administratum over the LAN.
     firewalld_ports:
       - 9100/tcp
