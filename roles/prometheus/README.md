@@ -61,15 +61,20 @@ auth-walled endpoint answers `401`, which still proves the daemon is serving. It
 therefore goes in an entry naming a module whose `valid_status_codes` accept that,
 and the module reaches the constructed scrape URL as `__param_module`.
 
+A probe here is also how a *containerised* service is monitored on this fleet — the
+network probe is the liveness alert, the container's healthcheck only a restart
+backstop. See `CLAUDE.md`.
+
 ## Alerting
 
 When `prometheus_alertmanager_targets` is set, the role adds the `alerting` block
 and a `rule_files` glob, mounts its `files/rules/` at `/etc/prometheus/rules`, and
 routes alerts to the targets. The shipped rules are `InstanceDown` (a target
 unreachable for 5m, the `blackbox` job excluded — its targets share one exporter,
-so `up == 0` there is not a down site); the `probes` group — `BlackboxExporterDown`
+so `up == 0` there is not a down target); the `probes` group — `BlackboxExporterDown`
 (that exporter unreachable, aggregated to one alert so it doesn't fan out per
-site), `ProbeDown` (a public site that stopped returning a 2xx for 5m) and
+target), `ProbeDown` (a probe target that stopped answering with a status its module
+accepts, for 5m) and
 `ProbeSSLCertExpiringSoon` (its TLS cert under 14 days from expiry, guarded on a
 non-zero expiry so a probe that measured no cert doesn't trip it), the latter two
 off the `blackbox` probe job; the `backups` group — the `podman_backup` pair

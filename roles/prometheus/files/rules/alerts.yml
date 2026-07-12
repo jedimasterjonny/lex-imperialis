@@ -4,8 +4,8 @@ groups:
     rules:
       # Excludes the blackbox job: its targets are probe URLs that all scrape the
       # one co-located exporter, so up==0 there means the exporter is unreachable,
-      # not that the sites are down. BlackboxExporterDown catches that once, and
-      # ProbeDown catches an actually-failing site.
+      # not that the targets are down. BlackboxExporterDown catches that once, and
+      # ProbeDown catches an actually-failing target.
       - alert: InstanceDown
         expr: up{job != "blackbox"} == 0
         for: 5m
@@ -18,20 +18,23 @@ groups:
   - name: probes
     rules:
       # The probe targets all scrape the one co-located exporter, so up==0 across
-      # them means the exporter is unreachable, not the sites. Aggregate to a
-      # single alert (InstanceDown skips this job); a dead exporter blinds all
-      # probing, so it is critical.
+      # them means the exporter is unreachable, not the targets. Aggregate to a
+      # single alert (InstanceDown skips this job). A dead exporter blinds all
+      # probing — not just the public sites, but the fleet's containerised services,
+      # whose only liveness alert this is — so it is critical.
       - alert: BlackboxExporterDown
         expr: max(up{job="blackbox"}) == 0
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: "the blackbox exporter is unreachable — public-site probing is blind"
-          description: "Prometheus cannot scrape the blackbox exporter, so no public site is being probed."
-      # Blackbox probe of a public site: probe_success == 0 means the site did not
-      # answer with a 2xx (through Cloudflare/Firebase, following redirects) — down,
-      # DNS broken, or TLS failed. 5m rides out a transient blip or a deploy.
+          summary: "the blackbox exporter is unreachable — all probing is blind"
+          description: "Prometheus cannot scrape the blackbox exporter, so nothing is being probed — not the public sites, not the containerised services."
+      # Blackbox probe of a target: probe_success == 0 means it did not answer with a
+      # status its prober module accepts — down, DNS broken, or TLS failed. Not just
+      # a 2xx: a module may accept others (an auth-walled target answers 401), so key
+      # off probe_success, which is the module's own verdict. 5m rides out a transient
+      # blip or a deploy.
       - alert: ProbeDown
         expr: probe_success == 0
         for: 5m
@@ -39,13 +42,14 @@ groups:
           severity: critical
         annotations:
           summary: "probe of {{ $labels.instance }} is failing"
-          description: "The blackbox probe of {{ $labels.instance }} has not returned a 2xx for over 5 minutes."
-      # Edge certs (Cloudflare, Firebase) auto-renew well before expiry; 14 days
-      # left means renewal has silently stalled, with time to intervene by hand.
-      # Guarded on the expiry being > 0: blackbox exports 0 both for a failed probe
-      # and for a successful non-TLS one, and 0 - time() is hugely negative — it
-      # would satisfy the threshold and fire spuriously. Only warn when a real cert
-      # was measured.
+          description: "The blackbox probe of {{ $labels.instance }} has not answered with an accepted status for over 5 minutes."
+      # Every cert here auto-renews well before expiry — the edge ones (Cloudflare,
+      # Firebase) and caddy's own DNS-01 wildcard, now that the internal services are
+      # probed too. 14 days left means a renewal has silently stalled, with time to
+      # intervene by hand. Guarded on the expiry being > 0: blackbox exports 0 both
+      # for a failed probe and for a successful non-TLS one (plex is probed over
+      # plain HTTP), and 0 - time() is hugely negative — it would satisfy the
+      # threshold and fire spuriously. Only warn when a real cert was measured.
       - alert: ProbeSSLCertExpiringSoon
         expr: probe_ssl_earliest_cert_expiry - time() < 14 * 86400 and probe_ssl_earliest_cert_expiry > 0
         for: 1h
