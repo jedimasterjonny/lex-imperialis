@@ -31,9 +31,13 @@ the `prometheus` role:
   written.
 - `blackbox_exporter_listen_address` — address the exporter binds `/probe` and
   `/metrics` on; loopback by default so it is not exposed on the LAN.
-- `blackbox_exporter_modules` — prober modules rendered into `blackbox.yml`. The
-  default is the one `http_2xx` module, which follows redirects (the redirect
-  zones answer 3xx before the final 2xx) and probes over IPv4.
+- `blackbox_exporter_modules` — prober modules rendered into `blackbox.yml`. Two by
+  default, both following redirects (the redirect zones answer 3xx before the final
+  2xx) and probing over IPv4: `http_2xx`, and `http_2xx_or_401`, which additionally
+  accepts a `401`. The latter is for an auth-walled endpoint, where the `401` is
+  itself proof the daemon is up and serving — accepting it keeps that service's
+  credentials off the exporter. Prometheus picks the module per target group; see
+  the `prometheus` role's `prometheus_probe_targets`.
 - `blackbox_exporter_security_opt_extra` — extra compose `security_opt` entries,
   appended to the `no-new-privileges` the template hardcodes (alongside
   `cap_drop: ALL`); empty in production.

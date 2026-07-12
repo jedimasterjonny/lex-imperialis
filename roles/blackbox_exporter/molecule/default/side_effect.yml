@@ -5,25 +5,25 @@
 - name: Change the blackbox config on the running exporter
   hosts: all
   tasks:
+    # include_role vars replace rather than merge, so the sentinel has to be added
+    # to the real module set, not stated instead of it. Load the defaults and
+    # combine, rather than restating them: verify runs after this side effect and
+    # asserts the real modules are loaded, and a hand-copy would drift silently the
+    # first time a module is added to the role.
+    - name: Load the role's real module set
+      ansible.builtin.include_vars:
+        file: ../../defaults/main.yml
+        name: blackbox_exporter_real
+
     - name: Re-apply blackbox_exporter with an added sentinel module
       ansible.builtin.include_role:
         name: blackbox_exporter
-      # The added sentinel module is the change under test; http_2xx and the
-      # apparmor=unconfined the nested incus container needs to start both mirror
-      # converge and must stay — defaults would drop http_2xx, which verify probes
-      # through, and the apparmor exception the container needs to start.
       vars:
-        blackbox_exporter_modules:
-          http_2xx:
-            prober: http
-            timeout: 5s
-            http:
-              follow_redirects: true
-              preferred_ip_protocol: ip4
-          # Exists only to be a detectable delta in the loaded config; verify
-          # checks its name appears in /config. It just has to be a valid module,
-          # so no http block.
-          http_2xx_sentinel:
-            prober: http
+        # The sentinel is the change under test — verify checks its name reached the
+        # loaded config. It only has to be a valid module, so no http block.
+        blackbox_exporter_modules: >-
+          {{ blackbox_exporter_real.blackbox_exporter_modules
+             | combine({'http_2xx_sentinel': {'prober': 'http'}}) }}
+        # The nested incus container cannot load an AppArmor profile.
         blackbox_exporter_security_opt_extra:
           - apparmor=unconfined

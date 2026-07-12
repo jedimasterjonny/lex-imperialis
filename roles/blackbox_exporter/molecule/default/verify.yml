@@ -30,6 +30,24 @@
           - "'http_2xx:' in blackbox_exporter_loaded_config.content"
         fail_msg: the running blackbox_exporter did not load the http_2xx module
 
+    # The module exists to probe an auth-walled endpoint, which answers 401 rather
+    # than 200. No such endpoint exists in this scenario, so assert on the config
+    # the exporter parsed instead. Parse it rather than substring-match: '401'
+    # appears in the module's own name, so a bare match would still pass with
+    # valid_status_codes dropped — the very regression this guards.
+    - name: The http_2xx_or_401 module is loaded and accepts a 401
+      ansible.builtin.assert:
+        that:
+          - "'http_2xx_or_401' in blackbox_exporter_loaded_modules"
+          - 401 in blackbox_exporter_loaded_modules.http_2xx_or_401.http.valid_status_codes
+          - 200 in blackbox_exporter_loaded_modules.http_2xx_or_401.http.valid_status_codes
+        fail_msg: >-
+          the running blackbox_exporter did not load the http_2xx_or_401 module, or
+          loaded it without both 200 and 401 among its valid_status_codes
+      vars:
+        blackbox_exporter_loaded_modules: >-
+          {{ (blackbox_exporter_loaded_config.content | from_yaml).modules }}
+
     # side_effect added this module; finding it in the LOADED config proves the
     # recreate applied the change — a stale single-file bind mount would not.
     - name: The side-effect config change reached the running exporter
