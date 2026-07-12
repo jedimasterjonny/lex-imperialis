@@ -157,8 +157,18 @@ arr_apps:
     # bounces transmission into the fresh netns). The template forces on_failure
     # to 'none' when there's no real config, so the blackhole kill-switch is
     # never restart-looped.
+    #
+    # This is the one probe that cannot be a network probe: it asserts egress
+    # *through the tunnel*, which is only observable from inside the netns. It
+    # therefore keeps paying the exec cost, and runs tighter than the rest of the
+    # stack — every other app here shares this netns, so a dead tunnel takes the
+    # whole stack's egress with it. 90s x 2 kills at ~3m, and the restart that
+    # follows is what raises WireguardTunnelDown (the prometheus role) — a dead
+    # tunnel has no other signal.
     healthcheck:
       cmd: ping -c1 -W5 1.1.1.1
+      interval: 90s
+      retries: 2
       on_failure: kill
 
 # Client config for transmission's tunnel; the operator's real config arrives

@@ -202,7 +202,12 @@ local traffic does not.
   sustained failure kills the container so systemd's `Restart=on-failure`
   rebuilds it and PartOf bounces every joiner into the fresh netns. The
   template forces it off when `arr_wireguard_conf` is empty, so the blackhole
-  isn't restart-looped.
+  isn't restart-looped. It runs at 90s x 2, tighter than the rest of the stack:
+  every app shares this netns, so a dead tunnel takes the whole stack's egress
+  with it, and the restart this drives is what raises `WireguardTunnelDown` — a
+  dead tunnel has no other signal. It is also the one probe that *cannot* be a
+  network probe, since egress through the tunnel is only observable from inside
+  the netns.
 - **Kill-switch** — with `arr_wireguard_conf` empty, the role generates a
   blackhole config: random keys, `AllowedIPs = 0.0.0.0/0`, a TEST-NET
   endpoint. wg0 comes up with a dead default route, so no confined app's
