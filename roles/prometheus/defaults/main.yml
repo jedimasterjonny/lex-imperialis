@@ -17,9 +17,12 @@ prometheus_cadvisor_targets: []
 # so no alerting block or rule files are configured until a host sets them.
 prometheus_alertmanager_targets: []
 
-# Blackbox probe targets, each a full URL the blackbox_exporter probes for a 2xx
-# (following redirects). Empty by default, so the blackbox job carries no targets
-# until a host sets them.
+# Blackbox probe targets: each entry pairs a prober module (module) with the full
+# URLs to run it against (targets), and the same module may appear in more than one
+# entry. Pairing the module with the target is what lets an auth-walled endpoint be
+# probed by a module accepting the 401 it legitimately answers, alongside the plain
+# 2xx targets. Empty by default, so the blackbox job carries no targets until a host
+# sets them.
 prometheus_probe_targets: []
 
 # host:port of the blackbox_exporter the blackbox job scrapes. Must match the

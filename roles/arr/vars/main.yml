@@ -10,9 +10,10 @@
 # another app's container netns (lifecycle follows it, and that owner advertises
 # each joiner as a network alias so caddy reaches it); caps is the minimal
 # capability set the app adds back over the template's DropCapability=all
-# baseline; sysctls and binds are quadlet passthroughs; healthcheck adds a podman liveness
-# probe (cmd plus optional interval/timeout/start_period/retries/on_failure, all
-# defaulted). prowlarr only manages indexers and recyclarr
+# baseline; sysctls and binds are quadlet passthroughs; healthcheck adds the podman
+# restart backstop (cmd, plus optional interval/timeout/start_period/retries, all
+# defaulted) — an app that must never be auto-killed simply carries none.
+# prowlarr only manages indexers and recyclarr
 # only talks to the other apps, so neither has a data mount. recyclarr's TRaSH
 # config is repo-rendered and bind-mounted read-only (see defaults/tasks),
 # including the Servarr API keys it references via arr_api_keys.
@@ -83,6 +84,8 @@ arr_apps:
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:v3.5.0@sha256:139dfee1c6f89249c8d665d1333a42e8ec74ec0a86bc6bb1c8461e10d3a66a47
     netns: wireguard
+    # No port and no caddy vhost, so nothing off the host can reach it: this is the
+    # one app whose exec healthcheck is also its only check.
     healthcheck:
       cmd: curl -fsS http://127.0.0.1:8191/health
   beets:
@@ -97,8 +100,9 @@ arr_apps:
     # catalog timer runs `beet -c /config/managed/...`. ro config under /etc, so
     # no :Z (container_t reads etc_t).
     binds: ["{{ arr_beets_config_dir }}:/config/managed:ro"]
-    healthcheck:
-      cmd: curl -fsS http://127.0.0.1:8337/
+    # No healthcheck: never auto-kill beets — the pipeline timer can have an import
+    # in flight, and killing it mid-import leaves the library and quarantine
+    # inconsistent. Its blackbox probe is the alert.
   plex:
     image: lscr.io/linuxserver/plex:1.43.2@sha256:12008668bf8b79c6ffeb0c0a7878a0354aaaa032368da71a0ea5e84717453b11
     uid: 3006
@@ -119,9 +123,9 @@ arr_apps:
     # Plex's TranscoderTempDirectory is /transcode; back it with a tmpfs so
     # transcoding has somewhere to write without touching the config volume.
     tmpfs: [/transcode]
-    # /identity answers unauthenticated, so it probes liveness without a token.
-    healthcheck:
-      cmd: curl -fsS http://127.0.0.1:32400/identity
+    # No healthcheck: never auto-kill plex — a transcode can be in flight, and a
+    # restart drops every stream mid-playback. Its blackbox probe of /identity
+    # (unauthenticated, so it needs no token) is the alert.
   recyclarr:
     image: ghcr.io/recyclarr/recyclarr:8.6.0@sha256:3c38ceeb54438dd8327e4e65c9b48ba601a6d20fff833342d93c9b0bc4b1930b
     uid: 3007
@@ -140,10 +144,10 @@ arr_apps:
     port: 9091
     netns: wireguard
     data: [downloads]
-    # Shares wireguard's netns, so the RPC webui answers on localhost here. A
-    # liveness probe only: -sS without -f treats an auth-on 401 the same as an
-    # auth-off 200 (both mean "responding"), so it needs no credentials — which
-    # would otherwise leak into the probe's argv — and works in either state.
+    # Shares wireguard's netns, so the RPC webui answers on localhost here. -sS
+    # without -f treats an auth-on 401 the same as an auth-off 200 (both mean
+    # "responding"), so it needs no credentials — which would otherwise leak into
+    # the probe's argv — and works in either state.
     healthcheck:
       cmd: curl -sS -o /dev/null http://127.0.0.1:9091/transmission/web/
   wireguard:
@@ -157,9 +161,18 @@ arr_apps:
     # bounces transmission into the fresh netns). The template forces on_failure
     # to 'none' when there's no real config, so the blackhole kill-switch is
     # never restart-looped.
+    #
+    # This is the one probe that cannot be a network probe: it asserts egress
+    # *through the tunnel*, which is only observable from inside the netns. It
+    # therefore keeps paying the exec cost, and runs tighter than the backstop
+    # cadence the rest of the stack gets — every other app here shares this netns,
+    # so a dead tunnel takes the whole stack's egress with it. 90s x 2 kills at ~3m,
+    # and the restart that follows is what raises WireguardTunnelDown (the prometheus
+    # role) — a dead tunnel has no other signal.
     healthcheck:
       cmd: ping -c1 -W5 1.1.1.1
-      on_failure: kill
+      interval: 90s
+      retries: 2
 
 # Client config for transmission's tunnel; the operator's real config arrives
 # via arr_wireguard_conf (vault).

@@ -53,7 +53,9 @@
         # the target registers (down) but need only be discovered — verify asserts
         # the job registered, not that the probe succeeded.
         prometheus_probe_targets:
-          - https://example.com
+          - module: http_2xx
+            targets:
+              - https://example.com
         # The nested CI container cannot load an AppArmor profile, so run it
         # unconfined; the template's hardcoded posture still applies on top.
         prometheus_security_opt_extra:

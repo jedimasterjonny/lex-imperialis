@@ -31,16 +31,44 @@
     # Route alerts to Alertmanager on solar over the LAN.
     prometheus_alertmanager_targets:
       - solar:9093
-    # Blackbox-probe the public sites end-to-end via the co-located exporter: each
-    # a 2xx through the Cloudflare/Firebase edge (redirect zones answer 3xx first,
-    # which http_2xx follows), plus per-site TLS expiry.
+    # Blackbox-probe via the co-located exporter. Each entry pairs a prober module
+    # with the targets to run it against; the same module may appear more than once.
     prometheus_probe_targets:
-      - https://jonnyoc.uk
-      - https://www.jonnyoc.uk
-      - https://emmasedit.com
-      - https://www.emmasedit.com
-      - https://jonnyoc.co.uk
-      - https://www.jonnyoc.co.uk
+      # The public sites end-to-end: each a 2xx through the Cloudflare/Firebase edge
+      # (redirect zones answer 3xx first, which http_2xx follows), plus per-site TLS
+      # expiry.
+      - module: http_2xx
+        targets:
+          - https://jonnyoc.uk
+          - https://www.jonnyoc.uk
+          - https://emmasedit.com
+          - https://www.emmasedit.com
+          - https://jonnyoc.co.uk
+          - https://www.jonnyoc.co.uk
+      # solar's containerised services, over the LAN — the liveness alert for each,
+      # since their podman healthchecks only restart them. Reached through caddy,
+      # which is both the path they are actually used over and the only one they
+      # publish. Keep this list in step with solar's arr_enabled: an app enabled
+      # there but missing here has no alert, and one removed there but left here
+      # fires ProbeDown forever. alertmanager is absent because Prometheus already
+      # scrapes it; flaresolverr because nothing off the host can reach it.
+      - module: http_2xx
+        targets:
+          - https://sonarr.{{ caddy_domain }}/ping
+          - https://radarr.{{ caddy_domain }}/ping
+          - https://lidarr.{{ caddy_domain }}/ping
+          - https://prowlarr.{{ caddy_domain }}/ping
+          - https://beets.{{ caddy_domain }}/
+          - https://grafana.{{ caddy_domain }}/api/health
+          # homepage serves the apex, so this probes caddy itself on the way through.
+          - https://{{ caddy_domain }}/api/healthcheck
+          # plex is host-networked and not proxied, so it is probed on its own port.
+          - http://solar:32400/identity
+      # transmission's RPC is auth-walled, so it answers 401, not 200 — which still
+      # proves the daemon is serving.
+      - module: http_2xx_or_401
+        targets:
+          - https://transmission.{{ caddy_domain }}/transmission/web/
   roles:
     # blackbox_exporter before prometheus so the exporter is up when prometheus's
     # blackbox job first scrapes it — prometheus tolerates a briefly-down target,

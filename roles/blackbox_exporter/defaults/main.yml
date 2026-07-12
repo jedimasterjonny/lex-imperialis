@@ -17,6 +17,17 @@ blackbox_exporter_modules:
     http:
       follow_redirects: true
       preferred_ip_protocol: ip4
+  # For a service whose endpoint is auth-walled and so answers 401, not 200: the
+  # 401 is itself proof the daemon is up and serving, which is all the probe needs
+  # to establish. Accepting it keeps the service's credentials out of the exporter
+  # — the alternative is copying them onto every host that probes it.
+  http_2xx_or_401:
+    prober: http
+    timeout: 5s
+    http:
+      follow_redirects: true
+      preferred_ip_protocol: ip4
+      valid_status_codes: [200, 401]
 
 # Extra compose security_opt entries, appended to the no-new-privileges the
 # template hardcodes (alongside cap_drop: ALL). Empty in production; the molecule

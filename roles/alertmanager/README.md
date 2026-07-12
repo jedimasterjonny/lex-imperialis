@@ -29,8 +29,10 @@ and `/alertmanager`, so the unit overrides no `Exec`. State (silences, the
 notification log) lives in the `alertmanager-data` named volume, handed to the
 image's `nobody` user (65534) with `:U`.
 
-The container carries a podman healthcheck against `/-/healthy` (status only, no
-restart on failure).
+The container's podman healthcheck against `/-/healthy` is the restart backstop, not
+the monitor (see `CLAUDE.md`). Alertmanager needs no blackbox probe: Prometheus
+already scrapes it, so `InstanceDown` covers it, and a total outage trips the
+Watchdog deadman — an alert routed through Alertmanager cannot report Alertmanager.
 
 ## Hardening
 
