@@ -116,15 +116,33 @@ groups:
       # robust to the cgroup-id churn that defeats a cadvisor start-time proxy.
       # The counter zeroes on boot and dependency-ordered units restart a few times
       # during startup; gate on uptime past the 15m window so that churn stays out of
-      # the increase.
+      # the increase. wireguard is excluded because WireguardTunnelDown below watches
+      # the same counter on a lower threshold: it would otherwise raise a second,
+      # differently-named alert for one fault, and group_by is on alertname.
       - alert: ServiceRestartStorm
-        expr: increase(node_systemd_service_restart_total[15m]) > 3 and on(instance) time() - node_boot_time_seconds > 15 * 60
+        expr: increase(node_systemd_service_restart_total{name!="wireguard.service"}[15m]) > 3 and on(instance) time() - node_boot_time_seconds > 15 * 60
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "{{ $labels.name }} is restarting repeatedly on {{ $labels.instance }}"
           description: "{{ $labels.name }} on {{ $labels.instance }} auto-restarted more than 3 times in 15 minutes."
+      # A dead tunnel raises nothing on its own: every app in the arr stack shares
+      # wireguard's netns and answers on loopback, so their blackbox probes stay green
+      # while egress is gone. The only signal is the restart cycle that wireguard's own
+      # healthcheck kill drives. ServiceRestartStorm above would eventually catch it,
+      # but only as an anonymous warning about "a unit"; name the fault instead, and
+      # fire on the second restart (~7m) rather than the fourth. Restarts here are
+      # automatic ones only, so an Ansible-driven restart never trips it — nor does a
+      # PartOf-propagated stop of a joiner. Same boot gate as above.
+      - alert: WireguardTunnelDown
+        expr: increase(node_systemd_service_restart_total{name="wireguard.service"}[15m]) > 1 and on(instance) time() - node_boot_time_seconds > 15 * 60
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "the wireguard tunnel is down on {{ $labels.instance }}"
+          description: "wireguard auto-restarted more than once in 15 minutes — it cannot reach the internet through wg0, so the arr stack has no egress."
 
   - name: maintenance
     rules:

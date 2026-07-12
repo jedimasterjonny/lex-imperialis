@@ -85,7 +85,11 @@ node_exporter filesystem under 10% free for 15m); `ServiceRestartStorm` (a syste
 unit that auto-restarted more than three times in 15m, off node_exporter's
 `node_systemd_service_restart_total` counter — covers quadlet containers and every
 other service alike, suppressed for the first 15m of uptime so boot restart
-churn isn't a false storm); the `maintenance` group's `autoupdate` pair
+churn isn't a false storm) and `WireguardTunnelDown` (the same counter, but named to
+`wireguard.service` and firing on the second restart: a dead tunnel raises nothing
+else, since the arr apps sharing its netns answer on loopback and keep probing
+green, so the restart cycle its healthcheck kill drives is the only signal); the
+`maintenance` group's `autoupdate` pair
 `AutoupdateFailed` / `AutoupdateOverdue` (an unattended `zypper` run that failed or
 has not completed in over 9 days) plus the WordPress-update rules
 `WordpressUpdateAvailable` (an update awaiting a hand — a major, or anything not
