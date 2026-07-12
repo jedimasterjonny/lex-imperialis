@@ -25,8 +25,8 @@ sites dir).
 State lives in the `grafana-data` named volume, handed to the image's `grafana`
 user (472) with `:U`.
 
-The container carries a podman healthcheck against `/api/health` (status only,
-no restart on failure).
+The container's podman healthcheck against `/api/health` is the restart backstop, not
+the monitor (see `CLAUDE.md`); monitoring is the blackbox probe of the same endpoint.
 
 ## Hardening
 

@@ -8,10 +8,26 @@ sibling `downloads`. `arr_enabled` picks which apps a host runs (default: all),
 so the stack can come up one container at a time. Unit changes bounce only the
 apps they touch.
 
-Each webui app carries a podman liveness healthcheck against its own endpoint —
-status only, no restart on failure; flaresolverr (no webui) is probed the same
-way at its browserless `/health`, recyclarr (no endpoint) is the exception, and
-wireguard's probe (below) instead force-restarts the tunnel.
+## Health: probe over the network, exec only to restart
+
+The rule and its rationale are in `CLAUDE.md`. Applied here: monitoring is the
+blackbox probe (`prometheus_probe_targets`), raising `ProbeDown`. A healthcheck
+exists only to restart a wedged container, so an app that must never be auto-killed
+carries none at all — the two columns below are not independent.
+
+| app | monitored by | healthcheck (⇒ restarts) |
+| --- | --- | --- |
+| radarr, sonarr, lidarr, prowlarr | probe of `/ping` via caddy | yes |
+| transmission | probe via caddy, `http_2xx_or_401` (the RPC is auth-walled) | yes |
+| flaresolverr | **nothing** — no port, no vhost, unreachable off the host | yes |
+| wireguard | `WireguardTunnelDown`, off the restarts its check drives | yes |
+| beets | probe via caddy | **none** — never kill a running import |
+| plex | probe of `:32400/identity` (host-networked, not proxied) | **none** — never kill a running transcode |
+| recyclarr | nothing — no endpoint | none |
+
+transmission is the one restarting app with state to lose: a `SIGKILL` forces a
+re-verify of active torrents. The kill only fires after ~15m of a dead RPC, by which
+point that costs less than staying wedged.
 
 ## Apps
 
@@ -202,12 +218,12 @@ local traffic does not.
   sustained failure kills the container so systemd's `Restart=on-failure`
   rebuilds it and PartOf bounces every joiner into the fresh netns. The
   template forces it off when `arr_wireguard_conf` is empty, so the blackhole
-  isn't restart-looped. It runs at 90s x 2, tighter than the rest of the stack:
-  every app shares this netns, so a dead tunnel takes the whole stack's egress
-  with it, and the restart this drives is what raises `WireguardTunnelDown` — a
-  dead tunnel has no other signal. It is also the one probe that *cannot* be a
-  network probe, since egress through the tunnel is only observable from inside
-  the netns.
+  isn't restart-looped. It runs at 90s, tighter than the backstop cadence the
+  rest of the stack gets: every app in the stack shares this netns, so a dead
+  tunnel takes the whole stack's egress with it, and it is worth paying the exec
+  cost more often to catch that. It is also the one probe that *cannot* be a
+  network probe — egress through the tunnel is only observable from inside the
+  netns.
 - **Kill-switch** — with `arr_wireguard_conf` empty, the role generates a
   blackhole config: random keys, `AllowedIPs = 0.0.0.0/0`, a TEST-NET
   endpoint. wg0 comes up with a dead default route, so no confined app's
@@ -222,7 +238,8 @@ local traffic does not.
   (vault) render to a 0600 `EnvironmentFile`; the LSIO image turns RPC auth on
   and sets the rpc user/password from them. Both empty (the default) leaves
   auth off, so molecule converges with no vault. The healthcheck is
-  credential-free — it treats the auth 401 as "responding". Enabling auth 401s
+  credential-free — it treats the auth 401 as "responding", and its blackbox probe
+  does the same, via the exporter's `http_2xx_or_401` module. Enabling auth 401s
   the radarr/sonarr/lidarr download-client connections until each carries the
   same creds: set those on every app's Transmission client (API/UI) when first
   enabling auth; the role does not manage the *arr-side download-client config.

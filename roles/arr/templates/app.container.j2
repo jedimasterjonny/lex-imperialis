@@ -85,9 +85,13 @@ Volume={{ arr_data_root }}/{{ data }}:/data/{{ data }}{{ arr_data_suffix }}
 {% endfor %}
 {% endif %}
 {% if item.value.healthcheck is defined %}
+{# A restart backstop, not the monitor — see the health convention in CLAUDE.md. #}
+{# An app that must never be auto-killed carries no healthcheck at all, so a #}
+{# healthcheck here always kills; the timeout is generous because the exec #}
+{# itself costs seconds on this hardware. #}
 HealthCmd={{ item.value.healthcheck.cmd }}
-HealthInterval={{ item.value.healthcheck.interval | default('1m') }}
-HealthTimeout={{ item.value.healthcheck.timeout | default('10s') }}
+HealthInterval={{ item.value.healthcheck.interval | default('5m') }}
+HealthTimeout={{ item.value.healthcheck.timeout | default('30s') }}
 HealthStartPeriod={{ item.value.healthcheck.start_period | default('30s') }}
 HealthRetries={{ item.value.healthcheck.retries | default(3) }}
 {# A blackhole tunnel (no real wg config) is meant to stay down — never #}
@@ -95,7 +99,7 @@ HealthRetries={{ item.value.healthcheck.retries | default(3) }}
 {% if item.key == 'wireguard' and arr_wireguard_conf | default('') | length == 0 %}
 HealthOnFailure=none
 {% else %}
-HealthOnFailure={{ item.value.healthcheck.on_failure | default('none') }}
+HealthOnFailure=kill
 {% endif %}
 {% endif %}
 
