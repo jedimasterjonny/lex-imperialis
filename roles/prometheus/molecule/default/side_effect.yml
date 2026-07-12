@@ -21,6 +21,8 @@
         prometheus_alertmanager_targets:
           - localhost:9093
         prometheus_probe_targets:
-          - https://example.com
+          - module: http_2xx
+            targets:
+              - https://example.com
         prometheus_security_opt_extra:
           - apparmor=unconfined

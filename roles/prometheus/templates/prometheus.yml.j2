@@ -29,21 +29,24 @@ scrape_configs:
       - targets: {{ prometheus_cadvisor_targets | to_json }}
 {% if prometheus_probe_targets %}
 
-  # Blackbox probes: each target is passed to the blackbox_exporter as ?target=,
-  # and the scrape hits the exporter, not the site. The relabelling moves the URL
-  # into the target param and the instance label, then rewrites __address__ to the
-  # exporter so the scrape lands there.
+  # Blackbox probes: each target is passed to the blackbox_exporter as ?target=, and
+  # the scrape hits the exporter, not the target. Each entry carries its prober module
+  # as __param_module, so the module is per target rather than per job. The
+  # relabelling moves the URL into the target param and the instance label, then
+  # rewrites __address__ to the exporter so the scrape lands there.
   - job_name: blackbox
-    # Each scrape is a live external probe (DNS + TLS + redirect-follow) against a
-    # public site, so scrape at 60s, not the global 15s: the probe alerts key off
-    # minutes to hours (probe_success for 5m, cert expiry for 1h), so a faster
-    # cadence only hammers the sites and their edge for no gain.
+    # Each scrape is a live probe (DNS + TLS + redirect-follow), so scrape at 60s,
+    # not the global 15s: the probe alerts key off minutes to hours (probe_success
+    # for 5m, cert expiry for 1h), so a faster cadence only hammers the targets for
+    # no gain.
     scrape_interval: 60s
     metrics_path: /probe
-    params:
-      module: [http_2xx]
     static_configs:
-      - targets: {{ prometheus_probe_targets | to_json }}
+{% for group in prometheus_probe_targets %}
+      - targets: {{ group.targets | to_json }}
+        labels:
+          __param_module: {{ group.module | to_json }}
+{% endfor %}
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target

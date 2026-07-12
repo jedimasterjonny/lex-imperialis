@@ -36,6 +36,23 @@
       retries: 30
       delay: 2
 
+    # The group's module has to survive as __param_module into the URL Prometheus
+    # actually scrapes, or a target silently falls back to the exporter's default
+    # module. scrapeUrl is that constructed URL. Anchor the match on the parameter
+    # boundary: a bare 'module=http_2xx' is also satisfied by 'module=http_2xx_or_401'.
+    - name: The blackbox target is scraped with its group's prober module
+      ansible.builtin.assert:
+        that:
+          - blackbox_scrape_urls | select('search', 'module=http_2xx(&|$)') | list | length > 0
+        fail_msg: >-
+          the blackbox target's scrapeUrl did not carry its group's module=, so
+          __param_module is not reaching the scrape URL
+      vars:
+        blackbox_scrape_urls: >-
+          {{ prometheus_targets.json.data.activeTargets
+             | selectattr('labels.job', 'eq', 'blackbox')
+             | map(attribute='scrapeUrl') | list }}
+
     # Polled like the scrape jobs: the static alertmanager target is discovered
     # shortly after /-/ready, even though nothing is listening on 9093.
     - name: Wait for the alertmanager to register

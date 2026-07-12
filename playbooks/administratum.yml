@@ -31,16 +31,20 @@
     # Route alerts to Alertmanager on solar over the LAN.
     prometheus_alertmanager_targets:
       - solar:9093
-    # Blackbox-probe the public sites end-to-end via the co-located exporter: each
-    # a 2xx through the Cloudflare/Firebase edge (redirect zones answer 3xx first,
-    # which http_2xx follows), plus per-site TLS expiry.
+    # Blackbox-probe via the co-located exporter. Each entry pairs a prober module
+    # with the targets to run it against; the same module may appear more than once.
     prometheus_probe_targets:
-      - https://jonnyoc.uk
-      - https://www.jonnyoc.uk
-      - https://emmasedit.com
-      - https://www.emmasedit.com
-      - https://jonnyoc.co.uk
-      - https://www.jonnyoc.co.uk
+      # The public sites end-to-end: each a 2xx through the Cloudflare/Firebase edge
+      # (redirect zones answer 3xx first, which http_2xx follows), plus per-site TLS
+      # expiry.
+      - module: http_2xx
+        targets:
+          - https://jonnyoc.uk
+          - https://www.jonnyoc.uk
+          - https://emmasedit.com
+          - https://www.emmasedit.com
+          - https://jonnyoc.co.uk
+          - https://www.jonnyoc.co.uk
   roles:
     # blackbox_exporter before prometheus so the exporter is up when prometheus's
     # blackbox job first scrapes it — prometheus tolerates a briefly-down target,

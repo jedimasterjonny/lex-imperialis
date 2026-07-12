@@ -35,10 +35,12 @@ The role's host is the NAS, not a fleet openSUSE node, which shapes it:
   alert needs a live Alertmanager, so the `Watchdog` deadman heartbeat is what
   surfaces a wholly dead one. Empty configures no alerting and no scrape job;
   non-empty adds the `alerting` block and loads the shipped rule files.
-- `prometheus_probe_targets` — list of full URLs blackbox-probed for a 2xx. Each
-  is handed to the `blackbox_exporter` (the `blackbox_exporter` role) via `?target=`
-  and relabelled into the `instance` label, so the scrape hits the exporter, not
-  the site. Empty adds no `blackbox` job.
+- `prometheus_probe_targets` — blackbox probe targets: each entry is
+  `{module, targets}`, pairing a prober module with the full URLs to run it against
+  (the same module may appear in several entries). Each URL is handed to the
+  `blackbox_exporter` (the `blackbox_exporter` role) via `?target=` and relabelled
+  into the `instance` label, so the scrape hits the exporter, not the target; the
+  entry's `module` rides along as `__param_module`. Empty adds no `blackbox` job.
 - `prometheus_blackbox_address` — `host:port` of the `blackbox_exporter` the
   `blackbox` job scrapes; the exporter's loopback listen address on this host.
 - `prometheus_security_opt_extra` — extra compose `security_opt` entries, appended
@@ -49,10 +51,15 @@ The role's host is the NAS, not a fleet openSUSE node, which shapes it:
 
 When `prometheus_probe_targets` is set, the role adds a `blackbox` job: for each
 URL it scrapes the `blackbox_exporter` at `prometheus_blackbox_address` with
-`?target=<url>&module=http_2xx` and `metrics_path: /probe`, so Prometheus records
-`probe_success` and `probe_ssl_earliest_cert_expiry` per site end-to-end (through
-Cloudflare/Firebase, following redirects). The exporter itself is the
-`blackbox_exporter` role, co-located on the NAS.
+`?target=<url>&module=<the entry's module>` and `metrics_path: /probe`, so
+Prometheus records `probe_success` and `probe_ssl_earliest_cert_expiry` per target
+end-to-end. The exporter itself is the `blackbox_exporter` role, co-located on the
+NAS.
+
+The module is per target, not per job, because not every target answers `2xx`: an
+auth-walled endpoint answers `401`, which still proves the daemon is serving. It
+therefore goes in an entry naming a module whose `valid_status_codes` accept that,
+and the module reaches the constructed scrape URL as `__param_module`.
 
 ## Alerting
 
