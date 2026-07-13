@@ -110,6 +110,24 @@ groups:
           summary: "low disk space on {{ $labels.instance }}:{{ $labels.mountpoint }}"
           description: "{{ $labels.mountpoint }} on {{ $labels.instance }} has under 10% free."
 
+  - name: hardware
+    rules:
+      # solar already holds 88C for a continuous 15m under its weekly zypper dup, and
+      # summer ambient lifts it further, so 90 would fire on routine load. 95 errs late
+      # deliberately: throttling at 105C costs clock, not hardware, whereas a weekly false
+      # positive costs the alert its credibility. No second, higher-threshold rule — it
+      # would double-alert one fault, as ServiceRestartStorm's exclusion explains. Scoped
+      # to platform_coretemp_0, which only the two N150 boxes export, so one global
+      # threshold can key to their 105C Tjmax.
+      - alert: HostCpuTemperatureHigh
+        expr: max by (instance) (node_hwmon_temp_celsius{chip="platform_coretemp_0"}) > 95
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU on {{ $labels.instance }} sustained above 95C"
+          description: "{{ $labels.instance }} has held its CPU at {{ $value }}C for 15 minutes. Throttling starts at 105C — check the heatsink and fan."
+
   - name: services
     rules:
       # node_exporter's systemd collector exposes a true per-unit restart counter,

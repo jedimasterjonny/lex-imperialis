@@ -81,7 +81,10 @@ off the `blackbox` probe job; the `backups` group — the `podman_backup` pair
 `PodmanBackupFailed` (`podman_backup_success == 0`) and `PodmanBackupOverdue` (the
 last-run timestamp gone stale) plus the matching `wordpress` db-dump pair
 `WordpressDbDumpFailed` / `WordpressDbDumpOverdue`; `FilesystemSpaceLow` (a
-node_exporter filesystem under 10% free for 15m); `ServiceRestartStorm` (a systemd
+node_exporter filesystem under 10% free for 15m); `HostCpuTemperatureHigh` (a CPU held
+above 95C for 15m, off `node_hwmon_temp_celsius` scoped to `platform_coretemp_0` — the
+chip only the two N150 boxes export, so the other two hosts raise nothing);
+`ServiceRestartStorm` (a systemd
 unit that auto-restarted more than three times in 15m, off node_exporter's
 `node_systemd_service_restart_total` counter — covers quadlet containers and every
 other service alike, suppressed for the first 15m of uptime so boot restart
