@@ -65,6 +65,35 @@
         fail_msg: "the wheel sudoers drop-in does not grant own-password sudo"
         quiet: true
 
+    - name: Stat the modprobe blacklist drop-in
+      ansible.builtin.stat:
+        path: /etc/modprobe.d/common-blacklist.conf
+      register: common_blacklist
+
+    - name: Modprobe blacklist drop-in is installed and root-owned
+      ansible.builtin.assert:
+        that:
+          - common_blacklist.stat.exists
+          - common_blacklist.stat.mode == '0644'
+          - common_blacklist.stat.pw_name == 'root'
+          - common_blacklist.stat.gr_name == 'root'
+        fail_msg: "/etc/modprobe.d/common-blacklist.conf is missing or not owned root:root mode 0644"
+
+    - name: Read the modprobe blacklist drop-in
+      ansible.builtin.slurp:
+        src: /etc/modprobe.d/common-blacklist.conf
+      register: common_blacklist_content
+
+    # The fixture module is spelled out rather than read from the role's
+    # defaults: vars_files outranks vars, so the empty default would win here.
+    - name: Modprobe drop-in bars the fixture module from loading
+      ansible.builtin.assert:
+        that:
+          - "'blacklist lex_absent_module' in (common_blacklist_content.content | b64decode)"
+          - "'install lex_absent_module /bin/false' in (common_blacklist_content.content | b64decode)"
+        fail_msg: "the modprobe drop-in does not bar lex_absent_module from loading"
+        quiet: true
+
     - name: Gather installed package facts
       ansible.builtin.package_facts:
         manager: auto

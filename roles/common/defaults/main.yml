@@ -13,6 +13,10 @@ common_user_shell: /bin/bash
 common_user_comment: "Jonny O'Connell"
 common_user_home: "/home/{{ common_user_name }}"
 
+# Kernel modules barred from loading, in unload order — a holder must be listed
+# before the module it holds.
+common_blacklisted_modules: []
+
 # Base tools for every host.
 common_packages:
   - vim

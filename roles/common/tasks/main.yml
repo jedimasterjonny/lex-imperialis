@@ -4,6 +4,46 @@
     name: "{{ common_hostname }}"
   become: true
 
+# blacklist alone only stops the udev/modalias autoload, so pair it with an
+# install line that sends an explicit modprobe — or a load pulled in as another
+# module's dependency — to /bin/false. Rendered unconditionally: an empty list
+# yields an inert file, so emptying it reclaims the modules rather than leaving
+# a stale drop-in barring them forever.
+- name: Bar the blacklisted kernel modules from loading
+  ansible.builtin.template:
+    src: blacklist.conf.j2
+    dest: /etc/modprobe.d/common-blacklist.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+
+# modprobe's own loaded-check reads modules.builtin under the running kernel's
+# /lib/modules, absent from a container rootfs — it fails outright rather than
+# skipping. /sys/module is the kernel's own answer, and it spells a module with
+# underscores however modprobe was given it.
+- name: Probe for the blacklisted kernel modules
+  ansible.builtin.stat:
+    path: "/sys/module/{{ item | replace('-', '_') }}"
+  loop: "{{ common_blacklisted_modules }}"
+  register: common_module_probe
+
+# The drop-in only bites at the next boot, so unload what is already live.
+# Skipped under --check: nothing is really removed there, so a holder still
+# holds, and modprobe's own dry run (-n) refuses with "Module is in use" —
+# failing the check gate for the whole host on a first deploy.
+- name: Unload the blacklisted kernel modules
+  community.general.modprobe:
+    name: "{{ item.item }}"
+    state: absent
+  loop: "{{ common_module_probe.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - item.stat.exists
+    - not ansible_check_mode
+  become: true
+
 - name: Ensure the owner's supplementary groups exist
   ansible.builtin.group:
     name: "{{ item }}"
