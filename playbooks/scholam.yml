@@ -3,6 +3,11 @@
   hosts: this_host
   vars:
     common_hostname: scholam
+    # Wired box: the Intel wifi radio is dead weight. iwlmvm holds iwlwifi, so
+    # it unloads first.
+    common_blacklisted_modules:
+      - iwlmvm
+      - iwlwifi
     # Staggered autoupdate: the control host updates last, after the other hosts
     # have taken the week's snapshots, so a brick surfaces before scholam reboots.
     autoupdate_oncalendar: "Fri *-*-* 03:00:00"
