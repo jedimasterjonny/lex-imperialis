@@ -3,9 +3,12 @@ platforms:
   - name: "lex-podman-incus-${MOLECULE_RUN_ID:-local}"
     image: images:opensuse/tumbleweed/cloud
     # podman mounts overlays for its storage, which incus only permits in a
-    # nested-container-capable instance.
+    # nested-container-capable instance. verify starts a container to prove the
+    # OCI runtime works, and the CI runner's AppArmor denies a nested runtime's
+    # sysctl fd-reopen, so drop the profile — the instance is throwaway.
     config:
       security.nesting: "true"
+      raw.lxc: lxc.apparmor.profile=unconfined
 provisioner:
   name: ansible
   # Provisioning is role-agnostic and shared at the repo root; ../../../.. is
@@ -21,3 +24,7 @@ provisioner:
       all:
         ansible_connection: community.general.incus
         ansible_incus_remote: local
+        # What this image must end up on. Stated, not derived: verify is shared
+        # with the leap scenario, and a re-derived expectation would only assert
+        # the role's own arithmetic back at itself.
+        podman_expected_runtime: crun

@@ -43,6 +43,38 @@
     mode: "0755"
   become: true
 
+# Tumbleweed gets this directory from libcontainers-common; Leap 16 ships no such
+# thing, so create it.
+- name: Detect the containers.conf drop-in directory
+  ansible.builtin.stat:
+    path: /etc/containers/containers.conf.d
+  register: podman_confd
+
+- name: Create the containers.conf drop-in directory
+  ansible.builtin.file:
+    path: /etc/containers/containers.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+# Must outrank libcontainers-common's 00-suse-containers.conf, which pins
+# runtime = "runc": podman reads the directory in lexical order, last write wins.
+#
+# A dry run creates nothing, so on a host that has no drop-in directory yet
+# template would fatal rather than render — taking the rest of the play's --check
+# with it. Skip it there; the task above has already reported the directory.
+- name: Set podman's OCI runtime
+  ansible.builtin.template:
+    src: containers-runtime.conf.j2
+    dest: /etc/containers/containers.conf.d/10-runtime.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  when: podman_confd.stat.exists or not ansible_check_mode
+
 - name: Install the prune service and timer
   ansible.builtin.copy:
     src: "{{ item }}"

@@ -4,7 +4,7 @@ platforms:
     image: images:opensuse/tumbleweed/cloud
     # podman mounts overlays for its storage, which incus only permits in a
     # nested-container-capable instance. The CI runner's AppArmor denies nested
-    # runc's sysctl fd-reopen, so drop the profile — the instance is throwaway.
+    # runtime's sysctl fd-reopen, so drop the profile — the instance is throwaway.
     config:
       security.nesting: "true"
       raw.lxc: lxc.apparmor.profile=unconfined
