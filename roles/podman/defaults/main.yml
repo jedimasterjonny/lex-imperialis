@@ -1,7 +1,13 @@
 ---
+# Distro-derived, not a tunable: only Tumbleweed packages crun. Anything else
+# falls back to runc, which podman hard-requires and so always has.
+podman_runtime: "{{ 'crun' if ansible_facts['distribution'] == 'openSUSE Tumbleweed' else 'runc' }}"
+
 # aardvark-dns is netavark's DNS resolver. zypper only recommends it, and the
 # zypper module skips recommends, so without naming it here containers on a
 # podman network cannot resolve one another.
+# A runtime's package is named for the runtime, so podman_runtime installs itself.
 podman_packages:
   - podman
   - aardvark-dns
+  - "{{ podman_runtime }}"

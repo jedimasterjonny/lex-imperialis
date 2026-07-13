@@ -16,6 +16,38 @@
         fail_msg: "podman is not using the netavark network backend"
         quiet: true
 
+    # podman info is YAML, so read the name out of it rather than
+    # substring-matching the whole report.
+    - name: The configured OCI runtime is the expected one
+      ansible.builtin.assert:
+        that:
+          - (podman_info.stdout | from_yaml)['host']['ociRuntime']['name'] == podman_expected_runtime
+        fail_msg: "podman is not configured for the {{ podman_expected_runtime }} OCI runtime"
+        quiet: true
+
+    # podman info reports only what is *configured* — a container records the
+    # runtime it was created under, so nothing but starting one proves the runtime
+    # works. The host filesystem is the rootfs, overlaid so the container cannot
+    # write to it, which leaves the probe with no image to pull and renovate-pin.
+    # --replace, as quadlet's own ExecStart does, so verify can be re-run.
+    - name: Start a container under the configured runtime
+      ansible.builtin.command: podman run --replace --name podman-runtime-probe --network=none --rootfs /:O /bin/true
+      become: true
+      changed_when: false
+
+    - name: Read the runtime the probe container recorded
+      ansible.builtin.command: podman inspect podman-runtime-probe
+      become: true
+      register: podman_probe_inspect
+      changed_when: false
+
+    - name: The container ran under the expected runtime
+      ansible.builtin.assert:
+        that:
+          - (podman_probe_inspect.stdout | from_json)[0]['OCIRuntime'] == podman_expected_runtime
+        fail_msg: "the probe container did not run under {{ podman_expected_runtime }}"
+        quiet: true
+
     # aardvark-dns is only *recommended* by the podman package, so the role
     # installs it explicitly; podman info lists it under the backend's dns only
     # when present. netavark ships regardless, so it cannot stand in for this.
@@ -51,8 +83,7 @@
         state: directory
         mode: "0755"
 
-    # COPY only — a RUN step would need runc, which the CI runner's AppArmor
-    # denies inside the nested container.
+    # COPY only: the prune needs the image to exist, never to run.
     - name: Write the probe Containerfile
       ansible.builtin.copy:
         content: |
