@@ -5,6 +5,11 @@
     # The molecule instance name is already the container hostname, so this
     # keeps the hostname task idempotent.
     common_hostname: "{{ inventory_hostname }}"
+    # A module no kernel carries: naming a real one would have the container —
+    # whose /sys is the host's — try to unload the runner's own driver. That
+    # leaves nothing to unload, so this proves the drop-in alone.
+    common_blacklisted_modules:
+      - lex_absent_module
   tasks:
     - name: Apply the common role
       ansible.builtin.include_role:

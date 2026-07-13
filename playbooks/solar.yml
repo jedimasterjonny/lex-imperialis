@@ -7,6 +7,11 @@
     # matches) so NFS ownership reconciles — the v4 mounts use numeric sec=sys,
     # which carries raw uids and bypasses name-based idmapping.
     common_user_uid: 1026
+    # Wired box: the Intel wifi radio is dead weight. iwlmvm holds iwlwifi, so
+    # it unloads first.
+    common_blacklisted_modules:
+      - iwlmvm
+      - iwlwifi
     # Staggered autoupdate: solar (media server) updates first as the canary, so a
     # bad rolling snapshot surfaces here before the rest of the fleet takes it.
     autoupdate_oncalendar: "Mon *-*-* 03:00:00"
