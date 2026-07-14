@@ -83,8 +83,16 @@ jobs:
       # vacuously. Run the same git-mode scan without --staged — the real
       # push-time backstop over the checked-out commit. Version tracks the hook,
       # the single source of truth.
+      #
+      # The token lifts the 60/hour anonymous release-download limit (as
+      # setup-tflint's github_token does). No --location-trusted: the release URL
+      # redirects to a CDN on another host, and curl drops the header across that
+      # hop — so it authenticates only the rate-limited github.com request.
       - name: Scan the checked-out commit for secrets
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           version=$(grep -A1 'repo: https://github.com/gitleaks/gitleaks' .pre-commit-config.yaml | sed -n 's/.*rev: v//p')
-          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz" | tar -xz gitleaks
+          curl -sSfL -H "Authorization: Bearer $GITHUB_TOKEN" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz" | tar -xz gitleaks
           ./gitleaks git . --no-banner --redact
