@@ -85,7 +85,8 @@
                                         'ProbeSSLCertExpiringSoon',
                                         'PodmanBackupFailed', 'PodmanBackupOverdue',
                                         'WordpressDbDumpFailed', 'WordpressDbDumpOverdue',
-                                        'FilesystemSpaceLow', 'HostCpuTemperatureHigh',
+                                        'FilesystemSpaceLow', 'FilesystemReadOnly',
+                                        'HostCpuTemperatureHigh',
                                         'ServiceRestartStorm',
                                         'WireguardTunnelDown',
                                         'AutoupdateFailed', 'AutoupdateOverdue',
@@ -94,10 +95,10 @@
                                         'WordpressCronOverdue', 'GitopsReconcileFailed',
                                         'GitopsReconcileStale', 'BeetsPipelineLidarrRejected',
                                         'BeetsPipelineQuarantineBacklog', 'Watchdog'])
-            | list | length == 24
+            | list | length == 25
           - >-
             prometheus_loaded_rules.json.data.groups
-            | map(attribute='rules') | flatten | list | length == 24
+            | map(attribute='rules') | flatten | list | length == 25
         fail_msg: the loaded alert rules don't match those shipped in alerts.yml
 
     - name: Read the loaded runtime config

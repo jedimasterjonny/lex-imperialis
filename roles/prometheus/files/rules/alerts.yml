@@ -109,6 +109,25 @@ groups:
         annotations:
           summary: "low disk space on {{ $labels.instance }}:{{ $labels.mountpoint }}"
           description: "{{ $labels.mountpoint }} on {{ $labels.instance }} has under 10% free."
+      # The kernel remounts a filesystem read-only in response to certain I/O errors;
+      # the state is durable and never self-clears, so the 5m for: only rides out a
+      # scrape artefact. The metric is the ro mount flag, not an error state, so a
+      # deliberate read-only mount would trip it too — hence the annotation names the
+      # cause as likely, not certain. Nothing else names it: the host stays up, every
+      # probe stays green, and space never runs low because no write lands — at best the
+      # *Overdue rules notice, late, that metrics stopped being written. Same fstype
+      # exclusion as the space alert above, but not the same reach: statfs crosses the
+      # wire, so that one sees the NAS through the fleet's NFS mounts, whereas ro is
+      # the client's own mount option — a read-only volume on administratum reads 0
+      # here, and goes uncovered.
+      - alert: FilesystemReadOnly
+        expr: node_filesystem_readonly{fstype!~"tmpfs|squashfs|overlay|ramfs"} == 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }}:{{ $labels.mountpoint }} is mounted read-only"
+          description: "{{ $labels.mountpoint }} on {{ $labels.instance }} is mounted read-only — writes fail silently. Likely a remount after an I/O error."
 
   - name: hardware
     rules:
