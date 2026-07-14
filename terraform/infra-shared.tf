@@ -66,6 +66,13 @@ resource "google_iam_workload_identity_pool" "github" {
   description               = "OIDC federation for GitHub Actions in jedimasterjonny repos."
 
   depends_on = [google_project_service.infra_shared]
+
+  # The identity the auto-apply authenticates through: destroying this pool locks
+  # CI out of GCP for good, recoverable only by a local operator apply. Renaming
+  # or removing it must be a deliberate local act, not a silent CI teardown.
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "google_iam_workload_identity_pool_provider" "github" {
@@ -88,6 +95,12 @@ resource "google_iam_workload_identity_pool_provider" "github" {
 
   oidc {
     issuer_uri = "https://token.actions.githubusercontent.com"
+  }
+
+  # Same guard as the pool: without this provider the auto-apply cannot mint the
+  # credentials it runs as.
+  lifecycle {
+    prevent_destroy = true
   }
 }
 
@@ -157,6 +170,13 @@ resource "google_service_account" "tofu_apply" {
 
   # iam.googleapis.com must be on before the SA can be created (from-zero).
   depends_on = [google_project_service.infra_shared]
+
+  # The SA the auto-apply impersonates — same guard as the pool and provider it
+  # federates through. The read-only tofu-plan SA needs none: losing it breaks a
+  # PR plan, not CI's own apply.
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "google_service_account_iam_member" "tofu_apply_wif" {
