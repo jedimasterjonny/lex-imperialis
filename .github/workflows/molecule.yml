@@ -10,15 +10,6 @@ name: molecule
 # the validated PR tree.
 "on":
   pull_request:
-    paths:
-      - 'roles/**'
-      - 'molecule/**'
-      - 'inventory/group_vars/all/vault.yml'
-      - 'requirements.txt'
-      - 'requirements-dev.txt'
-      - 'Makefile'
-      - 'bin/check-role-test-coverage.sh'
-      - '.github/workflows/molecule.yml'
   workflow_dispatch:
 
 permissions:
@@ -68,7 +59,18 @@ jobs:
             # VM (or run any molecule tier).
             changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" | grep -vE '\.md$' || true)
             roles=$(printf '%s\n' "$changed" | sed -n 's#^roles/\([^/]*\)/.*#\1#p')
-            shared=$(printf '%s\n' "$changed" | grep -vE '^roles/' || true)
+            # Non-role paths that still warrant molecule — mirrors the trigger set
+            # the removed workflow-level paths filter used. Everything else
+            # (terraform/, jonnyoc-site/, docs) yields no tiers, so molecule-gate
+            # reports green on those PRs instead of blocking on a check that never runs.
+            shared=$(printf '%s\n' "$changed" | grep -E \
+              -e '^molecule/' \
+              -e '^inventory/group_vars/all/vault\.yml$' \
+              -e '^requirements(-dev)?\.txt$' \
+              -e '^Makefile$' \
+              -e '^bin/check-role-test-coverage\.sh$' \
+              -e '^\.github/workflows/molecule\.yml$' \
+              || true)
           fi
 
           incus_cand="$roles"
@@ -248,3 +250,18 @@ jobs:
         env:
           ROLE: ${{ matrix.role }}
         run: make destroy-hetzner ROLE=$ROLE
+
+  # Fixed-name summary check for branch protection: the per-role matrix job names
+  # vary per PR and can't be required directly. Runs on every PR (if: always()),
+  # so skipped tiers on a non-fleet PR still report this check as passing.
+  molecule-gate:
+    name: molecule-gate
+    if: always()
+    needs: [discover, incus, leap, hetzner]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any tier failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: |
+          echo "A molecule tier failed or was cancelled."
+          exit 1
