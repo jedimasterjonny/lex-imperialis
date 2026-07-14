@@ -15,12 +15,18 @@
     # Poll, not a one-shot read: verify runs right after side_effect recreates the
     # container, and /-/ready goes green before the scrape pools register their
     # targets.
-    - name: Wait for the node, cadvisor, blackbox and alertmanager scrape jobs to register
+    - name: Wait for the prometheus, node, cadvisor, blackbox and alertmanager scrape jobs to register
       ansible.builtin.uri:
         url: http://127.0.0.1:9090/api/v1/targets
         return_content: true
       register: prometheus_targets
       until:
+        # The self-scrape backs PrometheusRuleEvaluationFailing and
+        # PrometheusConfigReloadFailed; dropping the job would silently strip both
+        # alerts of their metrics while every other check here stayed green.
+        - >-
+          prometheus_targets.json.data.activeTargets
+          | selectattr('labels.job', 'eq', 'prometheus') | list | length > 0
         - >-
           prometheus_targets.json.data.activeTargets
           | selectattr('labels.job', 'eq', 'node') | list | length > 0
@@ -95,11 +101,13 @@
                                         'WordpressUpdateCheckOverdue', 'WordpressCronFailed',
                                         'WordpressCronOverdue', 'GitopsReconcileFailed',
                                         'GitopsReconcileStale', 'BeetsPipelineLidarrRejected',
-                                        'BeetsPipelineQuarantineBacklog', 'Watchdog'])
-            | list | length == 28
+                                        'BeetsPipelineQuarantineBacklog',
+                                        'PrometheusRuleEvaluationFailing',
+                                        'PrometheusConfigReloadFailed', 'Watchdog'])
+            | list | length == 30
           - >-
             prometheus_loaded_rules.json.data.groups
-            | map(attribute='rules') | flatten | list | length == 28
+            | map(attribute='rules') | flatten | list | length == 30
         fail_msg: the loaded alert rules don't match those shipped in alerts.yml
 
     - name: Read the loaded runtime config

@@ -122,7 +122,12 @@ in over an hour); the `gitops` group's `GitopsReconcileFailed` /
 `GitopsReconcileStale` (an unattended fleet reconcile that failed or has not completed
 in over 2 hours); the `music` group's `BeetsPipelineLidarrRejected`
 (an album beets matched but lidarr refused) and `BeetsPipelineQuarantineBacklog` (a
-standing pile of no-match albums awaiting hand-processing); and the `watchdog`
+standing pile of no-match albums awaiting hand-processing); the `monitoring` group's
+`PrometheusRuleEvaluationFailing` (a rule group erroring at evaluation, so its rules
+have silently stopped producing series) and `PrometheusConfigReloadFailed` (a config
+or rule file Prometheus rejected at reload, leaving it on the previous config) — the
+two ways an unattended `gitops_reconcile` deploy of these very files fails silently,
+both read off the `prometheus` self-scrape job; and the `watchdog`
 group's always-firing `Watchdog` (`vector(1)`, no `for:`), whose silence at the
 deadman receiver signals a broken Prometheus -> Alertmanager -> heartbeat
 pipeline. The backup, dump,
