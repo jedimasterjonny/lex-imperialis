@@ -70,8 +70,13 @@ jobs:
     name: secret-scan
     runs-on: ubuntu-latest
     steps:
+      # gitleaks walks git history, so the default shallow checkout would scan
+      # only the tip: a secret added and later deleted within a branch stays in
+      # history through the --no-ff merge, yet is invisible at HEAD.
       - name: Check out
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          fetch-depth: 0
 
       # The pre-commit gitleaks hook scans the staged index (--staged); on CI's
       # fresh checkout nothing is staged, so it scans zero bytes and passes
