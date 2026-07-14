@@ -85,7 +85,10 @@ last-run timestamp gone stale) plus the matching `wordpress` db-dump pair
 `FilesystemReadOnly` (one the kernel remounted read-only after an I/O error — the
 host stays up and probes stay green while every write fails. node_exporter hosts
 only: `ro` is a client-side mount option, so unlike `FilesystemSpaceLow` this does
-not reach the NAS through the NFS exports); the `hardware` group's
+not reach the NAS through the NFS exports); the `memory` group's `MemoryLow`
+(`MemAvailable` under 10% for 15m — `FilesystemSpaceLow`'s threshold and window, for
+the other exhaustible resource. `MemAvailable` has already netted off reclaimable
+cache, so crossing it is real pressure, not a full-looking cache); the `hardware` group's
 `HostCpuTemperatureHigh` (a CPU held above 95C for 15m, off
 `node_hwmon_temp_celsius` scoped to `platform_coretemp_0` — the
 chip only the two N150 boxes export, so the other two hosts raise nothing); the

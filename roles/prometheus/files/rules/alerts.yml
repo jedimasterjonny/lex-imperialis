@@ -129,6 +129,22 @@ groups:
           summary: "{{ $labels.instance }}:{{ $labels.mountpoint }} is mounted read-only"
           description: "{{ $labels.mountpoint }} on {{ $labels.instance }} is mounted read-only — writes fail silently. Likely a remount after an I/O error."
 
+  - name: memory
+    rules:
+      # Mirrors FilesystemSpaceLow: the same 10% headroom, severity and window, for
+      # the other exhaustible resource. MemAvailable is the kernel's own estimate and
+      # has already netted off reclaimable page cache, so crossing it is real pressure
+      # rather than a full-looking cache. 15m rides out the transient spikes that are
+      # routine here — a build, the weekly zypper dup, a backup run.
+      - alert: MemoryLow
+        expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes * 100 < 10
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "low memory on {{ $labels.instance }}"
+          description: "{{ $labels.instance }} has under 10% memory available."
+
   - name: hardware
     rules:
       # solar already holds 88C for a continuous 15m under its weekly zypper dup, and
