@@ -1,0 +1,12 @@
+---
+# Tripwire for a bare molecule run; .config/molecule/config.yml wires it in.
+- name: Refuse a bare molecule run
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Point at the make targets
+      ansible.builtin.fail:
+        msg: >-
+          Bare molecule gets no tier config — destroy would exit 0 having
+          destroyed nothing, leaving a hetzner VM billing. Use: make
+          converge|verify|destroy|test ROLE=<role> [SCENARIO=<scenario>].

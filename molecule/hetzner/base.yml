@@ -1,0 +1,18 @@
+---
+# Tier config for this tier's scenario: molecule deep-merges it under a
+# scenario's molecule.yml when the make targets pass it as the base config (-c).
+# See molecule/README.md.
+provisioner:
+  playbooks:
+    create: "${MOLECULE_SCENARIO_DIRECTORY}/../../../../molecule/hetzner/create.yml"
+    destroy: "${MOLECULE_SCENARIO_DIRECTORY}/../../../../molecule/hetzner/destroy.yml"
+  config_options:
+    defaults:
+      roles_path: "${MOLECULE_SCENARIO_DIRECTORY}/../../.."
+      # create and destroy both read the hcloud token from the vault, so the
+      # gitignored repo-root password file decrypts it for teardown too.
+      vault_password_file: "${MOLECULE_SCENARIO_DIRECTORY}/../../../../.vault_pass"
+    ssh_connection:
+      # opensuse cloud images run sshd without the sftp subsystem; piped skips
+      # the failed sftp/scp attempts Ansible would otherwise warn about.
+      transfer_method: piped

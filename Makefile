@@ -5,10 +5,33 @@ ROLE ?= motd
 MOLECULE_RUN_ID ?= local
 export MOLECULE_RUN_ID
 
+# SCENARIO picks the scenario the molecule targets drive; the test-* targets pin
+# their own, e.g. make converge ROLE=nfs SCENARIO=libvirt.
+SCENARIO ?= default
+
+# A scenario's tier owns its provisioner config: both incus scenarios (default
+# and leap) take the incus tier's. Recursive (=), not simple (:=) — the test-*
+# targets set SCENARIO per target, which is only in scope once the recipe
+# expands; := would pin every tier to incus.
+TIER = $(if $(filter default leap,$(SCENARIO)),incus,$(SCENARIO))
+
+BASE_CONFIG = molecule/$(TIER)/base.yml
+
+# -c is a global option, so it precedes the subcommand. molecule silently ignores
+# a -c path that does not exist and then skips create/destroy with only a
+# warning, so assert the file is there: a typo'd SCENARIO, or a scenario whose
+# tier has no base.yml, must fail loudly rather than run a no-op.
+define molecule
+	test -f $(BASE_CONFIG) || \
+		{ echo "no such tier: $(BASE_CONFIG) (SCENARIO=$(SCENARIO))" >&2; exit 1; }
+	. .venv/bin/activate && cd roles/$(ROLE) && \
+		molecule -c $(CURDIR)/$(BASE_CONFIG) $(1) -s $(SCENARIO)
+endef
+
 # PLAY selects which playbook in playbooks/ to run, e.g. make check PLAY=solar.
 PLAY ?= scholam
 
-.PHONY: lint ansible-lint yamllint hooks pre-commit test test-leap test-vm test-hetzner destroy-hetzner check apply tofu-fmt tofu-validate tofu-lint tofu-plan tofu-apply hugo-serve hugo-build
+.PHONY: lint ansible-lint yamllint hooks pre-commit converge verify destroy test test-leap test-vm test-hetzner destroy-hetzner check apply tofu-fmt tofu-validate tofu-lint tofu-plan tofu-apply hugo-serve hugo-build
 
 lint: yamllint ansible-lint
 
@@ -24,23 +47,37 @@ hooks:
 pre-commit:
 	. .venv/bin/activate && pre-commit run --all-files
 
+# Iterate on one role without the full create->destroy lifecycle.
+converge:
+	$(call molecule,converge)
+
+verify:
+	$(call molecule,verify)
+
+destroy:
+	$(call molecule,destroy)
+
 test:
-	. .venv/bin/activate && cd roles/$(ROLE) && molecule test
+	$(call molecule,test)
 
 # Free incus tier on the openSUSE Leap 16 image, for the LEAP_ROLES subset.
+test-leap: override SCENARIO := leap
 test-leap:
-	. .venv/bin/activate && cd roles/$(ROLE) && molecule test -s leap
+	$(call molecule,test)
 
+test-vm: override SCENARIO := libvirt
 test-vm:
-	. .venv/bin/activate && cd roles/$(ROLE) && molecule test -s libvirt
+	$(call molecule,test)
 
 # --destroy=always: this tier bills a real VM, so tear it down even on failure.
+test-hetzner: override SCENARIO := hetzner
 test-hetzner:
-	. .venv/bin/activate && cd roles/$(ROLE) && molecule test -s hetzner --destroy=always
+	$(call molecule,test --destroy=always)
 
 # Tear down a leaked VM after an interrupted run; the CI teardown backstop calls it.
+destroy-hetzner: override SCENARIO := hetzner
 destroy-hetzner:
-	. .venv/bin/activate && cd roles/$(ROLE) && molecule destroy -s hetzner
+	$(call molecule,destroy)
 
 # Dry run against the live fleet: --check --diff (check mode is best-effort —
 # unguarded command/shell tasks still run). .vault_pass decrypts vault vars;

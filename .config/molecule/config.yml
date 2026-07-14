@@ -1,0 +1,10 @@
+---
+# Molecule auto-loads this as the base config only when it is not given one — so
+# the make targets, which pass the tier's base.yml with -c, never see it, and a
+# bare molecule run does. A tripwire, not config: see molecule/README.md.
+provisioner:
+  playbooks:
+    create: "${MOLECULE_SCENARIO_DIRECTORY}/../../../../.config/molecule/bare-run.yml"
+    converge: "${MOLECULE_SCENARIO_DIRECTORY}/../../../../.config/molecule/bare-run.yml"
+    verify: "${MOLECULE_SCENARIO_DIRECTORY}/../../../../.config/molecule/bare-run.yml"
+    destroy: "${MOLECULE_SCENARIO_DIRECTORY}/../../../../.config/molecule/bare-run.yml"

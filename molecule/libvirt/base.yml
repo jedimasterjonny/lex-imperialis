@@ -1,0 +1,11 @@
+---
+# Tier config for this tier's scenario: molecule deep-merges it under a
+# scenario's molecule.yml when the make targets pass it as the base config (-c).
+# See molecule/README.md.
+provisioner:
+  playbooks:
+    create: "${MOLECULE_SCENARIO_DIRECTORY}/../../../../molecule/libvirt/create.yml"
+    destroy: "${MOLECULE_SCENARIO_DIRECTORY}/../../../../molecule/libvirt/destroy.yml"
+  config_options:
+    defaults:
+      roles_path: "${MOLECULE_SCENARIO_DIRECTORY}/../../.."
