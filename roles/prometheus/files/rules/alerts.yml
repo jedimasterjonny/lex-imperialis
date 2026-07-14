@@ -180,6 +180,26 @@ groups:
         annotations:
           summary: "the wireguard tunnel is down on {{ $labels.instance }}"
           description: "wireguard auto-restarted more than once in 15 minutes — it cannot reach the internet through wg0, so the arr stack has no egress."
+      # Discord is the only receiver that carries alerts, and nothing else watches it:
+      # the Watchdog deadman proves the pipeline is alive, but routes to its own
+      # receiver, so Discord delivery can fail while the deadman stays green. The
+      # counter is pre-registered at 0 per integration, so the series is never sparse,
+      # and it advances only once RetryStage has given up on a flush — one increment
+      # is a flush that failed to deliver, so > 0, unsmoothed, and the 5m for: adds
+      # latency rather than suppression. Warning, not critical: no nflog entry is
+      # written for a failed send, so the group is re-attempted at the next
+      # group_interval (5m) — most trips are a blip already healed by the time it
+      # fires, the delivery delayed rather than lost. That same re-attempt bounds the
+      # honest limitation: this alert is itself routed to Discord, so a total outage
+      # cannot surface it while it lasts, but it lands within ~5m of Discord returning.
+      - alert: AlertmanagerNotificationsFailing
+        expr: increase(alertmanager_notifications_failed_total{integration="discord"}[15m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "alertmanager cannot deliver notifications to discord"
+          description: "Alertmanager on {{ $labels.instance }} failed to deliver to Discord ({{ $labels.reason }}) — alerts may not be reaching the operator."
 
   - name: maintenance
     rules:

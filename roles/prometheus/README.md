@@ -96,7 +96,11 @@ other service alike, suppressed for the first 15m of uptime so boot restart
 churn isn't a false storm) and `WireguardTunnelDown` (the same counter, but named to
 `wireguard.service` and firing on the second restart: a dead tunnel raises nothing
 else, since the arr apps sharing its netns answer on loopback and keep probing
-green, so the restart cycle its healthcheck kill drives is the only signal); the
+green, so the restart cycle its healthcheck kill drives is the only signal) and
+`AlertmanagerNotificationsFailing` (Alertmanager failing to deliver to Discord, the
+only receiver that carries alerts — the `Watchdog` deadman routes to its own receiver,
+so it stays green through a Discord-only failure, which nothing else sees. The alert
+is itself routed to Discord, so a total outage surfaces it only on recovery); the
 `maintenance` group's `autoupdate` pair
 `AutoupdateFailed` / `AutoupdateOverdue` (an unattended `zypper` run that failed or
 has not completed in over 9 days) plus the WordPress-update rules
