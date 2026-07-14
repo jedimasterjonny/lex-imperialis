@@ -56,8 +56,10 @@ jobs:
           else
             # Drop *.md before deriving roles/tiers: a role's README is its only
             # non-code top-level file, so a doc-only edit must not bill a hetzner
-            # VM (or run any molecule tier).
-            changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" | grep -vE '\.md$' || true)
+            # VM (or run any molecule tier). git diff runs on its own line so a
+            # real git failure aborts under set -e instead of yielding an empty diff.
+            all_changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA")
+            changed=$(printf '%s\n' "$all_changed" | grep -vE '\.md$' || true)
             roles=$(printf '%s\n' "$changed" | sed -n 's#^roles/\([^/]*\)/.*#\1#p')
             # Non-role paths that still warrant molecule — mirrors the trigger set
             # the removed workflow-level paths filter used. Everything else
