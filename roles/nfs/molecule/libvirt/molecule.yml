@@ -3,12 +3,3 @@ platforms:
   - name: "lex-nfs-libvirt-${MOLECULE_RUN_ID:-local}"
     image: https://download.opensuse.org/tumbleweed/appliances/openSUSE-Tumbleweed-Minimal-VM.x86_64-Cloud.qcow2
     image_checksum: sha256:https://download.opensuse.org/tumbleweed/appliances/openSUSE-Tumbleweed-Minimal-VM.x86_64-Cloud.qcow2.sha256
-provisioner:
-  name: ansible
-  # Provisioning is role-agnostic and shared at the repo root.
-  playbooks:
-    create: "${MOLECULE_SCENARIO_DIRECTORY}/../../../../molecule/libvirt/create.yml"
-    destroy: "${MOLECULE_SCENARIO_DIRECTORY}/../../../../molecule/libvirt/destroy.yml"
-  config_options:
-    defaults:
-      roles_path: "${MOLECULE_SCENARIO_DIRECTORY}/../../.."
