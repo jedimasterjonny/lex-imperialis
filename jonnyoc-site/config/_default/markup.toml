@@ -1,5 +1,4 @@
-# -- Markup --
-# These settings are required for the theme to function.
+# Required by the theme.
 
 [goldmark]
 [goldmark.parser]
