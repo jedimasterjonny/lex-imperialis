@@ -100,7 +100,13 @@ green, so the restart cycle its healthcheck kill drives is the only signal) and
 `AlertmanagerNotificationsFailing` (Alertmanager failing to deliver to Discord, the
 only receiver that carries alerts — the `Watchdog` deadman routes to its own receiver,
 so it stays green through a Discord-only failure, which nothing else sees. The alert
-is itself routed to Discord, so a total outage surfaces it only on recovery); the
+is itself routed to Discord, so a total outage surfaces it only on recovery) and
+`SystemdUnitFailed` (the catch-all: any unit in the `failed` state for 15m, off
+`node_systemd_unit_state`. It keys on the terminal failed state where the two rules
+above key on the restart counter — flapping but alive — so they never double-report
+one fault. The six oneshots that emit a `*_success` metric are excluded: each already
+has a `*Failed` rule with a richer description and the right severity, and `group_by`
+is on `alertname`, so without the exclusion one fault would raise two alerts); the
 `maintenance` group's `autoupdate` pair
 `AutoupdateFailed` / `AutoupdateOverdue` (an unattended `zypper` run that failed or
 has not completed in over 9 days) plus the WordPress-update rules

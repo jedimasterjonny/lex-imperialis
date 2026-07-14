@@ -200,6 +200,27 @@ groups:
         annotations:
           summary: "alertmanager cannot deliver notifications to discord"
           description: "Alertmanager on {{ $labels.instance }} failed to deliver to Discord ({{ $labels.reason }}) — alerts may not be reaching the operator."
+      # The catch-all: every other unit-level rule names a unit it already knows
+      # about, so a service with no bespoke alert fails silently. This keys on the
+      # terminal failed state, where ServiceRestartStorm and WireguardTunnelDown key
+      # on the restart counter (flapping but still alive) — a unit is in one state or
+      # the other, so they never double-report one fault. The six exclusions do have
+      # a bespoke alert: each writes a *_success metric whose *Failed rule carries a
+      # richer description and the right severity (a failed backup or reconcile is
+      # critical, this is a warning). group_by is on alertname, so without the
+      # exclusion one fault would raise two alerts — the same reasoning that excludes
+      # wireguard from ServiceRestartStorm. 15m rides out a unit that fails and is
+      # restarted by its own Restart= policy.
+      - alert: SystemdUnitFailed
+        expr: >-
+          node_systemd_unit_state{state="failed",
+          name!~"(gitops-reconcile|podman-backup|autoupdate|wordpress-cron|wordpress-db-dump|wordpress-update-check)[.]service"} == 1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.name }} has failed on {{ $labels.instance }}"
+          description: "The systemd unit {{ $labels.name }} on {{ $labels.instance }} is in the failed state and has not recovered."
 
   - name: maintenance
     rules:
