@@ -129,6 +129,22 @@ groups:
           summary: "{{ $labels.instance }}:{{ $labels.mountpoint }} is mounted read-only"
           description: "{{ $labels.mountpoint }} on {{ $labels.instance }} is mounted read-only — writes fail silently. Likely a remount after an I/O error."
 
+  - name: memory
+    rules:
+      # Mirrors FilesystemSpaceLow: the same 10% headroom, severity and window, for
+      # the other exhaustible resource. MemAvailable is the kernel's own estimate and
+      # has already netted off reclaimable page cache, so crossing it is real pressure
+      # rather than a full-looking cache. 15m rides out the transient spikes that are
+      # routine here — a build, the weekly zypper dup, a backup run.
+      - alert: MemoryLow
+        expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes * 100 < 10
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "low memory on {{ $labels.instance }}"
+          description: "{{ $labels.instance }} has under 10% memory available."
+
   - name: hardware
     rules:
       # solar already holds 88C for a continuous 15m under its weekly zypper dup, and
@@ -200,6 +216,27 @@ groups:
         annotations:
           summary: "alertmanager cannot deliver notifications to discord"
           description: "Alertmanager on {{ $labels.instance }} failed to deliver to Discord ({{ $labels.reason }}) — alerts may not be reaching the operator."
+      # The catch-all: every other unit-level rule names a unit it already knows
+      # about, so a service with no bespoke alert fails silently. This keys on the
+      # terminal failed state, where ServiceRestartStorm and WireguardTunnelDown key
+      # on the restart counter (flapping but still alive) — a unit is in one state or
+      # the other, so they never double-report one fault. The six exclusions do have
+      # a bespoke alert: each writes a *_success metric whose *Failed rule carries a
+      # richer description and the right severity (a failed backup or reconcile is
+      # critical, this is a warning). group_by is on alertname, so without the
+      # exclusion one fault would raise two alerts — the same reasoning that excludes
+      # wireguard from ServiceRestartStorm. 15m rides out a unit that fails and is
+      # restarted by its own Restart= policy.
+      - alert: SystemdUnitFailed
+        expr: >-
+          node_systemd_unit_state{state="failed",
+          name!~"(gitops-reconcile|podman-backup|autoupdate|wordpress-cron|wordpress-db-dump|wordpress-update-check)[.]service"} == 1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.name }} has failed on {{ $labels.instance }}"
+          description: "The systemd unit {{ $labels.name }} on {{ $labels.instance }} is in the failed state and has not recovered."
 
   - name: maintenance
     rules:
@@ -335,6 +372,43 @@ groups:
         annotations:
           summary: "beets pipeline quarantine backlog on {{ $labels.instance }}"
           description: "Unmatched albums on {{ $labels.instance }} have been awaiting hand-processing for over 6 hours."
+
+  - name: monitoring
+    rules:
+      # Prometheus's rules and scrape config are rendered by Ansible and applied
+      # unattended by gitops_reconcile, so a bad deploy has no operator watching it
+      # land. These two cover the two ways that fails, and are complementary rather
+      # than overlapping: config or rules that do not parse are rejected at reload
+      # (PrometheusConfigReloadFailed), while rules that parse but error at
+      # evaluation — a typo'd function, a bad label matcher — are caught here. Both
+      # are silent by nature: the rules simply stop producing series, so nothing
+      # else would ever say so. Alert on any failure in the window rather than a
+      # rate, since one failed evaluation already means a rule is not running.
+      - alert: PrometheusRuleEvaluationFailing
+        expr: increase(prometheus_rule_evaluation_failures_total[10m]) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "prometheus rule group {{ $labels.rule_group }} is failing to evaluate on {{ $labels.instance }}"
+          description: >-
+            Prometheus on {{ $labels.instance }} has failed to evaluate rules in group
+            {{ $labels.rule_group }} over the last 10 minutes — those rules have silently
+            stopped producing series.
+      # Warning, not critical, and for the same reason as AutoupdateFailed: a rejected
+      # reload is not an outage. Prometheus keeps serving the last-good config, so
+      # monitoring stays up and only the new change is missing — it needs a hand, not
+      # a callout.
+      - alert: PrometheusConfigReloadFailed
+        expr: prometheus_config_last_reload_successful == 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "prometheus config reload failed on {{ $labels.instance }}"
+          description: >-
+            Prometheus on {{ $labels.instance }} rejected its last config reload and is
+            running the previous config — a gitops-applied change has not taken effect.
 
   - name: watchdog
     rules:

@@ -85,7 +85,10 @@ last-run timestamp gone stale) plus the matching `wordpress` db-dump pair
 `FilesystemReadOnly` (one the kernel remounted read-only after an I/O error — the
 host stays up and probes stay green while every write fails. node_exporter hosts
 only: `ro` is a client-side mount option, so unlike `FilesystemSpaceLow` this does
-not reach the NAS through the NFS exports); the `hardware` group's
+not reach the NAS through the NFS exports); the `memory` group's `MemoryLow`
+(`MemAvailable` under 10% for 15m — `FilesystemSpaceLow`'s threshold and window, for
+the other exhaustible resource. `MemAvailable` has already netted off reclaimable
+cache, so crossing it is real pressure, not a full-looking cache); the `hardware` group's
 `HostCpuTemperatureHigh` (a CPU held above 95C for 15m, off
 `node_hwmon_temp_celsius` scoped to `platform_coretemp_0` — the
 chip only the two N150 boxes export, so the other two hosts raise nothing); the
@@ -100,7 +103,13 @@ green, so the restart cycle its healthcheck kill drives is the only signal) and
 `AlertmanagerNotificationsFailing` (Alertmanager failing to deliver to Discord, the
 only receiver that carries alerts — the `Watchdog` deadman routes to its own receiver,
 so it stays green through a Discord-only failure, which nothing else sees. The alert
-is itself routed to Discord, so a total outage surfaces it only on recovery); the
+is itself routed to Discord, so a total outage surfaces it only on recovery) and
+`SystemdUnitFailed` (the catch-all: any unit in the `failed` state for 15m, off
+`node_systemd_unit_state`. It keys on the terminal failed state where the two rules
+above key on the restart counter — flapping but alive — so they never double-report
+one fault. The six oneshots that emit a `*_success` metric are excluded: each already
+has a `*Failed` rule with a richer description and the right severity, and `group_by`
+is on `alertname`, so without the exclusion one fault would raise two alerts); the
 `maintenance` group's `autoupdate` pair
 `AutoupdateFailed` / `AutoupdateOverdue` (an unattended `zypper` run that failed or
 has not completed in over 9 days) plus the WordPress-update rules
@@ -113,7 +122,12 @@ in over an hour); the `gitops` group's `GitopsReconcileFailed` /
 `GitopsReconcileStale` (an unattended fleet reconcile that failed or has not completed
 in over 2 hours); the `music` group's `BeetsPipelineLidarrRejected`
 (an album beets matched but lidarr refused) and `BeetsPipelineQuarantineBacklog` (a
-standing pile of no-match albums awaiting hand-processing); and the `watchdog`
+standing pile of no-match albums awaiting hand-processing); the `monitoring` group's
+`PrometheusRuleEvaluationFailing` (a rule group erroring at evaluation, so its rules
+have silently stopped producing series) and `PrometheusConfigReloadFailed` (a config
+or rule file Prometheus rejected at reload, leaving it on the previous config) — the
+two ways an unattended `gitops_reconcile` deploy of these very files fails silently,
+both read off the `prometheus` self-scrape job; and the `watchdog`
 group's always-firing `Watchdog` (`vector(1)`, no `for:`), whose silence at the
 deadman receiver signals a broken Prometheus -> Alertmanager -> heartbeat
 pipeline. The backup, dump,
