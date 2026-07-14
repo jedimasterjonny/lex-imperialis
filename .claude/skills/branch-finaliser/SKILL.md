@@ -195,7 +195,7 @@ the walk, `git switch` back to the branch.
   that autofixes files makes pre-commit exit non-zero — treat that as the commit
   failing lint (re-curate so it is clean from the start) and discard the autofix
   edits before moving on.
-- **`molecule test` for each role a commit changes** — the bisect-safety bar is
+- **`make test ROLE=<role>` for each role a commit changes** — the bisect-safety bar is
   lint *and* tests. Run it only for roles whose files differ from the previous
   gated commit; a commit that changes no role needs no molecule run. molecule is
   slow: if the sweep means more than a few runs, surface the count to the operator

@@ -134,9 +134,11 @@ you at the end is behaviour. Fix any lint failure at its root before the next
 round; never carry red forward.
 
 **Test, once the code converges.** When Phase 1 and Phase 2 have converged — but
-before Phase 3 docs — run `molecule test` for each role touched by the change
-(the role directories under `roles/` in the changed paths). molecule is slow, so
-it runs once rather than per round, and its idempotence check also confirms
+before Phase 3 docs — run `make test ROLE=<role>` for each role touched by the
+change (the role directories under `roles/` in the changed paths; add
+`SCENARIO=` or the `test-*` targets for a non-default tier — a scenario's
+provisioner config reaches molecule only through those targets). molecule is
+slow, so it runs once rather than per round, and its idempotence check confirms
 tasks stay idempotent. If the change touches no role, molecule has nothing to
 test — note that and move to Phase 3.
 

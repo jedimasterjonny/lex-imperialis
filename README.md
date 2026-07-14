@@ -59,7 +59,7 @@ Molecule, four tiers — three free, one billed:
 - `libvirt` — full-boot VM, where a container can't exercise the role. `make test-vm ROLE=<role>`
 - `hetzner` — the VM tier's CI form on a real Hetzner VM, since Hetzner cannot nest KVM. `make test-hetzner ROLE=<role>`
 
-Every role ships a container or VM scenario — a VM scenario implies a Hetzner one — and a pre-commit hook fails the commit if it does not. Create and destroy are shared per tier in `molecule/`; converge and verify live with the role. A scenario's second converge must report zero changed, so idempotence is a gate rather than an aspiration.
+Every role ships a container or VM scenario — a VM scenario implies a Hetzner one — and a pre-commit hook fails the commit if it does not. A tier's create and destroy playbooks and the provisioner config around them live in `molecule/<tier>/`; molecule merges that under the scenario, so a scenario file is its platform plus any override. Converge, verify and prepare are scenario files, and the make targets above pass the tier config in. A scenario's second converge must report zero changed, so idempotence is a gate rather than an aspiration.
 
 ## CI
 
