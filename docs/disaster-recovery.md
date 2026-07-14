@@ -150,3 +150,33 @@ The `*-podman-backup` restic repos are also replicated off-site by a weekly
 Synology Hyper Backup task (Wednesday 02:00, to a storage box). After rebuilding
 the NAS, restore that task's set to return the repos to `/volume2/astropath/`;
 solar's and rogue-trader's podman volumes can then be restored as normal.
+
+## Branch protection
+
+Protection on `main` is a GitHub ruleset — repository config, not part of the
+git tree — so a settings loss does not restore it. Recreate `protect main`
+(requires the `pre-commit`, `secret-scan`, and `molecule-gate` checks plus a PR
+before any merge to `main`; blocks force-push and deletion) from the repo root:
+
+```
+gh api --method POST \
+  "repos/$(gh repo view --json nameWithOwner -q .nameWithOwner)/rulesets" \
+  --input - <<'JSON'
+{
+  "name": "protect main",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": { "ref_name": { "include": ["~DEFAULT_BRANCH"], "exclude": [] } },
+  "rules": [
+    { "type": "deletion" },
+    { "type": "non_fast_forward" },
+    { "type": "pull_request",
+      "parameters": { "required_approving_review_count": 0, "allowed_merge_methods": ["merge"] } },
+    { "type": "required_status_checks",
+      "parameters": { "required_status_checks": [
+        { "context": "pre-commit" }, { "context": "secret-scan" }, { "context": "molecule-gate" }
+      ] } }
+  ]
+}
+JSON
+```
