@@ -109,6 +109,25 @@ groups:
         annotations:
           summary: "low disk space on {{ $labels.instance }}:{{ $labels.mountpoint }}"
           description: "{{ $labels.mountpoint }} on {{ $labels.instance }} has under 10% free."
+      # The kernel remounts a filesystem read-only in response to certain I/O errors;
+      # the state is durable and never self-clears, so the 5m for: only rides out a
+      # scrape artefact. The metric is the ro mount flag, not an error state, so a
+      # deliberate read-only mount would trip it too — hence the annotation names the
+      # cause as likely, not certain. Nothing else names it: the host stays up, every
+      # probe stays green, and space never runs low because no write lands — at best the
+      # *Overdue rules notice, late, that metrics stopped being written. Same fstype
+      # exclusion as the space alert above, but not the same reach: statfs crosses the
+      # wire, so that one sees the NAS through the fleet's NFS mounts, whereas ro is
+      # the client's own mount option — a read-only volume on administratum reads 0
+      # here, and goes uncovered.
+      - alert: FilesystemReadOnly
+        expr: node_filesystem_readonly{fstype!~"tmpfs|squashfs|overlay|ramfs"} == 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }}:{{ $labels.mountpoint }} is mounted read-only"
+          description: "{{ $labels.mountpoint }} on {{ $labels.instance }} is mounted read-only — writes fail silently. Likely a remount after an I/O error."
 
   - name: hardware
     rules:
@@ -161,6 +180,26 @@ groups:
         annotations:
           summary: "the wireguard tunnel is down on {{ $labels.instance }}"
           description: "wireguard auto-restarted more than once in 15 minutes — it cannot reach the internet through wg0, so the arr stack has no egress."
+      # Discord is the only receiver that carries alerts, and nothing else watches it:
+      # the Watchdog deadman proves the pipeline is alive, but routes to its own
+      # receiver, so Discord delivery can fail while the deadman stays green. The
+      # counter is pre-registered at 0 per integration, so the series is never sparse,
+      # and it advances only once RetryStage has given up on a flush — one increment
+      # is a flush that failed to deliver, so > 0, unsmoothed, and the 5m for: adds
+      # latency rather than suppression. Warning, not critical: no nflog entry is
+      # written for a failed send, so the group is re-attempted at the next
+      # group_interval (5m) — most trips are a blip already healed by the time it
+      # fires, the delivery delayed rather than lost. That same re-attempt bounds the
+      # honest limitation: this alert is itself routed to Discord, so a total outage
+      # cannot surface it while it lasts, but it lands within ~5m of Discord returning.
+      - alert: AlertmanagerNotificationsFailing
+        expr: increase(alertmanager_notifications_failed_total{integration="discord"}[15m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "alertmanager cannot deliver notifications to discord"
+          description: "Alertmanager on {{ $labels.instance }} failed to deliver to Discord ({{ $labels.reason }}) — alerts may not be reaching the operator."
 
   - name: maintenance
     rules:

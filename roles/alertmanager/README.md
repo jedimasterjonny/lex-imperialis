@@ -33,6 +33,9 @@ The container's podman healthcheck against `/-/healthy` is the restart backstop,
 the monitor (see `CLAUDE.md`). Alertmanager needs no blackbox probe: Prometheus
 already scrapes it, so `InstanceDown` covers it, and a total outage trips the
 Watchdog deadman — an alert routed through Alertmanager cannot report Alertmanager.
+That same scrape feeds `AlertmanagerNotificationsFailing` (prometheus role), which
+watches Discord delivery in particular: the deadman routes to its own receiver, so a
+Discord-only failure leaves it green.
 
 ## Hardening
 

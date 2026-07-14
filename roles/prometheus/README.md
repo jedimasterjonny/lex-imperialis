@@ -80,18 +80,27 @@ non-zero expiry so a probe that measured no cert doesn't trip it), the latter tw
 off the `blackbox` probe job; the `backups` group — the `podman_backup` pair
 `PodmanBackupFailed` (`podman_backup_success == 0`) and `PodmanBackupOverdue` (the
 last-run timestamp gone stale) plus the matching `wordpress` db-dump pair
-`WordpressDbDumpFailed` / `WordpressDbDumpOverdue`; `FilesystemSpaceLow` (a
-node_exporter filesystem under 10% free for 15m); `HostCpuTemperatureHigh` (a CPU held
-above 95C for 15m, off `node_hwmon_temp_celsius` scoped to `platform_coretemp_0` — the
-chip only the two N150 boxes export, so the other two hosts raise nothing);
-`ServiceRestartStorm` (a systemd
+`WordpressDbDumpFailed` / `WordpressDbDumpOverdue`; the `filesystem` group —
+`FilesystemSpaceLow` (a node_exporter filesystem under 10% free for 15m) and
+`FilesystemReadOnly` (one the kernel remounted read-only after an I/O error — the
+host stays up and probes stay green while every write fails. node_exporter hosts
+only: `ro` is a client-side mount option, so unlike `FilesystemSpaceLow` this does
+not reach the NAS through the NFS exports); the `hardware` group's
+`HostCpuTemperatureHigh` (a CPU held above 95C for 15m, off
+`node_hwmon_temp_celsius` scoped to `platform_coretemp_0` — the
+chip only the two N150 boxes export, so the other two hosts raise nothing); the
+`services` group — `ServiceRestartStorm` (a systemd
 unit that auto-restarted more than three times in 15m, off node_exporter's
 `node_systemd_service_restart_total` counter — covers quadlet containers and every
 other service alike, suppressed for the first 15m of uptime so boot restart
 churn isn't a false storm) and `WireguardTunnelDown` (the same counter, but named to
 `wireguard.service` and firing on the second restart: a dead tunnel raises nothing
 else, since the arr apps sharing its netns answer on loopback and keep probing
-green, so the restart cycle its healthcheck kill drives is the only signal); the
+green, so the restart cycle its healthcheck kill drives is the only signal) and
+`AlertmanagerNotificationsFailing` (Alertmanager failing to deliver to Discord, the
+only receiver that carries alerts — the `Watchdog` deadman routes to its own receiver,
+so it stays green through a Discord-only failure, which nothing else sees. The alert
+is itself routed to Discord, so a total outage surfaces it only on recovery); the
 `maintenance` group's `autoupdate` pair
 `AutoupdateFailed` / `AutoupdateOverdue` (an unattended `zypper` run that failed or
 has not completed in over 9 days) plus the WordPress-update rules

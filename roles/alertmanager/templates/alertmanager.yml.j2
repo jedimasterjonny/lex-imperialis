@@ -22,6 +22,11 @@ route:
 receivers:
   - name: default
 {% if alertmanager_discord_webhook_url %}
+    # discord_configs is what makes Alertmanager label its failure counter
+    # integration="discord", and that label is what AlertmanagerNotificationsFailing
+    # (prometheus role) selects on — the Discord-specific complement to the deadman
+    # below, which proves only that the pipeline is alive, not that Discord receives.
+    # Change this receiver's type and the alert silently stops matching.
     discord_configs:
       # URL kept out of this world-readable file; the role renders it no_log into
       # the referenced 0600 file.
