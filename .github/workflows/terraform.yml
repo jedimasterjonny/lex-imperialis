@@ -38,6 +38,9 @@ jobs:
   plan:
     name: plan
     runs-on: ubuntu-latest
+    # A hung apply holds the HCP state lock until the job dies — 6h on the
+    # default. Well above a plan+apply of this config, well below that.
+    timeout-minutes: 30
     # Fork PRs can't mint the WIF id-token, so skip them cleanly (as the firebase
     # preview job does) rather than fail red at the auth step. Push/dispatch always run.
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
