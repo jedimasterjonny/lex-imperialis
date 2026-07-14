@@ -6,18 +6,3 @@ platforms:
     # First-tried region and type; molecule/hetzner/create.yml falls back across
     # regions then server types on a resource_unavailable (capacity) shortfall.
     location: nbg1
-provisioner:
-  name: ansible
-  # Provisioning is role-agnostic and shared at the repo root.
-  playbooks:
-    create: "${MOLECULE_SCENARIO_DIRECTORY}/../../../../molecule/hetzner/create.yml"
-    destroy: "${MOLECULE_SCENARIO_DIRECTORY}/../../../../molecule/hetzner/destroy.yml"
-  config_options:
-    defaults:
-      roles_path: "${MOLECULE_SCENARIO_DIRECTORY}/../../.."
-      # ../../../.. is the repo root, where the gitignored vault password lives.
-      vault_password_file: "${MOLECULE_SCENARIO_DIRECTORY}/../../../../.vault_pass"
-    ssh_connection:
-      # opensuse cloud images run sshd without the sftp subsystem; piped skips
-      # the failed sftp/scp attempts Ansible would otherwise warn about.
-      transfer_method: piped
