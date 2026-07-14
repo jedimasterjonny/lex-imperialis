@@ -9,20 +9,9 @@ platforms:
       security.nesting: "true"
       raw.lxc: lxc.apparmor.profile=unconfined
 provisioner:
-  name: ansible
-  # Provisioning is role-agnostic and shared at the repo root; ../../../.. is
-  # the repo root relative to this scenario dir.
-  playbooks:
-    create: "${MOLECULE_SCENARIO_DIRECTORY}/../../../../molecule/incus/create.yml"
-    destroy: "${MOLECULE_SCENARIO_DIRECTORY}/../../../../molecule/incus/destroy.yml"
-  config_options:
-    defaults:
-      roles_path: "${MOLECULE_SCENARIO_DIRECTORY}/../../.."
   inventory:
     group_vars:
       all:
-        ansible_connection: community.general.incus
-        ansible_incus_remote: local
         # Exercise the API-key injection the way real hosts do (vault-sourced).
         arr_api_keys:
           radarr: a1b2c3d4e5f60718293a4b5c6d7e8f90

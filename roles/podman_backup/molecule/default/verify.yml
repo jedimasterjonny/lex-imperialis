@@ -197,7 +197,7 @@
     # exercises the check on a sound repo. Assert it is wired into the installed
     # script, then that the role's invocation is a real gate, not a no-op: the
     # same check must reject a repo whose data is gone. Corrupt a copy, not the
-    # live repo, so a standalone `molecule verify` re-run still starts sound.
+    # live repo, so a standalone `make verify` re-run still starts sound.
     - name: Read the installed backup script
       ansible.builtin.slurp:
         src: "{{ podman_backup_script }}"

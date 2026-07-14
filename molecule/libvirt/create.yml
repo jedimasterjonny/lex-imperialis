@@ -1,6 +1,6 @@
 ---
-# Shared across roles; role-agnostic via molecule_yml.platforms. Each role's
-# libvirt scenario references it via provisioner.playbooks.create.
+# Shared across roles; role-agnostic via molecule_yml.platforms.
+# libvirt/base.yml wires it in as provisioner.playbooks.create.
 - name: Create
   hosts: localhost
   connection: local

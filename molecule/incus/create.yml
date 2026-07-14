@@ -1,7 +1,6 @@
 ---
 # Shared across roles: drives incus from molecule_yml.platforms, so it is
-# role-agnostic. Each role's default scenario references it via
-# provisioner.playbooks.create.
+# role-agnostic. incus/base.yml wires it in as provisioner.playbooks.create.
 - name: Create
   hosts: localhost
   connection: local
