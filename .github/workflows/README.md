@@ -25,18 +25,23 @@ A re-push cancels the superseded PR run; `main` runs finish, so every commit on
 
 ## molecule
 
-Path-filtered to `roles/`, `molecule/`, the vault, the requirements files, the
-coverage script, and the workflow itself. No `push: main` — the `--no-ff` merge
-tree equals the validated PR tree. A `discover` job reads the PR diff and emits
-one role matrix per tier; each tier job runs only when its matrix is non-empty,
-with `fail-fast: false`. Concurrency is per-ref and cancels superseded PR runs
-(the hetzner teardown backstop still fires on cancel).
+Runs on every PR (no path filter) and `workflow_dispatch` — so the
+`molecule-gate` check (below) is always reported. No `push: main`; the `--no-ff`
+merge tree equals the validated PR tree. A `discover` job reads the PR diff and
+emits one role matrix per tier; each tier job runs only when its matrix is
+non-empty, with `fail-fast: false`. Concurrency is per-ref and cancels
+superseded PR runs (the hetzner teardown backstop still fires on cancel).
 
 ### discover
 
-Checks out with `fetch-depth: 0` — the `base...head` diff needs full history.
+Checks out with `fetch-depth: 0` — the `base...head` diff needs full history; a
+genuine `git diff` failure aborts the job rather than yielding an empty diff.
 Drops `*.md` (a doc-only change runs no tier), then splits the rest into changed
-roles and shared infra (anything outside `roles/`):
+roles and shared infra — a fixed allowlist of the non-role paths that affect a
+molecule run (`molecule/`, the vault, the requirements files, the `Makefile`,
+the coverage script, and this workflow). A PR touching only paths outside that
+set (e.g. `terraform/`, `jonnyoc-site/`) yields no tiers, so `molecule-gate`
+reports green without running one:
 
 - A changed role runs whichever tiers it ships — the matrix includes a role
   only when it carries that tier's scenario directory (`molecule/default` for
@@ -69,6 +74,15 @@ writes `.vault_pass` from the `VAULT_PASSWORD` secret — the only secret CI
 needs, decrypting the in-repo hcloud token — sets `MOLECULE_RUN_ID` per run so
 concurrent VM and SSH-key names never collide, and carries an `if: cancelled()`
 teardown so a killed run never orphans a billable VM.
+
+### molecule-gate
+
+A fixed-name summary job (`if: always()`, `needs:` `discover` plus the three
+tiers) that fails if `discover` or any tier failed or was cancelled, and passes
+when tiers skip. The per-role matrix job names vary per PR and can't be named
+as required checks, and a required check that never reports blocks the merge —
+so this one stable, always-reported check is what the `main` branch ruleset
+requires, alongside `pre-commit` and `secret-scan`.
 
 ## firebase
 
