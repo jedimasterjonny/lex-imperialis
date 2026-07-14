@@ -10,6 +10,7 @@
   ],
   "semanticCommits": "enabled",
   "timezone": "Europe/London",
+  "osvVulnerabilityAlerts": true,
   "customManagers": [
     {
       "customType": "regex",
