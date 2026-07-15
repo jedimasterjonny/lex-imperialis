@@ -204,11 +204,12 @@
       register: podman_backup_script_content
       become: true
 
-    - name: The backup script runs a restic integrity check
+    - name: The backup script runs a restic check with a read-data slice
       ansible.builtin.assert:
         that:
           - "'restic check' in (podman_backup_script_content.content | b64decode)"
-        fail_msg: "the backup script does not run restic check"
+          - "'--read-data-subset' in (podman_backup_script_content.content | b64decode)"
+        fail_msg: "the backup script does not run restic check with a read-data slice"
         quiet: true
 
     - name: Discard any prior corrupt copy
@@ -240,4 +241,66 @@
         that:
           - podman_backup_corrupt_check.rc != 0
         fail_msg: "restic check passed a repo with its data removed"
+        quiet: true
+
+    # The check above deletes whole packs, which a metadata check already catches
+    # — so it does not prove the newly-defaulted read-data slice earns its keep.
+    # Bit-rot is a flipped byte *inside* an otherwise-intact pack. A plain check
+    # reads and MAC-verifies tree packs but not data packs, so the corruption must
+    # land in a data pack: pick the largest, which the incompressible payload
+    # seeded in converge makes unambiguously a data pack. Then assert the
+    # distinction — a plain check passes, a --read-data check fails (full, not the
+    # rotating subset, so the tampered pack is always read whatever week it is).
+    - name: Discard any prior bit-rot copy
+      ansible.builtin.file:
+        path: "{{ podman_backup_repo }}-bitrot"
+        state: absent
+      become: true
+
+    - name: Copy the scratch repo to flip a pack byte in isolation
+      ansible.builtin.command: "cp -a {{ podman_backup_repo }} {{ podman_backup_repo }}-bitrot"
+      changed_when: true
+      become: true
+
+    - name: Flip one byte inside the largest (data) pack
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import glob, os, sys
+            packs = glob.glob(sys.argv[1] + "/data/*/*")
+            if not packs:
+                sys.exit("no data packs found to corrupt")
+            target = max(packs, key=os.path.getsize)
+            with open(target, "r+b") as f:
+                first = f.read(1)
+                f.seek(0)
+                f.write(bytes([first[0] ^ 0xff]))
+          - "{{ podman_backup_repo }}-bitrot"
+      changed_when: true
+      become: true
+
+    - name: A metadata-only check does not notice the flipped byte
+      ansible.builtin.command: "restic --insecure-no-password --repo {{ podman_backup_repo }}-bitrot check"
+      register: podman_backup_bitrot_meta
+      changed_when: false
+      failed_when: false
+      become: true
+
+    - name: A read-data check catches the flipped byte
+      ansible.builtin.command: "restic --insecure-no-password --repo {{ podman_backup_repo }}-bitrot check --read-data"
+      register: podman_backup_bitrot_read
+      changed_when: false
+      failed_when: false
+      become: true
+
+    - name: Only the read-data check detects intra-pack bit-rot
+      ansible.builtin.assert:
+        that:
+          - podman_backup_bitrot_meta.rc == 0
+          - podman_backup_bitrot_read.rc != 0
+        fail_msg: >-
+          metadata rc={{ podman_backup_bitrot_meta.rc }} (want 0),
+          read-data rc={{ podman_backup_bitrot_read.rc }} (want non-zero)
         quiet: true

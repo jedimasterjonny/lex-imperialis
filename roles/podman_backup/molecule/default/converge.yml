@@ -31,6 +31,18 @@
         mode: "0644"
       become: true
 
+    # verify's bit-rot test must corrupt a data pack, not a tree pack: a plain
+    # restic check reads tree packs but not data packs, and the packer keys packs
+    # by content hash so their filenames sort randomly. Seed an incompressible
+    # payload so the data pack is unambiguously the largest, letting verify pick
+    # it by size. urandom so it survives restic's compression; creates: to stay
+    # idempotent across the second converge.
+    - name: Seed the probe volume with an incompressible payload
+      ansible.builtin.command:
+        cmd: dd if=/dev/urandom of=/var/lib/containers/storage/volumes/lex-probe/_data/payload.bin bs=64k count=4
+        creates: /var/lib/containers/storage/volumes/lex-probe/_data/payload.bin
+      become: true
+
     - name: Ensure the quadlet unit directory exists
       ansible.builtin.file:
         path: /etc/containers/systemd

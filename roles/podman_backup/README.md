@@ -10,11 +10,15 @@ runs `restic check` to verify repository integrity — a failed check fails the
 service, so the `PodmanBackupFailed` alert catches silent structural corruption
 that the snapshot and prune steps leave unverified, instead of it surfacing only
 at restore. The check runs after the restart, so it adds no container downtime.
-It is metadata-only by default; set `podman_backup_check_read_data_subset` to a
-restic `--read-data-subset` percentage (e.g. `10%`) to also re-hash a random
-slice of data packs each run, accruing the bit-rot coverage the metadata check
-cannot reach. Each restic call is retried: the NFS mount intermittently serves a
-spurious ENOENT mid-run that would otherwise fail an isolated operation.
+By default it also re-hashes the data packs, catching bit-rot the metadata check
+cannot: each run reads one deterministic `1/N` slice (restic's `n/t` subset),
+rotating by ISO week so the whole repo is re-read roughly every
+`podman_backup_check_read_data_weeks` runs (default 10). The `n/t` slice is stable
+across the retry below, so a real fault fails every attempt and pages rather than
+being dodged by a re-drawn random subset. Set the var empty (or 0) to revert to a
+metadata-only check that spares the flaky NFS mount any data re-read. Each restic
+call is retried: the NFS mount intermittently serves a spurious ENOENT mid-run
+that would otherwise fail an isolated operation.
 
 The repo is unencrypted (`--insecure-no-password`): the NAS share is trusted.
 Assumes `podman` is installed and the `nfs` role has mounted the target.
