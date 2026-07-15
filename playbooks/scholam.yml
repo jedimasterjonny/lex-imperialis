@@ -3,6 +3,10 @@
   hosts: this_host
   vars:
     common_hostname: scholam
+    # Match jonny's uid on the NAS (administratum: 1026; gid 100/users already
+    # matches) so NFS ownership reconciles — the v4 mounts use numeric sec=sys,
+    # which carries raw uids and bypasses name-based idmapping.
+    common_user_uid: 1026
     # Wired box: the Intel wifi radio is dead weight. iwlmvm holds iwlwifi, so
     # it unloads first.
     common_blacklisted_modules:
@@ -11,6 +15,11 @@
     # Staggered autoupdate: the control host updates last, after the other hosts
     # have taken the week's snapshots, so a brick surfaces before scholam reboots.
     autoupdate_oncalendar: "Fri *-*-* 03:00:00"
+    # NFS exports from the NAS (administratum), each mounted at /nfs/<name>.
+    nfs_shares:
+      - name: scriptorum
+        server: administratum
+        export: /volume1/scriptorum
     # node_exporter, scraped by Prometheus on administratum over the LAN.
     firewalld_ports:
       - 9100/tcp
@@ -23,6 +32,7 @@
     - firewalld
     - podman
     - autoupdate
+    - nfs
     - incus
     - libvirt
     - dev
