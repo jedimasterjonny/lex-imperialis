@@ -33,9 +33,16 @@ podman_backup_keep_weekly: 8
 podman_backup_keep_monthly: 6
 
 # restic check runs on every backup, failing the service (and so the
-# PodmanBackupFailed alert) on structural repository corruption that the snapshot
-# and prune steps leave unverified. Set this to a restic --read-data-subset
-# percentage ("10%") to additionally re-hash a random slice of data packs each
-# run, accruing the bit-rot coverage the metadata check cannot; empty keeps the
-# check metadata-only, sparing the flaky astropath NFS mount any data re-read.
-podman_backup_check_read_data_subset: ""
+# PodmanBackupFailed alert) on repository corruption the snapshot and prune steps
+# leave unverified. A metadata-only check never re-hashes the data packs, so
+# silent bit-rot on the NFS store would surface only at restore. This is the
+# number of weeks over which the check re-hashes the whole repo: each run reads
+# one deterministic 1/N slice of packs (restic's n/t subset, by pack ID) and the
+# slice rotates by ISO week, so every pack is re-read roughly every N runs — a
+# little longer across the ISO-week year reset (keep N <= 52, or a bucket is
+# never selected in a 52-week year). n/t is stable across retry()'s reattempts —
+# a real fault fails all three and pages, an NFS blip clears — where a random
+# --read-data-subset percentage is reselected each attempt and slips past. Empty
+# or 0 reverts to a metadata-only check, sparing the flaky astropath NFS mount
+# any data re-read.
+podman_backup_check_read_data_weeks: 10

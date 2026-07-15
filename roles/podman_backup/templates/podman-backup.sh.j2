@@ -28,10 +28,14 @@ retry() {
     return 1
 }
 
-{% if podman_backup_check_read_data_subset %}
-# Re-hash a slice of data packs during the integrity check to catch bit-rot; see
-# podman_backup_check_read_data_subset. Empty by default (structural check only).
-check_args=(--read-data-subset="{{ podman_backup_check_read_data_subset }}")
+{% if podman_backup_check_read_data_weeks | int > 0 %}
+# Re-hash one deterministic 1/N slice of data packs during the integrity check to
+# catch bit-rot the metadata check misses; the n/t slice rotates by ISO week and
+# is stable across retry() — see podman_backup_check_read_data_weeks. 10# so a
+# zero-padded week parses as decimal not octal; | int so an empty or "0" opt-out
+# is falsy here rather than a rendered div-by-zero. Empty or 0 reverts to a
+# structural check only.
+check_args=(--read-data-subset="$(( 10#$(date +%V) % {{ podman_backup_check_read_data_weeks | int }} + 1 ))/{{ podman_backup_check_read_data_weeks | int }}")
 {% else %}
 check_args=()
 {% endif %}
