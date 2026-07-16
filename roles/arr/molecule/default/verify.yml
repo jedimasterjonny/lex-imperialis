@@ -230,6 +230,24 @@
           - "'dev wg0' in arr_tunnel_route.stdout"
         quiet: true
 
+    # Route via wg0 is necessary but not sufficient — with the blackhole tunnel
+    # molecule converges, a real request from transmission (the confined client
+    # that must never leak) must die inside the netns: curl 28, wg0 swallowing
+    # the packets.
+    - name: Probe internet egress from inside the tunnel netns
+      ansible.builtin.command: podman exec transmission curl --max-time 5 -sS https://1.1.1.1
+      become: true
+      register: arr_egress_probe
+      changed_when: false
+      failed_when: false
+
+    - name: The tunnel netns cannot reach the internet past the dead tunnel
+      ansible.builtin.assert:
+        that:
+          - arr_egress_probe.rc == 28
+        fail_msg: "egress escaped the netns or the probe broke (rc={{ arr_egress_probe.rc }})"
+        quiet: true
+
     # The proxy wait above already proves each webui path skips the tunnel: the
     # blackhole config molecule converges with would eat a proxied request.
     - name: Wireguard and every app that joins its netns share one net namespace
