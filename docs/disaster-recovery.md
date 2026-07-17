@@ -31,8 +31,10 @@ is the backup *target*; its DR is DSM's job (see below).
 
 **Off-site copy:** the restic repos all live on `administratum`, but a weekly
 Synology Hyper Backup task replicates the `*-podman-backup` folders off-site to a
-storage box (Wednesday 02:00, an hour after the restic run). A lost NAS is
-recoverable from it — see [administratum](#administratum-nas).
+storage box (Wednesday 02:00, an hour after the restic run). Hyper Backup's
+failure and missed-run notifications are enabled, so a stalled off-site copy
+surfaces by email rather than drifting unnoticed. A lost NAS is recoverable from
+it — see [administratum](#administratum-nas).
 
 ## solar (and any openSUSE podman host)
 
@@ -137,8 +139,11 @@ Recovery is bootstrap plus its play, run locally.
 ## administratum (NAS)
 
 Out of this repo's recovery flow — it is the backup target, not a managed
-openSUSE host, and it has no podman repo. Recover the appliance with DSM (Hyper
-Backup / the RAID), which also returns Prometheus's TSDB (a local bind mount at
+openSUSE host, and it has no podman repo. DSM's native SMART and RAID monitoring
+emails the operator on any disk or array fault — the array-health signal, since
+the NAS runs no `node_exporter` by design — so degradation is caught before it
+becomes a recovery event. Recover the appliance with DSM (Hyper Backup / the
+RAID), which also returns Prometheus's TSDB (a local bind mount at
 `/volume2/astropath/prometheus/data`; blackbox_exporter is stateless). Then
 redeploy the compose projects:
 
