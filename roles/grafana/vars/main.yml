@@ -15,3 +15,7 @@ grafana_dashboards:
     # renovate: datasource=custom.grafana-dashboards depName=cadvisor packageName=19792
     revision: 6
     file: cadvisor.json
+  - id: 16124
+    # renovate: datasource=custom.grafana-dashboards depName=blackbox-exporter packageName=16124
+    revision: 6
+    file: blackbox-exporter.json

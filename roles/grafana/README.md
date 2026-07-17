@@ -2,8 +2,10 @@
 
 Grafana as a Podman quadlet container, behind caddy, provisioned with a
 Prometheus datasource and canned dashboards: **Node Exporter Full**
-([grafana.com 1860](https://grafana.com/grafana/dashboards/1860)) and
-**cadvisor** ([grafana.com 19792](https://grafana.com/grafana/dashboards/19792)).
+([grafana.com 1860](https://grafana.com/grafana/dashboards/1860)), **cadvisor**
+([grafana.com 19792](https://grafana.com/grafana/dashboards/19792)), and
+**Blackbox Exporter**
+([grafana.com 16124](https://grafana.com/grafana/dashboards/16124)).
 
 ## Behind caddy
 
