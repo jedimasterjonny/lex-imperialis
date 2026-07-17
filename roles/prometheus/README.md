@@ -92,6 +92,8 @@ cache, so crossing it is real pressure, not a full-looking cache); the `hardware
 `HostCpuTemperatureHigh` (a CPU held above 95C for 15m, off
 `node_hwmon_temp_celsius` scoped to `platform_coretemp_0` — the
 chip only the two N150 boxes export, so the other two hosts raise nothing); the
+`time` group's `ClockNotSynchronised` (`node_timex_sync_status == 0` for 30m — a
+node_exporter host whose clock is no longer NTP-synced); the
 `services` group — `ServiceRestartStorm` (a systemd
 unit that auto-restarted more than three times in 15m, off node_exporter's
 `node_systemd_service_restart_total` counter — covers quadlet containers and every
