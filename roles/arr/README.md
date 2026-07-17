@@ -228,8 +228,9 @@ local traffic does not.
   blackhole config: random keys, `AllowedIPs = 0.0.0.0/0`, a TEST-NET
   endpoint. wg0 comes up with a dead default route, so no confined app's
   traffic can leak from first boot. The real config arrives whole from vault
-  via `arr_wireguard_conf`, installed under `no_log`. Molecule converges and
-  verifies the blackhole state.
+  via `arr_wireguard_conf`, installed under `no_log`. Molecule converges the
+  blackhole and proves containment: a real egress attempt from inside the netns
+  must time out.
 - **Kernel module** — persisted via `/etc/modules-load.d/wireguard.conf`,
   modprobed only when `/sys/module/wireguard` is absent. The molecule
   instance is unprivileged with no kmod; prepare loads the module on the host
