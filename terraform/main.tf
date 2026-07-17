@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.12.0"
+  required_version = "~> 1.12"
 
   # Remote state and locking in HCP Terraform (Terraform Cloud), local CLI-driven
   # execution. One workspace for the whole homelab — Cloudflare and Hetzner share

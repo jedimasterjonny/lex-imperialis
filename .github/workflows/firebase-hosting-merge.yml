@@ -21,7 +21,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false # this workflow only fires on push:main; don't cancel a live deploy
 
 jobs:
   build_and_deploy:
