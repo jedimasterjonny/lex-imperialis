@@ -20,7 +20,7 @@ carries none at all — the two columns below are not independent.
 | radarr, sonarr, lidarr, prowlarr | probe of `/ping` via caddy | yes |
 | transmission | probe via caddy, `http_2xx_or_401` (the RPC is auth-walled) | yes |
 | flaresolverr | **nothing** — no port, no vhost, unreachable off the host | yes |
-| wireguard | `WireguardTunnelDown`, off the restarts its check drives | yes |
+| wireguard | `WireguardTunnelDown`, off the restart cycle its healthcheck drives | yes |
 | beets | probe via caddy | **none** — never kill a running import |
 | plex | probe of `:32400/identity` (host-networked, not proxied) | **none** — never kill a running transcode |
 | recyclarr | nothing — no endpoint | none |

@@ -14,7 +14,7 @@ This repo is public: every commit is world-readable and permanent, including git
 
 - NEVER commit secrets in plaintext — no passwords, tokens, private keys, or certificates. Encrypt them with `ansible-vault`, and keep vault password files and host secrets out of tracked files.
 - Secrets live in one `ansible-vault`-encrypted file, encrypted whole — no inline `!vault` strings, one vault id.
-- Keep sensitive topology out of the repo — public IPs, external hostnames, exposed ports, and anything that maps the attack surface.
+- Keep sensitive topology out of the repo — public IPs, exposed ports, VPN/internal-network layout, and anything else that maps the attack surface. Apex domains are the exception: they must live in terraform and caddy, so they are not treated as secret.
 - A secret that reaches a commit is compromised: rotate it, don't just delete it. Scrubbing history does not undo exposure.
 
 ## Secrets
@@ -122,5 +122,7 @@ The one standing exception is the `gitops_reconcile` role: once the operator has
 ## Documentation style
 
 READMEs must be terse and direct. The reader is a senior engineer who thoroughly understands the domain — skip background, drop illustrative parentheticals, and don't restate what they already know.
+
+The root `README.md` is the deliberate exception: its narrative intro is the repo's public front door and is kept as prose. Every other README and doc holds to the terse rule.
 
 Comments follow the same rule: add one only where a particularly complex piece of code genuinely needs explaining, never to narrate the obvious. When you do, keep the language terse and direct.

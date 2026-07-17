@@ -14,3 +14,6 @@ role before molecule can run — the one host it cannot set up for itself.
 - **Image cache** — a weekly timer caches the Tumbleweed cloud image in
   the local store and refreshes it as the source rolls, so container
   launches never wait on the remote.
+- **CI coverage** — the billable full-VM tier (`hetzner`) runs on openSUSE
+  Leap 16, but the fleet runs this on Tumbleweed; validate Tumbleweed-side
+  behaviour locally with `make test-vm` (the libvirt tier's Tumbleweed VM).

@@ -13,3 +13,6 @@ default NAT network, the owner in the `libvirt` group for sudo-less
 - **Image cache** — a weekly timer re-fetches the cloud qcow2 only when the
   published sha256 changes and swaps it in by atomic rename, so a failed
   download never corrupts the cached copy.
+- **CI coverage** — the billable full-VM tier (`hetzner`) runs on openSUSE
+  Leap 16, but the fleet runs this on Tumbleweed; validate Tumbleweed-side
+  behaviour locally with `make test-vm` (the libvirt tier's Tumbleweed VM).
