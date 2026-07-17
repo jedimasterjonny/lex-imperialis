@@ -46,7 +46,7 @@ zypper updates run unattended and staggered: `solar` Monday as the canary, the V
 
 ## Running plays
 
-`make check PLAY=<host>` dry-runs a host (`--check --diff`); `make apply PLAY=<host>` is the real thing. `PLAY=site` is the fleet in one run, `scholam` last so a run never restarts its own timer mid-apply. Both decrypt the vault from `.vault_pass`; tasks that render secrets set `no_log`, so `--diff` stays clean. Check mode is best-effort — an unguarded `command` still runs.
+`make check PLAY=<host>` dry-runs a host (`--check --diff`); `make apply PLAY=<host>` is the real thing. `PLAY=site` is the fleet in one run, `scholam` last so a run never restarts its own timer mid-apply. Both decrypt the vault from `.vault_pass`; tasks that render secrets set `no_log`, so `--diff` stays clean. Check mode is best-effort — an unguarded `command` is skipped, not run, so a dry run under-reports what an apply would change.
 
 The standing exception is `gitops_reconcile`: a root timer on `scholam` that pulls `origin/main` every 15 minutes and, when it has advanced, applies `site.yml` — so a merged change reaches the fleet with no manual apply. It tracks `origin/main` alone, never a local branch. `touch /var/lib/gitops-reconcile/pause` holds it; `systemctl disable --now gitops-reconcile.timer` stops it.
 
