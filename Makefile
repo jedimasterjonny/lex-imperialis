@@ -80,8 +80,8 @@ destroy-hetzner:
 	$(call molecule,destroy)
 
 # Dry run against the live fleet: --check --diff (check mode is best-effort —
-# unguarded command/shell tasks still run). .vault_pass decrypts vault vars;
-# roles that render secrets set no_log so --diff stays clean.
+# unguarded command/shell tasks are skipped, so it under-reports). .vault_pass
+# decrypts vault vars; roles that render secrets set no_log so --diff stays clean.
 check:
 	. .venv/bin/activate && ansible-playbook playbooks/$(PLAY).yml --vault-password-file .vault_pass --check --diff
 
