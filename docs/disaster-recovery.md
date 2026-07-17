@@ -100,11 +100,11 @@ is the only way in.
    `wordpress-db-dump`'s engine-portable `wordpress.sql` — the wordpress role's
    `wp-db-dump` runs on a daily timer, so this fallback restores the last
    completed dump, not a point-in-time state, and loses up to a day's writes
-   (more if the dump had been failing) — into it as root:
+   (more if the dump had been failing) — into it as root, under the same mariadb the role pins (`wordpress_db_image`), so the load runs on a compatible engine:
 
    ```
    podman run --rm --network caddy --env-file /etc/wordpress/wordpress.env \
-     --volume wordpress-db-dump:/dump:ro docker.io/library/mariadb \
+     --volume wordpress-db-dump:/dump:ro docker.io/library/mariadb:12.3.2@sha256:628f228f0fd5913a220438693576b29b6fe4dc1fa0a1298c0e98579fae28635f \
      sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" exec mariadb -h wordpress-db -uroot < /dump/wordpress.sql'
    ```
 
