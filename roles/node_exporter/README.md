@@ -38,3 +38,12 @@ the enforcing fleet otherwise denies `container_t` the socket connect (the same
 trade-off cadvisor makes for the podman socket). Reads use the default,
 non-private bus connection, which systemd serves to any uid, so the exporter
 stays unprivileged.
+
+## Timex collector
+
+The default `timex` collector exports `node_timex_sync_status` (the kernel's
+NTP-sync flag), feeding Prometheus's `ClockNotSynchronised` alert. It reads
+`adjtimex(2)`, which the default seccomp profile gates behind `CAP_SYS_TIME`, so
+the container adds that capability (`AddCapability=CAP_SYS_TIME`); without it the
+collector fails and the metric never appears. The exporter only reads the clock —
+the capability does also permit setting it, an accepted trade-off for the signal.

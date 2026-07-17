@@ -15,6 +15,11 @@ Image={{ node_exporter_image }}
 # cadvisor makes for the podman socket).
 Network=host
 PodmanArgs=--pid=host --security-opt=label=disable
+# The default timex collector reads the kernel clock-sync status via adjtimex(2),
+# which the default seccomp profile gates behind CAP_SYS_TIME; grant it so
+# node_timex_sync_status is exported (feeds the ClockNotSynchronised alert).
+# node_exporter only reads the clock — the cap does also permit setting it.
+AddCapability=CAP_SYS_TIME
 Volume=/:/host:ro,rslave
 # Read-only host D-Bus system bus, mounted at the path the bus library dials
 # (/var/run, not /run — the image has no /var/run symlink), as cadvisor does for

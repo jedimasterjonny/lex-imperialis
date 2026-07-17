@@ -53,3 +53,16 @@
       until: "'node_scrape_collector_success{collector=\"systemd\"} 1' in node_exporter_systemd.content"
       retries: 15
       delay: 2
+
+    # The timex collector reads the kernel clock-sync flag via adjtimex, which the
+    # default seccomp profile gates behind CAP_SYS_TIME; success 1 proves that cap
+    # is granted and the collector reads — 0 (or absent) means ClockNotSynchronised
+    # has no data to fire on, so this makes the AddCapability line load-bearing.
+    - name: The timex collector is scraping successfully
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9100/metrics
+        return_content: true
+      register: node_exporter_timex
+      until: "'node_scrape_collector_success{collector=\"timex\"} 1' in node_exporter_timex.content"
+      retries: 15
+      delay: 2
