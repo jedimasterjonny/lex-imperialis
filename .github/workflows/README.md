@@ -48,8 +48,8 @@ reports green without running one:
   incus, `molecule/leap`, `molecule/hetzner`).
 - Shared infra is exercised through the `motd` harness, which carries all three
   tiers.
-- A `requirements-dev.txt`-only change stays on the free incus tiers and skips
-  the billable hetzner VM.
+- A `requirements-dev.txt`- or `Makefile`-only change stays on the free incus
+  tiers and skips the billable hetzner VM.
 - `workflow_dispatch` ignores the diff and tests every role.
 
 Molecule tests only the scenarios a role ships; that the required ones *exist* —
