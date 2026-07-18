@@ -126,6 +126,17 @@
           The running prometheus did not pick up the config change — the container
           was not recreated (stale single-file bind mount).
 
+    # The Docker-monitoring dashboard groups by `container`; the cadvisor job
+    # mirrors cadvisor's `name` into it. Assert the relabel rendered into the
+    # loaded config so dropping it fails here, not silently as empty panels.
+    - name: The cadvisor job mirrors name into a container label
+      ansible.builtin.assert:
+        that:
+          - "'target_label: container' in prometheus_loaded_config.json.data.yaml"
+        fail_msg: >-
+          the cadvisor metric_relabel that mirrors name into container is missing
+          from the loaded config
+
     # The checks above prove prometheus works; they can't prove its capability set
     # is minimal. Assert the posture directly so a regression that widens the caps
     # or drops the restriction fails here, not silently in production.

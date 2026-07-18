@@ -28,7 +28,9 @@ The role's host is the NAS, not a fleet openSUSE node, which shapes it:
 - `prometheus_data_dir` — host path bind-mounted as the TSDB (`/prometheus`).
 - `prometheus_node_targets` — list of `host:9100` scrape targets.
 - `prometheus_cadvisor_targets` — list of `host:8080` scrape targets, scraped at
-  30s to match cadvisor's housekeeping interval.
+  30s to match cadvisor's housekeeping interval. Container series get a `container`
+  label mirrored from cadvisor's `name` so the Docker-monitoring Grafana dashboard,
+  which groups by `container`, renders.
 - `prometheus_alertmanager_targets` — list of `host:9093` Alertmanager targets,
   both scraped and sent alerts. Scraping gives `up{job="alertmanager"}`, so a
   dead Alertmanager trips `InstanceDown` in Prometheus — but delivering that
