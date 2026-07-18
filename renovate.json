@@ -22,6 +22,14 @@
     },
     {
       "customType": "regex",
+      "description": "The disaster-recovery runbook hardcodes the wordpress-db mariadb image so its fallback SQL load runs on the engine the role pins; same depName as roles/wordpress/vars wordpress_db_image, so renovate bumps the runbook copy in the same PR.",
+      "managerFilePatterns": ["/^docs/disaster-recovery\\.md$/"],
+      "matchStrings": ["(?<depName>docker\\.io/library/mariadb):(?<currentValue>[^\\s@]+)(?:@(?<currentDigest>sha256:\\S+))?"],
+      "autoReplaceStringTemplate": "{{{depName}}}:{{{newValue}}}{{#if newDigest}}@{{{newDigest}}}{{/if}}",
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
       "description": "Grafana dashboard revisions pinned in role vars; the role fetches them from grafana.com at converge.",
       "managerFilePatterns": ["/^roles/.+/vars/main\\.yml$/"],
       "matchStrings": ["# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+) packageName=(?<packageName>\\S+)\\s+\\S+: (?<currentValue>\\d+)"]
