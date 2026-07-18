@@ -36,6 +36,15 @@
     },
     {
       "customType": "regex",
+      "description": "OpenTofu pinned for CI in both workflows' setup-opentofu step (lint.yml and terraform.yml); no zypper package renovate can track, so it follows upstream releases. Same depName, so both bump together. See the opentofu/opentofu packageRule for why these are held for review.",
+      "managerFilePatterns": ["/^\\.github/workflows/(lint|terraform)\\.yml$/"],
+      "matchStrings": ["tofu_version:\\s*\"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "opentofu/opentofu",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.+)$"
+    },
+    {
+      "customType": "regex",
       "description": "Hugo pinned in the Firebase deploy workflows and the go.sum autofix workflow (peaceiris/actions-hugo hugo-version); no zypper/pip package.",
       "managerFilePatterns": ["/^\\.github/workflows/(firebase-hosting-(merge|pull-request)|hugo-gosum-autofix)\\.yml$/"],
       "matchStrings": ["hugo-version:\\s*\"(?<currentValue>[^\"]+)\""],
@@ -101,6 +110,11 @@
     {
       "description": "Hugo and the Blowfish theme share a compatibility range (Blowfish's module.hugoVersion) renovate can't see; review Hugo bumps against it rather than automerging.",
       "matchPackageNames": ["gohugoio/hugo"],
+      "automerge": false
+    },
+    {
+      "description": "A tofu_version bump edits terraform.yml, whose push-to-main job runs `tofu apply -auto-approve` against live infra; an unreviewed CLI must never fire that. Review also reconciles the bump against the fleet's rolling tofu, which renovate can't see.",
+      "matchPackageNames": ["opentofu/opentofu"],
       "automerge": false
     }
   ]

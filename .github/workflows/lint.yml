@@ -47,12 +47,12 @@ jobs:
           restore-keys: pre-commit-
 
       # The tofu-fmt/tofu-validate hooks call the tofu on PATH; on the fleet it is
-      # zypper-installed, here the action provides it. Renovate can't track the
-      # openSUSE rolling package, so bump this by hand when the fleet's tofu moves.
+      # zypper-installed, here the action provides it. Renovate can't track that
+      # rolling package, so it bumps this from upstream opentofu releases instead,
+      # across both CI workflows (held for review — see renovate.json).
       - name: Set up OpenTofu
         uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
         with:
-          # Keep this tofu_version in sync with the one in terraform.yml.
           tofu_version: "1.12.3"
           tofu_wrapper: false
 
