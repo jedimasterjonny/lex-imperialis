@@ -2,4 +2,4 @@
 # renovate's image manager bumps the tag; the compose template renders it. The
 # tag stays bare 'cli' (not semver) so renovate digest-pins it to the current
 # docker CLI, as the wordpress role does for wp-cli.
-docker_prune_image: docker.io/library/docker:cli@sha256:862099ada15c669000bef53aa4cb9d821262829f45b0dda2159ccb276443043b
+docker_prune_image: docker.io/library/docker:cli@sha256:be132a9f282288de4afaf63379dff75711fda0147c6b72a9df44e51841402144
