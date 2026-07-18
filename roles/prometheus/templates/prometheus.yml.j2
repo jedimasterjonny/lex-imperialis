@@ -27,6 +27,11 @@ scrape_configs:
     scrape_interval: 30s
     static_configs:
       - targets: {{ prometheus_cadvisor_targets | to_json }}
+    # The Docker-monitoring dashboard (grafana 15798) groups container series by a
+    # `container` label; cadvisor labels them `name`, so mirror it at ingest.
+    metric_relabel_configs:
+      - source_labels: [name]
+        target_label: container
 {% if prometheus_probe_targets %}
 
   # Blackbox probes: each target is passed to the blackbox_exporter as ?target=, and

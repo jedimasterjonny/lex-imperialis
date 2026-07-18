@@ -93,7 +93,7 @@
                                         'WordpressDbDumpFailed', 'WordpressDbDumpOverdue',
                                         'FilesystemSpaceLow', 'FilesystemReadOnly',
                                         'MemoryLow',
-                                        'HostCpuTemperatureHigh',
+                                        'HostCpuTemperatureHigh', 'ClockNotSynchronised',
                                         'ServiceRestartStorm', 'SystemdUnitFailed',
                                         'WireguardTunnelDown', 'AlertmanagerNotificationsFailing',
                                         'AutoupdateFailed', 'AutoupdateOverdue',
@@ -104,10 +104,10 @@
                                         'BeetsPipelineQuarantineBacklog',
                                         'PrometheusRuleEvaluationFailing',
                                         'PrometheusConfigReloadFailed', 'Watchdog'])
-            | list | length == 30
+            | list | length == 31
           - >-
             prometheus_loaded_rules.json.data.groups
-            | map(attribute='rules') | flatten | list | length == 30
+            | map(attribute='rules') | flatten | list | length == 31
         fail_msg: the loaded alert rules don't match those shipped in alerts.yml
 
     - name: Read the loaded runtime config
@@ -125,6 +125,17 @@
         fail_msg: >-
           The running prometheus did not pick up the config change — the container
           was not recreated (stale single-file bind mount).
+
+    # The Docker-monitoring dashboard groups by `container`; the cadvisor job
+    # mirrors cadvisor's `name` into it. Assert the relabel rendered into the
+    # loaded config so dropping it fails here, not silently as empty panels.
+    - name: The cadvisor job mirrors name into a container label
+      ansible.builtin.assert:
+        that:
+          - "'target_label: container' in prometheus_loaded_config.json.data.yaml"
+        fail_msg: >-
+          the cadvisor metric_relabel that mirrors name into container is missing
+          from the loaded config
 
     # The checks above prove prometheus works; they can't prove its capability set
     # is minimal. Assert the posture directly so a regression that widens the caps

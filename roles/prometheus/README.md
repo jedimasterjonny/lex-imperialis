@@ -28,7 +28,9 @@ The role's host is the NAS, not a fleet openSUSE node, which shapes it:
 - `prometheus_data_dir` — host path bind-mounted as the TSDB (`/prometheus`).
 - `prometheus_node_targets` — list of `host:9100` scrape targets.
 - `prometheus_cadvisor_targets` — list of `host:8080` scrape targets, scraped at
-  30s to match cadvisor's housekeeping interval.
+  30s to match cadvisor's housekeeping interval. Container series get a `container`
+  label mirrored from cadvisor's `name` so the Docker-monitoring Grafana dashboard,
+  which groups by `container`, renders.
 - `prometheus_alertmanager_targets` — list of `host:9093` Alertmanager targets,
   both scraped and sent alerts. Scraping gives `up{job="alertmanager"}`, so a
   dead Alertmanager trips `InstanceDown` in Prometheus — but delivering that
@@ -92,6 +94,8 @@ cache, so crossing it is real pressure, not a full-looking cache); the `hardware
 `HostCpuTemperatureHigh` (a CPU held above 95C for 15m, off
 `node_hwmon_temp_celsius` scoped to `platform_coretemp_0` — the
 chip only the two N150 boxes export, so the other two hosts raise nothing); the
+`time` group's `ClockNotSynchronised` (`node_timex_sync_status == 0` for 30m — a
+node_exporter host whose clock is no longer NTP-synced); the
 `services` group — `ServiceRestartStorm` (a systemd
 unit that auto-restarted more than three times in 15m, off node_exporter's
 `node_systemd_service_restart_total` counter — covers quadlet containers and every

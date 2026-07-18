@@ -163,6 +163,21 @@ groups:
           summary: "CPU on {{ $labels.instance }} sustained above 95C"
           description: "{{ $labels.instance }} has held its CPU at {{ $value }}C for 15 minutes. Throttling starts at 105C — check the heatsink and fan."
 
+  - name: time
+    rules:
+      # NTP keeps the fleet's clocks disciplined; drift breaks TLS validation, log
+      # correlation, and the time-based comparisons in these very rules. 30m rides
+      # out a brief resync — a step after a reboot or a network blip — and fires
+      # only on a clock that has genuinely stopped syncing.
+      - alert: ClockNotSynchronised
+        expr: node_timex_sync_status == 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "clock not synchronised on {{ $labels.instance }}"
+          description: "{{ $labels.instance }} has had no NTP time sync for 30 minutes — clock drift can break TLS validation and log correlation."
+
   - name: services
     rules:
       # node_exporter's systemd collector exposes a true per-unit restart counter,
