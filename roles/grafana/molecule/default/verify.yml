@@ -57,13 +57,13 @@
             | list | length > 0
           - >-
             grafana_dashboards.json
-            | selectattr('title', 'eq', 'cadvisor dashboard')
+            | selectattr('title', 'eq', 'Docker monitoring')
             | list | length > 0
           - >-
             grafana_dashboards.json
             | selectattr('title', 'eq', 'Blackbox Exporter')
             | list | length > 0
-        fail_msg: The Node Exporter Full, cadvisor, and Blackbox Exporter dashboards are not all provisioned
+        fail_msg: The Node Exporter Full, Docker monitoring, and Blackbox Exporter dashboards are not all provisioned
 
     # A non-zero exit fails the task, proving curl resolves in the image and the
     # health endpoint reports ok.
