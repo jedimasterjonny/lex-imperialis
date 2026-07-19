@@ -160,8 +160,9 @@ solar's and rogue-trader's podman volumes can then be restored as normal.
 
 Protection on `main` is a GitHub ruleset — repository config, not part of the
 git tree — so a settings loss does not restore it. Recreate `protect main`
-(requires the `pre-commit`, `secret-scan`, and `molecule-gate` checks plus a PR
-before any merge to `main`; blocks force-push and deletion) from the repo root:
+(requires the `pre-commit`, `secret-scan`, `molecule-gate`, `terraform-gate`, and
+`site-gate` checks, branches up to date, plus a PR before any merge to `main`;
+blocks force-push and deletion) from the repo root:
 
 ```
 gh api --method POST \
@@ -178,8 +179,9 @@ gh api --method POST \
     { "type": "pull_request",
       "parameters": { "required_approving_review_count": 0, "allowed_merge_methods": ["merge"] } },
     { "type": "required_status_checks",
-      "parameters": { "required_status_checks": [
-        { "context": "pre-commit" }, { "context": "secret-scan" }, { "context": "molecule-gate" }
+      "parameters": { "strict_required_status_checks_policy": true, "required_status_checks": [
+        { "context": "pre-commit" }, { "context": "secret-scan" }, { "context": "molecule-gate" },
+        { "context": "terraform-gate" }, { "context": "site-gate" }
       ] } }
   ]
 }
