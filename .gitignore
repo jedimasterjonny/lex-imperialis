@@ -20,6 +20,8 @@ __pycache__/
 *.tfstate.*
 *.tfvars
 *.tfvars.json
+# Saved plan the terraform workflow writes (tofu -chdir=terraform plan -out=tfplan)
+tfplan
 crash.log
 crash.*.log
 

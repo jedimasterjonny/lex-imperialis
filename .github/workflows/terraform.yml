@@ -8,11 +8,17 @@ name: terraform
 # are all it needs — the HCP, Cloudflare, and Hetzner tokens come from the vault
 # and GCP auth is keyless via WIF, so VAULT_PASSWORD is the only secret. Offline
 # fmt/validate/tflint stay in the lint workflow.
+#
+# No PR paths filter: the workflow runs on every PR so terraform-gate (a required
+# check) always reports. discover decides whether the plan actually runs, and a
+# non-infra PR skips it and still passes the gate. Because renovate automerges
+# minor/patch bumps into the merge-to-main apply with no human reading the plan,
+# the plan job is the safety gate: it halts on any destructive action, so routine
+# in-place updates flow through unattended while a delete/replace stops for review.
 "on":
   pull_request:
-    paths:
-      - 'terraform/**'
-      - '.github/workflows/terraform.yml'
+  # push keeps its paths filter — it only ever needs to run to apply a terraform
+  # change (or a bump to this workflow, which the apply job reads).
   push:
     branches:
       - main
@@ -25,25 +31,77 @@ name: terraform
   schedule:
     - cron: '41 6 * * 1' # Mondays 06:41 UTC
 
+# Floor for the whole workflow; the plan job elevates to what WIF and the PR
+# comment need. discover and terraform-gate get no more than this read.
 permissions:
   contents: read
-  pull-requests: write
-  id-token: write # mint the OIDC token that WIF exchanges for GCP credentials
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  discover:
+    name: discover
+    runs-on: ubuntu-latest
+    outputs:
+      terraform: ${{ steps.set.outputs.terraform }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          fetch-depth: 0
+
+      # Only a PR needs filtering: push is paths-gated to terraform changes and
+      # schedule/dispatch always plan. For a PR, plan only when the diff touches
+      # terraform/ or this workflow; otherwise the plan job skips and
+      # terraform-gate still reports green, so a non-infra PR is never blocked on
+      # a check that never runs. *.md is dropped first (as molecule's discover
+      # does) so a docs-only edit — e.g. terraform/README.md — plans nothing. git
+      # diff on its own line so a real git failure aborts under set -e instead of
+      # yielding an empty diff read as "not in scope".
+      - name: Determine whether terraform is in scope
+        id: set
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "pull_request" ]; then
+            all_changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA")
+            changed=$(printf '%s\n' "$all_changed" | grep -vE '\.md$' || true)
+            if printf '%s\n' "$changed" \
+              | grep -qE -e '^terraform/' -e '^\.github/workflows/terraform\.yml$'; then
+              tf=true
+            else
+              tf=false
+            fi
+          else
+            tf=true
+          fi
+          echo "terraform=$tf" >> "$GITHUB_OUTPUT"
+          echo "terraform in scope: $tf"
+
   plan:
     name: plan
+    needs: discover
+    # Run when terraform is in scope (always so, except a PR that doesn't touch
+    # it) and this is not a fork PR — forks can't mint the WIF id-token or read
+    # the vault, so skip them cleanly (a skipped plan still passes terraform-gate)
+    # rather than fail red at the auth step. Push/dispatch/schedule always run.
+    if: >-
+      ${{ needs.discover.outputs.terraform == 'true'
+      && (github.event_name != 'pull_request'
+      || github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: ubuntu-latest
     # A hung apply holds the HCP state lock until the job dies — 6h on the
     # default. Well above a plan+apply of this config, well below that.
     timeout-minutes: 30
-    # Fork PRs can't mint the WIF id-token, so skip them cleanly (as the firebase
-    # preview job does) rather than fail red at the auth step. Push/dispatch always run.
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write # mint the OIDC token that WIF exchanges for GCP credentials
     steps:
       - name: Check out
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
@@ -90,29 +148,35 @@ jobs:
           printf '%s' "$VAULT_PASSWORD" > .vault_pass
           chmod 600 .vault_pass
 
-      # TF_TOKEN_app_terraform_io is the non-interactive form of `tofu login`; it
-      # authenticates init/plan to the HCP workspace. The Cloudflare and Hetzner
-      # tokens feed their providers (Hetzner for the rogue-trader lookup and
-      # firewall). set +e captures the output and exit code so the next step can
-      # post the plan and still fail the job on a real error.
+      # Plan to a file so the apply below runs exactly this plan, not a fresh
+      # re-plan, and so the destructive-action check reads the same plan the human
+      # (or, for a routine bump, nobody) would see. TF_TOKEN_app_terraform_io is
+      # the non-interactive `tofu login` for the HCP workspace; the Cloudflare and
+      # Hetzner tokens feed their providers. -lock=false: the plan is read-only
+      # (apply re-locks and re-checks the saved plan), and cancel-in-progress could
+      # otherwise kill it mid-run and orphan the HCP state lock. set +e captures the
+      # output and exit code so the next step can post the plan and still fail the
+      # job on a real error.
       - name: Plan
         id: plan
-        if: github.event_name != 'push'
+        env:
+          EVENT: ${{ github.event_name }}
         run: |
           set +e
           # Scheduled runs only: -detailed-exitcode makes plan exit 2 on any diff,
           # so the fail step flags drift. A PR plan with changes is expected, so it
           # stays a plain plan (exit 0) and must not start failing.
           detail=""
-          [ "${{ github.event_name }}" = "schedule" ] && detail="-detailed-exitcode"
-          export TF_TOKEN_app_terraform_io="$(bin/vault-var.sh terraform_hcp_token)"
-          export TF_VAR_cloudflare_api_token="$(bin/vault-var.sh terraform_cloudflare_api_token)"
-          export TF_VAR_hcloud_token="$(bin/vault-var.sh hcloud_token_emmas_edit)"
-          # -lock=false: this plan is read-only, and cancel-in-progress could kill
-          # it mid-run and orphan the HCP state lock (local execution holds it).
+          [ "$EVENT" = "schedule" ] && detail="-detailed-exitcode"
+          # Assign then export separately (matches Apply): `export VAR=$(...)` would
+          # mask the vault lookup's exit under shellcheck's SC2155, and reads cleaner.
+          TF_TOKEN_app_terraform_io="$(bin/vault-var.sh terraform_hcp_token)"
+          TF_VAR_cloudflare_api_token="$(bin/vault-var.sh terraform_cloudflare_api_token)"
+          TF_VAR_hcloud_token="$(bin/vault-var.sh hcloud_token_emmas_edit)"
+          export TF_TOKEN_app_terraform_io TF_VAR_cloudflare_api_token TF_VAR_hcloud_token
           # -no-color on both: the combined output is teed into the PR comment.
           { tofu -chdir=terraform init -input=false -no-color \
-            && tofu -chdir=terraform plan -input=false -no-color -lock=false $detail; } 2>&1 | tee plan.txt
+            && tofu -chdir=terraform plan -input=false -no-color -lock=false $detail -out=tfplan; } 2>&1 | tee plan.txt
           echo "exitcode=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
 
       # One comment per PR, edited in place on re-push. Found by a hidden marker,
@@ -149,9 +213,10 @@ jobs:
           fi
 
       # exitcode 2 only ever occurs on a scheduled run (-detailed-exitcode), so
-      # the drift branch can't misfire on a PR or dispatch.
+      # the drift branch can't misfire on a PR or dispatch. Runs for every event:
+      # a plan error must fail the job before the apply below can run a bad plan.
       - name: Fail on plan error or drift
-        if: github.event_name != 'push' && steps.plan.outputs.exitcode != '0'
+        if: steps.plan.outputs.exitcode != '0'
         run: |
           if [ "${{ steps.plan.outputs.exitcode }}" = 2 ]; then
             echo "::error::OpenTofu drift — live infra differs from terraform/ on main; see the plan output."
@@ -160,10 +225,34 @@ jobs:
           fi
           exit 1
 
-      # Merge to main: apply. Unlike the PR plan this locks the HCP state. The
-      # concurrency group serialises main runs and never auto-cancels them; a
-      # manual cancel, job timeout, or runner death mid-apply can still orphan the
-      # lock, recoverable with `tofu force-unlock`.
+      # The automation gate — CI never applies a delete or replace. Minor/patch
+      # bumps automerge and apply with no human reading the plan, so a destructive
+      # plan is the one thing that must stop: on a PR it fails terraform-gate and
+      # blocks the automerge; on a push (a bump gone destructive because live infra
+      # drifted since its PR plan) it halts before the apply below. A deliberate
+      # destroy is landed with a local `make tofu-apply` — the sanctioned path for
+      # the rare acts CI's scoped SA can't make (terraform/README). tofu encodes a
+      # replace as a delete+create action pair, so any "delete" catches both.
+      - name: Halt on a destructive plan
+        if: (github.event_name == 'pull_request' || github.event_name == 'push') && steps.plan.outputs.exitcode == '0'
+        run: |
+          set -euo pipefail
+          destroys=$(tofu -chdir=terraform show -json tfplan \
+            | jq -r '.resource_changes[] | select(.change.actions | index("delete")) | .address')
+          if [ -n "$destroys" ]; then
+            echo "::error::Plan would delete or replace resources — CI won't apply these; run 'make tofu-apply' locally:"
+            printf '%s\n' "$destroys"
+            exit 1
+          fi
+          echo "No destructive actions in the plan."
+
+      # Merge to main: apply the plan saved above (not a fresh re-plan), so what
+      # applies is what was logged. Unlike the read-only plan this locks the HCP
+      # state; a stale saved plan (state moved since the plan) makes apply error
+      # rather than apply something unreviewed. The concurrency group serialises
+      # main runs and never auto-cancels them; a manual cancel, job timeout, or
+      # runner death mid-apply can still orphan the lock, recoverable with
+      # `tofu force-unlock`.
       - name: Apply
         if: github.event_name == 'push'
         run: |
@@ -173,5 +262,26 @@ jobs:
           TF_VAR_cloudflare_api_token="$(bin/vault-var.sh terraform_cloudflare_api_token)"
           TF_VAR_hcloud_token="$(bin/vault-var.sh hcloud_token_emmas_edit)"
           export TF_TOKEN_app_terraform_io TF_VAR_cloudflare_api_token TF_VAR_hcloud_token
-          tofu -chdir=terraform init -input=false
-          tofu -chdir=terraform apply -input=false -no-color -auto-approve
+          tofu -chdir=terraform apply -input=false -no-color tfplan
+
+  # Fixed-name summary check for branch protection: the plan job is skipped on a
+  # non-infra PR, so this always-running job reports the real result — green there,
+  # so a required check doesn't wedge every non-infra PR on a check that never runs.
+  # But a fork PR that *does* touch terraform also skips the plan (it can't reach
+  # the vault or WIF), and a green gate would then wave an unplanned, unchecked infra
+  # change past the required check — so fail when discover flagged terraform in scope
+  # yet the plan didn't run. Make this a required check (with strict status policy)
+  # so an automerge waits on it.
+  terraform-gate:
+    name: terraform-gate
+    if: always()
+    needs: [discover, plan]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if the plan failed, was cancelled, or was skipped in scope
+        if: >-
+          contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+          || (needs.discover.outputs.terraform == 'true' && needs.plan.result == 'skipped')
+        run: |
+          echo "terraform plan failed, was cancelled, or was skipped while terraform was in scope (e.g. a fork PR that can't run the gated plan)."
+          exit 1

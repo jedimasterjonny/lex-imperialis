@@ -80,13 +80,17 @@ Gates (also enforced in CI and pre-commit):
 tofu-plan` / `tofu-apply` drive HCP Terraform Cloud, sourcing all three tokens
 from the vault via `bin/vault-var.sh`.
 
-PRs touching `terraform/` get a `tofu plan` in CI
-(`.github/workflows/terraform.yml`), posted as a PR comment; a merge to main then
-runs `tofu apply` (ungated). Both authenticate to HCP, Cloudflare, and Hetzner
+PRs touching `terraform/` (or this workflow) get a `tofu plan` in CI
+(`.github/workflows/terraform.yml`), posted as a PR comment; a merge to main
+plans, then applies that saved plan file rather than re-planning at apply. The
+plan is scanned for a delete or replace: finding one fails the required
+`terraform-gate` check on a PR (blocking an automerge) and halts before the apply
+on a merge — so a destructive plan never applies unattended, while a routine
+in-place bump flows through. Both authenticate to HCP, Cloudflare, and Hetzner
 from the vault and to GCP keylessly via WIF, so `VAULT_PASSWORD` stays the only
 CI secret.
-`make tofu-apply` still applies locally for the rare change CI's scoped SA can't
-make (project creation, billing).
+`make tofu-apply` still applies locally for the rare change CI won't: project
+creation, billing, or a deliberate delete/replace.
 
 The gates need `tofu` and `tflint` on PATH — provisioned in CI by
 `setup-opentofu`/`setup-tflint`, and on the workstation by the `dev` role
