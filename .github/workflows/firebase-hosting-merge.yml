@@ -66,4 +66,4 @@ jobs:
           service_account: github-action-815812811@jonnyoc-website.iam.gserviceaccount.com
 
       - name: Deploy to the live channel
-        run: npx --yes firebase-tools@15.23.0 deploy --only hosting --project jonnyoc-website --non-interactive
+        run: npx --yes firebase-tools@15.24.0 deploy --only hosting --project jonnyoc-website --non-interactive
