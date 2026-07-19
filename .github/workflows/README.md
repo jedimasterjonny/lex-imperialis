@@ -4,7 +4,8 @@ The workflows guarding PRs pin actions by commit SHA (version in a trailing
 comment) and request a read-only `contents` token by default: **lint** runs the
 pre-commit hook set plus a push-time secret scan on all changes; **molecule**
 runs the role tests, gated to the tiers and roles a PR actually touches;
-**firebase** builds and deploys the `jonnyoc-site` website.
+**firebase** builds, gates, and deploys the `jonnyoc-site` website. **terraform**
+(documented in `terraform/README.md`) plans and gates the OpenTofu tree.
 
 ## lint
 
@@ -82,16 +83,36 @@ tiers) that fails if `discover` or any tier failed or was cancelled, and passes
 when tiers skip. The per-role matrix job names vary per PR and can't be named
 as required checks, and a required check that never reports blocks the merge —
 so this one stable, always-reported check is what the `main` branch ruleset
-requires, alongside `pre-commit` and `secret-scan`.
+requires, alongside `pre-commit`, `secret-scan`, and the `terraform-gate` and
+`site-gate` checks the terraform and firebase workflows report the same way.
 
 ## firebase
 
-Two path-filtered workflows deploy the `jonnyoc-site` Hugo site to Firebase
-Hosting (project `jonnyoc-website`): **firebase (merge)** on a push to `main`
-under `jonnyoc-site/**` deploys the live channel; **firebase (preview)** on a PR
-deploys a 30-day `preview-<PR#>` channel, skipped for fork PRs. Both set up Go
-(for the Hugo Module theme fetch) and a pinned Hugo; preview builds with
-`hugo -E -F --minify` (expired/future content included for review), merge with
-`hugo --minify`. Auth is keyless via Workload Identity Federation (the deploy SA
-in `terraform/`), so no Firebase secret is needed. The deploy runs a pinned
-`firebase-tools`; both it and `hugo-version` are renovate-tracked.
+Two workflows deploy the `jonnyoc-site` Hugo site to Firebase Hosting (project
+`jonnyoc-website`). Both set up Go (for the Hugo Module theme fetch) and a pinned
+Hugo, authenticate keylessly via Workload Identity Federation (the deploy SA in
+`terraform/`) so no Firebase secret is needed, and run a pinned `firebase-tools`;
+`firebase-tools` and `hugo-version` are renovate-tracked.
+
+**firebase (merge)** fires on a push to `main` under `jonnyoc-site/**`, builds
+`hugo --minify` (honouring `buildFuture=false`/`expiryDate`), and deploys the live
+channel.
+
+**firebase (preview)** runs on every PR (no path filter, like molecule) so its
+`site-gate` check is always reported. A `discover` job scopes it to PRs touching
+`jonnyoc-site/` or this workflow — `*.md` is kept, unlike terraform's discover,
+since the site's content is markdown. In scope, it splits into a **build** job
+that builds exactly as the merge deploy does (`hugo --minify`, no secret, so it
+runs for fork PRs too) and a best-effort **preview** job that rebuilds with
+`hugo -E -F --minify` (future and expired content included for review),
+authenticates, and deploys a 30-day `preview-<PR#>` channel — same-repo PRs only,
+since forks can't reach WIF. A Firebase flake fails only the preview, never the gate.
+
+### site-gate
+
+A fixed-name summary job (`if: always()`, `needs:` `discover` and `build`) that
+fails if either failed or was cancelled and passes when the build skips (a
+non-site PR). It reflects the secret-free build — which runs on every in-scope PR,
+forks included — not the preview, so a preview-deploy flake can't redden it and it
+gates exactly the content the live deploy builds. This is the required check the
+`main` ruleset uses so a build-breaking hugo or theme bump can't automerge.
