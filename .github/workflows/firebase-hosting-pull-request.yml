@@ -68,7 +68,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.number }}
         run: |
-          npx --yes firebase-tools@15.23.0 hosting:channel:deploy "preview-${PR}" \
+          npx --yes firebase-tools@15.24.0 hosting:channel:deploy "preview-${PR}" \
             --project jonnyoc-website --expires 30d --json > channel.json
           url=$(jq -r '.result[].url' channel.json)
           {
