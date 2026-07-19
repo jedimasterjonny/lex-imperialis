@@ -88,7 +88,7 @@ Three one-shot entry points in `bootstrap/`, all idempotent:
 - `incus.yml` — sets up the molecule runner, the one host molecule cannot provision for itself.
 - `rogue-trader.yml` — creates the Hetzner VM and joins it to the home VPN at first boot.
 
-Recovery walks the same path: re-bootstrap the host, run its play to rebuild everything declarative, then restore its podman volumes from the restic repository on the NAS. `docs/disaster-recovery.md` covers it host by host, along with what the backup does and does not hold. `.vault_pass` is the one thing the repo cannot give you back — it comes from the password manager.
+Recovery walks the same path: re-bootstrap the host, run its play to rebuild everything declarative, then restore its podman volumes from the restic repository on the NAS. `docs/disaster-recovery.md` covers it host by host, along with what the backup does and does not hold; `docs/backups.md` is the backup architecture in full. `.vault_pass` is the one thing the repo cannot give you back — it comes from the password manager.
 
 ## Working with Claude
 

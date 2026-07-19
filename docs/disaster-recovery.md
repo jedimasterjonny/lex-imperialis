@@ -19,6 +19,9 @@ first (below), or drive the others from any machine meeting the above.
 
 ## What is and isn't backed up
 
+The full backup architecture — all four layers — is in [`backups.md`](backups.md);
+this is the recovery-relevant summary.
+
 `podman_backup` runs on `solar` and `rogue-trader` only, writing a per-host
 restic repo to `/nfs/astropath/<hostname>-podman-backup` on the NAS. The repo
 holds every podman named volume — so all container state (databases, app config,
@@ -29,12 +32,13 @@ shares is not in the repo; it lives on the NAS and is the NAS's own concern.
 has no repo — its state is the repo plus `.vault_pass`. `administratum` (the NAS)
 is the backup *target*; its DR is DSM's job (see below).
 
-**Off-site copy:** the restic repos all live on `administratum`, but a weekly
-Synology Hyper Backup task replicates the `*-podman-backup` folders off-site to a
-storage box (Wednesday 02:00, an hour after the restic run). Hyper Backup's
-failure and missed-run notifications are enabled, so a stalled off-site copy
-surfaces by email rather than drifting unnoticed. A lost NAS is recoverable from
-it — see [administratum](#administratum-nas).
+**Off-site copy:** two Synology Hyper Backup tasks mirror the on-NAS backups off-site
+to a Hetzner storage box over rsync, each a plain mirror (latest state only, no
+version history): the `*-podman-backup` restic repos weekly (Wednesday 02:00, an
+hour after the restic run), and the `/scriptorum/photos` library daily (03:00). A
+failed run alerts by email, so a stalled copy surfaces rather than drifting
+unnoticed. A lost NAS is recoverable from it — see
+[administratum](#administratum-nas).
 
 ## solar (and any openSUSE podman host)
 
@@ -151,10 +155,12 @@ redeploy the compose projects:
 make apply PLAY=administratum
 ```
 
-The `*-podman-backup` restic repos are also replicated off-site by a weekly
-Synology Hyper Backup task (Wednesday 02:00, to a storage box). After rebuilding
-the NAS, restore that task's set to return the repos to `/volume2/astropath/`;
-solar's and rogue-trader's podman volumes can then be restored as normal.
+The `*-podman-backup` restic repos and the `/scriptorum/photos` library are also
+mirrored off-site to a Hetzner storage box by two Synology Hyper Backup tasks (the
+repos weekly on Wednesday 02:00, the photos daily at 03:00). After rebuilding the
+NAS, restore those tasks' sets to return the repos to `/volume2/astropath/` and the
+photo library to its share; solar's and rogue-trader's podman volumes can then be
+restored as normal.
 
 ## Branch protection
 

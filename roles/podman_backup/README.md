@@ -23,11 +23,10 @@ that would otherwise fail an isolated operation.
 The repo is unencrypted (`--insecure-no-password`): the NAS share is trusted.
 Assumes `podman` is installed and the `nfs` role has mounted the target.
 
-The on-NAS repos are replicated off-site out of band by a Synology Hyper Backup
-task that copies the `*-podman-backup` folders to a storage box weekly (Wednesday
-02:00), encrypted in transit but stored unencrypted — the box, like the NAS
-share, is trusted with the repo contents. That job is NAS-side, not managed by
-this role — see [`docs/disaster-recovery.md`](../../docs/disaster-recovery.md).
+The on-NAS repos are also mirrored off-site, out of band, by a NAS-side Synology
+Hyper Backup task not managed by this role. See
+[`docs/backups.md`](../../docs/backups.md) for the full backup architecture and
+[`docs/disaster-recovery.md`](../../docs/disaster-recovery.md) for recovery.
 
 ## Restore
 
