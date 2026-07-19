@@ -10,11 +10,13 @@ name: hugo go.sum autofix
 # go.sum and fold it into the Renovate commit (amend + force-push), so each bump
 # stays a single clean commit rather than growing a checksum-fixup churn.
 #
-# The force-push uses GITHUB_TOKEN, which by design does not re-trigger workflows,
-# so this never loops on its own commit. Trade-off: the corrected commit gets no
-# fresh check runs — fine here, where merges are manual and the preview build
-# already passed on the original commit. A required-status-check branch
-# protection would need a PAT to re-trigger instead.
+# The amend is force-pushed with a GitHub App token, not GITHUB_TOKEN: a
+# GITHUB_TOKEN push doesn't re-trigger workflows, which would leave the required
+# site-gate check unreported on the amended head and hang the PR. An App-token
+# push re-triggers the checks, and can't loop — the autofix only pushes when
+# go.sum is incomplete, which the pushed fix clears. Needs a GitHub App with
+# contents:write installed on the repo; its id and private key are the
+# AUTOFIX_APP_ID / AUTOFIX_APP_KEY secrets.
 "on":
   pull_request:
     paths:
@@ -22,7 +24,7 @@ name: hugo go.sum autofix
       - 'jonnyoc-site/go.sum'
 
 permissions:
-  contents: write # commit the corrected go.sum back to the PR branch
+  contents: read # the push authenticates with the App token below, not GITHUB_TOKEN
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref }}
@@ -38,11 +40,23 @@ jobs:
       run:
         working-directory: ./jonnyoc-site
     steps:
+      # Mint a short-lived App token so the amend's push re-triggers the required
+      # checks (a GITHUB_TOKEN push wouldn't). Forks are skipped above, so the
+      # secrets are always available here.
+      - name: Mint a GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.AUTOFIX_APP_ID }}
+          private-key: ${{ secrets.AUTOFIX_APP_KEY }}
+          permission-contents: write # pin the token to contents:write, even if the App is over-granted
+
       - name: Check out the PR branch
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           ref: ${{ github.head_ref }}
           fetch-depth: 0 # full history so the amend + force-push is clean
+          token: ${{ steps.app-token.outputs.token }} # push with the App token so checks re-trigger
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -80,8 +94,8 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add go.mod go.sum
           # Amend rather than stack a fixup commit, so each bump stays one clean
-          # commit (Renovate's — author preserved). The force-push is safe: a
-          # GITHUB_TOKEN push never re-triggers workflows (so no loop), and the
-          # lease rejects the push if the branch moved since checkout.
+          # commit (Renovate's — author preserved). The App-token push re-triggers
+          # the required checks on the amended head; the lease rejects the push if
+          # the branch moved since checkout.
           git commit --amend --no-edit
           git push --force-with-lease="${GITHUB_HEAD_REF}:${orig}" origin HEAD:"${GITHUB_HEAD_REF}"

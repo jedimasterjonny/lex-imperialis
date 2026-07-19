@@ -87,8 +87,8 @@ plan is scanned for a delete or replace: finding one fails the required
 `terraform-gate` check on a PR (blocking an automerge) and halts before the apply
 on a merge — so a destructive plan never applies unattended, while a routine
 in-place bump flows through. Both authenticate to HCP, Cloudflare, and Hetzner
-from the vault and to GCP keylessly via WIF, so `VAULT_PASSWORD` stays the only
-CI secret.
+from the vault and to GCP keylessly via WIF, so `VAULT_PASSWORD` stays these
+workflows' only secret.
 `make tofu-apply` still applies locally for the rare change CI won't: project
 creation, billing, or a deliberate delete/replace.
 
