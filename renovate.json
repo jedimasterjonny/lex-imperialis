@@ -114,11 +114,6 @@
       "matchDepTypes": ["indirect"],
       "enabled": true,
       "automerge": false
-    },
-    {
-      "description": "Hugo and the Blowfish theme share a compatibility range (Blowfish's module.hugoVersion) renovate can't see; review Hugo bumps against it rather than automerging. Drop this once the firebase preview build is a required check, so a compat break is caught instead of reviewed.",
-      "matchPackageNames": ["gohugoio/hugo"],
-      "automerge": false
     }
   ]
 }
