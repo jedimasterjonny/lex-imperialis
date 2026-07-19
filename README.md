@@ -18,7 +18,7 @@ This has a side effect I never considered before I began: having an IaC repo tha
 
 - `scholam` — Beelink Mini S13 — Development box
 - `solar` — Beelink Mini S13 — Media server
-- `administratum` — Synology DS413+ NAS
+- `administratum` — Synology DS423+ NAS
   - `scriptorum` — 24TB SHR1 HDD array
   - `astropath` — 380GB RAID1 NVMe array
 - `rogue-trader` — Hetzner VPS
