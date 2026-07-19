@@ -67,6 +67,16 @@
       "matchStrings": ["firebase-tools@(?<currentValue>\\S+)"],
       "depNameTemplate": "firebase-tools",
       "datasourceTemplate": "npm"
+    },
+    {
+      "customType": "regex",
+      "description": "terraform/main.tf's required_version constrains the OpenTofu CLI, but renovate's terraform manager tracks it as hashicorp/terraform (disabled in a packageRule below). Track it against opentofu/opentofu instead, matching the tofu_version CI pin; hashicorp versioning parses the ~> range.",
+      "managerFilePatterns": ["/^terraform/main\\.tf$/"],
+      "matchStrings": ["required_version\\s*=\\s*\"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "opentofu/opentofu",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.+)$",
+      "versioningTemplate": "hashicorp"
     }
   ],
   "customDatasources": {
@@ -113,6 +123,12 @@
       "matchFileNames": ["jonnyoc-site/go.mod"],
       "matchDepTypes": ["indirect"],
       "enabled": true
+    },
+    {
+      "description": "required_version in terraform/main.tf constrains the OpenTofu CLI, not HashiCorp Terraform; the terraform manager mis-tracks it as hashicorp/terraform. Disable that — the custom manager above tracks it as opentofu/opentofu.",
+      "matchManagers": ["terraform"],
+      "matchPackageNames": ["hashicorp/terraform"],
+      "enabled": false
     }
   ]
 }
