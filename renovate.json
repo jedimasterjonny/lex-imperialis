@@ -108,12 +108,11 @@
       "abandonmentThreshold": null
     },
     {
-      "description": "Blowfish (the Hugo theme) is an indirect gomod require in jonnyoc-site; config:best-practices skips indirect gomod deps, so enable them for that go.mod or the theme never updates. Keep it off automerge — Blowfish and Hugo share a compatibility range renovate can't see, so review the pair together (mirrors the gohugoio/hugo rule).",
+      "description": "Blowfish (the Hugo theme) is an indirect gomod require in jonnyoc-site; config:best-practices skips indirect gomod deps, so enable them for that go.mod or the theme never updates. Minor/patch automerge like hugo: site-gate catches a build/compat break, and hugo-gosum-autofix.yml completes go.sum and re-triggers the gate on its amended commit.",
       "matchManagers": ["gomod"],
       "matchFileNames": ["jonnyoc-site/go.mod"],
       "matchDepTypes": ["indirect"],
-      "enabled": true,
-      "automerge": false
+      "enabled": true
     }
   ]
 }
