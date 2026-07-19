@@ -71,7 +71,7 @@ The libvirt tier is local-only; CI realises it as `hetzner`, since Hetzner
 Cloud cannot nest KVM. The incus jobs install and init incus on the runner (dir
 storage; `FORWARD ACCEPT` and IPv6 off to clear the runner's Docker/network
 defaults) and run molecule under the `incus-admin` group. The `hetzner` job
-writes `.vault_pass` from the `VAULT_PASSWORD` secret — the only secret CI
+writes `.vault_pass` from the `VAULT_PASSWORD` secret — the only secret molecule
 needs, decrypting the in-repo hcloud token — sets `MOLECULE_RUN_ID` per run so
 concurrent VM and SSH-key names never collide, and carries an `if: cancelled()`
 teardown so a killed run never orphans a billable VM.
