@@ -6,9 +6,8 @@
 - name: Exercise the restore
   hosts: all
   gather_facts: false
-  vars_files:
-    - ../../defaults/main.yml
   vars:
+    podman_backup_restore_script: /usr/local/sbin/podman-restore.sh
     podman_backup_probe_path: /var/lib/containers/storage/volumes/lex-probe/_data/probe.txt
     podman_backup_stray_path: /var/lib/containers/storage/volumes/lex-probe/_data/stray.txt
   tasks:

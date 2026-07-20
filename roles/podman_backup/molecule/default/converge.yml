@@ -3,8 +3,9 @@
   hosts: all
   vars:
     # Local stand-in for the astropath NFS share — mounting it is the nfs role's
-    # job, not this role's.
-    podman_backup_root: /var/tmp/backup
+    # job, not this role's. Set on the engine directly (podman_backup inherits the
+    # root default rather than passing it through).
+    restic_backup_root: /var/tmp/backup
   pre_tasks:
     - name: Install podman (the runtime whose volumes are backed up)
       community.general.zypper:
