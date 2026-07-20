@@ -171,6 +171,35 @@
       loop_control:
         label: "{{ item.item }}"
 
+    # The split env files exist so the database root password reaches only the
+    # database container. coreutils printenv exits 0 when it finds
+    # MARIADB_ROOT_PASSWORD and 1 when the variable is absent, so assert the exact
+    # code per container: 0 in wordpress-db (from db.env), 1 in the web container
+    # (which reads only app.env). Pinning the exact 1 — not merely non-zero — means
+    # a podman exec failure (125-127) fails the check rather than reading as
+    # "variable absent" and false-passing while a reintroduced leak goes unseen.
+    - name: Probe each container for the database root password
+      ansible.builtin.command: "podman exec {{ item.name }} printenv MARIADB_ROOT_PASSWORD"
+      loop:
+        - {name: wordpress, expected_rc: 1}
+        - {name: wordpress-db, expected_rc: 0}
+      register: wordpress_root_pw_env
+      changed_when: false
+      failed_when: false
+      become: true
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: MARIADB_ROOT_PASSWORD reaches only the database container
+      ansible.builtin.assert:
+        that:
+          - item.rc == item.item.expected_rc
+        fail_msg: "{{ item.item.name }}: MARIADB_ROOT_PASSWORD probe rc {{ item.rc }}, expected {{ item.item.expected_rc }}"
+        quiet: true
+      loop: "{{ wordpress_root_pw_env.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+
     - name: The cache answers
       ansible.builtin.command: podman exec wordpress-redis redis-cli ping
       become: true

@@ -10,7 +10,7 @@ Leap 16.
 ## Database
 
 `wordpress-db` runs the official mariadb image and creates `wordpress_db_name`
-and `wordpress_db_user` on first init from the credentials file. wordpress
+and `wordpress_db_user` on first init from `db.env`. wordpress
 `Requires`/`After` it, so the database unit starts first; wordpress reconnects
 until mariadb accepts connections, so a cold first boot self-heals.
 `MARIADB_AUTO_UPGRADE` runs `mariadb-upgrade` when the image is a newer major
@@ -24,7 +24,7 @@ then restart-loops the database — and `podman_backup`'s only net is a cold raw
 `/var/lib/mysql` copy a newer engine may refuse to mount. So
 `wordpress-db-dump.timer` runs `/usr/local/bin/wp-db-dump` daily: a `mariadb-dump
 --single-transaction --databases` of `wordpress_db_name`, authenticating as
-`wordpress_db_user` from the credentials file, into the `wordpress-db-dump`
+`wordpress_db_user` from `app.env`, into the `wordpress-db-dump`
 volume — never the docroot — which `podman_backup`'s restic sweep then captures
 alongside the raw datadir. The dump is engine-portable SQL;
 `docs/disaster-recovery.md` covers loading it to recover from a broken upgrade.
@@ -62,11 +62,16 @@ apply them with `wp core update`, `wp plugin update` (and so on) or through wp-a
 ## Secrets
 
 `wordpress_db_password` and `wordpress_db_root_password` are vault-sourced and
-rendered into `/etc/wordpress/wordpress.env` (`0600`, `no_log`), which the
-database and web quadlets read via `EnvironmentFile=` so the passwords never
-reach the world-readable unit files. Left empty, the stack stays uninitialised. MariaDB
-sets the passwords only on first init — rotating one means an in-container
-`ALTER USER` or resetting the `wordpress-db` volume.
+rendered into two `0600`, `no_log` files under `/etc/wordpress`: `db.env` carries
+every `MARIADB_*` value (root password included) and is read only by the
+`wordpress-db` quadlet, while `app.env` carries the `WORDPRESS_DB_*` creds the web
+container, the `wp` cli, and the dump authenticate with.
+Both are read via `EnvironmentFile=`/`--env-file`, so no password reaches a
+world-readable unit file, and the split keeps `MARIADB_ROOT_PASSWORD` out of the
+web container's environment — a webshell there can't read it. Left empty, the
+stack stays uninitialised. MariaDB sets the passwords only on first init —
+rotating one means an in-container `ALTER USER` or resetting the `wordpress-db`
+volume.
 
 ## Object cache
 

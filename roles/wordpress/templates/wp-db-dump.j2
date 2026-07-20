@@ -22,13 +22,14 @@ done
 # racing the timer's catch-up) so they can't interleave on the shared temp file.
 # The inner shell writes a consistent single-transaction dump to that temp file
 # and renames it over the last good one only on success (set -e), so a failed run
-# leaves the previous dump intact. Credentials come from the same 0600 env file
-# the quadlets read; MYSQL_PWD keeps the password off the dump command line.
-# The $MARIADB_* refs are single-quoted for the inner sh -ec to expand, not here.
+# leaves the previous dump intact. It authenticates as the non-root app user from
+# the same 0600 app.env the web quadlet reads; MYSQL_PWD keeps the password off
+# the dump command line.
+# The $WORDPRESS_DB_* refs are single-quoted for the inner sh -ec to expand, not here.
 # shellcheck disable=SC2016
 exec flock /run/wp-db-dump.lock podman run --rm \
-	--env-file /etc/wordpress/wordpress.env \
+	--env-file /etc/wordpress/app.env \
 	--network caddy \
 	--volume wordpress-db-dump:/dump \
 	{{ wordpress_db_image }} \
-	sh -ec 'MYSQL_PWD="$MARIADB_PASSWORD" mariadb-dump --single-transaction -h wordpress-db -u "$MARIADB_USER" --databases "$MARIADB_DATABASE" >/dump/wordpress.sql.tmp && mv /dump/wordpress.sql.tmp /dump/wordpress.sql'
+	sh -ec 'MYSQL_PWD="$WORDPRESS_DB_PASSWORD" mariadb-dump --single-transaction -h wordpress-db -u "$WORDPRESS_DB_USER" --databases "$WORDPRESS_DB_NAME" >/dump/wordpress.sql.tmp && mv /dump/wordpress.sql.tmp /dump/wordpress.sql'
