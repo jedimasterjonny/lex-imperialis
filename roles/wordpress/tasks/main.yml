@@ -41,20 +41,43 @@
   become: true
   notify: Restart wordpress
 
-# Both quadlets read the database credentials via EnvironmentFile=, so the
-# passwords never land in the world-readable unit files.
-- name: Deploy the database credentials
+# Split into two EnvironmentFiles so the database root password reaches only the
+# database container: db.env (every MARIADB_*, root included) is read by
+# wordpress-db alone, while app.env (the WORDPRESS_DB_* creds and web config) is
+# read by the web container, the wp wrapper, and the dump — all authenticating as
+# the non-root user. A webshell in the web container can no longer read
+# MARIADB_ROOT_PASSWORD from apache's environment. Both are 0600 and read via
+# EnvironmentFile=, so no password lands in a unit file.
+- name: Deploy the database container credentials
   ansible.builtin.template:
-    src: wordpress.env.j2
-    dest: /etc/wordpress/wordpress.env
+    src: db.env.j2
+    dest: /etc/wordpress/db.env
     owner: root
     group: root
     mode: "0600"
   become: true
   no_log: true
-  notify:
-    - Restart the database
-    - Restart wordpress
+  notify: Restart the database
+
+- name: Deploy the application credentials
+  ansible.builtin.template:
+    src: app.env.j2
+    dest: /etc/wordpress/app.env
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  no_log: true
+  notify: Restart wordpress
+
+# The credentials used to render into a single wordpress.env that carried the DB
+# root password into the web container's environment. Remove that now-dead file
+# so the root password isn't left behind on hosts provisioned before the split.
+- name: Remove the superseded combined credentials file
+  ansible.builtin.file:
+    path: /etc/wordpress/wordpress.env
+    state: absent
+  become: true
 
 - name: Install the database container unit
   ansible.builtin.template:

@@ -6,6 +6,6 @@
 # cannot read a 0600 wp-config and would write files with the wrong owner.
 exec podman run --rm --interactive --user 33:33 \
 	--volumes-from wordpress \
-	--env-file /etc/wordpress/wordpress.env \
+	--env-file /etc/wordpress/app.env \
 	--network caddy \
 	{{ wordpress_cli_image }} wp "$@"
