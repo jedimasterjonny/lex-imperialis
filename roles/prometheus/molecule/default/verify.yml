@@ -90,6 +90,7 @@
             | selectattr('name', 'in', ['InstanceDown', 'BlackboxExporterDown', 'ProbeDown',
                                         'ProbeSSLCertExpiringSoon',
                                         'PodmanBackupFailed', 'PodmanBackupOverdue',
+                                        'HomeBackupFailed', 'HomeBackupOverdue',
                                         'WordpressDbDumpFailed', 'WordpressDbDumpOverdue',
                                         'FilesystemSpaceLow', 'FilesystemReadOnly',
                                         'MemoryLow',
@@ -104,10 +105,10 @@
                                         'BeetsPipelineQuarantineBacklog',
                                         'PrometheusRuleEvaluationFailing',
                                         'PrometheusConfigReloadFailed', 'Watchdog'])
-            | list | length == 31
+            | list | length == 33
           - >-
             prometheus_loaded_rules.json.data.groups
-            | map(attribute='rules') | flatten | list | length == 31
+            | map(attribute='rules') | flatten | list | length == 33
         fail_msg: the loaded alert rules don't match those shipped in alerts.yml
 
     - name: Read the loaded runtime config
