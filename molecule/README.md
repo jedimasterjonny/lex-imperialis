@@ -28,7 +28,7 @@ worktree, where `.git` is a file; the make targets still pass `-c` there.
 
 Prepare stays a scenario file, like converge and verify: a scenario that needs
 one ships a `prepare.yml` in its directory — its own (`arr`, `incus`, `sshd`) or
-a symlink to the tier's (`common`, `dev`). No `base.yml` names
+a symlink to the tier's (`common`, `dev`, `motd`). No `base.yml` names
 `playbooks.prepare`: a base config sets a floor, so it would mask the scenario's
 own.
 
@@ -40,7 +40,8 @@ platform's optional `config` map as `-c key=value`, waits for
 `network-online.target`, then primes the zypper metadata cache
 (retried) to ride out the flaky Tumbleweed mirror. `prepare.yml` removes the
 image's cloud user (`opensuse`/`sles`) so `common` can claim uid 1000 for the
-owner.
+owner; `motd` symlinks it too — not for the uid, but so this shared file has a
+CI consumer, since every shared-infra change runs `motd`.
 
 ## libvirt
 
