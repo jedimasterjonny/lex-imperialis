@@ -29,6 +29,14 @@
           {
             "key": "Permissions-Policy",
             "value": "geolocation=(), camera=(), microphone=(), payment=()"
+          },
+          {
+            "key": "Content-Security-Policy",
+            "value": "default-src 'self'; script-src 'self' 'sha256-nnusg2ftNF48ua0dJjbf2VYVUEHDUrf89NAjiAU9n5E='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
           }
         ]
       },
