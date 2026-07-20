@@ -7,6 +7,11 @@ podman quadlet on the host network, exporting host metrics on
 The container runs with `--pid=host` and a read-only bind of `/` at `/host`
 (`--path.rootfs=/host`) so it reports the host, not itself.
 
+It drops every Linux capability (`DropCapability=all`) and bars privilege
+escalation (`NoNewPrivileges=true`). Host introspection reads world-readable
+`/proc`, `/sys`, and the `/host` bind and needs nothing back; the sole exception
+is `CAP_SYS_TIME`, re-added for the timex collector (see below).
+
 ## Exposure
 
 `node_exporter_listen_address` controls the bind. A public host sets it to a

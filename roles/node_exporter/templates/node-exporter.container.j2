@@ -15,6 +15,11 @@ Image={{ node_exporter_image }}
 # cadvisor makes for the podman socket).
 Network=host
 PodmanArgs=--pid=host --security-opt=label=disable
+# Drop every capability and bar privilege escalation. Host introspection reads
+# world-readable /proc, /sys, and the /host bind and needs none of the default
+# set back — only CAP_SYS_TIME, re-added below for the timex collector.
+NoNewPrivileges=true
+DropCapability=all
 # The default timex collector reads the kernel clock-sync status via adjtimex(2),
 # which the default seccomp profile gates behind CAP_SYS_TIME; grant it so
 # node_timex_sync_status is exported (feeds the ClockNotSynchronised alert).

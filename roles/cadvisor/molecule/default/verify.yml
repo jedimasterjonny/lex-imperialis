@@ -46,3 +46,17 @@
           - "('--disable_metrics=' ~ cadvisor_disable_metrics) in cadvisor_inspect.stdout"
         fail_msg: "cadvisor is not running with the role's disable_metrics list"
         quiet: true
+
+    # The checks above prove cadvisor works; they can't prove its capability set
+    # is minimal. Assert the posture directly so a regression that widens the
+    # caps or drops the restriction fails here, not silently in production.
+    # cadvisor runs as root but drops every capability, so BoundingCaps is empty.
+    - name: The cAdvisor container keeps no capabilities and bars privilege escalation
+      vars:
+        cadvisor: "{{ cadvisor_inspect.stdout | from_json | first }}"
+      ansible.builtin.assert:
+        that:
+          - "cadvisor.BoundingCaps | default([], true) | sort == []"
+          - "'no-new-privileges' in (cadvisor.HostConfig.SecurityOpt | default([], true))"
+        fail_msg: "cadvisor's capability or no-new-privileges posture has regressed"
+        quiet: true
