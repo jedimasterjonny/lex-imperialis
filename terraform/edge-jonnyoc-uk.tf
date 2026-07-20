@@ -50,3 +50,25 @@ resource "cloudflare_zone_setting" "jonnyoc_uk_min_tls_version" {
   setting_id = "min_tls_version"
   value      = "1.2"
 }
+
+# --- Security headers ---
+#
+# HSTS on the www redirect responses, which otherwise carry none. Only the
+# proxied www hostname is touched — the apex is Firebase-direct and sends its own
+# header via firebase.json. include_subdomains stays off: the zone carries an
+# unmanaged dynamic-DNS subdomain, and binding the whole tree to HTTPS-only for a
+# year is not this redirect header's call. preload stays off too — the apex it
+# would bind is not served from this edge.
+resource "cloudflare_zone_setting" "jonnyoc_uk_hsts" {
+  zone_id    = local.jonnyoc_uk_zone_id
+  setting_id = "security_header"
+  value = {
+    strict_transport_security = {
+      enabled            = true
+      max_age            = 31536000
+      include_subdomains = false
+      preload            = false
+      nosniff            = true
+    }
+  }
+}
