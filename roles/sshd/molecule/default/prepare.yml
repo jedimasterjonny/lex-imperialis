@@ -10,3 +10,11 @@
       ansible.builtin.systemd_service:
         name: sshd
         state: started
+
+    # verify probes the live daemon with the ssh client, which openSUSE splits
+    # into its own package the server image may not carry; without it the probe
+    # would silently fail rather than test the daemon.
+    - name: Install the ssh client for the verify probe
+      community.general.zypper:
+        name: openssh-clients
+        state: present
