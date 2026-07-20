@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Scheduled restic backup of {{ restic_backup_description }} into a per-host
+# repository on the astropath NFS share. restic's retention policy prunes old
+# snapshots, and a final restic check verifies repository integrity.
+{% if restic_backup_podman_volumes %}
+# Podman-volumes mode: the sources are this host's podman volume mountpoints, and
+# the quadlet container units are quiesced for a consistent snapshot and always
+# restarted (trap on EXIT).
+{% endif %}
+set -euo pipefail
+
+repo="{{ restic_backup_root }}/$(hostname)-{{ restic_backup_name }}-backup"
+keep_weekly="{{ restic_backup_keep_weekly }}"
+keep_monthly="{{ restic_backup_keep_monthly }}"
+tag="{{ restic_backup_tag }}"
+
+export RESTIC_REPOSITORY="$repo"
+# systemd runs this with no $HOME, so pin restic's cache somewhere it can find it.
+export RESTIC_CACHE_DIR=/var/cache/restic
+restic() { command restic --insecure-no-password "$@"; }
+
+# The astropath NFS mount intermittently serves a spurious ENOENT for a file that
+# exists — a lock, or the repo config — aborting a restic call mid-run. Retry each
+# call a few times to ride out the blip rather than fail the whole backup.
+retry() {
+    for _ in 1 2 3; do
+        if "$@"; then
+            return 0
+        fi
+        sleep 5
+    done
+    return 1
+}
+
+{% if restic_backup_check_read_data_weeks | int > 0 %}
+# Re-hash one deterministic 1/N slice of data packs during the integrity check to
+# catch bit-rot the metadata check misses; the n/t slice rotates by ISO week and
+# is stable across retry() — see restic_backup_check_read_data_weeks. 10# so a
+# zero-padded week parses as decimal not octal; | int so an empty or "0" opt-out
+# is falsy here rather than a rendered div-by-zero. Empty or 0 reverts to a
+# structural check only.
+check_args=(--read-data-subset="$(( 10#$(date +%V) % {{ restic_backup_check_read_data_weeks | int }} + 1 ))/{{ restic_backup_check_read_data_weeks | int }}")
+{% else %}
+check_args=()
+{% endif %}
+
+{% if restic_backup_podman_volumes %}
+# Each podman volume's mountpoint. Capturing into a variable (rather than a
+# process substitution, which would mask a failure) lets set -e abort here if
+# podman errors, instead of silently reporting an empty, successful backup.
+# raw-fenced: the Go-template mount format and bash array-length expansions below
+# would otherwise read to Jinja as tags.
+{% raw %}
+volumes="$(podman volume ls --format '{{ .Mountpoint }}')"
+sources=()
+[ -n "$volumes" ] && mapfile -t sources <<<"$volumes"
+{% endraw %}
+{% else %}
+# The configured paths to snapshot.
+sources=(
+{% for path in restic_backup_paths %}
+    {{ path | quote }}
+{% endfor %}
+)
+{% endif %}
+{% raw %}
+if ((${#sources[@]} == 0)); then
+    echo "no sources to back up"
+    exit 0
+fi
+{% endraw %}
+
+{% if restic_backup_podman_volumes %}
+# Quiesce the running quadlet container services for a consistent snapshot, and
+# restart them however the backup exits. Only .container quadlets run on the
+# fleet; .pod/.kube units would need handling here.
+{% raw %}
+units=()
+for unit_file in /etc/containers/systemd/*.container; do
+    [ -e "$unit_file" ] || continue
+    unit="$(basename "${unit_file%.container}").service"
+    if systemctl is-active --quiet "$unit"; then
+        units+=("$unit")
+    fi
+done
+
+# No || true: a unit that fails to restart fails the service, so it surfaces
+# rather than leaving a container down silently.
+restart_units() {
+    if ((${#units[@]})); then
+        systemctl start "${units[@]}"
+    fi
+}
+trap restart_units EXIT
+
+if ((${#units[@]})); then
+    systemctl stop "${units[@]}"
+fi
+{% endraw %}
+{% endif %}
+
+{% if restic_backup_excludes %}
+# Drop re-acquirable churn (caches, virtualenvs, node_modules) so it neither
+# bloats the repo nor the weekly integrity re-read. A slash-free pattern matches
+# that basename at any depth under the sources.
+exclude_args=(
+{% for pattern in restic_backup_excludes %}
+    --exclude={{ pattern | quote }}
+{% endfor %}
+)
+{% else %}
+exclude_args=()
+{% endif %}
+
+mkdir -p "$repo" "$RESTIC_CACHE_DIR"
+retry restic snapshots >/dev/null 2>&1 || retry restic init
+retry restic backup --tag "$tag" "${exclude_args[@]}" "${sources[@]}"
+retry restic forget --tag "$tag" \
+    --keep-weekly "$keep_weekly" --keep-monthly "$keep_monthly" --prune
+
+{% if restic_backup_podman_volumes %}
+# Bring the quiesced containers back up before verifying the repository: the
+# check only reads the repo, so running it post-restart holds downtime to the
+# backup window. The EXIT trap's restart is then a no-op (systemctl start is
+# idempotent).
+restart_units
+{% endif %}
+
+# Verify repository integrity so silent structural corruption on the NFS store
+# fails the service instead of lying dormant until a restore.
+retry restic check "${check_args[@]}"

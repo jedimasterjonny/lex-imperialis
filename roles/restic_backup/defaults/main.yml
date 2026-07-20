@@ -1,0 +1,63 @@
+---
+# The fleet's restic backup engine: install restic, render a per-host backup
+# script + node_exporter outcome metric, and drive them from a systemd timer,
+# ending each run in a restic check (with a rotating read-data slice) so silent
+# corruption pages instead of surfacing at restore. Consumers (podman_backup,
+# home_backup) include this role and set the vars below; see roles/restic_backup.
+
+# restic is the backup engine and its own rotation tool (restic forget --prune).
+restic_backup_package: restic
+
+# The repo lives at <root>/<hostname>-<name>-backup; the script appends the
+# hostname at run time. Default root is the astropath NFS share.
+restic_backup_root: /nfs/astropath
+
+# restic snapshot tag, used to scope both backup and forget. Defaults to the
+# name; podman_backup overrides it to preserve its existing podman-volumes tag.
+restic_backup_tag: "{{ restic_backup_name }}"
+
+# Generic mode: the absolute paths to snapshot. Ignored when
+# restic_backup_podman_volumes is true (the sources are then the podman volume
+# mountpoints, enumerated at run time).
+restic_backup_paths: []
+
+# restic --exclude patterns dropped from a path-mode backup. A pattern without a
+# slash matches that basename at any depth, so `.cache` skips every user's cache.
+# Keeps re-acquirable churn out of the repo and the weekly integrity re-read.
+restic_backup_excludes: []
+
+# Podman-volumes mode: enumerate this host's podman volumes as the sources and
+# quiesce their quadlet units around the snapshot, and install the matching
+# restore script. Off for a plain path backup.
+restic_backup_podman_volumes: false
+
+# Installed under /usr/local/sbin: root-only, like incus-image-refresh. Script
+# basenames derive from restic_backup_name (<name>-backup.sh, its metric hook,
+# and <name>-restore.sh in podman-volumes mode).
+restic_backup_script_dir: /usr/local/sbin
+
+# node_exporter textfile-collector directory the outcome metric is written to
+# (<name>-backup.prom). Must match the node_exporter role's
+# node_exporter_textfile_directory so Prometheus scrapes what this writes.
+restic_backup_textfile_dir: /var/lib/node_exporter/textfile_collector
+
+# restic retention: weeks then months of history kept, older snapshots pruned.
+restic_backup_keep_weekly: 8
+restic_backup_keep_monthly: 6
+
+# Weeks over which restic check re-hashes the whole repo: each run reads one
+# deterministic 1/N slice of packs (restic's n/t subset, by pack ID) and the
+# slice rotates by ISO week, so every pack is re-read roughly every N runs — a
+# little longer across the ISO-week year reset (keep N <= 52, or a bucket is
+# never selected in a 52-week year). n/t is stable across retry()'s reattempts —
+# a real fault fails all three and pages, an NFS blip clears — where a random
+# --read-data-subset percentage is reselected each attempt and slips past. Empty
+# or 0 reverts to a metadata-only check, sparing the flaky astropath NFS mount
+# any data re-read.
+restic_backup_check_read_data_weeks: 10
+
+# Consumers MUST also set (no default — one per backup instance):
+#   restic_backup_name         short identity: repo suffix, unit and script
+#                              names, and metric names all derive from it.
+#   restic_backup_description  human phrase for the unit descriptions.
+#   restic_backup_oncalendar   systemd OnCalendar for the timer.

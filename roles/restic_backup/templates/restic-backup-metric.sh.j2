@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# systemd ExecStopPost hook for {{ restic_backup_name }}-backup.service: record
+# the run's outcome as a node_exporter textfile metric so Prometheus can alert on
+# a failed or overdue backup. systemd sets SERVICE_RESULT to "success" iff
+# ExecStart exited 0.
+set -euo pipefail
+
+dir="{{ restic_backup_textfile_dir }}"
+success=0
+[ "${SERVICE_RESULT:-}" = success ] && success=1
+
+mkdir -p "$dir"
+# Publish atomically: write a temp file the exporter's *.prom glob ignores, then
+# rename it over the target so no scrape reads a half-written file. 0644 so the
+# exporter's unprivileged user can read it.
+tmp="$(mktemp "$dir/.{{ restic_backup_name }}-backup.prom.XXXXXX")"
+cat >"$tmp" <<EOF
+# HELP {{ restic_backup_name }}_backup_success Whether the last {{ restic_backup_name }} backup run succeeded (1) or failed (0).
+# TYPE {{ restic_backup_name }}_backup_success gauge
+{{ restic_backup_name }}_backup_success $success
+# HELP {{ restic_backup_name }}_backup_last_run_timestamp_seconds Unix time the last {{ restic_backup_name }} backup run finished.
+# TYPE {{ restic_backup_name }}_backup_last_run_timestamp_seconds gauge
+{{ restic_backup_name }}_backup_last_run_timestamp_seconds $(date +%s)
+EOF
+chmod 0644 "$tmp"
+mv "$tmp" "$dir/{{ restic_backup_name }}-backup.prom"

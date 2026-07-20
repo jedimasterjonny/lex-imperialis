@@ -1,0 +1,184 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  vars:
+    # Matches restic_backup_root in converge.yml and the engine defaults.
+    restic_backup_repo_root: /var/tmp/backup
+    restic_backup_textfile_dir: /var/lib/node_exporter/textfile_collector
+    restic_backup_script: /usr/local/sbin/probe-backup.sh
+    restic_backup_metric_script: /usr/local/sbin/probe-backup-metric.sh
+    restic_backup_probe_content: "lex-imperialis restic backup probe\n"
+  tasks:
+    - name: Confirm restic is installed and runnable
+      ansible.builtin.command: restic version
+      register: restic_backup_restic
+      changed_when: false
+
+    - name: Stat the backup script
+      ansible.builtin.stat:
+        path: "{{ restic_backup_script }}"
+      register: restic_backup_script_stat
+
+    - name: The backup script is installed and executable
+      ansible.builtin.assert:
+        that:
+          - restic_backup_script_stat.stat.exists
+          - restic_backup_script_stat.stat.executable
+        fail_msg: "{{ restic_backup_script }} is missing or not executable"
+        quiet: true
+
+    # Generic mode installs no restore script — that is podman-volumes only.
+    - name: Stat the restore script
+      ansible.builtin.stat:
+        path: /usr/local/sbin/probe-restore.sh
+      register: restic_backup_restore_stat
+
+    - name: Generic mode installs no restore script
+      ansible.builtin.assert:
+        that:
+          - not restic_backup_restore_stat.stat.exists
+        fail_msg: "a path backup should not install a restore script"
+        quiet: true
+
+    # daemon_reload is a no-op that just makes the module gather and return the
+    # timer's systemctl-show properties to assert against; it reads, not mutates.
+    - name: Read the backup timer's state
+      ansible.builtin.systemd_service:
+        name: probe-backup.timer
+        daemon_reload: true
+      register: restic_backup_timer
+      become: true
+
+    - name: The timer is enabled and fires at 02:00 on Thursdays
+      ansible.builtin.assert:
+        that:
+          - restic_backup_timer.status.ActiveState == 'active'
+          - restic_backup_timer.status.UnitFileState == 'enabled'
+          - "'Thu' in restic_backup_timer.status.TimersCalendar"
+          - "'02:00:00' in restic_backup_timer.status.TimersCalendar"
+        fail_msg: "the backup timer is not enabled for Thu 02:00"
+        quiet: true
+
+    # The script derives the repo from $(hostname); match it the same way.
+    - name: Determine the host's repo path
+      ansible.builtin.command: hostname
+      register: restic_backup_hostname
+      changed_when: false
+
+    - name: Set the repo path
+      ansible.builtin.set_fact:
+        restic_backup_repo: "{{ restic_backup_repo_root }}/{{ restic_backup_hostname.stdout }}-probe-backup"
+
+    # Starting a oneshot unit blocks until it exits, so success means the backup
+    # ran clean.
+    - name: Fire the backup service
+      ansible.builtin.systemd_service:
+        name: probe-backup.service
+        state: started
+      become: true
+
+    - name: Restore the latest snapshot to a scratch directory
+      ansible.builtin.command: "restic --insecure-no-password --repo {{ restic_backup_repo }} restore latest --target /var/tmp/restore"
+      changed_when: false
+      become: true
+
+    - name: Read the probe file back from the restore
+      ansible.builtin.slurp:
+        src: /var/tmp/restore/var/tmp/probe-src/probe.txt
+      register: restic_backup_restored
+      become: true
+
+    - name: The probe data round-trips through restic
+      ansible.builtin.assert:
+        that:
+          - (restic_backup_restored.content | b64decode) == restic_backup_probe_content
+        fail_msg: "the probe data did not round-trip through the backup"
+        quiet: true
+
+    # The successful run above triggered ExecStopPost, which should have recorded
+    # the outcome metric node_exporter scrapes.
+    - name: Read the outcome metric after the successful run
+      ansible.builtin.slurp:
+        src: "{{ restic_backup_textfile_dir }}/probe-backup.prom"
+      register: restic_backup_metric_ok
+      become: true
+
+    - name: A successful run records probe_backup_success 1
+      ansible.builtin.assert:
+        that:
+          - "'probe_backup_success 1' in (restic_backup_metric_ok.content | b64decode)"
+          - "'probe_backup_last_run_timestamp_seconds ' in (restic_backup_metric_ok.content | b64decode)"
+        fail_msg: "the outcome metric did not report a successful run"
+        quiet: true
+
+    # Drive the writer the way systemd would on a failed run; ExecStart failure
+    # can't be forced in a container, so invoke the hook with SERVICE_RESULT set.
+    - name: Simulate a failed run's ExecStopPost
+      ansible.builtin.command: "{{ restic_backup_metric_script }}"
+      environment:
+        SERVICE_RESULT: exit-code
+      changed_when: false
+      become: true
+
+    - name: Read the outcome metric after the simulated failure
+      ansible.builtin.slurp:
+        src: "{{ restic_backup_textfile_dir }}/probe-backup.prom"
+      register: restic_backup_metric_fail
+      become: true
+
+    - name: A failed run records probe_backup_success 0
+      ansible.builtin.assert:
+        that:
+          - "'probe_backup_success 0' in (restic_backup_metric_fail.content | b64decode)"
+        fail_msg: "the outcome metric did not report a failed run"
+        quiet: true
+
+    # Assert the integrity check is wired into the installed script, then that the
+    # role's invocation is a real gate, not a no-op: the same check must reject a
+    # repo whose data is gone. Corrupt a copy, not the live repo, so a standalone
+    # `make verify` re-run still starts sound.
+    - name: Read the installed backup script
+      ansible.builtin.slurp:
+        src: "{{ restic_backup_script }}"
+      register: restic_backup_script_content
+      become: true
+
+    - name: The backup script runs a restic check with a read-data slice
+      ansible.builtin.assert:
+        that:
+          - "'restic check' in (restic_backup_script_content.content | b64decode)"
+          - "'--read-data-subset' in (restic_backup_script_content.content | b64decode)"
+        fail_msg: "the backup script does not run restic check with a read-data slice"
+        quiet: true
+
+    - name: Discard any prior corrupt copy
+      ansible.builtin.file:
+        path: "{{ restic_backup_repo }}-corrupt"
+        state: absent
+      become: true
+
+    - name: Copy the scratch repo to corrupt in isolation
+      ansible.builtin.command: "cp -a {{ restic_backup_repo }} {{ restic_backup_repo }}-corrupt"
+      changed_when: true
+      become: true
+
+    - name: Remove the copy's data to corrupt it
+      ansible.builtin.file:
+        path: "{{ restic_backup_repo }}-corrupt/data"
+        state: absent
+      become: true
+
+    - name: Run the integrity check against the corrupt copy
+      ansible.builtin.command: "restic --insecure-no-password --repo {{ restic_backup_repo }}-corrupt check"
+      register: restic_backup_corrupt_check
+      changed_when: false
+      failed_when: false
+      become: true
+
+    - name: A corrupt repo fails the integrity check
+      ansible.builtin.assert:
+        that:
+          - restic_backup_corrupt_check.rc != 0
+        fail_msg: "restic check passed a repo with its data removed"
+        quiet: true

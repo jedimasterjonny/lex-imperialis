@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Restore this host's podman volumes from the latest restic snapshot in its
+# per-host repository on the astropath NFS share — the inverse of
+# {{ restic_backup_name }}-backup.sh, for disaster recovery
+# (docs/disaster-recovery.md). Run after the host's play has converged, so the
+# volumes exist and are registered: it quiesces the quadlet container units,
+# empties each volume, restores the snapshot over them (restic preserves
+# ownership and mode, so no chowns), and restarts the units (trap on EXIT, so
+# they return even if the restore fails).
+set -euo pipefail
+
+repo="{{ restic_backup_root }}/$(hostname)-{{ restic_backup_name }}-backup"
+tag="{{ restic_backup_tag }}"
+
+export RESTIC_REPOSITORY="$repo"
+# No $HOME under sudo/ssh, so pin restic's cache where the backup script does.
+export RESTIC_CACHE_DIR=/var/cache/restic
+restic() { command restic --insecure-no-password "$@"; }
+mkdir -p "$RESTIC_CACHE_DIR"
+
+# Fail before touching anything if there is nothing to restore, rather than
+# wiping the volumes and then discovering the repository is empty, unreachable,
+# or holds no tagged snapshot. A dry-run resolves the very snapshot the real
+# restore selects and writes nothing, so it fails closed here if none matches.
+if ! restic restore --tag "$tag" latest --target / --dry-run >/dev/null 2>&1; then
+    echo "no $tag snapshot to restore at $repo" >&2
+    exit 1
+fi
+{% raw %}
+# Each podman volume's mountpoint — the absolute paths the snapshot stored.
+volumes="$(podman volume ls --format '{{ .Mountpoint }}')"
+mounts=()
+[ -n "$volumes" ] && mapfile -t mounts <<<"$volumes"
+
+# The restore wipes live volume data, so confirm when run interactively; molecule
+# and other non-TTY callers proceed unattended.
+if [ -t 0 ]; then
+    read -r -p "Restore ${#mounts[@]} podman volume(s) from $repo? [y/N] " reply
+    [ "$reply" = y ] || [ "$reply" = Y ] || { echo "aborted"; exit 1; }
+fi
+
+# Quiesce the running quadlet container services so nothing writes mid-restore,
+# and restart them however this exits. Only .container quadlets run on the fleet.
+units=()
+for unit_file in /etc/containers/systemd/*.container; do
+    [ -e "$unit_file" ] || continue
+    unit="$(basename "${unit_file%.container}").service"
+    if systemctl is-active --quiet "$unit"; then
+        units+=("$unit")
+    fi
+done
+
+restart_units() {
+    if ((${#units[@]})); then
+        systemctl start "${units[@]}"
+    fi
+}
+trap restart_units EXIT
+
+if ((${#units[@]})); then
+    systemctl stop "${units[@]}"
+fi
+
+# Empty each volume so the restore is an exact mirror, not an overlay on top of
+# the fresh data the play's first container start created. restic then writes the
+# snapshot back to the same absolute paths, restoring ownership and mode.
+for mount in "${mounts[@]}"; do
+    [ -d "$mount" ] && find "$mount" -mindepth 1 -delete
+done
+{% endraw %}
+
+restic restore --tag "$tag" latest --target /
