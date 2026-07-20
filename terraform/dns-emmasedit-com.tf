@@ -237,4 +237,10 @@ resource "cloudflare_dns_record" "emmas_caa_letsencrypt" {
 resource "cloudflare_zone_dnssec" "emmasedit_com" {
   zone_id = local.emmasedit_com_zone_id
   status  = "active"
+
+  # Guard the signed zone: an accidental DNSSEC-disable while the DS sits in the
+  # parent registry is a SERVFAIL outage. Matches infra-shared.tf's WIF guards.
+  lifecycle {
+    prevent_destroy = true
+  }
 }
