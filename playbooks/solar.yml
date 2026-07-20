@@ -80,6 +80,7 @@
     - homepage
     - arr
     - podman_backup
+    - home_backup
     - node_exporter
     - cadvisor
     - alertmanager

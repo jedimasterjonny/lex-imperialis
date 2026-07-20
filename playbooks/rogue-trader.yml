@@ -45,6 +45,10 @@
     node_exporter_after: wg-quick@wg0.service
     cadvisor_listen_ip: 192.168.3.3
     cadvisor_after: wg-quick@wg0.service
+    # Home backup after solar (Thu 01:00) and scholam (Thu 02:00), before the
+    # off-site mirror (Thu 04:00). rogue-trader already mounts astropath for
+    # podman_backup, so no extra NFS setup is needed.
+    home_backup_oncalendar: "Thu *-*-* 03:00:00"
     firewalld_rich_rules:
       # SSH reaches the box only over the tunnel (LAN source), so scope it to the
       # LAN subnet rather than opening 22 on the public interface.
@@ -67,5 +71,6 @@
     - caddy
     - wordpress
     - podman_backup
+    - home_backup
     - node_exporter
     - cadvisor
