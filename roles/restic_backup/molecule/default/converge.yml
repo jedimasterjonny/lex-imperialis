@@ -1,0 +1,35 @@
+---
+- name: Converge
+  hosts: all
+  vars:
+    # Exercise the engine in generic (path) mode: a probe identity backing up a
+    # seeded source directory. The podman_backup consumer's scenario covers
+    # podman-volumes mode.
+    restic_backup_name: probe
+    restic_backup_description: a probe directory
+    restic_backup_oncalendar: "Thu *-*-* 02:00:00"
+    # Local stand-in for the astropath NFS share — mounting it is the nfs role's
+    # job, not this role's.
+    restic_backup_root: /var/tmp/backup
+    restic_backup_paths:
+      - /var/tmp/probe-src
+  pre_tasks:
+    - name: Create the probe source directory
+      ansible.builtin.file:
+        path: /var/tmp/probe-src
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      become: true
+
+    - name: Seed the probe source with data
+      ansible.builtin.copy:
+        content: "lex-imperialis restic backup probe\n"
+        dest: /var/tmp/probe-src/probe.txt
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+  roles:
+    - role: restic_backup

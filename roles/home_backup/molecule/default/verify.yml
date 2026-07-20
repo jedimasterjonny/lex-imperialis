@@ -1,0 +1,61 @@
+---
+# home_backup is a thin consumer of the restic_backup engine in generic (path)
+# mode, so this scenario proves only the consumer's own wiring — the engine's
+# default scenario already covers the restore round-trip, the outcome metric, and
+# the restic check gate for path mode.
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Stat the backup script
+      ansible.builtin.stat:
+        path: /usr/local/sbin/home-backup.sh
+      register: home_backup_script_stat
+
+    - name: The home-backup script is installed and executable
+      ansible.builtin.assert:
+        that:
+          - home_backup_script_stat.stat.exists
+          - home_backup_script_stat.stat.executable
+        fail_msg: "/usr/local/sbin/home-backup.sh is missing or not executable"
+        quiet: true
+
+    - name: Read the installed backup script
+      ansible.builtin.slurp:
+        src: /usr/local/sbin/home-backup.sh
+      register: home_backup_script_content
+      become: true
+
+    - name: The script snapshots /home
+      ansible.builtin.assert:
+        that:
+          - "'/home' in (home_backup_script_content.content | b64decode)"
+        fail_msg: "the home backup script does not snapshot /home"
+        quiet: true
+
+    # daemon_reload is a no-op that just makes the module gather and return the
+    # timer's systemctl-show properties to assert against; it reads, not mutates.
+    - name: Read the backup timer's state
+      ansible.builtin.systemd_service:
+        name: home-backup.timer
+        daemon_reload: true
+      register: home_backup_timer
+      become: true
+
+    - name: The timer is enabled and fires at 01:00 on Thursdays
+      ansible.builtin.assert:
+        that:
+          - home_backup_timer.status.ActiveState == 'active'
+          - home_backup_timer.status.UnitFileState == 'enabled'
+          - "'Thu' in home_backup_timer.status.TimersCalendar"
+          - "'01:00:00' in home_backup_timer.status.TimersCalendar"
+        fail_msg: "the backup timer is not enabled for Thu 01:00"
+        quiet: true
+
+    # Starting the oneshot blocks until it exits, so a clean start proves the
+    # engine backs up /home end to end for this consumer's wiring.
+    - name: Fire the backup service
+      ansible.builtin.systemd_service:
+        name: home-backup.service
+        state: started
+      become: true

@@ -2,11 +2,16 @@
 - name: Verify
   hosts: all
   gather_facts: false
-  vars_files:
-    - ../../defaults/main.yml
   vars:
-    # Matches podman_backup_root in converge.yml.
+    # Matches restic_backup_root in converge.yml.
     podman_backup_repo_root: /var/tmp/backup
+    # Paths the engine derives from name=podman, asserted against here.
+    podman_backup_script: /usr/local/sbin/podman-backup.sh
+    podman_backup_restore_script: /usr/local/sbin/podman-restore.sh
+    podman_backup_metric_script: /usr/local/sbin/podman-backup-metric.sh
+    # The engine's default textfile dir (podman_backup inherits it); the outcome
+    # metric lands here.
+    podman_backup_textfile_dir: /var/lib/node_exporter/textfile_collector
     podman_backup_probe_content: "lex-imperialis podman backup probe\n"
   tasks:
     - name: Confirm restic is installed and runnable

@@ -1,0 +1,7 @@
+---
+platforms:
+  # Incus rejects underscores in instance names, so the label is hyphenated even
+  # though the role is restic_backup. Generic (path) mode needs no podman, so no
+  # nested-container config — unlike the podman_backup consumer's scenario.
+  - name: "lex-restic-backup-incus-${MOLECULE_RUN_ID:-local}"
+    image: images:opensuse/tumbleweed/cloud

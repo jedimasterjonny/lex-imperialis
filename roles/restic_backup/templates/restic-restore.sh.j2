@@ -2,14 +2,16 @@
 # {{ ansible_managed }}
 # Restore this host's podman volumes from the latest restic snapshot in its
 # per-host repository on the astropath NFS share — the inverse of
-# podman-backup.sh, for disaster recovery (docs/disaster-recovery.md). Run after
-# the host's play has converged, so the volumes exist and are registered: it
-# quiesces the quadlet container units, empties each volume, restores the
-# snapshot over them (restic preserves ownership and mode, so no chowns), and
-# restarts the units (trap on EXIT, so they return even if the restore fails).
+# {{ restic_backup_name }}-backup.sh, for disaster recovery
+# (docs/disaster-recovery.md). Run after the host's play has converged, so the
+# volumes exist and are registered: it quiesces the quadlet container units,
+# empties each volume, restores the snapshot over them (restic preserves
+# ownership and mode, so no chowns), and restarts the units (trap on EXIT, so
+# they return even if the restore fails).
 set -euo pipefail
 
-repo="{{ podman_backup_root }}/$(hostname)-podman-backup"
+repo="{{ restic_backup_root }}/$(hostname)-{{ restic_backup_name }}-backup"
+tag="{{ restic_backup_tag }}"
 
 export RESTIC_REPOSITORY="$repo"
 # No $HOME under sudo/ssh, so pin restic's cache where the backup script does.
@@ -21,8 +23,8 @@ mkdir -p "$RESTIC_CACHE_DIR"
 # wiping the volumes and then discovering the repository is empty, unreachable,
 # or holds no tagged snapshot. A dry-run resolves the very snapshot the real
 # restore selects and writes nothing, so it fails closed here if none matches.
-if ! restic restore --tag podman-volumes latest --target / --dry-run >/dev/null 2>&1; then
-    echo "no podman-volumes snapshot to restore at $repo" >&2
+if ! restic restore --tag "$tag" latest --target / --dry-run >/dev/null 2>&1; then
+    echo "no $tag snapshot to restore at $repo" >&2
     exit 1
 fi
 {% raw %}
@@ -66,6 +68,6 @@ fi
 for mount in "${mounts[@]}"; do
     [ -d "$mount" ] && find "$mount" -mindepth 1 -delete
 done
-
-restic restore --tag podman-volumes latest --target /
 {% endraw %}
+
+restic restore --tag "$tag" latest --target /

@@ -81,8 +81,9 @@ accepts, for 5m) and
 non-zero expiry so a probe that measured no cert doesn't trip it), the latter two
 off the `blackbox` probe job; the `backups` group — the `podman_backup` pair
 `PodmanBackupFailed` (`podman_backup_success == 0`) and `PodmanBackupOverdue` (the
-last-run timestamp gone stale) plus the matching `wordpress` db-dump pair
-`WordpressDbDumpFailed` / `WordpressDbDumpOverdue`; the `filesystem` group —
+last-run timestamp gone stale), the matching `home_backup` pair `HomeBackupFailed`
+/ `HomeBackupOverdue`, plus the `wordpress` db-dump pair `WordpressDbDumpFailed` /
+`WordpressDbDumpOverdue`; the `filesystem` group —
 `FilesystemSpaceLow` (a node_exporter filesystem under 10% free for 15m) and
 `FilesystemReadOnly` (one the kernel remounted read-only after an I/O error — the
 host stays up and probes stay green while every write fails. node_exporter hosts

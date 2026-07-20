@@ -1,0 +1,10 @@
+---
+- name: Converge
+  hosts: all
+  vars:
+    # Local stand-in for the astropath NFS share — mounting it is the nfs role's
+    # job, not this role's. Set on the engine directly (home_backup inherits the
+    # root default rather than passing it through).
+    restic_backup_root: /var/tmp/backup
+  roles:
+    - role: home_backup

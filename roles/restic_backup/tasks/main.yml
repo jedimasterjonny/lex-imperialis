@@ -1,0 +1,70 @@
+---
+# A path-mode backup with no paths would render an empty sources list, which the
+# script treats as a legitimate no-op (podman-volumes mode reaches it when a host
+# has no volumes) and exits 0 — silently backing up nothing while the metric
+# reports success. Fail at converge instead.
+- name: A path-mode backup must configure at least one source path
+  ansible.builtin.assert:
+    that:
+      - restic_backup_podman_volumes or (restic_backup_paths | length > 0)
+    fail_msg: >-
+      restic_backup_paths is empty and restic_backup_podman_volumes is false —
+      nothing would be backed up.
+    quiet: true
+
+- name: Install restic
+  community.general.zypper:
+    name: "{{ restic_backup_package }}"
+    state: present
+  become: true
+
+- name: Install the backup and metric scripts
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - src: restic-backup.sh.j2
+      dest: "{{ restic_backup_script_dir }}/{{ restic_backup_name }}-backup.sh"
+    - src: restic-backup-metric.sh.j2
+      dest: "{{ restic_backup_script_dir }}/{{ restic_backup_name }}-backup-metric.sh"
+  become: true
+
+# The restore script — the inverse of the backup, for disaster recovery — only
+# makes sense for podman volumes (it quiesces quadlets and wipes each volume
+# before restoring); a plain path backup restores by hand with restic restore.
+- name: Install the restore script
+  ansible.builtin.template:
+    src: restic-restore.sh.j2
+    dest: "{{ restic_backup_script_dir }}/{{ restic_backup_name }}-restore.sh"
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  when: restic_backup_podman_volumes
+
+- name: Install the backup service and timer
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "/etc/systemd/system/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - src: restic-backup.service.j2
+      dest: "{{ restic_backup_name }}-backup.service"
+    - src: restic-backup.timer.j2
+      dest: "{{ restic_backup_name }}-backup.timer"
+  become: true
+
+# daemon_reload picks up unit changes before enabling; it does not itself report
+# changed, so the task stays idempotent.
+- name: Enable and start the backup timer
+  ansible.builtin.systemd_service:
+    name: "{{ restic_backup_name }}-backup.timer"
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true

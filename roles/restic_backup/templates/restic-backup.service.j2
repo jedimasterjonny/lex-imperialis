@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Back up {{ restic_backup_description }} to the astropath NFS share
+# Orders after the _netdev NFS mount (which already waits on the network), and
+# pulls it in if absent.
+RequiresMountsFor={{ restic_backup_root }}
+
+[Service]
+Type=oneshot
+ExecStart={{ restic_backup_script_dir }}/{{ restic_backup_name }}-backup.sh
+# Runs whether ExecStart succeeded or failed, reading $SERVICE_RESULT to record
+# the outcome as a node_exporter metric.
+ExecStopPost={{ restic_backup_script_dir }}/{{ restic_backup_name }}-backup-metric.sh

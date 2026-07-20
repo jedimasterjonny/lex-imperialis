@@ -1,0 +1,14 @@
+---
+# home_backup is a thin consumer of the restic_backup engine in generic (path)
+# mode: it backs up the host's home directories. The engine owns restic, the
+# backup/metric scripts, and the service and timer, and supplies the retention,
+# check-cadence, root, and textfile-dir defaults.
+- name: Back up the home directories with restic
+  ansible.builtin.include_role:
+    name: restic_backup
+  vars:
+    restic_backup_name: home
+    restic_backup_description: home directories
+    restic_backup_paths: "{{ home_backup_paths }}"
+    restic_backup_excludes: "{{ home_backup_excludes }}"
+    restic_backup_oncalendar: "{{ home_backup_oncalendar }}"

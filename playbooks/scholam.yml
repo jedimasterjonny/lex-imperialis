@@ -16,10 +16,19 @@
     # have taken the week's snapshots, so a brick surfaces before scholam reboots.
     autoupdate_oncalendar: "Fri *-*-* 03:00:00"
     # NFS exports from the NAS (administratum), each mounted at /nfs/<name>.
+    # astropath is the home_backup restic target; the NAS must export it to this
+    # host (it already exports it to solar and rogue-trader).
     nfs_shares:
       - name: scriptorum
         server: administratum
         export: /volume1/scriptorum
+      - name: astropath
+        server: administratum
+        export: /volume2/astropath
+    # An hour after solar's home backup (the role default, Thu 01:00), so the two
+    # hosts don't snapshot to the same astropath export at once and contend on the
+    # mount that already blips under load (the engine's retry() exists for that).
+    home_backup_oncalendar: "Thu *-*-* 02:00:00"
     # node_exporter, scraped by Prometheus on administratum over the LAN.
     firewalld_ports:
       - 9100/tcp
@@ -36,5 +45,6 @@
     - incus
     - libvirt
     - dev
+    - home_backup
     - node_exporter
     - gitops_reconcile
