@@ -10,6 +10,13 @@ a broken policy never lands.
 
 Also sets each host's hostname from the required `common_hostname`.
 
+Sets the SELinux mode from `common_selinux_mode` (default `enforcing`) via
+`ansible.posix.selinux`, so the fleet's mode is config-as-code rather than the OS
+default: a no-op on the Tumbleweed hosts (already enforcing), it flips the Leap
+host that defaults permissive — a live `permissive`→`enforcing` transition, so no
+reboot. Gated on `ansible_selinux.status == 'enabled'`, so the SELinux-less
+molecule containers skip it.
+
 `common_blacklisted_modules` bars kernel modules via
 `/etc/modprobe.d/common-blacklist.conf` — `blacklist` plus `install
 <module> /bin/false` — and unloads any already live rather than leaving

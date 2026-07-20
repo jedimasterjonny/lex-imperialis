@@ -13,6 +13,12 @@ common_user_shell: /bin/bash
 common_user_comment: "Jonny O'Connell"
 common_user_home: "/home/{{ common_user_name }}"
 
+# SELinux mode for every host, declared rather than left to the OS default.
+# enforcing no-ops where the OS already enforces (Tumbleweed) and flips the hosts
+# defaulting permissive (Leap). Applied only where SELinux is manageable, so the
+# molecule containers (no SELinux) skip it.
+common_selinux_mode: enforcing
+
 # Kernel modules barred from loading, in unload order — a holder must be listed
 # before the module it holds.
 common_blacklisted_modules: []
