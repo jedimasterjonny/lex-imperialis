@@ -35,4 +35,10 @@ resource "hcloud_firewall" "vpc" {
   apply_to {
     server = data.hcloud_server.rogue_trader.id
   }
+
+  # Guard the origin firewall: destroying it exposes the origin's 80/443 to the
+  # whole internet, defeating the origin-hiding posture. Matches infra-shared.tf.
+  lifecycle {
+    prevent_destroy = true
+  }
 }

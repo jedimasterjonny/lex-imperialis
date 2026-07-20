@@ -51,3 +51,22 @@ resource "cloudflare_zone_setting" "couk_min_tls_version" {
   setting_id = "min_tls_version"
   value      = "1.2"
 }
+
+# --- Security headers ---
+#
+# HSTS on the redirect responses, which otherwise carry none. include_subdomains
+# is safe — the only browser-reachable hosts are the proxied apex and www
+# redirects; preload stays off, as this is a redirect-only zone.
+resource "cloudflare_zone_setting" "couk_hsts" {
+  zone_id    = local.jonnyoc_co_uk_zone_id
+  setting_id = "security_header"
+  value = {
+    strict_transport_security = {
+      enabled            = true
+      max_age            = 31536000
+      include_subdomains = true
+      preload            = false
+      nosniff            = true
+    }
+  }
+}

@@ -52,7 +52,7 @@ the `cloud` block). The tokens come from the vault — no `tofu login` needed:
 
 The Google provider reads credentials by execution context: locally it uses your
 own Application Default Credentials — run `gcloud auth application-default login`
-as `me@jonnyoc.uk` once (the account holds org-level owner); in CI it reads
+once with an org-owner account; in CI it reads
 short-lived credentials from WIF — the read-only `tofu-plan` SA on a PR, the
 write `tofu-apply` SA on a merge (see `infra-shared.tf`) — so no key ever leaves
 GCP. A from-zero rebuild has a bootstrap wrinkle: `user_project_override` +

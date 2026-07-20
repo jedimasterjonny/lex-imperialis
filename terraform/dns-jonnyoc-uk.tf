@@ -132,4 +132,10 @@ resource "cloudflare_dns_record" "caa_letsencrypt" {
 resource "cloudflare_zone_dnssec" "jonnyoc_uk" {
   zone_id = local.jonnyoc_uk_zone_id
   status  = "active"
+
+  # Guard the signed zone: an accidental DNSSEC-disable while the DS sits in the
+  # parent registry is a SERVFAIL outage. Matches infra-shared.tf's WIF guards.
+  lifecycle {
+    prevent_destroy = true
+  }
 }
