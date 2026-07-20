@@ -10,6 +10,11 @@ machine stats rather than only its own. The role enables `podman.socket` and
 mounts it read-only so cadvisor's native podman factory labels containers by
 `name` and `image`; without it containers show only as cgroup ids.
 
+It drops every Linux capability (`DropCapability=all`) and bars privilege
+escalation (`NoNewPrivileges=true`). Reading cgroup and machine stats through the
+world-readable `/sys` and `/rootfs` binds and dialling the root-owned podman
+socket as root needs no capability back.
+
 `--security-opt=label=disable` lifts SELinux `container_t` confinement. On an
 enforcing host it otherwise denies the inotify watch on `/sys/fs/cgroup` (which
 crashes cadvisor) and the write to the podman socket. A non-enforcing host (e.g.

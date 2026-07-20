@@ -22,6 +22,11 @@ Image={{ cadvisor_image }}
 # shipping a bespoke policy module.
 Network=host
 PodmanArgs=--cgroupns=host --security-opt=label=disable
+# Drop every capability and bar privilege escalation. cadvisor reads cgroup and
+# machine stats through the world-readable /sys and /rootfs binds and dials the
+# root-owned podman socket as root, so it needs no capability back.
+NoNewPrivileges=true
+DropCapability=all
 Volume=/:/rootfs:ro,rslave
 Volume=/sys:/sys:ro
 Volume=/run/podman/podman.sock:/var/run/podman/podman.sock:ro
