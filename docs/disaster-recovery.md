@@ -28,17 +28,23 @@ holds every podman named volume — so all container state (databases, app confi
 Plex library and history, the WordPress site) travels in it. Media on the NFS
 shares is not in the repo; it lives on the NAS and is the NAS's own concern.
 
-`scholam`'s only podman workload is `node_exporter`, which is stateless, so it
-has no repo — its state is the repo plus `.vault_pass`. `administratum` (the NAS)
-is the backup *target*; its DR is DSM's job (see below).
+`home_backup` runs on `solar`, `scholam`, and `rogue-trader`, writing a per-host
+restic repo to `/nfs/astropath/<hostname>-home-backup` holding that host's `/home`.
+It shares the `restic_backup` engine with `podman_backup`, and both sets of repos
+sit under `astropath`.
 
-**Off-site copy:** two Synology Hyper Backup tasks mirror the on-NAS backups off-site
-to a Hetzner storage box over rsync, each a plain mirror (latest state only, no
-version history): the `*-podman-backup` restic repos weekly (Wednesday 02:00, an
-hour after the restic run), and the `/scriptorum/photos` library daily (03:00). A
-failed run alerts by email, so a stalled copy surfaces rather than drifting
-unnoticed. A lost NAS is recoverable from it — see
-[administratum](#administratum-nas).
+`scholam`'s only podman workload is `node_exporter`, which is stateless, so it has
+no podman repo; its recoverable state is the git repo, `.vault_pass`, and its
+`/home` restic repo. `administratum` (the NAS) is the backup *target*; its DR is
+DSM's job (see below).
+
+**Off-site copy:** three Synology Hyper Backup tasks mirror the on-NAS backups
+off-site to a Hetzner storage box over rsync, each a plain true mirror (latest
+state only, no version history): the `*-podman-backup` repos on Wednesday 02:00,
+the `*-home-backup` repos on Thursday 04:00, and the `/scriptorum/photos` library
+on Tuesday 03:00 — each an hour or more after the run it copies. A failed run
+alerts by email, so a stalled copy surfaces rather than drifting unnoticed. A lost
+NAS is recoverable from it — see [administratum](#administratum-nas).
 
 ## solar (and any openSUSE podman host)
 
@@ -67,6 +73,10 @@ unnoticed. A lost NAS is recoverable from it — see
    before touching anything if the repo holds no snapshot to restore. The
    freshly-initialised data from step 3's first start is replaced wholesale, so
    no app-level reconciliation is needed — the volumes return as last backed up.
+
+5. `solar` also carries a `solar-home-backup` repo. If its `/home` is wanted back,
+   restore it by hand as in [scholam](#scholam-control-host) step 5 (restic to a
+   scratch target — path mode ships no restore script).
 
 ## rogue-trader (Hetzner VM)
 
@@ -119,11 +129,16 @@ is the only way in.
    sudo systemctl start wordpress
    ```
 
+6. `rogue-trader` also carries a `rogue-trader-home-backup` repo (its `/home` is
+   minimal — service-account skeletons only); restore it by hand as in
+   [scholam](#scholam-control-host) step 5 if wanted.
+
 ## scholam (control host)
 
 `scholam` is `this_host`: it manages itself, and its only podman workload
-(`node_exporter`) is stateless, so there is nothing in a restic repo to restore.
-Recovery is bootstrap plus its play, run locally.
+(`node_exporter`) is stateless, so no podman volumes need restoring — but its
+`/home` does, from the `scholam-home-backup` repo. Recovery is bootstrap plus its
+play, run locally, then the home restore.
 
 1. Reinstall openSUSE Tumbleweed (keep the hostname).
 2. As root: `bootstrap/host.sh`.
@@ -137,7 +152,17 @@ Recovery is bootstrap plus its play, run locally.
    make apply PLAY=scholam
    ```
 
-5. To make it the molecule runner again, locally on scholam:
+5. Step 4 mounted astropath, so the home repo is reachable. There is no restore
+   script (that is podman-only); restore `/home` by hand to a scratch target — so
+   it does not overwrite the workspace you are recovering from — then copy back
+   what step 3 did not already rebuild:
+
+   ```
+   restic --insecure-no-password --repo /nfs/astropath/scholam-home-backup \
+     restore latest --target /var/tmp/home-restore
+   ```
+
+6. To make it the molecule runner again, locally on scholam:
    `ansible-playbook bootstrap/incus.yml --ask-become-pass`.
 
 ## administratum (NAS)
@@ -155,12 +180,14 @@ redeploy the compose projects:
 make apply PLAY=administratum
 ```
 
-The `*-podman-backup` restic repos and the `/scriptorum/photos` library are also
-mirrored off-site to a Hetzner storage box by two Synology Hyper Backup tasks (the
-repos weekly on Wednesday 02:00, the photos daily at 03:00). After rebuilding the
-NAS, restore those tasks' sets to return the repos to `/volume2/astropath/` and the
-photo library to its share; solar's and rogue-trader's podman volumes can then be
-restored as normal.
+The `*-podman-backup` and `*-home-backup` restic repos and the `/scriptorum/photos`
+library are also mirrored off-site to a Hetzner storage box by three Synology Hyper
+Backup tasks (podman Wednesday 02:00, home Thursday 04:00, photos Tuesday 03:00).
+After rebuilding the NAS, restore those tasks' sets to return the repos to
+`/volume2/astropath/` and the photo library to its share; solar's, scholam's, and
+rogue-trader's backups can then be restored as normal. The laptop's `time-machine`
+SMB share on `scriptorum` is not mirrored off-site, so it is not recovered — the
+laptop simply resumes Time Machine onto the rebuilt share.
 
 ## Branch protection
 
