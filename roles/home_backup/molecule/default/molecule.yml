@@ -1,0 +1,7 @@
+---
+platforms:
+  # Incus rejects underscores in instance names, so the label is hyphenated even
+  # though the role is home_backup. Path mode needs no podman, so no
+  # nested-container config.
+  - name: "lex-home-backup-incus-${MOLECULE_RUN_ID:-local}"
+    image: images:opensuse/tumbleweed/cloud

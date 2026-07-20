@@ -1,0 +1,29 @@
+---
+# home_backup drives the restic_backup engine in generic (path) mode over the
+# host's home directories. It sets only what differs from the engine defaults;
+# retention, the check cadence, the textfile dir, and the astropath root all
+# inherit from restic_backup. The repo, unit, script, and metric names derive
+# from the engine's name=home, giving <hostname>-home-backup,
+# home-backup.service/.timer, and the home_backup_success metric.
+
+# Paths to snapshot: the whole /home tree by default. No quiescing — the snapshot
+# is crash-consistent, which home directories tolerate.
+home_backup_paths:
+  - /home
+
+# Re-acquirable churn to keep out of the repo: package/tool caches, virtualenvs,
+# the VS Code remote server, node_modules. Basename patterns, matched at any depth
+# under /home. restic ships no restore of these, but they rebuild on demand.
+home_backup_excludes:
+  - .cache
+  - .npm
+  - .vscode-server
+  - .venv
+  - node_modules
+
+# Weekly, on a slot no other scheduled job uses — a day after the podman backup
+# (Wed 01:00) and its off-site mirror (Wed 02:00), so the two restic runs never
+# contend for the NFS mount. This is solar's slot; scholam's play staggers to
+# Thu 02:00 so the two hosts don't hit the astropath export at once. Confirm
+# against the off-site home mirror when it is scheduled.
+home_backup_oncalendar: "Thu *-*-* 01:00:00"
