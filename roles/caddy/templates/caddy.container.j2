@@ -13,7 +13,10 @@ EnvironmentFile=/etc/caddy/env
 PublishPort=80:80
 PublishPort=443:443
 PublishPort=443:443/udp
-Volume=/etc/caddy:/etc/caddy:ro
+# :Z relabels the mount container_file_t on each (re)start — the path's policy
+# default (httpd_config_t) is unreadable to container_t under enforcing SELinux, and
+# an autorelabel resets it there; the recreate also re-labels snippets dropped here.
+Volume=/etc/caddy:/etc/caddy:ro,Z
 Volume=caddy-data:/data
 Volume=caddy-config:/config
 # Restart backstop against caddy's own 204 health endpoint (the localhost site in
