@@ -70,6 +70,14 @@
     },
     {
       "customType": "regex",
+      "description": "The ansible MCP server pinned in .mcp.json (npx @ansible/ansible-mcp-server@<version>); no pip/zypper package, so it follows the npm release like firebase-tools, alongside the ansible-lint/molecule pins in requirements-dev.txt.",
+      "managerFilePatterns": ["/^\\.mcp\\.json$/"],
+      "matchStrings": ["ansible-mcp-server@(?<currentValue>[^\"]+)"],
+      "depNameTemplate": "@ansible/ansible-mcp-server",
+      "datasourceTemplate": "npm"
+    },
+    {
+      "customType": "regex",
       "description": "terraform/main.tf's required_version constrains the OpenTofu CLI, but renovate's terraform manager tracks it as hashicorp/terraform (disabled in a packageRule below). Track it against opentofu/opentofu instead, matching the tofu_version CI pin; hashicorp versioning parses the ~> range.",
       "managerFilePatterns": ["/^terraform/main\\.tf$/"],
       "matchStrings": ["required_version\\s*=\\s*\"(?<currentValue>[^\"]+)\""],
