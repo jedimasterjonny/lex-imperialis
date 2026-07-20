@@ -44,6 +44,18 @@
     - not ansible_check_mode
   become: true
 
+# Declare the SELinux mode fleet-wide instead of leaning on the OS default, so it
+# is config-as-code: a no-op on the Tumbleweed hosts (already enforcing) that
+# flips the Leap host, which defaults permissive. permissive->enforcing is a live
+# transition (no reboot). Gated on a manageable SELinux so the SELinux-less
+# molecule containers skip it.
+- name: Set the SELinux mode
+  ansible.posix.selinux:
+    state: "{{ common_selinux_mode }}"
+    policy: targeted
+  become: true
+  when: ansible_selinux.status == 'enabled'
+
 - name: Ensure the owner's supplementary groups exist
   ansible.builtin.group:
     name: "{{ item }}"

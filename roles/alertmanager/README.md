@@ -7,8 +7,10 @@ the LAN; opening the port for that scraper is the playbook's job, not the role's
 ## Config
 
 `alertmanager.yml` is Ansible-rendered to `/etc/alertmanager` and bind-mounted
-read-only. Every alert routes to the `default` receiver, except the always-firing
-`Watchdog`, which a dedicated route sends to the `deadman` receiver:
+read-only with `:Z`, so podman relabels it `container_file_t` on each start and
+the container reads it regardless of the host's ambient SELinux label. Every
+alert routes to the `default` receiver, except the always-firing `Watchdog`,
+which a dedicated route sends to the `deadman` receiver:
 
 - With `alertmanager_discord_webhook_url` set, the `default` receiver carries a
   `discord_configs` entry whose `webhook_url_file` points at a 0600 file holding

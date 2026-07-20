@@ -27,6 +27,11 @@ names must be unique across snippets, hosts derive from `caddy_domain`, and
 backends sit on `caddy.network` to resolve by container name. Set
 `caddy_wildcard: false` on a host with no such backends.
 
+A dropped snippet inherits `/etc/caddy`'s `httpd_config_t` from Ansible,
+unreadable to the container under enforcing SELinux; the `Restart caddy` handler
+must recreate (not reload), since only the `:ro,Z` mount's relabel on start makes
+the new file readable.
+
 ## Public sites
 
 A role serving its own public domain (an apex, not a wildcard subdomain) drops

@@ -11,7 +11,9 @@ Network=host
 NoNewPrivileges=true
 DropCapability=all
 {# alertmanager runs non-root as nobody (65534), so it needs no capability back. #}
-Volume=/etc/alertmanager:/etc/alertmanager:ro
+# :Z relabels the mount container_file_t on each start, so it never depends on the
+# host's ambient label surviving an SELinux relabel (as /etc/caddy's did not).
+Volume=/etc/alertmanager:/etc/alertmanager:ro,Z
 # :U hands the named volume to the image's nobody user (65534), which owns the
 # silences and notification log under /alertmanager; rootful podman would
 # otherwise create it root-owned.
