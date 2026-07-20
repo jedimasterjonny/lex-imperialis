@@ -66,3 +66,24 @@
       until: "'node_scrape_collector_success{collector=\"timex\"} 1' in node_exporter_timex.content"
       retries: 15
       delay: 2
+
+    # The collector probes above prove the cap set is sufficient; they can't prove
+    # it is minimal. Assert the posture directly so a regression that widens the
+    # caps or drops the restriction fails here, not silently in production.
+    - name: Read node-exporter's security posture
+      ansible.builtin.command: podman inspect node-exporter
+      become: true
+      register: node_exporter_inspect
+      changed_when: false
+
+    # BoundingCaps is the container's cap ceiling: CAP_SYS_TIME (timex) and
+    # nothing more.
+    - name: The node-exporter container keeps only CAP_SYS_TIME and bars privilege escalation
+      vars:
+        node_exporter: "{{ node_exporter_inspect.stdout | from_json | first }}"
+      ansible.builtin.assert:
+        that:
+          - "node_exporter.BoundingCaps | default([], true) | sort == ['CAP_SYS_TIME']"
+          - "'no-new-privileges' in (node_exporter.HostConfig.SecurityOpt | default([], true))"
+        fail_msg: "node-exporter's capability or no-new-privileges posture has regressed"
+        quiet: true
