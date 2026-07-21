@@ -52,6 +52,28 @@
   loop_control:
     label: "{{ item.item }}"
 
+# With host-key checking on, the reconcile pins each fleet host against this
+# operator-seeded known_hosts (README). Assert it before arming a timer that would
+# otherwise fail every fleet connection. Host public keys, not a secret, so only
+# presence and non-emptiness are checked, not the mode.
+- name: Stat the operator-placed known_hosts
+  ansible.builtin.stat:
+    path: "{{ gitops_reconcile_known_hosts_file }}"
+  register: gitops_reconcile_known_hosts
+  become: true
+  when: gitops_reconcile_host_key_checking | bool
+
+- name: The known_hosts is present and non-empty when host-key checking is on
+  ansible.builtin.assert:
+    that:
+      - gitops_reconcile_known_hosts.stat.exists
+      - gitops_reconcile_known_hosts.stat.size > 0
+    fail_msg: >-
+      {{ gitops_reconcile_known_hosts_file }} is missing or empty — seed it from the
+      fleet before enabling host-key checking (README)
+    quiet: true
+  when: gitops_reconcile_host_key_checking | bool
+
 - name: Clone the repository the reconciler applies from
   ansible.builtin.git:
     repo: "{{ gitops_reconcile_clone_url }}"

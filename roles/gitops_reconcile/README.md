@@ -33,18 +33,29 @@ or a timer that has stopped firing.
 
 ## Bootstrap (one-time)
 
-The role manages everything except the two secrets, which can come from neither
-the vault (the reconciler needs the password to read the vault) nor the public
-repo. The role asserts both exist (owner-only) and fails the apply otherwise, so
+The role manages everything except two secrets and a `known_hosts`, none of which
+can come from the vault (the reconciler needs the password to read it) or the
+public repo. The role asserts all three exist and fails the apply otherwise, so
 place them *before* the apply that first includes the role. On scholam as root —
-restore from the password manager on a rebuild, like `.vault_pass`:
+restore the secrets from the password manager on a rebuild, like `.vault_pass`:
 
 ```
 install -D -m 0600 -o root -g root ~jonny/.ssh/id_ed25519 /etc/gitops-reconcile/ssh/id_ed25519
 install -D -m 0600 -o root -g root ~jonny/lex-imperialis/.vault_pass /etc/gitops-reconcile/vault_pass
 ```
 
-The SSH key is the operator's existing key — the one the fleet already accepts
+Seed the `known_hosts` over the trusted LAN with each host's key at the exact
+address the reconcile connects to it — the inventory's `ansible_host` where set, the
+name otherwise, and scholam's own loopback, since `site.yml` applies it last:
+
+```
+ssh-keyscan -H 127.0.0.1 <each other host at its ansible_host or name> >/etc/gitops-reconcile/ssh/known_hosts
+```
+
+Host-key checking is on by default (`gitops_reconcile_host_key_checking`), so a
+missing, empty, or wrongly-keyed `known_hosts` fails the assert or a later connect —
+set the flag false to run without it. The SSH key is the operator's existing key —
+the one the fleet already accepts
 for each host's connection user (`ansible`, and `jonny` on the NAS), so no fleet
 change is needed. Then wire the role into `playbooks/scholam.yml` and run
 `make apply PLAY=scholam` once: it installs the clone, venv, scripts, and units
@@ -63,9 +74,10 @@ molecule runner). The new exposure is *temporal*: fleet-apply is now always-arme
 via a root timer rather than operator-gated, and a second at-rest copy of the SSH
 key and vault password lives under `/etc/gitops-reconcile/` (0600 root). A scholam
 compromise was already game-over for the fleet. `gitops_reconcile_host_key_checking`
-is off by default — the root timer has no seeded `known_hosts` and the fleet is
-reached only over trusted LAN/WireGuard; set it true and seed a `known_hosts` to
-harden.
+is on by default: the reconcile pins each host against the seeded `known_hosts`, so
+a machine-in-the-middle on the LAN/WireGuard path impersonating a fleet host aborts
+the connect rather than receiving that host's rendered secrets. Set it false to run
+without a `known_hosts`.
 
 ## Kill-switches
 
