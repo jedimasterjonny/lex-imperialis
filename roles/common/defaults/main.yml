@@ -5,6 +5,8 @@
 # Owner account: the identity mirrors the local Tumbleweed install. wheel is
 # added for sudo; no password is managed.
 common_user_name: jonny
+# Every play overrides this to 1026 (NAS uid alignment); the 1000 default is
+# exercised only by molecule, whose prepare frees uid 1000 on the image.
 common_user_uid: 1000
 common_user_group: users
 common_user_groups:

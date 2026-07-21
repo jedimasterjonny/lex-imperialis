@@ -581,3 +581,49 @@
           - "'beets_pipeline_quarantine_albums 1' in arr_beets_metric_parked.stdout"
           - "'beets_pipeline_lidarr_rejected_albums 1' in arr_beets_metric_parked.stdout"
         quiet: true
+
+    # Decommission path: the converge enables every app, so nothing above
+    # exercises the removal loop. Re-apply with flaresolverr dropped and prove its
+    # unit and container are torn down — it has no port, proxy snippet or
+    # wireguard alias, so removing it touches nothing but its own container.
+    - name: Re-apply arr with flaresolverr dropped from arr_enabled
+      ansible.builtin.include_role:
+        name: arr
+      vars:
+        arr_enabled: "{{ arr_apps.keys() | list | difference(['flaresolverr']) }}"
+
+    - name: Read the dropped app's unit file
+      ansible.builtin.stat:
+        path: /etc/containers/systemd/flaresolverr.container
+      register: arr_dropped_unit
+      become: true
+
+    # The role's stop task errors loudly on a failed stop, so a completed
+    # re-apply with the unit gone is proof the container was stopped and removed.
+    - name: The dropped app is decommissioned
+      ansible.builtin.assert:
+        that:
+          - not arr_dropped_unit.stat.exists
+        quiet: true
+
+    # Re-apply the same reduced set: the reject-list still holds flaresolverr but
+    # its unit is already gone, so the cleanup must no-op. The converge idempotence
+    # check only exercises the all-enabled (empty reject-list) path, and dropping
+    # the stat guard would make this second stop error on the missing unit.
+    - name: Re-apply arr again to prove the removal converged
+      ansible.builtin.include_role:
+        name: arr
+      vars:
+        arr_enabled: "{{ arr_apps.keys() | list | difference(['flaresolverr']) }}"
+
+    - name: Re-read the dropped app's unit file
+      ansible.builtin.stat:
+        path: /etc/containers/systemd/flaresolverr.container
+      register: arr_dropped_unit_again
+      become: true
+
+    - name: The removal stays converged on reconverge
+      ansible.builtin.assert:
+        that:
+          - not arr_dropped_unit_again.stat.exists
+        quiet: true

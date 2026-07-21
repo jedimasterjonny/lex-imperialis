@@ -5,8 +5,9 @@ Media automation stack as rootful podman quadlets. Each webui is proxied at
 apps (plex), reached directly. Config lives in per-app named volumes; media
 lives under the NAS-backed `arr_data_root` as `media/<type>` libraries beside a
 sibling `downloads`. `arr_enabled` picks which apps a host runs (default: all),
-so the stack can come up one container at a time. Unit changes bounce only the
-apps they touch.
+so the stack can come up one container at a time; dropping an app stops its
+container and removes the generated unit. A netns joiner needs its owner enabled
+too (the role asserts this). Unit changes bounce only the apps they touch.
 
 ## Health: probe over the network, exec only to restart
 
@@ -212,7 +213,7 @@ local traffic does not.
   proxies every webui at its alias without touching the VPN.
 - **Lifecycle** — each joiner is `Requires`/`After`/`PartOf` the wireguard
   service: it starts after the tunnel exists and restarts whenever wireguard
-  does. A config change notifies `Restart wireguard`; PartOf carries every
+  does. A config change notifies `Restart wireguard for arr`; PartOf carries every
   joiner with it.
 - **Auto-recovery** — wireguard carries a healthcheck (`ping` through wg0);
   sustained failure kills the container so systemd's `Restart=on-failure`

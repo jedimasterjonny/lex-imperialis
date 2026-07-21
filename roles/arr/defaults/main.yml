@@ -19,6 +19,11 @@ arr_data_dirs:
   media/music: lidarr
   downloads: transmission
 
+# The NAS's arr gid, so media written over NFS is group-owned by a gid the NAS
+# recognises and the importers co-write. Host-coupled — override in the play for
+# a host whose NAS uses a different gid.
+arr_gid: 65537
+
 # Apps to deploy; the whole stack by default. Override per host (in the play) to
 # bring containers up incrementally — each app's user, group, unit and proxy
 # snippet, plus the shared group, data dirs and wireguard tunnel, are gated on
@@ -29,6 +34,11 @@ arr_enabled: "{{ arr_apps.keys() | list }}"
 # Empty installs a generated blackhole config: the tunnel comes up dead, so
 # torrent traffic can never leak outside the VPN.
 arr_wireguard_conf: ""
+
+# Host path wg-quick's config bind-mounts from into the wireguard container; the
+# operator's real config arrives via arr_wireguard_conf (vault). A tunable for a
+# host that keeps its wg config elsewhere.
+arr_wireguard_conf_path: /etc/wireguard/wg0.conf
 
 # beets standing-library catalog. A daily timer runs an incremental
 # `beet import -A` then `beet update` over the music library so the standing

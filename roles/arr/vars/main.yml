@@ -22,9 +22,6 @@
 # each is migrated) so files written over NFS land owned by an id the NAS
 # recognises; the non-NAS apps keep a local id.
 arr_group: arr
-# The NAS's arr group, so media written over NFS is group-owned by a gid the
-# NAS recognises and the importers co-write.
-arr_gid: 65537
 
 # Media access beyond what ownership grants: these apps carry the shared group
 # — the importers co-write with beets and transmission, whose
@@ -173,7 +170,3 @@ arr_apps:
       cmd: ping -c1 -W5 1.1.1.1
       interval: 90s
       retries: 2
-
-# Client config for transmission's tunnel; the operator's real config arrives
-# via arr_wireguard_conf (vault).
-arr_wireguard_conf_path: /etc/wireguard/wg0.conf

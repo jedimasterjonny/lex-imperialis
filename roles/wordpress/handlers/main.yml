@@ -7,14 +7,14 @@
 #
 # The database before wordpress: wordpress reconnects, but starting them in
 # order spares it the failed first attempts.
-- name: Restart the database
+- name: Restart the wordpress database
   ansible.builtin.systemd_service:
     name: wordpress-db
     state: restarted
     daemon_reload: true
   become: true
 
-- name: Restart the cache
+- name: Restart the wordpress cache
   ansible.builtin.systemd_service:
     name: wordpress-redis
     state: restarted
