@@ -30,3 +30,8 @@ crash.*.log
 /jonnyoc-site/resources/_gen/
 .hugo_build.lock
 .firebase/
+
+# Claude Code local state (.claude/skills is tracked, so no blanket ignore)
+/.claude/settings.local.json
+/.claude/scheduled_tasks.*
+/.claude/worktrees/
