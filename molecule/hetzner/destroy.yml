@@ -6,9 +6,20 @@
   gather_facts: false
   vars:
     mol_platform: "{{ molecule_yml.platforms[0] }}"
-  vars_files:
-    - "{{ lookup('env', 'MOLECULE_SCENARIO_DIRECTORY') }}/../../../../inventory/group_vars/all/vault.yml"
+    # From the environment, not the vault — see create.yml.
+    hcloud_token: "{{ lookup('env', 'HCLOUD_TOKEN') }}"
   tasks:
+    # As in create.yml: an empty token would otherwise fail the delete with an
+    # opaque Hetzner auth error and leak a billable VM. `make destroy-hetzner`
+    # (the leaked-VM cleanup path) is where this bites, so guard it here too.
+    - name: Assert the Hetzner token is present
+      ansible.builtin.assert:
+        that: hcloud_token | length > 0
+        fail_msg: >-
+          HCLOUD_TOKEN is empty — the make target sources it from the vault locally,
+          and CI injects the MOLECULE_HCLOUD_TOKEN secret.
+        quiet: true
+
     - name: Delete the server
       hetzner.hcloud.server:
         api_token: "{{ hcloud_token }}"

@@ -18,11 +18,22 @@
     mol_server_types: "{{ ([mol_platform.server_type] + ['cpx22', 'cx33']) | unique }}"
     mol_attempts: "{{ mol_server_types | product(mol_locations) | list }}"
     mol_server_created: false
-  vars_files:
-    # The token is in the repo's single vault file. MOLECULE_SCENARIO_DIRECTORY
-    # is the role's scenario dir; ../../../.. is the repo root.
-    - "{{ lookup('env', 'MOLECULE_SCENARIO_DIRECTORY') }}/../../../../inventory/group_vars/all/vault.yml"
+    # The CI test-project Hetzner token, read from the environment — not the vault.
+    # The hetzner tier is the one CI job a PR can trigger that would otherwise
+    # decrypt the whole vault; sourcing just this token keeps the vault out of PR
+    # context. CI injects the MOLECULE_HCLOUD_TOKEN repo secret (a token scoped to a
+    # throwaway project with no production server); the make target sources it from
+    # the vault for local runs.
+    hcloud_token: "{{ lookup('env', 'HCLOUD_TOKEN') }}"
   tasks:
+    - name: Assert the Hetzner token is present
+      ansible.builtin.assert:
+        that: hcloud_token | length > 0
+        fail_msg: >-
+          HCLOUD_TOKEN is empty — the make target sources it from the vault locally,
+          and CI injects the MOLECULE_HCLOUD_TOKEN secret.
+        quiet: true
+
     - name: Generate an ephemeral SSH key
       ansible.builtin.command: "ssh-keygen -t ed25519 -N '' -f {{ mol_ssh_key }}"
       args:
