@@ -122,7 +122,7 @@ gates exactly the content the live deploy builds. This is the required check the
 
 ## terraform
 
-Runs OpenTofu against the HCP workspace on the runner (Local execution). Fires on
+Runs OpenTofu on the runner (Local execution), state in a GCS bucket. Fires on
 every PR, a push to `main` under `terraform/**` (or this workflow),
 `workflow_dispatch`, and a weekly drift schedule (`cron: '41 6 * * 1'`, Mondays
 06:41 UTC). No PR path filter, so the `terraform-gate` check always reports; a
@@ -139,10 +139,11 @@ through — the coupling that matters, since renovate automerges minor/patch bum
 with no human reading the plan. The weekly run plans `main` against live infra
 and fails on any drift.
 
-HCP, Cloudflare, and Hetzner tokens come from the vault (so `VAULT_PASSWORD` is
-the only secret) and GCP is keyless via Workload Identity Federation — a PR
-impersonates the read-only `tofu-plan` SA, a merge the write `tofu-apply` SA. Fork
-PRs skip the plan cleanly (they can't reach the vault or mint the WIF token).
+The Cloudflare and Hetzner provider tokens come from the vault (so
+`VAULT_PASSWORD` is the only secret); state (GCS) and GCP are keyless via Workload
+Identity Federation — a PR impersonates the read-only `tofu-plan` SA (which can
+read state but not write it), a merge the write `tofu-apply` SA. Fork PRs skip the
+plan cleanly (they can't reach the vault or mint the WIF token).
 `terraform/README.md` covers the OpenTofu config itself.
 
 ### terraform-gate

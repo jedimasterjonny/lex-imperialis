@@ -61,7 +61,6 @@ separate CI update**.
 
 | Vault variable | Mint a new… | Verify |
 |---|---|---|
-| `terraform_hcp_token` | HCP Terraform token (app.terraform.io, org jonnyoc → User Settings → Tokens) | `make tofu-plan` |
 | `terraform_cloudflare_api_token` | Cloudflare token, DNS + zone edit over the managed zones | `make tofu-plan` |
 | `hcloud_token_emmas_edit` | Hetzner Read&Write token, **emmas-edit** project | `make tofu-plan` |
 | `hcloud_token` | Hetzner Read&Write token, **molecule test** project | `make test-hetzner ROLE=motd` |

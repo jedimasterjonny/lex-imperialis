@@ -21,13 +21,13 @@ shellcheck.
 
 ## tofu-validate.sh
 
-Validates `terraform/` offline: `tofu init -backend=false` (skips HCP Terraform,
-so no cloud credentials are needed) then `tofu validate`. Backs the
+Validates `terraform/` offline: `tofu init -backend=false` (skips the GCS state
+backend, so no cloud credentials are needed) then `tofu validate`. Backs the
 `tofu-validate` hook.
 
 ## vault-var.sh
 
 Prints one top-level variable's value from the ansible-vault, bridging a vault
-secret into a `TF_VAR_`/`TF_TOKEN_` (Terraform can't read the vault). Backs the
+secret into a `TF_VAR_` (Terraform can't read the vault). Backs the
 `tofu-plan`/`tofu-apply` make targets and the `terraform.yml` plan workflow.
 Needs the venv and `.vault_pass`.

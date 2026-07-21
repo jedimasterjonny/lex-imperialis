@@ -19,7 +19,7 @@ This repo is public: every commit is world-readable and permanent, including git
 
 ## Secrets
 
-The vault is `inventory/group_vars/all/vault.yml`, decrypted locally with a gitignored `.vault_pass`. Vault var names are host/purpose-scoped (`emmasedit_cloudflare_api_token`) and mapped to a role's generic var in a play's `vars:` block; a vault var named identically to a role's default is read straight from `group_vars/all`. Terraform can't read the vault, so it sources its secrets (`terraform_hcp_token`, `terraform_cloudflare_api_token`, `hcloud_token_emmas_edit`) through `bin/vault-var.sh` into `TF_VAR_`/`TF_TOKEN_` at run time. The `jonnyoc-site` Firebase deploy and the `tofu` CI jobs authenticate to GCP keylessly via Workload Identity Federation (short-lived OIDC-exchanged credentials, no key) — so `VAULT_PASSWORD` is CI's only vault-derived secret; the `jonnyoc-site` go.sum autofix additionally uses a GitHub App (`AUTOFIX_APP_ID`/`AUTOFIX_APP_KEY`). See `terraform/README.md`.
+The vault is `inventory/group_vars/all/vault.yml`, decrypted locally with a gitignored `.vault_pass`. Vault var names are host/purpose-scoped (`emmasedit_cloudflare_api_token`) and mapped to a role's generic var in a play's `vars:` block; a vault var named identically to a role's default is read straight from `group_vars/all`. Terraform can't read the vault, so it sources its provider secrets (`terraform_cloudflare_api_token`, `hcloud_token_emmas_edit`) through `bin/vault-var.sh` into `TF_VAR_` at run time; its state lives in a GCS bucket reached keylessly via WIF, so there is no state token. The `jonnyoc-site` Firebase deploy and the `tofu` CI jobs authenticate to GCP keylessly via Workload Identity Federation (short-lived OIDC-exchanged credentials, no key) — so `VAULT_PASSWORD` is CI's only vault-derived secret; the `jonnyoc-site` go.sum autofix additionally uses a GitHub App (`AUTOFIX_APP_ID`/`AUTOFIX_APP_KEY`). See `terraform/README.md`.
 
 ## Writing code
 
@@ -29,7 +29,7 @@ Favour the simplest solution that meets current needs; hold to KISS, YAGNI, and 
 
 Loose `roles/` at the repo root — no collection wrapper. Single operator with nothing to publish; revisit only if custom plugins or modules appear.
 
-Fleet playbooks live in `playbooks/`; the bootstrap and molecule playbooks stay with their tooling (`bootstrap/`, `molecule/<tier>/`). Operator runbooks live in `docs/` (e.g. disaster recovery). OpenTofu config for cloud infrastructure lives in a sibling `terraform/` tree, with remote state in HCP Terraform Cloud; a PR plans it and a merge to main auto-applies it to live cloud infra via CI (keyless WIF) — see `terraform/README.md`. The `jonnyoc.uk` website is a Hugo static site in `jonnyoc-site/`, built and deployed to Firebase Hosting by CI — see `jonnyoc-site/README.md`.
+Fleet playbooks live in `playbooks/`; the bootstrap and molecule playbooks stay with their tooling (`bootstrap/`, `molecule/<tier>/`). Operator runbooks live in `docs/` (e.g. disaster recovery). OpenTofu config for cloud infrastructure lives in a sibling `terraform/` tree, with remote state in a GCS bucket in the infra-shared GCP project; a PR plans it and a merge to main auto-applies it to live cloud infra via CI (keyless WIF) — see `terraform/README.md`. The `jonnyoc.uk` website is a Hugo static site in `jonnyoc-site/`, built and deployed to Firebase Hosting by CI — see `jonnyoc-site/README.md`.
 
 ## Fleet
 
