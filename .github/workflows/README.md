@@ -139,12 +139,16 @@ through — the coupling that matters, since renovate automerges minor/patch bum
 with no human reading the plan. The weekly run plans `main` against live infra
 and fails on any drift.
 
-The Cloudflare and Hetzner provider tokens come from the vault (so
-`VAULT_PASSWORD` is the only secret); state (GCS) and GCP are keyless via Workload
-Identity Federation — a PR impersonates the read-only `tofu-plan` SA (which can
-read state but not write it), a merge the write `tofu-apply` SA. Fork PRs skip the
-plan cleanly (they can't reach the vault or mint the WIF token).
-`terraform/README.md` covers the OpenTofu config itself.
+The Cloudflare/Hetzner provider tokens split by privilege: a PR plans with
+read-only counterparts held as plain repo secrets (a PR that grabbed them still
+can't mutate), while the write tokens stay in the vault, reached only on a push —
+the push plan decrypts them (its `VAULT_PASSWORD` lives in the main-only
+`fleet-apply` environment) and bakes them into the saved plan the apply replays,
+so no PR can decrypt them. State (GCS) and GCP are keyless via Workload Identity Federation —
+a PR impersonates the read-only `tofu-plan` SA (which can read state but not write
+it), a merge the write `tofu-apply` SA. Fork PRs skip the plan cleanly (they can't
+read the repo-secret plan tokens or mint the WIF token). `terraform/README.md`
+covers the OpenTofu config itself.
 
 ### terraform-gate
 

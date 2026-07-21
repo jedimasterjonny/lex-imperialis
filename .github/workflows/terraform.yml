@@ -6,8 +6,12 @@ name: terraform
 # write tofu-apply SA). State lives in a GCS bucket in the infra-shared project,
 # so the backend authenticates keylessly via WIF alongside the google provider —
 # the plan SA can read state, only the apply SA can write it. The Cloudflare and
-# Hetzner provider tokens still come from the vault (VAULT_PASSWORD), and GCP auth
-# is keyless via WIF. Offline fmt/validate/tflint stay in the lint workflow.
+# Hetzner provider tokens split by privilege: a PR plans with read-only counterparts
+# held as plain repo secrets (safe for any same-repo PR — they can't mutate); the
+# write tokens stay in the vault, reached only on a push (VAULT_PASSWORD lives in the
+# main-only `fleet-apply` environment), where the plan bakes them into the saved plan
+# the apply runs. So a same-repo PR that edits this workflow can plan but never apply
+# or read a write token. Offline fmt/validate/tflint stay in the lint workflow.
 #
 # No PR paths filter: the workflow runs on every PR so terraform-gate (a required
 # check) always reports. discover decides whether the plan actually runs, and a
@@ -88,8 +92,9 @@ jobs:
     needs: discover
     # Run when terraform is in scope (always so, except a PR that doesn't touch
     # it) and this is not a fork PR — forks can't mint the WIF id-token or read
-    # the vault, so skip them cleanly (a skipped plan still passes terraform-gate)
-    # rather than fail red at the auth step. Push/dispatch/schedule always run.
+    # the repo-secret plan tokens, so skip them cleanly (a skipped plan still
+    # passes terraform-gate) rather than fail red at the auth step.
+    # Push/dispatch/schedule always run.
     if: >-
       ${{ needs.discover.outputs.terraform == 'true'
       && (github.event_name != 'pull_request'
@@ -98,6 +103,11 @@ jobs:
     # A hung apply holds the GCS state lock until the job dies — 6h on the
     # default. Well above a plan+apply of this config, well below that.
     timeout-minutes: 30
+    # VAULT_PASSWORD lives in the main-only `fleet-apply` environment, so only a
+    # push (the apply step) can decrypt the vault's write tokens. A PR/schedule
+    # run resolves the expression to the empty string — no environment, no
+    # VAULT_PASSWORD — and plans with the read-only repo-secret tokens instead.
+    environment: ${{ github.event_name == 'push' && 'fleet-apply' || '' }}
     permissions:
       contents: read
       pull-requests: write
@@ -106,16 +116,21 @@ jobs:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      # The vault (bin/vault-var.sh → ansible-vault) is needed only on a push: the
+      # push plan bakes the write tokens into the saved plan the apply runs. A PR or
+      # schedule plan uses the read-only repo-secret tokens directly. So Python is a
+      # push-only setup.
       - name: Set up Python
+        if: github.event_name == 'push'
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.14"
           cache: pip
           cache-dependency-path: requirements.txt
 
-      # bin/vault-var.sh only needs ansible-vault to read the tokens; requirements.txt
-      # (ansible) supplies it without the dev toolchain (molecule, linters).
+      # requirements.txt (ansible) supplies ansible-vault without the dev toolchain.
       - name: Install ansible-vault
+        if: github.event_name == 'push'
         run: |
           python -m venv .venv
           . .venv/bin/activate
@@ -141,7 +156,11 @@ jobs:
             && 'tofu-apply@jonnyoc-infra-shared.iam.gserviceaccount.com'
             || 'tofu-plan@jonnyoc-infra-shared.iam.gserviceaccount.com' }}
 
+      # On a push the plan below feeds the apply and must carry the vault's WRITE
+      # tokens, so decrypt the vault here; VAULT_PASSWORD is present only because
+      # this push run entered the main-only `fleet-apply` environment.
       - name: Write the vault password file
+        if: github.event_name == 'push'
         env:
           VAULT_PASSWORD: ${{ secrets.VAULT_PASSWORD }}
         run: |
@@ -149,18 +168,22 @@ jobs:
           chmod 600 .vault_pass
 
       # Plan to a file so the apply below runs exactly this plan, not a fresh
-      # re-plan, and so the destructive-action check reads the same plan the human
-      # (or, for a routine bump, nobody) would see. The GCS backend reads state via
-      # the WIF credentials the auth step set up (the tofu-plan SA); the Cloudflare
-      # and Hetzner tokens come from the vault and feed their providers. -lock=false:
+      # re-plan, and so the destructive-action check reads the same plan. Applying a
+      # saved plan reuses the plan's recorded variable values, so on a push the plan
+      # must carry the WRITE provider tokens (from the vault, unlocked above) — the
+      # apply then authenticates with them. A PR/schedule/dispatch plan only reads
+      # and has no vault, so it uses the read-only repo-secret tokens. The GCS
+      # backend reads state via the WIF credentials the auth step set up. -lock=false:
       # the plan doesn't write state (apply re-locks and re-checks the saved plan),
       # and cancel-in-progress could otherwise kill it mid-run and orphan the GCS
-      # state lock. set +e captures the output and exit code so the next step can
-      # post the plan and still fail the job on a real error.
+      # state lock. set +e captures the exit so the next step can post the plan and
+      # still fail the job on a real error.
       - name: Plan
         id: plan
         env:
           EVENT: ${{ github.event_name }}
+          CF_PLAN_TOKEN: ${{ secrets.CLOUDFLARE_PLAN_API_TOKEN }}
+          HCLOUD_PLAN_TOKEN: ${{ secrets.HCLOUD_PLAN_TOKEN }}
         run: |
           set +e
           # Scheduled runs only: -detailed-exitcode makes plan exit 2 on any diff,
@@ -168,10 +191,16 @@ jobs:
           # stays a plain plan (exit 0) and must not start failing.
           detail=""
           [ "$EVENT" = "schedule" ] && detail="-detailed-exitcode"
-          # Assign then export separately (matches Apply): `export VAR=$(...)` would
-          # mask the vault lookup's exit under shellcheck's SC2155, and reads cleaner.
-          TF_VAR_cloudflare_api_token="$(bin/vault-var.sh terraform_cloudflare_api_token)"
-          TF_VAR_hcloud_token="$(bin/vault-var.sh hcloud_token_emmas_edit)"
+          # push feeds the apply → the saved plan must carry the write tokens; every
+          # other event reads only, has no vault, and uses the read-only ones. Assign
+          # then export separately so shellcheck (SC2155) can't mask a vault miss.
+          if [ "$EVENT" = "push" ]; then
+            TF_VAR_cloudflare_api_token="$(bin/vault-var.sh terraform_cloudflare_api_token)"
+            TF_VAR_hcloud_token="$(bin/vault-var.sh hcloud_token_emmas_edit)"
+          else
+            TF_VAR_cloudflare_api_token="$CF_PLAN_TOKEN"
+            TF_VAR_hcloud_token="$HCLOUD_PLAN_TOKEN"
+          fi
           export TF_VAR_cloudflare_api_token TF_VAR_hcloud_token
           # -no-color on both: the combined output is teed into the PR comment.
           { tofu -chdir=terraform init -input=false -no-color \
@@ -246,21 +275,16 @@ jobs:
           echo "No destructive actions in the plan."
 
       # Merge to main: apply the plan saved above (not a fresh re-plan), so what
-      # applies is what was logged. Unlike the read-only plan this locks the GCS
-      # state; a stale saved plan (state moved since the plan) makes apply error
-      # rather than apply something unreviewed. The concurrency group serialises
-      # main runs and never auto-cancels them; a manual cancel, job timeout, or
-      # runner death mid-apply can still orphan the lock, recoverable with
-      # `tofu force-unlock`.
+      # applies is what was logged — including the write provider tokens the plan
+      # recorded, so no token export is needed here. Unlike the read-only plan this
+      # locks the GCS state; a stale saved plan (state moved since the plan) makes
+      # apply error rather than apply something unreviewed. The concurrency group
+      # serialises main runs and never auto-cancels them; a manual cancel, job
+      # timeout, or runner death mid-apply can still orphan the lock, recoverable
+      # with `tofu force-unlock`.
       - name: Apply
         if: github.event_name == 'push'
-        run: |
-          # Assign then export separately: `export VAR=$(...)` would mask a failed
-          # vault lookup under `set -e` (export's own exit status is 0).
-          TF_VAR_cloudflare_api_token="$(bin/vault-var.sh terraform_cloudflare_api_token)"
-          TF_VAR_hcloud_token="$(bin/vault-var.sh hcloud_token_emmas_edit)"
-          export TF_VAR_cloudflare_api_token TF_VAR_hcloud_token
-          tofu -chdir=terraform apply -input=false -no-color tfplan
+        run: tofu -chdir=terraform apply -input=false -no-color tfplan
 
   # Fixed-name summary check for branch protection: the plan job is skipped on a
   # non-infra PR, so this always-running job reports the real result — green there,
