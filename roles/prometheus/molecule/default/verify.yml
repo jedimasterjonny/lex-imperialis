@@ -2,6 +2,8 @@
 - name: Verify
   hosts: all
   gather_facts: false
+  vars_files:
+    - ../../defaults/main.yml
   tasks:
     - name: Wait for prometheus to be ready
       ansible.builtin.uri:
@@ -162,4 +164,39 @@
             prometheus.HostConfig.SecurityOpt | default([], true)
             | select('search', 'no-new-privileges') | list | length > 0
         fail_msg: "prometheus's capability or no-new-privileges posture has regressed"
+        quiet: true
+
+    # The container runs as a pinned uid:gid so the TSDB mount is 0755 owned by that
+    # user, not world-writable. A regression that drops `user:` reverts Config.User
+    # to the image default (a name, nobody), which needs the 0777 dir back.
+    - name: Prometheus runs as a pinned uid:gid, not the image-default nobody
+      vars:
+        prometheus: "{{ prometheus_inspect.stdout | from_json | first }}"
+      ansible.builtin.assert:
+        that:
+          - prometheus.Config.User | default('', true) is match('^[0-9]+:[0-9]+$')
+        fail_msg: "prometheus is not pinned to a uid:gid — it may be running as the image-default nobody"
+        quiet: true
+
+    - name: Stat the TSDB data directory
+      ansible.builtin.stat:
+        path: "{{ prometheus_data_dir }}"
+      register: prometheus_data_stat
+
+    # 0755 closes the world-writable hole; owned-by-the-container-uid is the other
+    # half — a 0755 dir the container cannot write is just as broken. The pinned-uid
+    # assert above guarantees Config.User is numeric, so int() here is safe.
+    - name: The TSDB data dir is 0755 and owned by the uid the container runs as
+      vars:
+        prometheus: "{{ prometheus_inspect.stdout | from_json | first }}"
+        container_uid: "{{ prometheus.Config.User | regex_replace(':.*$', '') | int }}"
+      ansible.builtin.assert:
+        that:
+          - prometheus_data_stat.stat.exists
+          - prometheus_data_stat.stat.isdir
+          - prometheus_data_stat.stat.mode == '0755'
+          - prometheus_data_stat.stat.uid == container_uid
+        fail_msg: >-
+          the prometheus data dir is not 0755 owned by the container's uid — the TSDB
+          is world-writable or the container cannot write it
         quiet: true

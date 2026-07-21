@@ -23,12 +23,17 @@ gitops_reconcile_playbook: playbooks/site.yml
 gitops_reconcile_config_dir: /etc/gitops-reconcile
 gitops_reconcile_vault_pass_file: "{{ gitops_reconcile_config_dir }}/vault_pass"
 gitops_reconcile_ssh_key_file: "{{ gitops_reconcile_config_dir }}/ssh/id_ed25519"
+# The known_hosts pinning each fleet host's key. Consulted only when host-key
+# checking is on (below); it maps topology (host keys + addresses), so it is
+# operator-placed out-of-band like the secrets above, not committed (README).
+gitops_reconcile_known_hosts_file: "{{ gitops_reconcile_config_dir }}/ssh/known_hosts"
 
-# SSH host-key checking for the unattended apply. Off by default: the root timer
-# has no seeded known_hosts, the fleet is reached only over trusted LAN/WireGuard,
-# and scholam already holds .vault_pass and fleet-wide root. Set true and seed a
-# known_hosts to harden.
-gitops_reconcile_host_key_checking: false
+# SSH host-key checking for the unattended apply. On by default: a machine-in-the-
+# middle on the LAN/WireGuard path impersonating a fleet host would otherwise
+# receive that host's rendered secrets (env files, WireGuard confs). Requires
+# gitops_reconcile_known_hosts_file, seeded from the fleet — the role asserts it is
+# present. Set false to skip the check where no known_hosts is placed.
+gitops_reconcile_host_key_checking: true
 
 # Installed scripts. /usr/local/sbin: root-only, like podman-backup.
 gitops_reconcile_script: /usr/local/sbin/gitops-reconcile.sh

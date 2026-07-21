@@ -25,5 +25,17 @@
         - /etc/gitops-reconcile/vault_pass
         - /etc/gitops-reconcile/ssh/id_ed25519
       become: true
+
+    # Host-key checking defaults on, so the role also asserts an operator-seeded
+    # known_hosts; stage a throwaway one. The reconcile script is never run
+    # unpaused here, so its content is inert.
+    - name: Stage a stand-in known_hosts
+      ansible.builtin.copy:
+        content: "molecule stand-in\n"
+        dest: /etc/gitops-reconcile/ssh/known_hosts
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
   roles:
     - role: gitops_reconcile

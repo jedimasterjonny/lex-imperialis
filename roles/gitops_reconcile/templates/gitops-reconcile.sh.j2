@@ -16,6 +16,9 @@ ssh_key="{{ gitops_reconcile_ssh_key_file }}"
 pause_flag="{{ gitops_reconcile_pause_flag }}"
 last_applied="{{ gitops_reconcile_last_applied_file }}"
 
+# Pin each fleet host against the operator-seeded known_hosts when on, so a MITM
+# presenting a wrong key aborts the connect (the --ssh-extra-args below makes that
+# known_hosts authoritative) rather than receiving the host's rendered secrets.
 export ANSIBLE_HOST_KEY_CHECKING={{ gitops_reconcile_host_key_checking | string | lower }}
 
 # Soft pause: a deliberate hold exits success so it never trips the failure
@@ -45,11 +48,20 @@ cd "$repo" || exit 1
 # ansible pin is in place up front and the self-apply's own pip task finds it
 # already satisfied — it never reinstalls ansible under the running process.
 "$venv/bin/pip" install --quiet --requirement requirements.txt
+# UserKnownHostsFile makes the seeded known_hosts authoritative; CheckHostIP=no pins
+# on the connection name/address alone, so keyscanning each host as ansible reaches
+# it (including scholam's own loopback) suffices; empty array when off.
+{% if gitops_reconcile_host_key_checking | bool %}
+ssh_extra_args=(--ssh-extra-args "-o UserKnownHostsFile={{ gitops_reconcile_known_hosts_file }} -o GlobalKnownHostsFile=/dev/null -o CheckHostIP=no")
+{% else %}
+ssh_extra_args=()
+{% endif %}
 # --diff lands the change set in the journal; the key reaches each host's account;
 # site.yml applies self (scholam) last so this run never restarts its own timer.
 "$venv/bin/ansible-playbook" \
     --private-key "$ssh_key" \
     --vault-password-file "$vault_pass" \
+    "${ssh_extra_args[@]}" \
     --diff \
     "$playbook"
 

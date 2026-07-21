@@ -25,6 +25,26 @@
       loop_control:
         label: "{{ item.item }}"
 
+    - name: Read the installed reconcile script
+      ansible.builtin.slurp:
+        src: "{{ gitops_reconcile_script }}"
+      register: gitops_reconcile_script_content
+      become: true
+
+    # Host-key checking is on by default; the script must both export it and point
+    # ssh at the seeded known_hosts, or a MITM could feed the root apply forged host
+    # keys and harvest each host's rendered secrets.
+    - name: The reconcile script enforces host-key checking against the seeded known_hosts
+      vars:
+        script: "{{ gitops_reconcile_script_content.content | b64decode }}"
+        expected_known_hosts_opt: "UserKnownHostsFile={{ gitops_reconcile_known_hosts_file }}"
+      ansible.builtin.assert:
+        that:
+          - "'ANSIBLE_HOST_KEY_CHECKING=true' in script"
+          - expected_known_hosts_opt in script
+        fail_msg: "the reconcile script does not enforce host-key checking against the known_hosts"
+        quiet: true
+
     - name: The runtime venv runs ansible-playbook
       ansible.builtin.command: "{{ gitops_reconcile_venv_dir }}/bin/ansible-playbook --version"
       changed_when: false
