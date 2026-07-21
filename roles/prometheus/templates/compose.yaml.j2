@@ -3,6 +3,10 @@ services:
   prometheus:
     image: {{ prometheus_image }}
     container_name: prometheus
+    # Run as the deploy user (prometheus_run_user), which owns the 0755 TSDB bind
+    # mount — the NAS has no sudo to chown it to the image's default nobody, so the
+    # container becomes the owner rather than the mount being world-writable.
+    user: "{{ prometheus_run_user }}"
     # Host network: the container resolves scrape targets and routes to them
     # exactly as the host does, and Prometheus serves on the host's :9090.
     network_mode: host

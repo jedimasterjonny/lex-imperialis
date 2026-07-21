@@ -5,6 +5,12 @@ prometheus_project_dir: /opt/prometheus
 # Host path bind-mounted as the TSDB data dir (/prometheus in the container).
 prometheus_data_dir: /var/lib/prometheus
 
+# The container runs as this uid:gid so the TSDB bind mount can be 0755 owned by
+# the deploy user instead of world-writable — the NAS has no sudo to chown the
+# mount to the image's default nobody (65534). Defaults to the connecting user
+# (root under molecule, jonny on the NAS), which the data-dir task makes the owner.
+prometheus_run_user: "{{ ansible_facts['user_uid'] }}:{{ ansible_facts['user_gid'] }}"
+
 # node_exporter scrape targets, each "host:9100". Empty by default, so the node
 # job carries no targets until a host sets them.
 prometheus_node_targets: []

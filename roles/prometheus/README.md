@@ -19,13 +19,21 @@ The role's host is the NAS, not a fleet openSUSE node, which shapes it:
 - **`network_mode: host`** — the container resolves and routes to scrape targets
   exactly as the host does, and serves on the host's `:9090`. No LAN address need
   enter this public repo.
-- **Data dir `0777`** — the image runs as `nobody` (65534) and there is no sudo
-  to chown the bind mount to it.
+- **Data dir `0755`, container runs as the deploy user** — no sudo on the NAS to
+  chown the bind mount to the image's default `nobody` (65534), so the container
+  runs as the deploy user (`prometheus_run_user`, the connecting user's `uid:gid`),
+  which owns the dir. Migrating an existing `0777` deployment: stop the container,
+  `chown -R <uid>:<gid>` the data dir as root once (the running container recreates
+  its files as `nobody` under `0777`, so the chown only sticks while it is stopped),
+  then apply.
 
 ## Variables
 
 - `prometheus_project_dir` — where `compose.yaml` + `prometheus.yml` are written.
 - `prometheus_data_dir` — host path bind-mounted as the TSDB (`/prometheus`).
+- `prometheus_run_user` — `uid:gid` the container runs as; owns the `0755` data
+  dir. Defaults to the connecting user (root under molecule, the deploy user on the
+  NAS).
 - `prometheus_node_targets` — list of `host:9100` scrape targets.
 - `prometheus_cadvisor_targets` — list of `host:8080` scrape targets, scraped at
   30s to match cadvisor's housekeeping interval. Container series get a `container`

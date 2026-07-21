@@ -5,13 +5,45 @@
     state: directory
     mode: "0755"
 
+# Before the 0755 chmod and the run-as-deploy-user recreate below, any pre-existing
+# TSDB must already be owned by the run user. On a fresh host the dir does not exist
+# yet; on a NAS migrating off 0777 it holds nobody-owned (65534) files the
+# unprivileged deploy cannot chown — so fail loudly here, leaving the running
+# container untouched, rather than recreate it into files it cannot write. The
+# operator stops the container and chowns the dir once out-of-band (README).
+- name: Stat the data directory
+  ansible.builtin.stat:
+    path: "{{ prometheus_data_dir }}"
+  register: prometheus_data_pre
+
+- name: List the existing TSDB's top-level entries
+  ansible.builtin.find:
+    paths: "{{ prometheus_data_dir }}"
+    file_type: any
+    recurse: false
+  register: prometheus_data_entries
+  when: prometheus_data_pre.stat.exists
+
+- name: The existing TSDB is owned by the run user
+  ansible.builtin.assert:
+    that:
+      - prometheus_data_entries.files | rejectattr('uid', 'eq', prometheus_run_user.split(':')[0] | int) | list | length == 0
+    fail_msg: >-
+      {{ prometheus_data_dir }} holds entries not owned by uid
+      {{ prometheus_run_user.split(':')[0] }} (an existing TSDB written as nobody).
+      Stop the container and `chown -R {{ prometheus_run_user }} {{ prometheus_data_dir }}`
+      as root once, then re-apply — see README.
+    quiet: true
+  when: prometheus_data_pre.stat.exists
+
 - name: Create the data directory
   ansible.builtin.file:
     path: "{{ prometheus_data_dir }}"
     state: directory
-    # World-writable: the container runs as nobody (65534), and there is no sudo
-    # on the NAS to chown the bind mount to it.
-    mode: "0777"
+    # 0755, owned by the deploy user the container also runs as (prometheus_run_user):
+    # no sudo on the NAS to chown the mount to the image's default nobody (65534), so
+    # run the container as the owner rather than leave the TSDB world-writable.
+    mode: "0755"
 
 - name: Deploy the prometheus config
   ansible.builtin.template:
