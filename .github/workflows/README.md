@@ -1,11 +1,14 @@
 # GitHub Actions workflows
 
-The workflows guarding PRs pin actions by commit SHA (version in a trailing
-comment) and request a read-only `contents` token by default: **lint** runs the
-pre-commit hook set plus a push-time secret scan on all changes; **molecule**
-runs the role tests, gated to the tiers and roles a PR actually touches;
-**firebase** builds, gates, and deploys the `jonnyoc-site` website. **terraform**
-(documented in `terraform/README.md`) plans and gates the OpenTofu tree.
+The workflows pin actions by commit SHA (version in a trailing comment) and
+request a read-only `contents` token by default: **lint** runs the pre-commit
+hook set plus a push-time secret scan on all changes; **molecule** runs the role
+tests, gated to the tiers and roles a PR actually touches; **firebase** (two
+workflows) builds, gates, and deploys the `jonnyoc-site` website; **terraform**
+plans and gates the OpenTofu tree on a PR and applies it to live cloud infra on
+merge; **hugo go.sum autofix** completes Renovate's Blowfish-bump `go.sum` in
+place. Most guard PRs; **firebase** and **terraform** also act on a merge to
+`main`.
 
 ## lint
 
@@ -116,3 +119,51 @@ non-site PR). It reflects the secret-free build — which runs on every in-scope
 forks included — not the preview, so a preview-deploy flake can't redden it and it
 gates exactly the content the live deploy builds. This is the required check the
 `main` ruleset uses so a build-breaking hugo or theme bump can't automerge.
+
+## terraform
+
+Runs OpenTofu against the HCP workspace on the runner (Local execution). Fires on
+every PR, a push to `main` under `terraform/**` (or this workflow),
+`workflow_dispatch`, and a weekly drift schedule (`cron: '41 6 * * 1'`, Mondays
+06:41 UTC). No PR path filter, so the `terraform-gate` check always reports; a
+`discover` job decides whether the plan runs — a non-infra PR skips it and still
+passes the gate (`*.md` is dropped first, so a `terraform/README.md` edit plans
+nothing).
+
+A PR runs `tofu plan` and posts it as a single in-place PR comment; a push to
+`main` applies **the saved plan file**, not a fresh re-plan, so what applies is
+what was logged. The plan is scanned for a delete or replace: finding one fails
+the gate on a PR (blocking an automerge) and halts before the apply on a merge, so
+a destructive plan never applies unattended while a routine in-place bump flows
+through — the coupling that matters, since renovate automerges minor/patch bumps
+with no human reading the plan. The weekly run plans `main` against live infra
+and fails on any drift.
+
+HCP, Cloudflare, and Hetzner tokens come from the vault (so `VAULT_PASSWORD` is
+the only secret) and GCP is keyless via Workload Identity Federation — a PR
+impersonates the read-only `tofu-plan` SA, a merge the write `tofu-apply` SA. Fork
+PRs skip the plan cleanly (they can't reach the vault or mint the WIF token).
+`terraform/README.md` covers the OpenTofu config itself.
+
+### terraform-gate
+
+A fixed-name summary job (`if: always()`, `needs:` `discover` and `plan`) that the
+`main` ruleset requires. It fails if the plan failed, was cancelled, or was skipped
+while terraform was in scope (a fork PR that touched terraform but couldn't run the
+gated plan), and passes when a non-infra PR skips the plan.
+
+## hugo go.sum autofix
+
+Fires on a PR touching `jonnyoc-site/go.{mod,sum}`. Blowfish (the Hugo theme) is
+an indirect gomod require, so Renovate's `go get` records only its `/go.mod` hash
+and leaves the superseded lines behind; only Hugo's own tooling records the
+content hash, and the Mend-hosted Renovate app can't run it. This job regenerates
+a complete, tidy `go.sum` (`hugo mod tidy` plus a build) and amends it into the
+Renovate commit, so each bump stays one clean commit rather than growing a
+checksum-fixup churn.
+
+The amend is force-pushed with a short-lived **GitHub App token** (`AUTOFIX_APP_ID`
+/ `AUTOFIX_APP_KEY`), not `GITHUB_TOKEN`: a `GITHUB_TOKEN` push wouldn't re-trigger
+the required `site-gate` check and would hang the PR. It can't loop — the push only
+happens when `go.sum` is incomplete, which the pushed fix clears. Fork PRs are
+skipped (read-only token, unpushable branch).

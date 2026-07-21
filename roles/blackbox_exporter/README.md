@@ -2,11 +2,12 @@
 
 Prometheus [blackbox_exporter](https://github.com/prometheus/blackbox_exporter)
 as a single Docker container, deployed from a templated compose project with
-`community.docker.docker_compose_v2`. It probes external targets on demand at
-`/probe`; Prometheus drives it (the `blackbox` job in the `prometheus` role) with
-one `target=` per public site, so a scrape yields `probe_success` and the TLS
-`probe_ssl_earliest_cert_expiry` for each. This role stands up the exporter only
-— the targets and the scrape job live in `prometheus`.
+`community.docker.docker_compose_v2`. It probes targets on demand at `/probe`;
+Prometheus drives it (the `blackbox` job in the `prometheus` role) with one
+`target=` per probed URL — the public sites and the fleet's internal services — so
+a scrape yields `probe_success` for each, plus the TLS
+`probe_ssl_earliest_cert_expiry` for the HTTPS targets. This role stands up the
+exporter only — the targets and the scrape job live in `prometheus`.
 
 ## Target: administratum (Synology)
 

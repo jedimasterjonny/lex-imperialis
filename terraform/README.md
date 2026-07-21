@@ -3,10 +3,11 @@
 OpenTofu (`tofu`) configuration for cloud infrastructure — Cloudflare and Hetzner
 in one workspace, so a Hetzner VM's IP can feed a Cloudflare DNS record directly.
 Currently manages the `jonnyoc.uk`, `jonnyoc.co.uk`, and `emmasedit.com`
-Cloudflare zones — one `dns-<zone>.tf` per zone, plus an `edge-<zone>.tf` for a
-zone's non-DNS config (settings and rulesets) where there is any; `emmasedit.com`
-has one for its WordPress TLS, security, caching, and login-protection posture —
-the last a WAF challenge on the login/XML-RPC plus a per-IP rate limit. Not
+Cloudflare zones — one `dns-<zone>.tf` per zone, plus an `edge-<zone>.tf` per zone
+for its non-DNS config (settings and rulesets): canonical-redirect rulesets for the
+two jonnyoc zones, and `emmasedit.com`'s WordPress TLS, security, caching, and
+login-protection posture — the last a WAF challenge on the login/XML-RPC plus a
+per-IP rate limit. Not
 every record or setting is managed: an origin IP with no Terraform-visible source,
 or a setting the provider reports read-only (Email Routing, Tiered Cache on Free),
 is left out and noted in the file's header.
@@ -86,9 +87,10 @@ plans, then applies that saved plan file rather than re-planning at apply. The
 plan is scanned for a delete or replace: finding one fails the required
 `terraform-gate` check on a PR (blocking an automerge) and halts before the apply
 on a merge — so a destructive plan never applies unattended, while a routine
-in-place bump flows through. Both authenticate to HCP, Cloudflare, and Hetzner
-from the vault and to GCP keylessly via WIF, so `VAULT_PASSWORD` stays these
-workflows' only secret.
+in-place bump flows through. A weekly scheduled run plans `main` against live
+infra and fails on any drift. All three paths authenticate to
+HCP, Cloudflare, and Hetzner from the vault and to GCP keylessly via WIF, so
+`VAULT_PASSWORD` stays these workflows' only secret.
 `make tofu-apply` still applies locally for the rare change CI won't: project
 creation, billing, or a deliberate delete/replace.
 
