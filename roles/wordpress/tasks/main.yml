@@ -57,7 +57,7 @@
     mode: "0600"
   become: true
   no_log: true
-  notify: Restart the database
+  notify: Restart the wordpress database
 
 - name: Deploy the application credentials
   ansible.builtin.template:
@@ -87,7 +87,7 @@
     group: root
     mode: "0644"
   become: true
-  notify: Restart the database
+  notify: Restart the wordpress database
 
 - name: Install the cache container unit
   ansible.builtin.template:
@@ -97,7 +97,7 @@
     group: root
     mode: "0644"
   become: true
-  notify: Restart the cache
+  notify: Restart the wordpress cache
 
 - name: Install the wordpress container unit
   ansible.builtin.template:

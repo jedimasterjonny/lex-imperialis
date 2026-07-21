@@ -9,7 +9,7 @@
 # or key rotation for one app doesn't interrupt the others. Both tasks notify
 # this handler; unique collapses an app whose unit and key file both changed (a
 # first deploy) to a single restart.
-- name: Restart the app containers
+- name: Restart the arr app containers
   ansible.builtin.systemd_service:
     name: "{{ item }}"
     state: restarted
@@ -21,7 +21,7 @@
 
 # Config changes restart wireguard directly; PartOf bounces every app that
 # shares its netns too.
-- name: Restart wireguard
+- name: Restart wireguard for arr
   ansible.builtin.systemd_service:
     name: wireguard
     state: restarted

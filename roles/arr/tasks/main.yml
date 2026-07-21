@@ -75,7 +75,7 @@
         group: root
         mode: "0600"
       when: arr_wireguard_conf | length == 0 and arr_wireguard_blackhole.rc != 0
-      notify: Restart wireguard
+      notify: Restart wireguard for arr
 
     - name: Install the wireguard config
       ansible.builtin.copy:
@@ -86,7 +86,7 @@
         mode: "0600"
       when: arr_wireguard_conf | length > 0
       no_log: true
-      notify: Restart wireguard
+      notify: Restart wireguard for arr
 
 # The shared group only when an enabled app carries it (the media-access apps).
 - name: Create the shared group
@@ -164,7 +164,7 @@
   become: true
   no_log: true
   register: arr_api_key_files
-  notify: Restart the app containers
+  notify: Restart the arr app containers
 
 # Transmission's RPC auth renders to a 0600 EnvironmentFile the unit reads, so the
 # password never lands in the world-readable unit. Only when both creds are set;
@@ -359,7 +359,7 @@
     label: "{{ item.key }}"
   become: true
   register: arr_app_units
-  notify: Restart the app containers
+  notify: Restart the arr app containers
 
 # The caddy role owns /etc/caddy/sites and imports every sites/*.caddy as
 # matcher + handle snippets inside its wildcard vhost.

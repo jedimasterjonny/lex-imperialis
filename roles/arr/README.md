@@ -212,7 +212,7 @@ local traffic does not.
   proxies every webui at its alias without touching the VPN.
 - **Lifecycle** — each joiner is `Requires`/`After`/`PartOf` the wireguard
   service: it starts after the tunnel exists and restarts whenever wireguard
-  does. A config change notifies `Restart wireguard`; PartOf carries every
+  does. A config change notifies `Restart wireguard for arr`; PartOf carries every
   joiner with it.
 - **Auto-recovery** — wireguard carries a healthcheck (`ping` through wg0);
   sustained failure kills the container so systemd's `Restart=on-failure`
