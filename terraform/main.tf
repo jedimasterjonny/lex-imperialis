@@ -1,18 +1,17 @@
 terraform {
   required_version = "~> 1.12"
 
-  # Remote state and locking in HCP Terraform (Terraform Cloud), local CLI-driven
-  # execution. One workspace for the whole homelab — Cloudflare and Hetzner share
-  # state so a Hetzner VM's IP can feed a Cloudflare DNS record directly.
-  cloud {
-    # OpenTofu has no default cloud hostname (HashiCorp Terraform does), so it is
-    # required here.
-    hostname     = "app.terraform.io"
-    organization = "jonnyoc"
-
-    workspaces {
-      name = "jonnyoc-master"
-    }
+  # Remote state and locking in a GCS bucket in the infra-shared project, local
+  # CLI-driven execution. One state for the whole homelab — Cloudflare and Hetzner
+  # share it so a Hetzner VM's IP can feed a Cloudflare DNS record directly. The
+  # backend authenticates with the same credentials as the google provider (ADC
+  # locally, WIF in CI), so no separate state token: the read-only tofu-plan SA
+  # reads state on a PR and the write tofu-apply SA writes it on a merge. The
+  # bucket is defined in infra-shared.tf; the backend can't interpolate, so its
+  # name is repeated here as a literal.
+  backend "gcs" {
+    bucket = "jonnyoc-infra-shared-tofu-state"
+    prefix = "master"
   }
 
   required_providers {

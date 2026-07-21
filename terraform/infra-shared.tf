@@ -21,6 +21,7 @@ locals {
     "iamcredentials.googleapis.com",
     "cloudresourcemanager.googleapis.com",
     "cloudbilling.googleapis.com",
+    "storage.googleapis.com",
   ]
   github_owner = "jedimasterjonny"
   github_repo  = "jedimasterjonny/lex-imperialis"
@@ -196,12 +197,18 @@ resource "google_project_iam_member" "tofu_apply" {
     "website/projectiam"      = { project = google_project.website.project_id, role = "roles/resourcemanager.projectIamAdmin" }
     "website/serviceaccounts" = { project = google_project.website.project_id, role = "roles/iam.serviceAccountAdmin" }
     "website/firebase"        = { project = google_project.website.project_id, role = "roles/firebase.admin" }
-    # infra-shared: APIs, project IAM, service accounts, the WIF pool.
+    # infra-shared: APIs, project IAM, service accounts, the WIF pool, state writes.
     "infra-shared/viewer"          = { project = google_project.infra_shared.project_id, role = "roles/viewer" }
     "infra-shared/serviceusage"    = { project = google_project.infra_shared.project_id, role = "roles/serviceusage.serviceUsageAdmin" }
     "infra-shared/projectiam"      = { project = google_project.infra_shared.project_id, role = "roles/resourcemanager.projectIamAdmin" }
     "infra-shared/serviceaccounts" = { project = google_project.infra_shared.project_id, role = "roles/iam.serviceAccountAdmin" }
     "infra-shared/wif"             = { project = google_project.infra_shared.project_id, role = "roles/iam.workloadIdentityPoolAdmin" }
+    # objectUser writes the tofu_state bucket's state + lock objects. Granted at
+    # project scope, not on the bucket: a google_storage_bucket_iam_member refresh
+    # needs storage.buckets.getIamPolicy, which basic roles/viewer does NOT confer,
+    # so a bucket-scoped binding 403s every plan; a project IAM member refreshes via
+    # resourcemanager.projects.getIamPolicy, which both SAs already have.
+    "infra-shared/statewriter" = { project = google_project.infra_shared.project_id, role = "roles/storage.objectUser" }
   }
 
   project = each.value.project
@@ -215,4 +222,34 @@ resource "google_billing_account_iam_member" "tofu_apply_billing_viewer" {
   billing_account_id = "016014-E934D1-BF77DC"
   role               = "roles/billing.viewer"
   member             = google_service_account.tofu_apply.member
+}
+
+# --- Remote state bucket (this config's own backend) ---------------------
+#
+# main.tf's `backend "gcs"` keeps state here. The plan SA reads state through its
+# project-wide roles/viewer above; the apply SA's object write is the
+# infra-shared/statewriter grant in the tofu_apply map above (project-scoped, for
+# the getIamPolicy reason noted there). A backend can't create the bucket that
+# holds its own state, so a from-zero rebuild bootstraps it before the backend can
+# use it (terraform/README.md) — and, like the WIF pool, changing the bucket itself
+# is then a local operator apply (the apply SA lacks buckets.create/update).
+# prevent_destroy keeps an apply or `-destroy` from removing the state store;
+# versioning allows rollback.
+
+resource "google_storage_bucket" "tofu_state" {
+  project                     = google_project.infra_shared.project_id
+  name                        = "jonnyoc-infra-shared-tofu-state"
+  location                    = "EUROPE-NORTH1"
+  uniform_bucket_level_access = true
+  public_access_prevention    = "enforced"
+
+  versioning {
+    enabled = true
+  }
+
+  depends_on = [google_project_service.infra_shared]
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }

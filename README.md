@@ -41,7 +41,7 @@ zypper updates run unattended and staggered: `solar` Monday as the canary, the V
 
 - `roles/` — where the work is. Each ships a README covering its variables and contracts.
 - `playbooks/` — one play per host, and the play is that host's spec: its `roles:` and `vars:` are the whole story. `site.yml` is the fleet in one run.
-- `terraform/` — OpenTofu for the cloud edge: Cloudflare zones, the Hetzner firewall, the GCP projects behind the site and keyless CI. Remote state in HCP, applied on merge.
+- `terraform/` — OpenTofu for the cloud edge: Cloudflare zones, the Hetzner firewall, the GCP projects behind the site and keyless CI. Remote state in a GCS bucket, applied on merge.
 - `jonnyoc-site/` — Hugo source for the personal site, built and deployed to Firebase Hosting by CI.
 
 ## Running plays
@@ -70,13 +70,13 @@ GitHub Actions workflows:
 - `terraform` — `tofu plan` on a PR, applied to live cloud infrastructure on merge.
 - `firebase` — the Hugo site: a preview channel per PR, the live channel on merge.
 
-Actions are pinned by commit SHA. `VAULT_PASSWORD` is the only secret in CI: it unlocks the in-repo vault, which carries the tokens the billed test tier and the terraform runs need — Hetzner, Cloudflare, and HCP. GCP authenticates keylessly through Workload Identity Federation, so nothing else is stored.
+Actions are pinned by commit SHA. `VAULT_PASSWORD` is the only secret in CI: it unlocks the in-repo vault, which carries the tokens the billed test tier and the terraform runs need — Hetzner and Cloudflare. GCP, and the terraform state bucket, authenticate keylessly through Workload Identity Federation, so nothing else is stored.
 
 ## Secrets
 
 Everything lives in one `ansible-vault` file, `inventory/group_vars/all/vault.yml` — encrypted whole, one vault id, no inline `!vault` strings — opened with a gitignored `.vault_pass`. Vault variables are scoped by host and purpose, and mapped onto a role's generic variable in the play's `vars:`; one named identically to a role's default is picked up from `group_vars/all` with no wiring at all.
 
-OpenTofu cannot read a vault, so its tokens are sourced through `bin/vault-var.sh` into `TF_VAR_`/`TF_TOKEN_` at run time.
+OpenTofu cannot read a vault, so its provider tokens are sourced through `bin/vault-var.sh` into `TF_VAR_` at run time.
 
 On a host, a secret is rendered into a 0600 `EnvironmentFile` that the quadlet references rather than into the world-readable unit, and the task that writes it sets `no_log`.
 

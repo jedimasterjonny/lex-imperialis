@@ -1,13 +1,13 @@
 ---
 name: terraform
 
-# terraform/ runs OpenTofu locally against the HCP workspace (Local execution),
-# so this runs on the runner rather than via HCP's remote runs: a PR plans (as
-# the read-only tofu-plan SA) and comments the plan; a merge to main applies (as
-# the write tofu-apply SA). tofu, the venv (for ansible-vault), and .vault_pass
-# are all it needs — the HCP, Cloudflare, and Hetzner tokens come from the vault
-# and GCP auth is keyless via WIF, so VAULT_PASSWORD is the only secret. Offline
-# fmt/validate/tflint stay in the lint workflow.
+# terraform/ runs OpenTofu on the runner (Local execution): a PR plans (as the
+# read-only tofu-plan SA) and comments the plan; a merge to main applies (as the
+# write tofu-apply SA). State lives in a GCS bucket in the infra-shared project,
+# so the backend authenticates keylessly via WIF alongside the google provider —
+# the plan SA can read state, only the apply SA can write it. The Cloudflare and
+# Hetzner provider tokens still come from the vault (VAULT_PASSWORD), and GCP auth
+# is keyless via WIF. Offline fmt/validate/tflint stay in the lint workflow.
 #
 # No PR paths filter: the workflow runs on every PR so terraform-gate (a required
 # check) always reports. discover decides whether the plan actually runs, and a
@@ -95,7 +95,7 @@ jobs:
       && (github.event_name != 'pull_request'
       || github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: ubuntu-latest
-    # A hung apply holds the HCP state lock until the job dies — 6h on the
+    # A hung apply holds the GCS state lock until the job dies — 6h on the
     # default. Well above a plan+apply of this config, well below that.
     timeout-minutes: 30
     permissions:
@@ -150,13 +150,13 @@ jobs:
 
       # Plan to a file so the apply below runs exactly this plan, not a fresh
       # re-plan, and so the destructive-action check reads the same plan the human
-      # (or, for a routine bump, nobody) would see. TF_TOKEN_app_terraform_io is
-      # the non-interactive `tofu login` for the HCP workspace; the Cloudflare and
-      # Hetzner tokens feed their providers. -lock=false: the plan is read-only
-      # (apply re-locks and re-checks the saved plan), and cancel-in-progress could
-      # otherwise kill it mid-run and orphan the HCP state lock. set +e captures the
-      # output and exit code so the next step can post the plan and still fail the
-      # job on a real error.
+      # (or, for a routine bump, nobody) would see. The GCS backend reads state via
+      # the WIF credentials the auth step set up (the tofu-plan SA); the Cloudflare
+      # and Hetzner tokens come from the vault and feed their providers. -lock=false:
+      # the plan doesn't write state (apply re-locks and re-checks the saved plan),
+      # and cancel-in-progress could otherwise kill it mid-run and orphan the GCS
+      # state lock. set +e captures the output and exit code so the next step can
+      # post the plan and still fail the job on a real error.
       - name: Plan
         id: plan
         env:
@@ -170,10 +170,9 @@ jobs:
           [ "$EVENT" = "schedule" ] && detail="-detailed-exitcode"
           # Assign then export separately (matches Apply): `export VAR=$(...)` would
           # mask the vault lookup's exit under shellcheck's SC2155, and reads cleaner.
-          TF_TOKEN_app_terraform_io="$(bin/vault-var.sh terraform_hcp_token)"
           TF_VAR_cloudflare_api_token="$(bin/vault-var.sh terraform_cloudflare_api_token)"
           TF_VAR_hcloud_token="$(bin/vault-var.sh hcloud_token_emmas_edit)"
-          export TF_TOKEN_app_terraform_io TF_VAR_cloudflare_api_token TF_VAR_hcloud_token
+          export TF_VAR_cloudflare_api_token TF_VAR_hcloud_token
           # -no-color on both: the combined output is teed into the PR comment.
           { tofu -chdir=terraform init -input=false -no-color \
             && tofu -chdir=terraform plan -input=false -no-color -lock=false $detail -out=tfplan; } 2>&1 | tee plan.txt
@@ -247,7 +246,7 @@ jobs:
           echo "No destructive actions in the plan."
 
       # Merge to main: apply the plan saved above (not a fresh re-plan), so what
-      # applies is what was logged. Unlike the read-only plan this locks the HCP
+      # applies is what was logged. Unlike the read-only plan this locks the GCS
       # state; a stale saved plan (state moved since the plan) makes apply error
       # rather than apply something unreviewed. The concurrency group serialises
       # main runs and never auto-cancels them; a manual cancel, job timeout, or
@@ -258,10 +257,9 @@ jobs:
         run: |
           # Assign then export separately: `export VAR=$(...)` would mask a failed
           # vault lookup under `set -e` (export's own exit status is 0).
-          TF_TOKEN_app_terraform_io="$(bin/vault-var.sh terraform_hcp_token)"
           TF_VAR_cloudflare_api_token="$(bin/vault-var.sh terraform_cloudflare_api_token)"
           TF_VAR_hcloud_token="$(bin/vault-var.sh hcloud_token_emmas_edit)"
-          export TF_TOKEN_app_terraform_io TF_VAR_cloudflare_api_token TF_VAR_hcloud_token
+          export TF_VAR_cloudflare_api_token TF_VAR_hcloud_token
           tofu -chdir=terraform apply -input=false -no-color tfplan
 
   # Fixed-name summary check for branch protection: the plan job is skipped on a
