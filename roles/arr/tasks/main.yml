@@ -1,4 +1,21 @@
 ---
+# A netns joiner has no network without its owner, so an arr_enabled that keeps a
+# joiner but drops its owner is invalid — and the cleanup below would tear the
+# owner's unit down, leaving the joiner unable to start. Fail fast and clearly
+# here rather than abort mid-start after a partial teardown.
+- name: Enabled netns joiners require their owner enabled
+  ansible.builtin.assert:
+    that: >-
+      arr_apps | dict2items | selectattr('key', 'in', arr_enabled)
+      | selectattr('value.netns', 'defined') | map(attribute='value.netns')
+      | unique | difference(arr_enabled) | length == 0
+    fail_msg: >-
+      arr_enabled keeps netns joiners whose owner is not enabled:
+      {{ arr_apps | dict2items | selectattr('key', 'in', arr_enabled)
+      | selectattr('value.netns', 'defined') | map(attribute='value.netns')
+      | unique | difference(arr_enabled) | list }}.
+    quiet: true
+
 # Wireguard owns transmission's tunnel; its host setup runs only when the
 # wireguard app is enabled.
 - name: Set up the wireguard tunnel host
@@ -372,6 +389,39 @@
     mode: "0644"
   become: true
   notify: Restart caddy for arr
+
+# Dropping an app from arr_enabled must converge: the caddy snippet and
+# wireguard's NetworkAlias list already re-render from the enabled set, but the
+# app's own generated unit is left behind, and WantedBy=multi-user.target keeps
+# starting it on every boot. Stat first so a host that never ran the app skips it
+# — nothing to stop or remove.
+- name: Find containers dropped from arr_enabled
+  ansible.builtin.stat:
+    path: /etc/containers/systemd/{{ item.key }}.container
+  loop: "{{ arr_apps | dict2items | rejectattr('key', 'in', arr_enabled) | list }}"
+  loop_control:
+    label: "{{ item.key }}"
+  register: arr_disabled_units
+  become: true
+
+- name: Stop containers dropped from arr_enabled
+  ansible.builtin.systemd_service:
+    name: "{{ item.item.key }}"
+    state: stopped
+  loop: "{{ arr_disabled_units.results | selectattr('stat.exists') | list }}"
+  loop_control:
+    label: "{{ item.item.key }}"
+  become: true
+
+- name: Remove the generated units of dropped containers
+  ansible.builtin.file:
+    path: "{{ item.stat.path }}"
+    state: absent
+  loop: "{{ arr_disabled_units.results | selectattr('stat.exists') | list }}"
+  loop_control:
+    label: "{{ item.item.key }}"
+  become: true
+  notify: Reload systemd for arr
 
 # Quadlet units only exist after the daemon reload, so apply pending restarts
 # before asserting the services are up.

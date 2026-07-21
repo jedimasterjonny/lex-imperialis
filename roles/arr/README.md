@@ -5,8 +5,9 @@ Media automation stack as rootful podman quadlets. Each webui is proxied at
 apps (plex), reached directly. Config lives in per-app named volumes; media
 lives under the NAS-backed `arr_data_root` as `media/<type>` libraries beside a
 sibling `downloads`. `arr_enabled` picks which apps a host runs (default: all),
-so the stack can come up one container at a time. Unit changes bounce only the
-apps they touch.
+so the stack can come up one container at a time; dropping an app stops its
+container and removes the generated unit. A netns joiner needs its owner enabled
+too (the role asserts this). Unit changes bounce only the apps they touch.
 
 ## Health: probe over the network, exec only to restart
 

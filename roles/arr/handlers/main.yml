@@ -19,6 +19,13 @@
     | selectattr('changed') | map(attribute='item.key') | unique | list }}
   become: true
 
+# Removal has no container to restart, so this reload can't fold into a restart
+# handler the way the convention's reload-then-restart does.
+- name: Reload systemd for arr
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  become: true
+
 # Config changes restart wireguard directly; PartOf bounces every app that
 # shares its netns too.
 - name: Restart wireguard for arr
