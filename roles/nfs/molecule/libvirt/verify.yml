@@ -19,6 +19,39 @@
         fail_msg: "{{ nfs_test_mount }} is not an NFS mount"
         quiet: true
 
+    - name: Read the fixture mount's live options
+      ansible.builtin.command: "findmnt --noheadings --output OPTIONS {{ nfs_test_mount }}"
+      register: nfs_live_opts
+      changed_when: false
+
+    - name: The load-bearing options are live on the kernel mount
+      ansible.builtin.assert:
+        that:
+          # findmnt renders the negotiated protocol as vers=4.1, not nfsvers.
+          - "'vers=4.1' in nfs_live_opts.stdout"
+          - "'hard' in nfs_live_opts.stdout"
+          - "'noatime' in nfs_live_opts.stdout"
+        fail_msg: "live mount is missing a load-bearing option: {{ nfs_live_opts.stdout }}"
+        quiet: true
+
+    # _netdev is an fstab/systemd ordering hint (order after the network is up),
+    # not a kernel mount option, so it never appears in the live mount — assert it
+    # and fstab persistence from the fstab entry itself. _netdev is load-bearing:
+    # without it NetworkManager can tear the network down under an in-flight mount.
+    - name: Read the fstab entry for the fixture mount
+      ansible.builtin.command: "findmnt --fstab --noheadings --output OPTIONS {{ nfs_test_mount }}"
+      register: nfs_fstab_opts
+      changed_when: false
+
+    - name: The mount persists in fstab with _netdev and its options
+      ansible.builtin.assert:
+        that:
+          - "'_netdev' in nfs_fstab_opts.stdout"
+          - "'nfsvers=4.1' in nfs_fstab_opts.stdout"
+          - "'hard' in nfs_fstab_opts.stdout"
+        fail_msg: "fstab entry missing _netdev/options: {{ nfs_fstab_opts.stdout }}"
+        quiet: true
+
     - name: Write a file through the mount
       ansible.builtin.copy:
         dest: "{{ nfs_test_mount }}/probe.txt"

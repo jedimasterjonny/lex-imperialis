@@ -23,3 +23,73 @@
           - "'loglevel VERBOSE' in sshd_effective.stdout_lines"
         fail_msg: "the hardening drop-in is not in effect"
         quiet: true
+
+    # sshd -T only parses the on-disk config as a fresh process — it says nothing
+    # about the daemon actually serving it. Assert the unit is up, then probe the
+    # live daemon, so a broken Reload sshd (renamed handler, dropped notify,
+    # failed reload) can't pass verify while the running sshd still serves the
+    # stock config — the known restart-window exposure.
+    - name: Read the sshd unit state
+      ansible.builtin.systemd_service:
+        name: sshd
+      register: sshd_unit
+
+    # ActiveState only: the role deploys a drop-in and reloads, it never enables
+    # or starts sshd, so UnitFileState would test the image preset, not the role.
+    - name: The sshd service is active
+      ansible.builtin.assert:
+        that:
+          - "sshd_unit.status.ActiveState == 'active'"
+        fail_msg: "sshd is not active (Active={{ sshd_unit.status.ActiveState }})"
+        quiet: true
+
+    # active is not listening — there is a window between the unit going active
+    # and the socket accepting. Block on the port so the probe can't fail closed
+    # (empty methods line read as insecure) just because it raced the daemon.
+    - name: Wait for the daemon to accept connections
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: 22
+        timeout: 10
+
+    # PreferredAuthentications=none makes the client offer no method, so the
+    # daemon answers with the methods it will accept — read off the wire, not the
+    # file. -v prints that list as "Authentications that can continue". Hardened,
+    # it is publickey only; BatchMode never prompts, and the connection is meant
+    # to fail auth, so failed_when is off.
+    - name: Probe the running daemon's offered auth methods
+      ansible.builtin.command:
+        argv:
+          - ssh
+          - -v
+          - -o
+          - BatchMode=yes
+          - -o
+          - StrictHostKeyChecking=no
+          - -o
+          - UserKnownHostsFile=/dev/null
+          - -o
+          - ConnectTimeout=5
+          - -o
+          - PreferredAuthentications=none
+          - probe@127.0.0.1
+          - "true"
+      register: sshd_probe
+      changed_when: false
+      failed_when: false
+
+    - name: The live daemon offers only key-based auth
+      vars:
+        auth_line: >-
+          {{ sshd_probe.stderr_lines
+             | select('search', 'Authentications that can continue')
+             | first | default('') }}
+      ansible.builtin.assert:
+        that:
+          - "'publickey' in auth_line"
+          - "'password' not in auth_line"
+          - "'keyboard-interactive' not in auth_line"
+        fail_msg: >-
+          the running daemon offers non-key auth
+          (methods line: {{ auth_line | default('none seen', true) }})
+        quiet: true

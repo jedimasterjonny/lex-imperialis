@@ -1,7 +1,8 @@
 ---
 # Shared across roles: the cloud images ship a default user holding uid 1000,
 # which common pins for the owner — `opensuse` on Tumbleweed, `sles` on Leap 16.
-# Scenarios that create the owner symlink this into their directory (common, dev).
+# Scenarios that create the owner symlink this in (common, dev); motd also carries
+# it as the harness exemplar, so a break here fails CI via the shared-infra proxy.
 - name: Prepare
   hosts: all
   tasks:

@@ -15,6 +15,11 @@ repos:
       - id: check-json
       - id: check-executables-have-shebangs
       - id: detect-private-key
+      # The scenario architecture shares converge/verify/prepare via relative
+      # symlinks; these guard against a rename leaving a dangler or a symlink
+      # being committed as its dereferenced content.
+      - id: check-symlinks
+      - id: destroyed-symlinks
   # gitleaks backstops detect-private-key, catching tokens, passwords, and
   # cloud credentials the lone key check misses. Stays remote like the other
   # binary hooks.
