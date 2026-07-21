@@ -5,7 +5,8 @@
 # The apex A and AAAA carry rogue-trader's origin IP — the address Cloudflare's
 # proxy hides. Committing it to this public repo would defeat that, so the content
 # is read from the Hetzner API at plan time via the hcloud_server data source
-# below, never hardcoded.
+# below, never hardcoded, and wrapped in sensitive() so plan/apply render it as
+# "(sensitive value)" rather than leaking it into the public run log or PR comment.
 
 locals {
   emmasedit_com_zone_id = "b6791c95e583b4af99fd5eb01f183bc4"
@@ -24,7 +25,7 @@ resource "cloudflare_dns_record" "emmas_apex_a" {
   zone_id = local.emmasedit_com_zone_id
   name    = "emmasedit.com"
   type    = "A"
-  content = data.hcloud_server.rogue_trader.ipv4_address
+  content = sensitive(data.hcloud_server.rogue_trader.ipv4_address)
   ttl     = 1
   proxied = true
 }
@@ -33,7 +34,7 @@ resource "cloudflare_dns_record" "emmas_apex_aaaa" {
   zone_id = local.emmasedit_com_zone_id
   name    = "emmasedit.com"
   type    = "AAAA"
-  content = data.hcloud_server.rogue_trader.ipv6_address
+  content = sensitive(data.hcloud_server.rogue_trader.ipv6_address)
   ttl     = 1
   proxied = true
 }
