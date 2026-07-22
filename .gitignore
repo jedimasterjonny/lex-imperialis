@@ -5,6 +5,9 @@
 __pycache__/
 *.py[cod]
 
+# pytest (molecule verify suites)
+.pytest_cache/
+
 # Ansible retry files (can leak hostnames)
 *.retry
 

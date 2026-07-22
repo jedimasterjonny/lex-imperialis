@@ -2,6 +2,8 @@
 ansible-lint==26.6.0
 molecule==26.6.0
 pre-commit==4.6.1
+# pytest: drives the roles' molecule verify (the shim runs it on the controller).
+pytest==9.1.1
 # requests + python-dateutil: hetzner.hcloud's runtime deps, for the hetzner
 # molecule scenario (the collection ships in ansible but not these).
 python-dateutil==2.9.0.post0
