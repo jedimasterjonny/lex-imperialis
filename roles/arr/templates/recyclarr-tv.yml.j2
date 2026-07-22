@@ -14,6 +14,28 @@ sonarr:
       - trash_id: d1498e7d189fbe6c7110ceaabb7473e6  # WEB-2160p
         reset_unmatched_scores:
           enabled: true
+      # From-scratch fallback for shows that only exist in SD/DVD: accepts the DVD
+      # rip yet still upgrades to a 1080p WEB rip if one ever surfaces. Assign a
+      # series to it by hand; no custom_formats reference it, so the HD profiles
+      # stay untouched.
+      - name: DVD
+        upgrade:
+          allowed: true
+          until_quality: WEB 1080p
+          until_score: 10000
+        qualities:
+          - name: WEB 1080p
+            qualities:
+              - WEBDL-1080p
+              - WEBRip-1080p
+          - name: HDTV-1080p
+          - name: WEB 720p
+            qualities:
+              - WEBDL-720p
+              - WEBRip-720p
+          - name: HDTV-720p
+          - name: DVD
+          - name: SDTV
     custom_format_groups:
       add:
         - trash_id: 158188097a58d7687dee647e04af0da3  # [Optional] Golden Rule HD
