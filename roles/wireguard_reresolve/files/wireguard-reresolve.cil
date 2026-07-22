@@ -1,20 +1,15 @@
 ; openSUSE confines wg-quick to wireguard_t, which the base policy does not let
-; run openresolv — wg-quick's DNS= line calls resolvconf, which manages a lock
-; and state under /run/resolvconf and rewrites /etc/resolv.conf. Under enforcing
-; that is denied, so wg-quick tears the tunnel down at boot.
+; run openresolv — wg0.conf's DNS= line makes wg-quick call resolvconf, which
+; creates and writes /run/resolvconf and rewrites /etc/resolv.conf. Under
+; enforcing all are denied, so wg-quick tears the tunnel down at boot. Grant the
+; access, scoped to the wireguard_t domain.
 ;
-; Grant the missing access, scoped to a private type for the /run/resolvconf
-; tree rather than a blanket over var_run_t: systemd-tmpfiles labels the
-; directory wg_resolvconf_run_t (see the tmpfiles.d drop-in and the filecon
-; below), and files openresolv creates under it inherit that type. resolv.conf
-; keeps its own net_conf_t, so that one write is granted directly.
+; /run/resolvconf keeps its default var_run_t label so wg-quick creates it
+; itself. An earlier attempt gave it a private type, but that also needed the
+; boot-time systemd_tmpfiles_t domain to be allowed to create that type — a
+; brittle second grant a reboot-free test missed; wg-quick then hit the original
+; mkdir-denied at boot. var_run_t needs no second domain.
 
-(type wg_resolvconf_run_t)
-(typeattributeset file_type (wg_resolvconf_run_t))
-(roletype object_r wg_resolvconf_run_t)
-
-(filecon "/run/resolvconf(/.*)?" any (system_u object_r wg_resolvconf_run_t ((s0) (s0))))
-
-(allow wireguard_t wg_resolvconf_run_t (dir (open read getattr search create write add_name remove_name rmdir setattr)))
-(allow wireguard_t wg_resolvconf_run_t (file (create open read write getattr setattr unlink)))
+(allow wireguard_t var_run_t (dir (open read getattr search create write add_name remove_name rmdir setattr)))
+(allow wireguard_t var_run_t (file (create open read write getattr setattr unlink)))
 (allow wireguard_t net_conf_t (file (open read write getattr setattr)))

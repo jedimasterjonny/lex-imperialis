@@ -30,41 +30,16 @@
         fail_msg: "the wireguard-reresolve SELinux module is not loaded"
         quiet: true
 
-    # /run is tmpfs, wiped every boot. Wipe /run/resolvconf and re-run the
-    # tmpfiles pass the boot unit runs (systemd-tmpfiles-setup runs
-    # `systemd-tmpfiles --create`), so what recreates and labels it is the
-    # drop-in being picked up among all configs — exactly as a reboot would —
-    # not the converge-time handler that targets our file alone.
-    - name: Wipe the openresolv runtime directory
+    # Remove the runtime dir so starting the unit must create it from scratch —
+    # the boot path, where wg-quick (wireguard_t) runs openresolv's mkdir and
+    # writes under enforcing. Nothing pre-creates it, so this is the whole fix:
+    # systemctl start runs wg-quick in the same confined domain a boot gives it.
+    - name: Remove the openresolv runtime directory
       ansible.builtin.file:
         path: /run/resolvconf
         state: absent
       become: true
 
-    - name: Re-run the boot-time tmpfiles pass over all configs
-      ansible.builtin.command:
-        cmd: systemd-tmpfiles --create
-      changed_when: false
-      become: true
-
-    - name: Read the runtime directory's SELinux label
-      ansible.builtin.command:
-        cmd: ls -Zd /run/resolvconf
-      register: wireguard_reresolve_rundir
-      changed_when: false
-      failed_when: false
-      become: true
-
-    - name: The drop-in recreated the directory with the private type
-      ansible.builtin.assert:
-        that:
-          - "'wg_resolvconf_run_t' in wireguard_reresolve_rundir.stdout"
-        fail_msg: "/run/resolvconf was not recreated with the wg_resolvconf_run_t label"
-        quiet: true
-
-    # Starting the unit through systemd runs wg-quick in the same confined domain
-    # a boot gives it, so this is the real regression check: without the policy
-    # module, openresolv is denied here and the unit fails.
     - name: Start the tunnel under enforcing, as it would at boot
       ansible.builtin.systemd_service:
         name: wg-quick@wg0.service
@@ -86,4 +61,19 @@
         fail_msg: >-
           wg-quick@wg0 did not come up under enforcing SELinux — the openresolv
           denial has regressed
+        quiet: true
+
+    - name: Read the runtime directory wg-quick created
+      ansible.builtin.command:
+        cmd: ls -Zd /run/resolvconf
+      register: wireguard_reresolve_rundir
+      changed_when: false
+      failed_when: false
+      become: true
+
+    - name: The runtime directory was created under enforcing
+      ansible.builtin.assert:
+        that:
+          - "'/run/resolvconf' in wireguard_reresolve_rundir.stdout"
+        fail_msg: "wg-quick did not create /run/resolvconf under enforcing"
         quiet: true

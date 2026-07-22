@@ -7,20 +7,10 @@
     state: present
   become: true
 
-- name: Pre-create the openresolv runtime directory for wg-quick under enforcing SELinux
-  ansible.builtin.copy:
-    src: wireguard-reresolve-resolvconf.conf
-    dest: /etc/tmpfiles.d/wireguard-reresolve-resolvconf.conf
-    owner: root
-    group: root
-    mode: "0644"
-  become: true
-  notify: Materialise the openresolv runtime directory
-
 # openSUSE's wireguard_t cannot run openresolv under enforcing; this local module
-# grants the access, scoped to a private type for /run/resolvconf. Gated on a
-# manageable SELinux so it is a no-op on the SELinux-less molecule containers,
-# whose shared kernel would otherwise take the change host-wide.
+# grants it manage on var_run_t (the /run/resolvconf tree) and write on net_conf_t
+# (resolv.conf). Gated on a manageable SELinux so it is a no-op on the SELinux-less
+# molecule containers, whose shared kernel would otherwise take the change host-wide.
 - name: Install the wireguard-resolvconf SELinux policy module
   ansible.builtin.copy:
     src: wireguard-reresolve.cil
