@@ -1,0 +1,8 @@
+---
+platforms:
+  - name: "lex-wireguard-reresolve-hetzner-${MOLECULE_RUN_ID:-local}"
+    server_type: cx23
+    image: opensuse-16
+    # First-tried region and type; molecule/hetzner/create.yml falls back across
+    # regions then server types on a resource_unavailable (capacity) shortfall.
+    location: nbg1

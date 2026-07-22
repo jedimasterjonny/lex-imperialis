@@ -1,0 +1,5 @@
+---
+platforms:
+  - name: "lex-wireguard-reresolve-libvirt-${MOLECULE_RUN_ID:-local}"
+    image: https://download.opensuse.org/distribution/leap/16.0/appliances/Leap-16.0-Minimal-VM.x86_64-Cloud.qcow2
+    image_checksum: sha256:https://download.opensuse.org/distribution/leap/16.0/appliances/Leap-16.0-Minimal-VM.x86_64-Cloud.qcow2.sha256
