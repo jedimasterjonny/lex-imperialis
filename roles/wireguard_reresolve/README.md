@@ -15,3 +15,25 @@ the timer no-ops.
 Variables in `defaults/main.yml`: `wireguard_reresolve_interface`,
 `wireguard_reresolve_resolver`, `wireguard_reresolve_stale_seconds`,
 `wireguard_reresolve_interval`.
+
+## openresolv under enforcing SELinux
+
+wg-quick's `DNS=` line runs openresolv, which manages state under
+`/run/resolvconf` and rewrites `/etc/resolv.conf`. openSUSE confines wg-quick to
+`wireguard_t`, which the base policy allows neither, so under enforcing SELinux
+`wg-quick up` is denied and tears the tunnel down at boot. The role grants the
+access in two pieces:
+
+- A `tmpfiles.d` drop-in pre-creates `/run/resolvconf`, which the filecon in the
+  module below labels `wg_resolvconf_run_t` — a private type — before wg-quick runs.
+- A local CIL policy module (`files/wireguard-reresolve.cil`, loaded with
+  `semodule`) grants `wireguard_t` manage on that private type (so the grant is
+  scoped to the resolvconf tree, not a blanket over `var_run_t`) plus write on
+  `net_conf_t` for `resolv.conf`. Its install is gated on
+  `ansible_selinux.status == 'enabled'`, a no-op on the SELinux-less molecule
+  containers whose shared kernel would otherwise take the change host-wide.
+
+The tunnel-under-enforcing behaviour is exercised on the `libvirt`/`hetzner` VM
+tiers — a container can host neither a real `wg0` nor enforcing SELinux; the
+`default`/`leap` container tiers only check the drop-in installs and the runtime
+directory materialises.
