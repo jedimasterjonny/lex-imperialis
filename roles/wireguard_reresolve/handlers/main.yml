@@ -1,18 +1,7 @@
 ---
-# Load before the tmpfiles handler below: the module carries the filecon that
-# labels /run/resolvconf, so it must be in the policy before systemd-tmpfiles
-# creates and labels the directory. semodule -i changes the policy store.
+# semodule -i loads the local policy module into the store, changing the policy.
 - name: Load the wireguard-reresolve SELinux module
   ansible.builtin.command:
     cmd: semodule -i /etc/selinux/wireguard-reresolve.cil
   changed_when: true
-  become: true
-
-# The drop-in creates /run/resolvconf at boot; apply it now too so a converge
-# does not have to wait for a reboot. --create is idempotent (it leaves an
-# existing directory untouched), so there is nothing to detect a change on.
-- name: Materialise the openresolv runtime directory
-  ansible.builtin.command:
-    cmd: systemd-tmpfiles --create /etc/tmpfiles.d/wireguard-reresolve-resolvconf.conf
-  changed_when: false
   become: true
