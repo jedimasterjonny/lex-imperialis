@@ -1,0 +1,73 @@
+---
+# The failure this role fixes only manifests under enforcing SELinux with a real
+# wg0 interface and openresolv — which a container cannot host. So this scenario
+# stands up a Leap 16 VM (rogue-trader's OS), puts it in enforcing, and gives it
+# a throwaway tunnel whose sole job is to exercise wg-quick's openresolv path.
+# verify.yml then starts wg-quick@wg0 in the enforcing domain and asserts it
+# comes up. The peer is never contacted: wg-quick up completes without a
+# handshake, and the DNS= line is what invokes resolvconf. Addresses are
+# TEST-NET-1 (RFC 5737).
+- name: Converge
+  hosts: all
+  tasks:
+    # The minimal Leap Cloud image ships without the libselinux python bindings
+    # the selinux module needs; the fleet's fuller images already carry them.
+    - name: Install the SELinux python bindings the selinux module needs
+      community.general.zypper:
+        name: python3-selinux
+        state: present
+      become: true
+
+    - name: Put SELinux in enforcing mode, as the fleet runs it
+      ansible.posix.selinux:
+        state: enforcing
+        policy: targeted
+      become: true
+
+    - name: Apply the wireguard_reresolve role
+      ansible.builtin.include_role:
+        name: wireguard_reresolve
+
+    - name: Install openresolv, which backs wg-quick's DNS= line
+      community.general.zypper:
+        name: openresolv
+        state: present
+      become: true
+
+    - name: Ensure the WireGuard config directory exists
+      ansible.builtin.file:
+        path: /etc/wireguard
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      become: true
+
+    - name: Generate throwaway tunnel keys
+      ansible.builtin.shell:
+        cmd: set -o pipefail; wg genkey; wg genkey | wg pubkey
+      register: wireguard_reresolve_test_keys
+      changed_when: false
+      no_log: true
+
+    # force: false leaves the file untouched once written, so re-converge stays
+    # idempotent even though the keys above regenerate each run.
+    - name: Write a minimal wg0.conf that carries a DNS= line
+      ansible.builtin.copy:
+        dest: /etc/wireguard/wg0.conf
+        owner: root
+        group: root
+        mode: "0600"
+        force: false
+        content: |
+          [Interface]
+          Address = 192.0.2.9/32
+          PrivateKey = {{ wireguard_reresolve_test_keys.stdout_lines[0] }}
+          DNS = 192.0.2.53
+
+          [Peer]
+          PublicKey = {{ wireguard_reresolve_test_keys.stdout_lines[1] }}
+          Endpoint = 192.0.2.1:51820
+          AllowedIPs = 192.0.2.0/24
+      no_log: true
+      become: true
