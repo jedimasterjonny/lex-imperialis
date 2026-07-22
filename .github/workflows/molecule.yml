@@ -230,18 +230,15 @@ jobs:
           . .venv/bin/activate
           pip install -r requirements-dev.txt
 
-      # VAULT_PASSWORD decrypts the in-repo vault holding the hcloud token — the
-      # only secret CI needs; molecule reads this repo-root file as a local run does.
-      - name: Write the vault password file
-        env:
-          VAULT_PASSWORD: ${{ secrets.VAULT_PASSWORD }}
-        run: |
-          printf '%s' "$VAULT_PASSWORD" > .vault_pass
-          chmod 600 .vault_pass
-
+      # HCLOUD_TOKEN is the CI test-project token (a repo secret scoped to a
+      # throwaway Hetzner project with no production server), so this job never
+      # decrypts the vault — closing the one PR-triggered path that otherwise would.
+      # The make target reads HCLOUD_TOKEN straight from the environment here, only
+      # falling back to the vault for local runs.
       - name: Run the hetzner molecule scenario
         env:
           ROLE: ${{ matrix.role }}
+          HCLOUD_TOKEN: ${{ secrets.MOLECULE_HCLOUD_TOKEN }}
         run: make test-hetzner ROLE=$ROLE
 
       # Backstop for cancellation (timeout/manual/supersede), where molecule is
@@ -251,6 +248,7 @@ jobs:
         if: cancelled()
         env:
           ROLE: ${{ matrix.role }}
+          HCLOUD_TOKEN: ${{ secrets.MOLECULE_HCLOUD_TOKEN }}
         run: make destroy-hetzner ROLE=$ROLE
 
   # Fixed-name summary check for branch protection: the per-role matrix job names

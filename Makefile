@@ -17,6 +17,14 @@ TIER = $(if $(filter default leap,$(SCENARIO)),incus,$(SCENARIO))
 
 BASE_CONFIG = molecule/$(TIER)/base.yml
 
+# The hetzner tier's create/destroy read the CI test-project token from
+# HCLOUD_TOKEN, not the vault, so a PR-triggered CI run never decrypts the vault.
+# CI injects MOLECULE_HCLOUD_TOKEN; locally, source it from the vault. The `:-`
+# default only runs bin/vault-var.sh when HCLOUD_TOKEN is unset, so CI (which has
+# no .vault_pass) never calls it. Runs before the cd, so bin/vault-var.sh resolves
+# from the repo root.
+HCLOUD_TOKEN_PREP = $(if $(filter hetzner,$(SCENARIO)),export HCLOUD_TOKEN="$${HCLOUD_TOKEN:-$$(bin/vault-var.sh hcloud_token)}" &&,)
+
 # -c is a global option, so it precedes the subcommand. molecule silently ignores
 # a -c path that does not exist and then skips create/destroy with only a
 # warning, so assert the file is there: a typo'd SCENARIO, or a scenario whose
@@ -24,7 +32,7 @@ BASE_CONFIG = molecule/$(TIER)/base.yml
 define molecule
 	test -f $(BASE_CONFIG) || \
 		{ echo "no such tier: $(BASE_CONFIG) (SCENARIO=$(SCENARIO))" >&2; exit 1; }
-	. .venv/bin/activate && cd roles/$(ROLE) && \
+	. .venv/bin/activate && $(HCLOUD_TOKEN_PREP) cd roles/$(ROLE) && \
 		molecule -c $(CURDIR)/$(BASE_CONFIG) $(1) -s $(SCENARIO)
 endef
 

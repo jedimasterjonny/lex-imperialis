@@ -100,9 +100,11 @@ plan is scanned for a delete or replace: finding one fails the required
 `terraform-gate` check on a PR (blocking an automerge) and halts before the apply
 on a merge — so a destructive plan never applies unattended, while a routine
 in-place bump flows through. A weekly scheduled run plans `main` against live
-infra and fails on any drift. State (GCS) and GCP are reached keylessly via WIF,
-while the Cloudflare and Hetzner provider tokens come from the vault, so
-`VAULT_PASSWORD` stays these workflows' only secret. `make tofu-apply` still
+infra and fails on any drift. State (GCS) and GCP are keyless via WIF; in CI the
+plan authenticates with read-only Cloudflare/Hetzner tokens (plain repo secrets —
+a PR can't mutate with them), while the apply's write tokens stay in the vault
+behind `VAULT_PASSWORD`, gated to the main-only `fleet-apply` environment so no PR
+can decrypt it. `make tofu-apply` still
 applies locally for the rare change CI won't: project creation, billing, the
 state bucket, or a deliberate delete/replace.
 

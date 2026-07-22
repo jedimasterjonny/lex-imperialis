@@ -6,8 +6,8 @@ with the role.
 
 Each tier also owns a `base.yml`: the provisioner config its scenarios would
 otherwise all repeat — the create/destroy paths above, `roles_path`, and
-whatever else the tier decides (the incus connection, hetzner's vault password
-file and SSH transfer method). Molecule deep-merges it under a scenario's
+whatever else the tier decides (the incus connection, hetzner's SSH transfer
+method). Molecule deep-merges it under a scenario's
 `molecule.yml`, which is therefore just that scenario's `platforms` plus any
 override it layers on top.
 
@@ -61,6 +61,7 @@ server-type pair (pinned first, then fallbacks) until one has capacity — the
 default type sells out fleet-wide — and fails only when all are exhausted. After
 launch it waits for SSH and for `cloud-init` to finish, which holds the zypper
 lock a converge would otherwise race. Both create and destroy read the hcloud
-token from the vault, so teardown needs `.vault_pass` too; given that,
-`--destroy=always` plus CI's cancellation teardown keep a billed VM from
-leaking.
+token from `HCLOUD_TOKEN` — CI injects the `MOLECULE_HCLOUD_TOKEN` repo secret,
+locally the make target sources it from the vault — so teardown needs it set too;
+given that, `--destroy=always` plus CI's cancellation teardown keep a billed VM
+from leaking.
