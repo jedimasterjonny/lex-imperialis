@@ -8,7 +8,8 @@ defined last) so every check above sees the uninstalled instance.
 
 import pytest
 
-from wphelpers import DOMAIN, http_body, http_head, wait_for
+from testlib import http_probe, wait_for
+from wphelpers import DOMAIN
 
 UPLOADS = "/wp-content/uploads/2026/07"
 
@@ -37,8 +38,8 @@ def homepage(host):
     # caddy stamps the security headers on every response, so they ride the
     # install redirect too. molecule runs wordpress_tls:false, so no HSTS.
     def ready():
-        status, headers = http_head(host, "/")
-        return (status, headers) if status in (200, 301, 302) else None
+        r = http_probe(host, "/", host_header=DOMAIN)
+        return (r.status, r.headers) if r.status in (200, 301, 302) else None
 
     return wait_for(ready, tries=60, delay=5, fail="wordpress did not answer through the proxy")
 
@@ -57,8 +58,7 @@ def test_php_banner_stripped(homepage):
 
 @pytest.mark.parametrize("path", ["/readme.html", "/license.txt"])
 def test_version_disclosure_blocked(host, path):
-    status, _ = http_head(host, path)
-    assert status == 404
+    assert http_probe(host, path, host_header=DOMAIN).status == 404
 
 
 @pytest.fixture(scope="module")
@@ -68,22 +68,22 @@ def uploads_planted(host):
 
 @pytest.mark.parametrize("path", WEBSHELLS)
 def test_webshell_not_executed(host, uploads_planted, path):
-    status, body = http_body(host, path)
-    assert status in (200, 403, 404)
-    assert "1764" not in body
+    r = http_probe(host, path, host_header=DOMAIN, body=True)
+    assert r.status in (200, 403, 404)
+    assert "1764" not in r.body
 
 
 def test_legitimate_media_serves(host, uploads_planted):
     # Disabling PHP must not over-block: a genuine media file still serves.
-    _, body = http_body(host, UPLOADS + "/photo.png")
-    assert "genuine-media" in body
+    r = http_probe(host, UPLOADS + "/photo.png", host_header=DOMAIN, body=True)
+    assert "genuine-media" in r.body
 
 
 @pytest.fixture(scope="module")
 def static_asset(host):
     def ready():
-        status, headers = http_head(host, "/wp-includes/images/blank.gif")
-        return headers if status == 200 else None
+        r = http_probe(host, "/wp-includes/images/blank.gif", host_header=DOMAIN)
+        return r.headers if r.status == 200 else None
 
     return wait_for(ready, tries=30, delay=5, fail="the static asset did not answer 200")
 
@@ -98,7 +98,7 @@ def test_install_page_renders(host):
     # Proves the whole chain: caddy proxies, wordpress serves PHP, and it reached
     # the database -- a failed connection answers 500, not the install form.
     def ready():
-        _, body = http_body(host, "/wp-admin/install.php")
+        body = http_probe(host, "/wp-admin/install.php", host_header=DOMAIN, body=True).body
         return body if "WordPress" in body else None
 
     assert "WordPress" in wait_for(
@@ -130,13 +130,13 @@ def test_rest_denies_user_enumeration(host, site_installed):
     # A stock install answers this 200 with the admin's login slug; the mu-plugin
     # unsets the route so it 404s. The ?rest_route form dispatches through
     # index.php, so the 404 proves the unset, not a missing rewrite rule.
-    status, _ = http_head(host, "/?rest_route=/wp/v2/users")
-    assert status == 404
+    assert http_probe(host, "/?rest_route=/wp/v2/users", host_header=DOMAIN).status == 404
 
 
 @pytest.fixture(scope="module")
 def author_probe(host, site_installed):
-    return http_head(host, "/?author=1")
+    r = http_probe(host, "/?author=1", host_header=DOMAIN)
+    return r.status, r.headers
 
 
 def test_author_probe_redirects(author_probe):
@@ -154,8 +154,8 @@ def test_author_probe_hides_slug(author_probe):
 @pytest.fixture(scope="module")
 def sample_post(host, site_installed):
     def ready():
-        status, headers = http_head(host, "/hello-world/")
-        return (status, headers) if status == 200 else None
+        r = http_probe(host, "/hello-world/", host_header=DOMAIN)
+        return (r.status, r.headers) if r.status == 200 else None
 
     return wait_for(ready, tries=10, delay=3, fail="the sample post did not answer 200")
 

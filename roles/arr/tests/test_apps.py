@@ -6,12 +6,10 @@ proxied-answer waits are defined first so they warm each app up before the
 posture and healthcheck checks that follow.
 """
 
-import json
-import time
-
 import pytest
 
 from arrhelpers import ARR_GID, DOMAIN
+from testlib import assert_posture, http_probe, wait_for
 
 # roles/arr/vars/main.yml: apps with a port and no host network reach caddy on
 # caddy.network, so the proxy answers for them at <app>.<DOMAIN>.
@@ -68,39 +66,22 @@ POSTURE = {
 HEALTHCHECK = ["radarr", "sonarr", "lidarr", "prowlarr", "flaresolverr", "transmission"]
 
 
-def _status(host, host_header=None, path="/", port=None):
-    """Return the HTTP status curl gets for path, following no redirects."""
-    portpart = ":" + str(port) if port else ""
-    header = "-H 'Host: " + host_header + "' " if host_header else ""
-    cmd = (
-        "curl -s -o /dev/null -w '%{http_code}' "
-        + header
-        + "http://127.0.0.1" + portpart + path
-    )
-    return int(host.run(cmd).stdout.strip() or 0)
-
-
 @pytest.mark.parametrize("app", PROXIED)
 def test_proxied_app_answers(host, app):
-    code = 0
-    for _ in range(30):
-        code = _status(host, host_header=app + "." + DOMAIN)
-        if code in (200, 301, 302, 401):
-            break
-        time.sleep(2)
-    assert code in (200, 301, 302, 401)
+    def ready():
+        code = http_probe(host, host_header=app + "." + DOMAIN).status
+        return code if code in (200, 301, 302, 401) else None
+
+    wait_for(ready, tries=30, delay=2, fail=app + " did not answer through the proxy")
 
 
 # Plex uses host networking, so it is not on caddy.network and the proxy snippet
 # skips it; prove it is up by hitting its host port directly.
 def test_hostnet_plex_answers(host):
-    code = 0
-    for _ in range(40):
-        code = _status(host, path="/identity", port=32400)
-        if code == 200:
-            break
-        time.sleep(3)
-    assert code == 200
+    def ready():
+        return http_probe(host, path="/identity", port=32400).status == 200 or None
+
+    wait_for(ready, tries=40, delay=3, fail="plex did not answer 200 on its host port")
 
 
 @pytest.mark.parametrize("app", PORTLESS)
@@ -125,9 +106,7 @@ def test_recyclarr_account(host):
 @pytest.mark.parametrize("app", list(POSTURE))
 def test_app_posture(host, app):
     field, caps = POSTURE[app]
-    container = json.loads(host.run("podman inspect " + app).stdout)[0]
-    assert sorted(container.get(field) or []) == sorted(caps)
-    assert "no-new-privileges" in (container["HostConfig"].get("SecurityOpt") or [])
+    assert_posture(host, app, caps, field=field)
 
 
 # The old verify derived its loops from arr_apps selectors, so a newly-added app
@@ -171,10 +150,7 @@ def test_healthcheck_covers_every_checked_app(host, deployed):
 # the image and the endpoint answers, retrying like the verify's until/retries.
 @pytest.mark.parametrize("app", HEALTHCHECK)
 def test_app_healthcheck_passes(host, app):
-    res = None
-    for _ in range(12):
-        res = host.run("podman healthcheck run " + app, timeout=60)
-        if res.returncode == 0:
-            return
-        time.sleep(10)
-    assert res.returncode == 0
+    def ready():
+        return host.run("podman healthcheck run " + app, timeout=60).returncode == 0 or None
+
+    wait_for(ready, tries=12, delay=10, fail=app + " healthcheck did not pass")

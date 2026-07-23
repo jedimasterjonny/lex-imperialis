@@ -2,10 +2,9 @@
 molecule instance -- the enumeration checks that install the site live in
 test_web.py, which collects last)."""
 
-import json
-import time
-
 import pytest
+
+from testlib import assert_posture, wait_for
 
 MU_PLUGIN = "/var/www/html/wp-content/mu-plugins/wordpress-hardening.php"
 
@@ -81,19 +80,14 @@ def test_mu_plugin_valid_php(host):
 
 @pytest.mark.parametrize("name", CONTAINERS)
 def test_container_capabilities(host, name):
-    container = json.loads(host.run("podman inspect " + name).stdout)[0]
-    effective = sorted(container.get("EffectiveCaps") or [])
-    assert effective == sorted(CAPS[name])
-    assert "no-new-privileges" in (container["HostConfig"].get("SecurityOpt") or [])
+    assert_posture(host, name, CAPS[name])
 
 
 # HealthCmd is a full OCI exec; run it directly to prove each add-back set keeps
 # the container healthy, retrying like the verify's until/retries.
 @pytest.mark.parametrize("name", CONTAINERS)
 def test_container_healthcheck(host, name):
-    for _ in range(12):
-        res = host.run("podman healthcheck run " + name, timeout=60)
-        if res.returncode == 0:
-            return
-        time.sleep(10)
-    assert res.returncode == 0
+    def ready():
+        return host.run("podman healthcheck run " + name, timeout=60).returncode == 0 or None
+
+    wait_for(ready, tries=12, delay=10, fail=name + " healthcheck did not pass")

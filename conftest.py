@@ -18,6 +18,10 @@ import subprocess
 
 import pytest
 
+# testlib carries the shared posture assertion; register it so a failed
+# assert there still gets pytest's rich rewriting, not a bare AssertionError.
+pytest.register_assert_rewrite("testlib")
+
 
 class Target:
     def __init__(self, spec):

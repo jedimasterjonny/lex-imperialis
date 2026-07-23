@@ -5,12 +5,12 @@ the old verify's until/retries wait did.
 """
 
 import base64
-import json
-import time
 from pathlib import Path
 
 import jinja2
 import pytest
+
+from testlib import assert_posture, http_probe, wait_for
 
 # roles/caddy/defaults/main.yml: caddy_domain (molecule runs the default)
 DOMAIN = "home.arpa"
@@ -20,33 +20,22 @@ DUMMY_TOKEN = "molecule-dummy-token-molecule-dummy-token"
 PROBE = "/etc/caddy/Caddyfile.dns01-probe"
 
 
-def http_status(host, host_header):
-    res = host.run(
-        "curl -sS -o /dev/null -w '%{http_code}' "
-        "-H 'Host: " + host_header + "' http://127.0.0.1/"
-    )
-    return int(res.stdout.strip() or 0)
-
-
 def test_health_endpoint_answers(host):
-    status = 0
-    for _ in range(30):
-        status = http_status(host, "localhost")
-        if status == 204:
-            break
-        time.sleep(2)
-    assert status == 204
+    def ready():
+        return http_probe(host, host_header="localhost").status == 204 or None
+
+    wait_for(ready, tries=30, delay=2, fail="caddy health endpoint did not answer 204")
 
 
 # No backend snippets are registered, so the wildcard vhost's catch-all handle
 # answers 404 rather than Caddy's default empty 200.
 def test_wildcard_404s_unregistered_subdomain(host):
-    assert http_status(host, "probe." + DOMAIN) == 404
+    assert http_probe(host, host_header="probe." + DOMAIN).status == 404
 
 
 # A foreign Host matches no site block; the http:// catch-all answers 404.
 def test_foreign_host_404s(host):
-    assert http_status(host, "nonexistent.example") == 404
+    assert http_probe(host, host_header="nonexistent.example").status == 404
 
 
 # Renovate bumps the image unattended; catch a build that drops the DNS-01
@@ -98,6 +87,4 @@ def test_healthcheck_passes(host):
 # The checks above prove the add-back set is sufficient; assert the posture
 # directly so a regression that widens it fails here, not in production.
 def test_caddy_capabilities(host):
-    caddy = json.loads(host.run("podman inspect caddy").stdout)[0]
-    assert sorted(caddy.get("EffectiveCaps") or []) == ["CAP_NET_BIND_SERVICE"]
-    assert "no-new-privileges" in (caddy["HostConfig"].get("SecurityOpt") or [])
+    assert_posture(host, "caddy", ["CAP_NET_BIND_SERVICE"])
