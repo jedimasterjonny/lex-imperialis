@@ -1,0 +1,33 @@
+# Ruff lints and formats the pytest verify suites (the repo's only Python).
+# select = ["ALL"] is deliberate -- maximum strictness, fixing the code rather
+# than suppressing rules. Every ignore below is a rule that is structurally
+# impossible to satisfy here, one of a mutually-exclusive pair, conflicts with
+# the formatter, or conflicts with a binding repo policy; nothing is ignored to
+# dodge a fixable finding. The three remaining suppressions are per-line `noqa`
+# on genuine false positives (S105/S603/S701).
+[tool.ruff]
+target-version = "py313"  # the venv interpreter; CI runs 3.14 but 3.13 is the floor
+line-length = 100         # the suites' hand-set width (longest pre-existing line was 98)
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+  "D203",   # mutually exclusive with D211 (blank line before a class docstring); keep D211
+  "D213",   # mutually exclusive with D212 (multi-line summary placement); keep D212
+  "COM812", # conflicts with `ruff format` (trailing comma) -- ruff's own docs list it
+  "CPY001", # the repo carries no copyright-header convention (single-owner homelab)
+  "INP001", # the pytest test dirs are intentionally not packages (no __init__.py)
+  "D103",   # CLAUDE.md forbids narrating the obvious; test-function names are self-documenting
+]
+
+[tool.ruff.lint.per-file-ignores]
+# S101: pytest tests assert through the `assert` statement, and testlib holds the
+# shared posture assertion. ARG001: pytest injects fixture dependencies as
+# parameters even where a test wants only their side effects.
+"testlib.py" = ["S101"]
+"roles/*/tests/*.py" = ["S101", "ARG001"]
+
+[tool.ruff.lint.isort]
+# testlib/conftest sit at the repo root (auto-detected first-party); name the
+# per-role helper modules too so every local import shares one group.
+known-first-party = ["arrhelpers", "conftest", "testlib", "wphelpers"]

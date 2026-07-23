@@ -13,6 +13,8 @@ into a way to run one shell command on the target.
 stderr). Nothing more lives here until a second role needs it.
 """
 
+from __future__ import annotations
+
 import os
 import subprocess
 
@@ -24,19 +26,24 @@ pytest.register_assert_rewrite("testlib")
 
 
 class Target:
-    def __init__(self, spec):
+    """A converged molecule instance one shell command can be run against."""
+
+    def __init__(self, spec: str) -> None:
+        """Bind to a target spec: a molecule instance name, or ssh:<dest>."""
         self.spec = spec
 
-    def run(self, cmd, timeout=60):
+    def run(self, cmd: str, timeout: int = 60) -> subprocess.CompletedProcess[str]:
+        """Run cmd on the target and return the finished CompletedProcess."""
         if self.spec.startswith("ssh:"):
-            argv = ["ssh", self.spec[len("ssh:"):], cmd]
+            argv = ["ssh", self.spec[len("ssh:") :], cmd]
         else:
             argv = ["incus", "exec", self.spec, "--", "sh", "-c", cmd]
-        return subprocess.run(
+        # Fixed argv, no shell -- running a command on the target is the point.
+        return subprocess.run(  # noqa: S603
             argv, capture_output=True, text=True, timeout=timeout, check=False
         )
 
 
 @pytest.fixture(scope="session")
-def host():
+def host() -> Target:
     return Target(os.environ["VERIFY_TARGET"])

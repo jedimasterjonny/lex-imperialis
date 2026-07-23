@@ -5,18 +5,32 @@ target's loopback, a poll/retry loop, and a podman container-posture assertion.
 Each suite keeps only its own role constants; everything they share lives here.
 """
 
+from __future__ import annotations
+
 import json
 import time
-from collections import namedtuple
+from typing import TYPE_CHECKING, NamedTuple
 
-HttpResult = namedtuple("HttpResult", ["status", "headers", "body"])
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from conftest import Target
 
 
-def _parse_head(text):
+class HttpResult(NamedTuple):
+    """A curl probe's outcome: status plus whichever of headers/body was read."""
+
+    status: int
+    headers: dict[str, str]
+    body: str
+
+
+def _parse_head(text: str) -> tuple[int, dict[str, str]]:
     """Parse a curl header dump into (status, {lowercased-name: value})."""
     lines = text.splitlines()
     parts = lines[0].split() if lines else []
-    status = int(parts[1]) if len(parts) >= 2 and parts[1].isdigit() else 0
+    code = parts[1:2]
+    status = int(code[0]) if code and code[0].isdigit() else 0
     headers = {}
     for line in lines[1:]:
         if not line.strip():
@@ -27,7 +41,14 @@ def _parse_head(text):
     return status, headers
 
 
-def http_probe(host, path="/", host_header=None, port=None, body=False, timeout=60):
+def http_probe(
+    host: Target,
+    path: str = "/",
+    *,
+    host_header: str | None = None,
+    port: int | None = None,
+    body: bool = False,
+) -> HttpResult:
     """GET path on the target's loopback via curl, following no redirects.
 
     host_header and port set the request's Host header and destination port.
@@ -42,16 +63,18 @@ def http_probe(host, path="/", host_header=None, port=None, body=False, timeout=
     url = "'http://" + netloc + path + "'"
     if body:
         cmd = "curl -sS -w '\\n%{http_code}' " + hdr + url
-        text, _, code = host.run(cmd, timeout=timeout).stdout.rpartition("\n")
+        text, _, code = host.run(cmd).stdout.rpartition("\n")
         return HttpResult(int(code) if code.strip().isdigit() else 0, {}, text)
     cmd = "curl -sS -o /dev/null -D - " + hdr + url
-    status, headers = _parse_head(host.run(cmd, timeout=timeout).stdout)
+    status, headers = _parse_head(host.run(cmd).stdout)
     return HttpResult(status, headers, "")
 
 
-def wait_for(fn, tries, delay, fail):
-    """Poll fn() until it returns non-None, mirroring the verify's until/retries/
-    delay. Returns that value; raises AssertionError(fail) once tries run out."""
+def wait_for[T](fn: Callable[[], T | None], tries: int, delay: int, fail: str) -> T:
+    """Poll fn() until it returns non-None, mirroring the verify's until/retries/delay.
+
+    Returns that value; raises AssertionError(fail) once tries run out.
+    """
     for _ in range(tries):
         result = fn()
         if result is not None:
@@ -60,9 +83,12 @@ def wait_for(fn, tries, delay, fail):
     raise AssertionError(fail)
 
 
-def assert_posture(host, name, caps, field="EffectiveCaps"):
-    """Assert container `name`'s hardening posture: `field` (EffectiveCaps or
-    BoundingCaps) sorted equals `caps` sorted, and no-new-privileges is set."""
+def assert_posture(host: Target, name: str, caps: list[str], field: str = "EffectiveCaps") -> None:
+    """Assert container `name`'s hardening posture.
+
+    `field` (EffectiveCaps or BoundingCaps) sorted equals `caps` sorted, and
+    no-new-privileges is set.
+    """
     container = json.loads(host.run("podman inspect " + name).stdout)[0]
     assert sorted(container.get(field) or []) == sorted(caps)
     assert "no-new-privileges" in (container["HostConfig"].get("SecurityOpt") or [])
