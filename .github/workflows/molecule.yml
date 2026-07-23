@@ -53,6 +53,7 @@ jobs:
           if [ "$EVENT" = "workflow_dispatch" ]; then
             roles=$(find roles -mindepth 1 -maxdepth 1 -type d -printf '%f\n')
             shared=""
+            harness=""
           else
             # Drop *.md before deriving roles/tiers: a role's README is its only
             # non-code top-level file, so a doc-only edit must not bill a hetzner
@@ -73,6 +74,14 @@ jobs:
               -e '^bin/check-role-test-coverage\.sh$' \
               -e '^\.github/workflows/molecule\.yml$' \
               || true)
+            # The shared pytest verify harness (repo-root conftest.py, pytest.ini,
+            # testlib.py) can't be exercised via motd — it ships no pytest suite.
+            # Route a change there to the converted roles whose suites import it.
+            harness=$(printf '%s\n' "$changed" | grep -E \
+              -e '^conftest\.py$' \
+              -e '^pytest\.ini$' \
+              -e '^testlib\.py$' \
+              || true)
           fi
 
           incus_cand="$roles"
@@ -82,6 +91,12 @@ jobs:
             if printf '%s\n' "$shared" | grep -qvE '^(requirements-dev\.txt|Makefile)$'; then
               hetzner_cand=$(printf '%s\nmotd' "$roles")
             fi
+          fi
+          # The converted suites run only on incus (default + leap), so route a
+          # harness change to their incus candidates; tier_matrix drops any that
+          # lack the scenario (arr has no leap, none has hetzner).
+          if [ -n "$harness" ]; then
+            incus_cand=$(printf '%s\nwordpress\ncaddy\narr' "$incus_cand")
           fi
 
           tier_matrix() {  # $1: candidate roles  $2: scenario whose molecule.yml gates the tier
