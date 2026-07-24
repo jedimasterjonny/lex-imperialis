@@ -44,10 +44,10 @@ PLAY ?= scholam
 lint: yamllint ansible-lint
 
 yamllint:
-	. .venv/bin/activate && yamllint .
+	. .venv/bin/activate && yamllint --strict .
 
 ansible-lint:
-	. .venv/bin/activate && ansible-lint
+	. .venv/bin/activate && ansible-lint --strict
 
 hooks:
 	. .venv/bin/activate && pre-commit install

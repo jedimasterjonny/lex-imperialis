@@ -31,12 +31,14 @@ repos:
     hooks:
       - id: yamllint
         name: yamllint
-        entry: yamllint
+        # --strict: warnings fail the gate too, not just errors.
+        entry: yamllint --strict
         language: system
         types: [yaml]
       - id: ansible-lint
         name: ansible-lint
-        entry: ansible-lint
+        # --strict: promote warnings to failures on top of the production profile.
+        entry: ansible-lint --strict
         language: system
         pass_filenames: false
         always_run: true
