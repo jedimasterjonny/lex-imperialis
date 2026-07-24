@@ -1,6 +1,6 @@
 ---
 # pre-commit-hooks stay remote (no venv equivalent to call); yamllint,
-# ansible-lint, and shellcheck run as local hooks against the venv-pinned
+# ansible-lint, shellcheck, and ruff run as local hooks against the venv-pinned
 # tools, so their versions live in exactly one place — requirements-dev.txt.
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -107,6 +107,18 @@ repos:
         entry: bin/shellcheck-jinja.sh
         language: script
         files: '(\.sh\.j2$|/(wp|wp-db-dump)\.j2$)'
+      # ruff lints and formats the pytest verify suites (the repo's only Python);
+      # config in pyproject.toml. check reports, format --check gates the layout.
+      - id: ruff-check
+        name: ruff-check
+        entry: ruff check
+        language: system
+        types: [python]
+      - id: ruff-format
+        name: ruff-format
+        entry: ruff format --check
+        language: system
+        types: [python]
       # Every role must ship an incus or libvirt test (libvirt implies hetzner).
       - id: role-test-coverage
         name: role-test-coverage
