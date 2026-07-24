@@ -102,9 +102,11 @@ jobs:
           incus=$(tier_matrix "$incus_cand" default)
           leap=$(tier_matrix "$incus_cand" leap)
           hetzner=$(tier_matrix "$hetzner_cand" hetzner)
-          echo "incus=$incus" >> "$GITHUB_OUTPUT"
-          echo "leap=$leap" >> "$GITHUB_OUTPUT"
-          echo "hetzner=$hetzner" >> "$GITHUB_OUTPUT"
+          {
+            echo "incus=$incus"
+            echo "leap=$leap"
+            echo "hetzner=$hetzner"
+          } >> "$GITHUB_OUTPUT"
           echo "incus: $incus  leap: $leap  hetzner: $hetzner"
 
   incus:
@@ -245,7 +247,7 @@ jobs:
         env:
           ROLE: ${{ matrix.role }}
           HCLOUD_TOKEN: ${{ secrets.MOLECULE_HCLOUD_TOKEN }}
-        run: make test-hetzner ROLE=$ROLE
+        run: make test-hetzner ROLE="$ROLE"
 
       # Backstop for cancellation (timeout/manual/supersede), where molecule is
       # killed before its own --destroy=always teardown and would orphan a
@@ -255,7 +257,7 @@ jobs:
         env:
           ROLE: ${{ matrix.role }}
           HCLOUD_TOKEN: ${{ secrets.MOLECULE_HCLOUD_TOKEN }}
-        run: make destroy-hetzner ROLE=$ROLE
+        run: make destroy-hetzner ROLE="$ROLE"
 
   # Fixed-name summary check for branch protection: the per-role matrix job names
   # vary per PR and can't be required directly. Runs on every PR (if: always()),

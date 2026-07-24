@@ -27,6 +27,19 @@ repos:
     rev: v8.30.1
     hooks:
       - id: gitleaks
+  # actionlint lints .github/workflows/*.yml for GitHub Actions semantics yamllint
+  # can't see (expression types, runs-on labels, cron/glob syntax, action `uses`
+  # form) and runs shellcheck over every `run:` step — the local shellcheck hook
+  # is typed to standalone shell files, so scripts embedded in workflows were
+  # unchecked until now. A Go binary with no pip package, so it stays remote and
+  # builds through pre-commit's golang toolchain, like gitleaks; the rev is
+  # renovate-tracked (:enablePreCommit). It finds shellcheck on PATH — the
+  # venv-pinned one under `make pre-commit` — so embedded and standalone scripts
+  # face the same shellcheck.
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint
   - repo: local
     hooks:
       - id: yamllint
