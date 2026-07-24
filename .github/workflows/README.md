@@ -10,6 +10,14 @@ merge; **hugo go.sum autofix** completes Renovate's Blowfish-bump `go.sum` in
 place. Most guard PRs; **firebase** and **terraform** also act on a merge to
 `main`.
 
+A **draft PR runs only lint**. The other PR workflows guard their work (molecule
+tiers, the site build/preview, the terraform plan, the `go.sum` amend) behind the
+PR's non-draft state, so a draft costs no billable VM, plan, or deploy; their
+always-reporting gate checks (`molecule-gate`, `site-gate`, `terraform-gate`)
+stay green off the skipped work in the meantime. `ready_for_review` is added to
+each `pull_request` trigger's types, so leaving draft re-triggers the workflow
+and runs — and re-reports the gate on — the ready PR.
+
 ## lint
 
 Fires on every PR and every push to `main`. Two jobs. **pre-commit** builds the

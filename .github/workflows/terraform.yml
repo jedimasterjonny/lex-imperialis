@@ -21,6 +21,9 @@ name: terraform
 # in-place updates flow through unattended while a delete/replace stops for review.
 "on":
   pull_request:
+    # types replaces the default set, so opened/synchronize/reopened must stay;
+    # ready_for_review is the addition, re-firing the run when the PR leaves draft.
+    types: [opened, synchronize, reopened, ready_for_review]
   # push keeps its paths filter — it only ever needs to run to apply a terraform
   # change (or a bump to this workflow, which the apply job reads).
   push:
@@ -47,6 +50,11 @@ concurrency:
 jobs:
   discover:
     name: discover
+    # Skip the plan on a draft PR (lint still runs); terraform-gate below still
+    # reports green off the skipped needs — a skipped discover yields an empty
+    # `terraform` output, so its in-scope clause stays false. Non-PR events
+    # (push/schedule/dispatch) carry no draft flag, so they run.
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     outputs:
       terraform: ${{ steps.set.outputs.terraform }}
