@@ -57,14 +57,14 @@ NAS is recoverable from it — see [administratum](#administratum-nas).
    auto-created and registered on first container start) and installs the restore
    script:
 
-   ```
+   ```bash
    make apply PLAY=solar
    ```
 
 4. Once step 3 has converged clean — `podman volume ls` shows the expected
    volumes — restore them over the fresh ones:
 
-   ```
+   ```bash
    sudo /usr/local/sbin/podman-restore.sh
    ```
 
@@ -87,7 +87,7 @@ is the only way in.
 1. Re-provision from the repo root (recreates the server and brings up the
    WireGuard tunnel at first boot):
 
-   ```
+   ```bash
    ansible-playbook bootstrap/rogue-trader.yml \
      -e @inventory/group_vars/all/vault.yml --vault-password-file .vault_pass
    ```
@@ -104,7 +104,7 @@ is the only way in.
    from the logical dump instead. Step 4 restored the raw copy into
    `wordpress-db`, so wipe that volume first:
 
-   ```
+   ```bash
    sudo systemctl stop wordpress-db
    sudo podman volume rm wordpress-db
    sudo systemctl start wordpress-db
@@ -116,7 +116,7 @@ is the only way in.
    completed dump, not a point-in-time state, and loses up to a day's writes
    (more if the dump had been failing) — into it as root, under the same mariadb the role pins (`wordpress_db_image`), so the load runs on a compatible engine:
 
-   ```
+   ```bash
    podman run --rm --network caddy --env-file /etc/wordpress/db.env \
      --volume wordpress-db-dump:/dump:ro docker.io/library/mariadb:12.3.2@sha256:628f228f0fd5913a220438693576b29b6fe4dc1fa0a1298c0e98579fae28635f \
      sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" exec mariadb -h wordpress-db -uroot < /dump/wordpress.sql'
@@ -125,7 +125,7 @@ is the only way in.
    Finally, restart the WordPress container, which the database stop took down
    with it (`Requires=`):
 
-   ```
+   ```bash
    sudo systemctl start wordpress
    ```
 
@@ -148,7 +148,7 @@ play, run locally, then the home restore.
    its guard fails the apply below without them.
 4. Apply its play locally (it targets `this_host` at loopback):
 
-   ```
+   ```bash
    make apply PLAY=scholam
    ```
 
@@ -157,7 +157,7 @@ play, run locally, then the home restore.
    it does not overwrite the workspace you are recovering from — then copy back
    what step 3 did not already rebuild:
 
-   ```
+   ```bash
    restic --insecure-no-password --repo /nfs/astropath/scholam-home-backup \
      restore latest --target /var/tmp/home-restore
    ```
@@ -176,7 +176,7 @@ RAID), which also returns Prometheus's TSDB (a local bind mount at
 `/volume2/astropath/prometheus/data`; blackbox_exporter is stateless). Then
 redeploy the compose projects:
 
-```
+```bash
 make apply PLAY=administratum
 ```
 
@@ -197,7 +197,7 @@ git tree — so a settings loss does not restore it. Recreate `protect main`
 `site-gate` checks, branches up to date, plus a PR before any merge to `main`;
 blocks force-push and deletion) from the repo root:
 
-```
+```bash
 gh api --method POST \
   "repos/$(gh repo view --json nameWithOwner -q .nameWithOwner)/rulesets" \
   --input - <<'JSON'

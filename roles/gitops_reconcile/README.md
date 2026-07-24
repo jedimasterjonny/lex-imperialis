@@ -39,7 +39,7 @@ public repo. The role asserts all three exist and fails the apply otherwise, so
 place them *before* the apply that first includes the role. On scholam as root —
 restore the secrets from the password manager on a rebuild, like `.vault_pass`:
 
-```
+```bash
 install -D -m 0600 -o root -g root ~jonny/.ssh/id_ed25519 /etc/gitops-reconcile/ssh/id_ed25519
 install -D -m 0600 -o root -g root ~jonny/lex-imperialis/.vault_pass /etc/gitops-reconcile/vault_pass
 ```
@@ -48,7 +48,7 @@ Seed the `known_hosts` over the trusted LAN with each host's key at the exact
 address the reconcile connects to it — the inventory's `ansible_host` where set, the
 name otherwise, and scholam's own loopback, since `site.yml` applies it last:
 
-```
+```bash
 ssh-keyscan -H 127.0.0.1 <each other host at its ansible_host or name> >/etc/gitops-reconcile/ssh/known_hosts
 ```
 

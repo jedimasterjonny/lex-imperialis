@@ -8,7 +8,7 @@ itself up to the NAS over Time Machine — scrubbed like the rest, but not mirro
 off-site, since the laptop is its own second copy. Six layers:
 
 | Layer | Protects | On the NAS | Cadence | Owned by |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | Podman volume backup | container state on `solar` and `rogue-trader` | per-host restic repo under `astropath` | weekly, Wed 01:00 | `podman_backup` role — this repo |
 | Home directory backup | `/home` on `solar`, `scholam`, and `rogue-trader` | per-host restic repo under `astropath` | weekly, Thu 01:00 / 02:00 / 03:00 | `home_backup` role — this repo |
 | Photo library | the Google Photos archive | `/scriptorum/photos` | on demand | [`negative-space`](https://github.com/jedimasterjonny/negative-space) — external |

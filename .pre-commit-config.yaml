@@ -40,6 +40,16 @@ repos:
     rev: v1.7.12
     hooks:
       - id: actionlint
+  # markdownlint-cli2 lints every tracked *.md for structure and style yamllint and
+  # prose review can't reach — heading levels, fenced-code languages, table and
+  # list formatting. A Node tool with no pip equivalent, so it stays remote and
+  # builds through pre-commit's node toolchain, like actionlint's and gitleaks'
+  # golang; the rev is renovate-tracked (:enablePreCommit). Rules live in
+  # .markdownlint-cli2.yaml — every default on, only MD013 line-length relaxed.
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.23.1
+    hooks:
+      - id: markdownlint-cli2
   - repo: local
     hooks:
       - id: yamllint

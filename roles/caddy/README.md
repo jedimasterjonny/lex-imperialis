@@ -14,10 +14,10 @@ or a foreign `Host` — gets a 404, not Caddy's default empty 200.
 Backend roles drop `/etc/caddy/sites/<role>.caddy` containing named-matcher +
 `handle` pairs:
 
-```
+```caddyfile
 @app host app.home.arpa
 handle @app {
-	reverse_proxy app:8080
+  reverse_proxy app:8080
 }
 ```
 
@@ -38,9 +38,9 @@ A role serving its own public domain (an apex, not a wildcard subdomain) drops
 a full site block at `/etc/caddy/sites-public/<role>.caddy`, imported at the
 top level:
 
-```
+```caddyfile
 emmasedit.com, www.emmasedit.com {
-	reverse_proxy app:80
+  reverse_proxy app:80
 }
 ```
 

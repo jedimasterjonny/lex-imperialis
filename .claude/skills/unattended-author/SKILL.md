@@ -117,7 +117,7 @@ Wait for at least one check to appear (lint always runs — `lint.yml` has no pa
 filter, so it registers on every PR) before trusting `--watch`, then poll until
 every check concludes and require all success:
 
-```
+```bash
 until gh pr checks <pr> --json name --jq '.[].name' 2>/dev/null | grep -q .; do sleep 10; done
 gh pr checks <pr> --watch --fail-fast    # then block until every check settles
 ```
@@ -134,7 +134,7 @@ is a surface-and-stop, not an indefinite wait.
 **Determine the affected hosts.** A host is affected if its play names a changed
 role:
 
-```
+```bash
 BASE=$(git merge-base main HEAD)
 # Strip *.md first, as CI's discover does, so a role-README-only edit (which CI
 # runs lint-only) resolves to no role and triggers no apply.
@@ -152,7 +152,7 @@ let green CI alone gate the Phase 6 merge — say so explicitly.
 
 **Apply.** For each affected play, in turn:
 
-```
+```bash
 make apply PLAY=<play>
 ```
 
@@ -169,7 +169,7 @@ unmerged, so the operator inherits an accurate picture of the half-applied fleet
 Re-run the same `make apply PLAY=<play>` for each affected play. The second pass
 must be a no-op:
 
-```
+```bash
 make apply PLAY=<play>      # PLAY RECAP must show changed=0 on every host
 ```
 
@@ -187,7 +187,7 @@ Only on a clean Phase 4 apply and a zero-changed Phase 5 (or green CI alone when
 no host was affected), integrate with the project's merge convention — a `--no-ff`
 merge commit, never fast-forward or squash:
 
-```
+```bash
 gh pr merge <pr> --merge      # creates the --no-ff merge commit
 ```
 

@@ -28,7 +28,7 @@ Each rotates by the standard procedure above; the table gives the issuer, the
 apply target, and any wrinkle.
 
 | Vault variable | Mint a new… | Apply | Wrinkle |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `caddy_cloudflare_api_token` | Cloudflare token for the solar/home zone (`caddy_domain`; Zone:Read, DNS:Edit) | `PLAY=solar` | Gates the DNS-01 wildcard; homepage TLS depends on it too |
 | `emmasedit_cloudflare_api_token` | Cloudflare token for the emmasedit.com zone | `PLAY=rogue-trader` | caddy DNS-01 for emmasedit.com |
 | `alertmanager_discord_webhook_url` | Discord incoming webhook | `PLAY=solar` | Fire a test alert to confirm delivery |
@@ -60,7 +60,7 @@ with the mint → `ansible-vault edit` → verify → revoke order, verifying wi
 separate CI update**.
 
 | Vault variable | Mint a new… | Verify |
-|---|---|---|
+| --- | --- | --- |
 | `terraform_cloudflare_api_token` | Cloudflare token, DNS + zone edit over the managed zones | `make tofu-plan` |
 | `hcloud_token_emmas_edit` | Hetzner Read&Write token, **emmas-edit** project | `make tofu-plan` |
 | `hcloud_token` | Hetzner Read&Write token, **molecule test** project | `make test-hetzner ROLE=motd` |
