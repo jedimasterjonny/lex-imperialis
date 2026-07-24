@@ -10,3 +10,9 @@ indent_size = 2
 
 [Makefile]
 indent_style = tab
+
+# Caddyfile templates and PHP keep their ecosystems' tab convention (caddy fmt
+# emits tabs; WordPress coding standards mandate them). Everything else — shell
+# included — is spaces, per [*] above.
+[{Caddyfile.j2,*.caddy.j2,*.php}]
+indent_style = tab

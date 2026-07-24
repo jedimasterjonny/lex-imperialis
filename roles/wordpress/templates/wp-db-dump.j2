@@ -13,8 +13,8 @@ set -euo pipefail
 # HealthStartPeriod, accepting no connections. A database that never recovers (a
 # failed upgrade) times out here and the dump below then fails, last dump intact.
 for _ in {1..36}; do
-	podman healthcheck run wordpress-db >/dev/null 2>&1 && break
-	sleep 5
+    podman healthcheck run wordpress-db >/dev/null 2>&1 && break
+    sleep 5
 done
 
 # Dump over the caddy network through the live database container into the dump
@@ -28,8 +28,8 @@ done
 # The $WORDPRESS_DB_* refs are single-quoted for the inner sh -ec to expand, not here.
 # shellcheck disable=SC2016
 exec flock /run/wp-db-dump.lock podman run --rm \
-	--env-file /etc/wordpress/app.env \
-	--network caddy \
-	--volume wordpress-db-dump:/dump \
-	{{ wordpress_db_image }} \
-	sh -ec 'MYSQL_PWD="$WORDPRESS_DB_PASSWORD" mariadb-dump --single-transaction -h wordpress-db -u "$WORDPRESS_DB_USER" --databases "$WORDPRESS_DB_NAME" >/dump/wordpress.sql.tmp && mv /dump/wordpress.sql.tmp /dump/wordpress.sql'
+    --env-file /etc/wordpress/app.env \
+    --network caddy \
+    --volume wordpress-db-dump:/dump \
+    {{ wordpress_db_image }} \
+    sh -ec 'MYSQL_PWD="$WORDPRESS_DB_PASSWORD" mariadb-dump --single-transaction -h wordpress-db -u "$WORDPRESS_DB_USER" --databases "$WORDPRESS_DB_NAME" >/dump/wordpress.sql.tmp && mv /dump/wordpress.sql.tmp /dump/wordpress.sql'

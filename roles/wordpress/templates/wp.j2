@@ -5,7 +5,7 @@
 # Debian and owns /var/www/html as uid 33, so run as 33 — otherwise wp-cli
 # cannot read a 0600 wp-config and would write files with the wrong owner.
 exec podman run --rm --interactive --user 33:33 \
-	--volumes-from wordpress \
-	--env-file /etc/wordpress/app.env \
-	--network caddy \
-	{{ wordpress_cli_image }} wp "$@"
+    --volumes-from wordpress \
+    --env-file /etc/wordpress/app.env \
+    --network caddy \
+    {{ wordpress_cli_image }} wp "$@"

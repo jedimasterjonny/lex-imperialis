@@ -20,6 +20,16 @@ repos:
       # being committed as its dereferenced content.
       - id: check-symlinks
       - id: destroyed-symlinks
+  # editorconfig-checker enforces .editorconfig — the indent style (tabs vs spaces)
+  # per file type, on top of the whitespace/EOL/newline hooks above. A Go binary
+  # with no pip-pure equivalent, so it stays remote like gitleaks; the rev is
+  # renovate-tracked (:enablePreCommit). Its IndentSize (multiple-of-N) check is
+  # off in .editorconfig-checker.json — it fights the intentional Jinja-expression
+  # alignment in the YAML, markdown prose, and the vendored LICENSE.
+  - repo: https://github.com/editorconfig-checker/editorconfig-checker.python
+    rev: 3.6.1
+    hooks:
+      - id: editorconfig-checker
   # gitleaks backstops detect-private-key, catching tokens, passwords, and
   # cloud credentials the lone key check misses. Stays remote like the other
   # binary hooks.

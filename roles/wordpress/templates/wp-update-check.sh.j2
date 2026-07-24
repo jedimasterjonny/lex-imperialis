@@ -18,7 +18,7 @@ mkdir -p "$dir"
 # Last count published for an update type, empty if none recorded yet — lets a
 # failed check carry the previous counts rather than zero them.
 last_count() {
-	grep -m1 "^wordpress_updates_available{type=\"$1\"} " "$prom" 2>/dev/null | awk '{print $NF}'
+    grep -m1 "^wordpress_updates_available{type=\"$1\"} " "$prom" 2>/dev/null | awk '{print $NF}'
 }
 
 # One && chain: any failing query (cli image, database, or wordpress.org API
@@ -26,19 +26,19 @@ last_count() {
 # span core, plugins, and themes, so sum the three language scopes to match
 # wp-admin's Updates screen.
 if core=$(wp core check-update --format=count 2>/dev/null) \
-	&& plugins=$(wp plugin list --update=available --format=count 2>/dev/null) \
-	&& themes=$(wp theme list --update=available --format=count 2>/dev/null) \
-	&& tcore=$(wp language core list --update=available --format=count 2>/dev/null) \
-	&& tplugin=$(wp language plugin list --all --update=available --format=count 2>/dev/null) \
-	&& ttheme=$(wp language theme list --all --update=available --format=count 2>/dev/null); then
-	success=1
-	translations=$((${tcore:-0} + ${tplugin:-0} + ${ttheme:-0}))
+    && plugins=$(wp plugin list --update=available --format=count 2>/dev/null) \
+    && themes=$(wp theme list --update=available --format=count 2>/dev/null) \
+    && tcore=$(wp language core list --update=available --format=count 2>/dev/null) \
+    && tplugin=$(wp language plugin list --all --update=available --format=count 2>/dev/null) \
+    && ttheme=$(wp language theme list --all --update=available --format=count 2>/dev/null); then
+    success=1
+    translations=$((${tcore:-0} + ${tplugin:-0} + ${ttheme:-0}))
 else
-	success=0
-	core=$(last_count core)
-	plugins=$(last_count plugins)
-	themes=$(last_count themes)
-	translations=$(last_count translations)
+    success=0
+    core=$(last_count core)
+    plugins=$(last_count plugins)
+    themes=$(last_count themes)
+    translations=$(last_count translations)
 fi
 
 # Default every count to 0: --format=count yields an integer, but an empty result
