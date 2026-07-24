@@ -1,0 +1,13 @@
+# gitleaks configuration — marks gitleaks as a deliberate part of the lint gate.
+# It backstops detect-private-key: the pre-commit hook scans the staged index and
+# the CI secret-scan job scans the checked-out commit. Both auto-load this file
+# from the repo root.
+#
+# useDefault pulls in the complete upstream ruleset unchanged — nothing is
+# relaxed and no allowlist weakens detection. The file exists to declare that
+# intent and to give one scoped place to add an allowlist entry should a false
+# positive ever appear.
+title = "lex-imperialis"
+
+[extend]
+useDefault = true
