@@ -39,15 +39,18 @@ endef
 # PLAY selects which playbook in playbooks/ to run, e.g. make check PLAY=solar.
 PLAY ?= scholam
 
-.PHONY: lint ansible-lint yamllint hooks pre-commit converge verify destroy test test-leap test-vm test-hetzner destroy-hetzner check apply tofu-fmt tofu-validate tofu-lint tofu-plan tofu-apply hugo-serve hugo-build
+.PHONY: lint ansible-lint yamllint codespell hooks pre-commit converge verify destroy test test-leap test-vm test-hetzner destroy-hetzner check apply tofu-fmt tofu-validate tofu-lint tofu-plan tofu-apply hugo-serve hugo-build
 
-lint: yamllint ansible-lint
+lint: yamllint ansible-lint codespell
 
 yamllint:
 	. .venv/bin/activate && yamllint --strict .
 
 ansible-lint:
 	. .venv/bin/activate && ansible-lint --strict
+
+codespell:
+	. .venv/bin/activate && git ls-files -z | xargs -0 codespell
 
 hooks:
 	. .venv/bin/activate && pre-commit install

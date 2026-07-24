@@ -87,6 +87,13 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      - id: codespell
+        name: codespell
+        # Spell-checks prose and comments. Dictionaries, skips, and the
+        # check-hidden/-filenames toggles live in .codespellrc.
+        entry: codespell
+        language: system
+        types: [text]
       - id: shellcheck
         name: shellcheck
         entry: shellcheck
