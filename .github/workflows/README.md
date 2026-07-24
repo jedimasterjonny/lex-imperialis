@@ -21,9 +21,15 @@ and runs — and re-reports the gate on — the ready PR.
 ## lint
 
 Fires on every PR and every push to `main`. Two jobs. **pre-commit** builds the
-venv from `requirements-dev.txt`, then `make pre-commit`
-(`pre-commit run --all-files`) — yamllint, ansible-lint, shellcheck,
-`detect-private-key`, the file-hygiene hooks, and `check-role-test-coverage.sh`.
+venv from `requirements-dev.txt`, installs the pinned OpenTofu, tflint, and
+promtool the binary-dependent hooks need, then runs `make pre-commit`
+(`pre-commit run --all-files`) — yamllint, ansible-lint, shellcheck, codespell
+(British English — flags American spellings via `.codespell-en-GB.txt`), actionlint
+(these very workflow files: Actions semantics plus shellcheck over every `run:`
+step), markdownlint (every `*.md`), check-toml, editorconfig-checker,
+renovate-config-validator (schema-checks `renovate.json`), promtool (the static
+Prometheus alert rules), tofu fmt/validate, tflint, `detect-private-key`, the
+file-hygiene hooks, and `check-role-test-coverage.sh`.
 The pip cache keys on the requirements files; the pre-commit environment cache on
 `.pre-commit-config.yaml`.
 

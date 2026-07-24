@@ -13,6 +13,7 @@ repos:
       - id: check-merge-conflict
       - id: check-added-large-files
       - id: check-json
+      - id: check-toml
       - id: check-executables-have-shebangs
       - id: detect-private-key
       # The scenario architecture shares converge/verify/prepare via relative
@@ -20,6 +21,16 @@ repos:
       # being committed as its dereferenced content.
       - id: check-symlinks
       - id: destroyed-symlinks
+  # editorconfig-checker enforces .editorconfig — the indent style (tabs vs spaces)
+  # per file type, on top of the whitespace/EOL/newline hooks above. A Go binary
+  # with no pip-pure equivalent, so it stays remote like gitleaks; the rev is
+  # renovate-tracked (:enablePreCommit). Its IndentSize (multiple-of-N) check is
+  # off in .editorconfig-checker.json — it fights the intentional Jinja-expression
+  # alignment in the YAML, markdown prose, and the vendored LICENSE.
+  - repo: https://github.com/editorconfig-checker/editorconfig-checker.python
+    rev: 3.6.1
+    hooks:
+      - id: editorconfig-checker
   # gitleaks backstops detect-private-key, catching tokens, passwords, and
   # cloud credentials the lone key check misses. Stays remote like the other
   # binary hooks.
@@ -27,19 +38,62 @@ repos:
     rev: v8.30.1
     hooks:
       - id: gitleaks
+  # actionlint lints .github/workflows/*.yml for GitHub Actions semantics yamllint
+  # can't see (expression types, runs-on labels, cron/glob syntax, action `uses`
+  # form) and runs shellcheck over every `run:` step — the local shellcheck hook
+  # is typed to standalone shell files, so scripts embedded in workflows were
+  # unchecked until now. A Go binary with no pip package, so it stays remote and
+  # builds through pre-commit's golang toolchain, like gitleaks; the rev is
+  # renovate-tracked (:enablePreCommit). It finds shellcheck on PATH — the
+  # venv-pinned one under `make pre-commit` — so embedded and standalone scripts
+  # face the same shellcheck.
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint
+  # markdownlint-cli2 lints every tracked *.md for structure and style yamllint and
+  # prose review can't reach — heading levels, fenced-code languages, table and
+  # list formatting. A Node tool with no pip equivalent, so it stays remote and
+  # builds through pre-commit's node toolchain, like actionlint's and gitleaks'
+  # golang; the rev is renovate-tracked (:enablePreCommit). Rules live in
+  # .markdownlint-cli2.yaml — every default on, only MD013 line-length relaxed.
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.23.1
+    hooks:
+      - id: markdownlint-cli2
+  # renovate-config-validator schema-checks renovate.json — its custom regex
+  # managers and packageRules fail silently in Renovate itself, so a slip is
+  # otherwise invisible until a bump goes missing. --strict promotes warnings
+  # (deprecated/unknown options) to errors. A Node tool bundling renovate, so it
+  # stays remote and builds through pre-commit's node toolchain like markdownlint;
+  # the rev is renovate-tracked (:enablePreCommit).
+  - repo: https://github.com/renovatebot/pre-commit-hooks
+    rev: 43.280.0
+    hooks:
+      - id: renovate-config-validator
+        args: [--strict]
   - repo: local
     hooks:
       - id: yamllint
         name: yamllint
-        entry: yamllint
+        # --strict: warnings fail the gate too, not just errors.
+        entry: yamllint --strict
         language: system
         types: [yaml]
       - id: ansible-lint
         name: ansible-lint
-        entry: ansible-lint
+        # --strict: promote warnings to failures on top of the production profile.
+        entry: ansible-lint --strict
         language: system
         pass_filenames: false
         always_run: true
+      - id: codespell
+        name: codespell
+        # Spell-checks prose and comments. Dictionaries, skips, and the
+        # check-hidden/-filenames toggles live in .codespellrc.
+        entry: codespell
+        language: system
+        types: [text]
       - id: shellcheck
         name: shellcheck
         entry: shellcheck
@@ -80,3 +134,13 @@ repos:
         language: system
         pass_filenames: false
         files: '(\.tf$|\.tflint\.hcl$)'
+      # promtool validates the static Prometheus alert rules (the templated
+      # prometheus.yml is left to molecule). --lint=all --lint-fatal makes every
+      # lint check — not just the default duplicate-rules — fail the gate. Needs
+      # promtool on PATH like tofu/tflint: the lint workflow installs the pinned
+      # prometheus release in CI; provision it on the workstation to run locally.
+      - id: promtool
+        name: promtool
+        entry: promtool check rules --lint=all --lint-fatal
+        language: system
+        files: '^roles/prometheus/files/rules/.*\.ya?ml$'

@@ -21,7 +21,7 @@ conf="/etc/wireguard/${iface}.conf"
 pubkey=$(sed -n 's/^[[:space:]]*PublicKey[[:space:]]*=[[:space:]]*//p' "$conf" | head -n1)
 endpoint=$(sed -n 's/^[[:space:]]*Endpoint[[:space:]]*=[[:space:]]*//p' "$conf" | head -n1)
 if [ -z "$pubkey" ] || [ -z "$endpoint" ]; then
-	exit 0
+    exit 0
 fi
 
 host=${endpoint%:*}
@@ -29,8 +29,8 @@ port=${endpoint##*:}
 
 # An IP literal has nothing to re-resolve.
 case "$host" in
-	*[!0-9.]*) ;;
-	*) exit 0 ;;
+    *[!0-9.]*) ;;
+    *) exit 0 ;;
 esac
 
 # A healthy tunnel rehandshakes within the threshold, so this is the no-op
@@ -47,6 +47,6 @@ newip=$(dig +short +time=3 +tries=2 "@${resolver}" "$host" A | grep -E '^[0-9]+\
 
 current=$(wg show "$iface" endpoints | awk -v k="$pubkey" '$1 == k {print $2; exit}')
 if [ "${current%:*}" != "$newip" ]; then
-	wg set "$iface" peer "$pubkey" endpoint "${newip}:${port}" \
-		&& logger -t wireguard-reresolve "${iface} endpoint ${current:-none} -> ${newip}:${port} (handshake ${age}s stale)"
+    wg set "$iface" peer "$pubkey" endpoint "${newip}:${port}" \
+        && logger -t wireguard-reresolve "${iface} endpoint ${current:-none} -> ${newip}:${port} (handshake ${age}s stale)"
 fi

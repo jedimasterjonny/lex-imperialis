@@ -1,0 +1,8 @@
+# markdownlint-cli2 configuration — marks markdownlint as a deliberate part of the
+# lint gate: the markdownlint-cli2 pre-commit hook checks every tracked *.md. All
+# rules run at their defaults; only one is relaxed.
+config:
+  # MD013 (line-length): off. The prose READMEs and docs wrap by meaning, not at a
+  # fixed column — the same call as .yamllint's line-length relaxation, for the
+  # same reason.
+  MD013: false

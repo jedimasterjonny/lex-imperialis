@@ -1,5 +1,6 @@
 -r requirements.txt
 ansible-lint==26.6.0
+codespell==2.4.3
 molecule==26.6.0
 pre-commit==4.6.1
 # requests + python-dateutil: hetzner.hcloud's runtime deps, for the hetzner

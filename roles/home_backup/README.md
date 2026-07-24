@@ -20,7 +20,7 @@ means adding the astropath share, which the NAS must also export to it.
 Generic mode installs no restore script (that is podman-volumes only, where the
 restore must quiesce quadlets and wipe volumes). Restore a home tree by hand:
 
-```
+```bash
 restic --insecure-no-password --repo /nfs/astropath/<hostname>-home-backup \
   restore latest --target /
 ```

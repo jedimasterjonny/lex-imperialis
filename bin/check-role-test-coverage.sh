@@ -15,26 +15,26 @@ leap_roles="autoupdate caddy cadvisor common firewalld motd node_exporter podman
 
 status=0
 for role_path in "$roles_dir"/*/; do
-	[ -d "$role_path" ] || continue
-	role="$(basename "$role_path")"
-	molecule_dir="${role_path}molecule"
+    [ -d "$role_path" ] || continue
+    role="$(basename "$role_path")"
+    molecule_dir="${role_path}molecule"
 
-	if [ ! -f "$molecule_dir/default/molecule.yml" ] && [ ! -f "$molecule_dir/libvirt/molecule.yml" ]; then
-		echo "ERROR: role '$role' ships no test; add a molecule/default (incus) or molecule/libvirt scenario." >&2
-		status=1
-	fi
+    if [ ! -f "$molecule_dir/default/molecule.yml" ] && [ ! -f "$molecule_dir/libvirt/molecule.yml" ]; then
+        echo "ERROR: role '$role' ships no test; add a molecule/default (incus) or molecule/libvirt scenario." >&2
+        status=1
+    fi
 
-	if [ -f "$molecule_dir/libvirt/molecule.yml" ] && [ ! -f "$molecule_dir/hetzner/molecule.yml" ]; then
-		echo "ERROR: role '$role' has a libvirt scenario but no molecule/hetzner (its CI realisation on a real VM)." >&2
-		status=1
-	fi
+    if [ -f "$molecule_dir/libvirt/molecule.yml" ] && [ ! -f "$molecule_dir/hetzner/molecule.yml" ]; then
+        echo "ERROR: role '$role' has a libvirt scenario but no molecule/hetzner (its CI realisation on a real VM)." >&2
+        status=1
+    fi
 done
 
 for role in $leap_roles; do
-	if [ ! -f "$roles_dir/$role/molecule/leap/molecule.yml" ]; then
-		echo "ERROR: role '$role' is in the Leap-16 subset but ships no molecule/leap scenario." >&2
-		status=1
-	fi
+    if [ ! -f "$roles_dir/$role/molecule/leap/molecule.yml" ]; then
+        echo "ERROR: role '$role' is in the Leap-16 subset but ships no molecule/leap scenario." >&2
+        status=1
+    fi
 done
 
 exit "$status"

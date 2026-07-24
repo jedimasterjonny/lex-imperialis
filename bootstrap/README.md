@@ -7,7 +7,7 @@ molecule — can manage it. All three are idempotent.
 
 Run as root on a fresh Tumbleweed install, before it joins the inventory:
 
-```
+```bash
 curl -fsSL https://raw.githubusercontent.com/jedimasterjonny/lex-imperialis/main/bootstrap/host.sh | bash
 ```
 
@@ -24,7 +24,7 @@ Sets up the molecule test runner — the one host molecule can't provision
 itself, since it needs incus to launch the default-tier containers — by
 applying the `incus` role to `localhost`:
 
-```
+```bash
 ansible-playbook bootstrap/incus.yml --ask-become-pass
 ```
 
@@ -39,7 +39,7 @@ config on a live server. Requires the operator's `~/.ssh/id_ed25519.pub`
 locally — that public key is uploaded and authorised on the server. Run from
 the repo root, with the vault for the hcloud token and tunnel config:
 
-```
+```bash
 ansible-playbook bootstrap/rogue-trader.yml \
   -e @inventory/group_vars/all/vault.yml --vault-password-file .vault_pass
 ```

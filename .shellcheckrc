@@ -1,0 +1,10 @@
+# shellcheck configuration — marks shellcheck as a deliberate part of the lint
+# gate: the shellcheck hook (standalone *.sh), the shellcheck-jinja hook (the
+# *.sh.j2 templates), and actionlint's embedded shellcheck over workflow run:
+# steps all resolve it from the repo root.
+#
+# severity=style pins the most verbose level, so every standard correctness and
+# style issue is reported. The optional checks (SC2310/SC2312 set -e masking,
+# SC2250 ${var} braces, SC2292 [[ ]]) are deliberately left off: on this codebase
+# they fire only on intentional idioms, adding noise rather than coverage.
+severity=style

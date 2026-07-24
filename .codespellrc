@@ -1,0 +1,34 @@
+# codespell configuration — marks codespell as a deliberate part of the lint gate,
+# venv-pinned like yamllint/ansible-lint (version in requirements-dev.txt).
+#
+# The repo is written in British English (behaviour, organise, artefact, licence,
+# initialise). clear,rare are locale-neutral — they flag none of codespell's 535
+# en-GB spellings, so British is authoritative. The en-GB_to_en-US dictionary (and
+# `builtin = all`, which pulls it in) is deliberately NOT used: it would rewrite
+# every British spelling to American.
+#
+# .codespell-en-GB.txt enforces the other direction: American spellings are flagged
+# and their British forms suggested. It is codespell's en-GB_to_en-US dictionary
+# reversed, minus the homographs that are valid in British English (program, disk,
+# licence the verb, meter, `color` the flag) and the API/tooling tokens that only
+# look American — `synchronize` the GitHub event, the `Authorization` header,
+# `capitalize` the Jinja filter, `catalog` the beets term. `dictionary = ...,-`
+# keeps the builtin typo dictionaries loaded alongside it; LICENSE and the
+# dictionary file are skipped (verbatim legal text; the dictionary lists the very
+# American spellings it flags). It is hand-maintained — renovate cannot track it —
+# so it only ever drifts as a miss (an American spelling upstream later adds),
+# never a false positive.
+#
+# clear,rare is also the strictest dictionary set that stays signal-only otherwise.
+# The usage/code/informal dictionaries only flag this repo's domain vocabulary — the
+# `ro` mount flag, GCP `iam`, the modprobe `blacklist`, `iff` ("if and only if"),
+# the tofu `master` state path — none of them typos. Enabling them would need a long
+# ignore list that blinds the checker rather than sharpening it, so they stay off.
+# check-hidden and check-filenames widen coverage to dotfiles and file names (their
+# empty values are how codespell's config sets a boolean flag).
+[codespell]
+builtin = clear,rare
+dictionary = .codespell-en-GB.txt,-
+check-hidden =
+check-filenames =
+skip = .git,.venv,LICENSE,.codespell-en-GB.txt,*.png,*.jpg,*.ico,*.sum,go.mod,.ruff_cache,.pytest_cache,__pycache__

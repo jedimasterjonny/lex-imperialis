@@ -6,3 +6,15 @@ profile: production
 # vault password by default or in CI.
 exclude_paths:
   - inventory/group_vars/all/vault.yml
+
+# Opt-in rules the production profile leaves off but that apply cleanly here.
+# The three omitted don't fit this layout: only-builtins would reject the
+# containers.podman / community.general / ansible.posix modules the fleet runs
+# on, while role-argument-spec and galaxy-version-incorrect want argument-spec
+# and collection metadata these loose roles don't carry.
+enable_list:
+  - empty-string-compare
+  - jinja-template-extension
+  - no-log-password
+  - no-prompting
+  - no-same-owner

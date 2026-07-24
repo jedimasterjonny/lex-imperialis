@@ -37,7 +37,7 @@ rather than guess whenever a curation decision is genuinely ambiguous.
 
 The work is the current branch's divergence from `main`:
 
-```
+```bash
 BASE=$(git merge-base main HEAD)     # commits to curate: BASE..HEAD
 ```
 
@@ -70,7 +70,7 @@ object `SNAP` — `git write-tree`, not `git stash create`, which omits untracke
 files. The gate is two checks together — run it at the end of Phase 1 to fail fast,
 and again before pushing:
 
-```
+```bash
 git status --porcelain          # empty: nothing stranded in the working tree
 git diff --quiet "$SNAP" HEAD    # empty: HEAD's tree equals the baseline
 ```
@@ -95,7 +95,7 @@ Interactive git is unavailable here: no `git rebase -i`, `git add -i`, or
 - **Rebuild by replay** (the workhorse for any mid-history change). Move the
   changeset into the working tree, then re-commit it in curated pieces:
 
-  ```
+  ```bash
   git reset --soft "$BASE"   # HEAD→BASE, whole committed changeset staged
   git reset                  # unstage: tracked edits go unstaged, branch-new files untracked
   # for each target commit, in the order you want:
@@ -109,7 +109,7 @@ Interactive git is unavailable here: no `git rebase -i`, `git add -i`, or
   split it only when it genuinely mixes concerns (`git add -N <file>` first so
   `git diff` shows it).
 
-  ```
+  ```bash
   patch=$(mktemp); git diff -- <file> > "$patch"   # trim to the wanted hunks
   git apply --cached --recount "$patch"
   ```
@@ -160,7 +160,7 @@ green commits — never a green commit followed by one that makes it pass.
 Phase 0 captured the dates to preserve (`git show -s --format='%aI %cI'`); re-stamp
 each commit from that record:
 
-```
+```bash
 GIT_AUTHOR_DATE="$AD" GIT_COMMITTER_DATE="$CD" git commit …
 ```
 
@@ -225,7 +225,7 @@ paper it over with a message. Otherwise this pass changes nothing.
 
 Push the rewritten branch and open the PR against `main`:
 
-```
+```bash
 git push --force-with-lease=<branch>:"$OLD_HEAD"   # never pushed yet: git push -u origin HEAD
 gh pr create --base main --title "type: name" --body "<description>"
 ```

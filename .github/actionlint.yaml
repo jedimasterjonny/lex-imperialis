@@ -1,0 +1,12 @@
+# actionlint configuration — marks actionlint as a deliberate part of the lint
+# gate. Nothing here relaxes a check; both keys hold it at its strictest.
+#
+# labels: [] — every workflow runs on GitHub-hosted runners (ubuntu-latest), so
+# there are no self-hosted runner labels to allow; an unknown runs-on label stays
+# an error.
+# config-variables: [] — no workflow uses ${{ vars.* }}; the empty list, not the
+# permissive null default, makes actionlint reject any undeclared configuration
+# variable, so a typo'd vars.NAME fails the gate.
+self-hosted-runner:
+  labels: []
+config-variables: []
