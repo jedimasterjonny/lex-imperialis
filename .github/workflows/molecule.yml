@@ -10,6 +10,9 @@ name: molecule
 # the validated PR tree.
 "on":
   pull_request:
+    # types replaces the default set, so opened/synchronize/reopened must stay;
+    # ready_for_review is the addition, re-firing the run when the PR leaves draft.
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 permissions:
@@ -25,6 +28,9 @@ concurrency:
 jobs:
   discover:
     name: discover
+    # Draft PRs skip every tier (lint still runs); molecule-gate below reports
+    # green off the skipped needs. Non-PR events carry no draft flag, so they run.
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     outputs:
       incus: ${{ steps.set.outputs.incus }}
