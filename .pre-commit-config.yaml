@@ -134,3 +134,13 @@ repos:
         language: system
         pass_filenames: false
         files: '(\.tf$|\.tflint\.hcl$)'
+      # promtool validates the static Prometheus alert rules (the templated
+      # prometheus.yml is left to molecule). --lint=all --lint-fatal makes every
+      # lint check — not just the default duplicate-rules — fail the gate. Needs
+      # promtool on PATH like tofu/tflint: the lint workflow installs the pinned
+      # prometheus release in CI; provision it on the workstation to run locally.
+      - id: promtool
+        name: promtool
+        entry: promtool check rules --lint=all --lint-fatal
+        language: system
+        files: '^roles/prometheus/files/rules/.*\.ya?ml$'
