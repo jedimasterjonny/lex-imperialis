@@ -13,6 +13,7 @@ repos:
       - id: check-merge-conflict
       - id: check-added-large-files
       - id: check-json
+      - id: check-toml
       - id: check-executables-have-shebangs
       - id: detect-private-key
       # The scenario architecture shares converge/verify/prepare via relative
@@ -60,6 +61,17 @@ repos:
     rev: v0.23.1
     hooks:
       - id: markdownlint-cli2
+  # renovate-config-validator schema-checks renovate.json — its custom regex
+  # managers and packageRules fail silently in Renovate itself, so a slip is
+  # otherwise invisible until a bump goes missing. --strict promotes warnings
+  # (deprecated/unknown options) to errors. A Node tool bundling renovate, so it
+  # stays remote and builds through pre-commit's node toolchain like markdownlint;
+  # the rev is renovate-tracked (:enablePreCommit).
+  - repo: https://github.com/renovatebot/pre-commit-hooks
+    rev: 43.280.0
+    hooks:
+      - id: renovate-config-validator
+        args: [--strict]
   - repo: local
     hooks:
       - id: yamllint
