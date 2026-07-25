@@ -269,14 +269,25 @@ jobs:
   # Fixed-name summary check for branch protection: the per-role matrix job names
   # vary per PR and can't be required directly. Runs on every PR (if: always()),
   # so skipped tiers on a non-fleet PR still report this check as passing.
+  # But a tier that discover put work in and that then never ran must not report
+  # green — that is a required check waving an untested fleet change through to an
+  # unattended root apply (as terraform-gate guards its skipped plan). Hence the
+  # third clause: a tier whose matrix is non-empty yet whose job is skipped fails
+  # the gate. It is qualified on discover having succeeded, because a skipped
+  # discover (draft PR) emits an empty output that would otherwise read as in-scope.
   molecule-gate:
     name: molecule-gate
     if: always()
     needs: [discover, incus, leap, hetzner]
     runs-on: ubuntu-latest
     steps:
-      - name: Fail if any tier failed or was cancelled
-        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+      - name: Fail if any tier failed, was cancelled, or was skipped in scope
+        if: >-
+          contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+          || (needs.discover.result == 'success'
+              && ((needs.discover.outputs.incus != '[]' && needs.incus.result == 'skipped')
+                  || (needs.discover.outputs.leap != '[]' && needs.leap.result == 'skipped')
+                  || (needs.discover.outputs.hetzner != '[]' && needs.hetzner.result == 'skipped')))
         run: |
-          echo "A molecule tier failed or was cancelled."
+          echo "A molecule tier failed, was cancelled, or was skipped while in scope."
           exit 1
