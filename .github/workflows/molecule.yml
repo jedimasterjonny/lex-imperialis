@@ -46,8 +46,8 @@ jobs:
       # tiers; shared infra (anything outside roles/) is exercised via the motd
       # harness. The incus tiers (Tumbleweed default + Leap) are free, so any
       # shared change runs them; the billable hetzner VM validates real-machine
-      # behaviour, so a toolchain-only bump (requirements-dev.txt or the
-      # Makefile) stays on the free incus tiers.
+      # behaviour, so a toolchain-only bump (requirements-dev.txt, the Makefile or
+      # the pre-commit hook set) stays on the free incus tiers.
       - name: Determine roles and tiers
         id: set
         env:
@@ -67,16 +67,23 @@ jobs:
             all_changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA")
             changed=$(printf '%s\n' "$all_changed" | grep -vE '\.md$' || true)
             roles=$(printf '%s\n' "$changed" | sed -n 's#^roles/\([^/]*\)/.*#\1#p')
-            # Non-role paths that still warrant molecule — mirrors the trigger set
-            # the removed workflow-level paths filter used. Everything else
-            # (terraform/, jonnyoc-site/, docs) yields no tiers, so molecule-gate
-            # reports green on those PRs instead of blocking on a check that never runs.
+            # Non-role paths that still warrant molecule, in two groups: the fleet
+            # code an apply executes (plays, inventory, bootstrap, ansible.cfg),
+            # which gitops_reconcile runs as root within ~15 min of a merge and
+            # which no role matrix covers; and the harness and toolchain the tiers
+            # themselves run on. Everything else (terraform/, jonnyoc-site/, docs)
+            # yields no tiers, so molecule-gate reports green on those PRs instead
+            # of blocking on a check that never runs.
             shared=$(printf '%s\n' "$changed" | grep -E \
+              -e '^playbooks/' \
+              -e '^inventory/' \
+              -e '^bootstrap/' \
+              -e '^ansible\.cfg$' \
               -e '^molecule/' \
-              -e '^inventory/group_vars/all/vault\.yml$' \
+              -e '^bin/.*\.sh$' \
               -e '^requirements(-dev)?\.txt$' \
               -e '^Makefile$' \
-              -e '^bin/check-role-test-coverage\.sh$' \
+              -e '^\.pre-commit-config\.yaml$' \
               -e '^\.github/workflows/molecule\.yml$' \
               || true)
           fi
@@ -85,7 +92,7 @@ jobs:
           hetzner_cand="$roles"
           if [ -n "$shared" ]; then
             incus_cand=$(printf '%s\nmotd' "$roles")
-            if printf '%s\n' "$shared" | grep -qvE '^(requirements-dev\.txt|Makefile)$'; then
+            if printf '%s\n' "$shared" | grep -qvE '^(requirements-dev\.txt|Makefile|\.pre-commit-config\.yaml)$'; then
               hetzner_cand=$(printf '%s\nmotd' "$roles")
             fi
           fi
