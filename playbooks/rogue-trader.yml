@@ -49,6 +49,10 @@
     # off-site mirror (Thu 04:00). rogue-trader already mounts astropath for
     # podman_backup, so no extra NFS setup is needed.
     home_backup_oncalendar: "Thu *-*-* 03:00:00"
+    # This host's restic key. One per host, so a host that is compromised can
+    # open only its own repos — the astropath export carries every host's, and
+    # this is the public box.
+    restic_backup_password: "{{ rogue_trader_restic_password }}"
     firewalld_rich_rules:
       # SSH reaches the box only over the tunnel (LAN source), so scope it to the
       # LAN subnet rather than opening 22 on the public interface.
