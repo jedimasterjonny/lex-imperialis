@@ -31,18 +31,24 @@ ansible-playbook bootstrap/incus.yml --ask-become-pass
 ## rogue-trader.yml
 
 Provisions the persistent Hetzner VM serving the public site: uploads the SSH
-key and creates the server with a cloud-init that joins it to the home VPN as a
-split tunnel at first boot. Its cloud firewall lives in `terraform/`
-(`firewall-rogue-trader.tf`), not here. Provision-once —
-`user_data` applies only on first boot, so a re-run won't re-render the tunnel
-config on a live server. Requires the operator's `~/.ssh/id_ed25519.pub`
-locally — that public key is uploaded and authorised on the server. Run from
-the repo root, with the vault for the hcloud token and tunnel config:
+key and creates the server with a cloud-init that installs the tunnel tooling.
+Its cloud firewall lives in `terraform/` (`firewall-rogue-trader.tf`), not here.
+Provision-once — `user_data` applies only on first boot, so a re-run is a no-op.
+Requires the operator's `~/.ssh/id_ed25519.pub` locally — that public key is
+uploaded and authorised on the server. Run from the repo root, with the vault
+for the hcloud token:
 
 ```bash
 ansible-playbook bootstrap/rogue-trader.yml \
   -e @inventory/group_vars/all/vault.yml --vault-password-file .vault_pass
 ```
 
-The closing VPN smoke test needs router-side peer state this play doesn't own,
-so it can time out despite a successful provision.
+`user_data` is served from the metadata endpoint for the life of the server, so
+nothing secret goes in it — a key written there is readable by every process and
+container on the box forever, revocable only by rebuilding. The tunnel config is
+therefore placed by hand over the Hetzner console after provisioning: write
+`rogue_trader_wireguard_conf` to `/etc/wireguard/wg0.conf` (0600 root:root) and
+`systemctl enable --now wg-quick@wg0`.
+
+The closing VPN smoke test needs that placement plus router-side peer state this
+play doesn't own, so it can time out despite a successful provision.

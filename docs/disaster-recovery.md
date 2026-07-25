@@ -84,17 +84,21 @@ The VM is provisioned by cloud-init, not a reinstall. SSH is not exposed
 publicly, so if the WireGuard tunnel can't be brought up, the Hetzner web console
 is the only way in.
 
-1. Re-provision from the repo root (recreates the server and brings up the
-   WireGuard tunnel at first boot):
+1. Re-provision from the repo root (recreates the server and installs the tunnel
+   tooling):
 
    ```bash
    ansible-playbook bootstrap/rogue-trader.yml \
      -e @inventory/group_vars/all/vault.yml --vault-password-file .vault_pass
    ```
 
-   The play waits for it on the VPN.
+   Then, over the Hetzner console, write `rogue_trader_wireguard_conf` to
+   `/etc/wireguard/wg0.conf` (0600 root:root) and `systemctl enable --now
+   wg-quick@wg0`. It is not shipped in `user_data`: the metadata endpoint serves
+   that for the life of the server, to every process and container on the box.
+   The play's closing wait is the confirmation the tunnel came up.
 2. As root on the box (over the VPN): `bootstrap/host.sh` — cloud-init installs
-   the tunnel and python but not the `ansible` account, so this still runs.
+   the tunnel tooling and python but not the `ansible` account, so this still runs.
 3. From the control host: `make apply PLAY=rogue-trader`.
 4. Once its play has converged, on rogue-trader:
    `sudo /usr/local/sbin/podman-restore.sh` — restores the WordPress and

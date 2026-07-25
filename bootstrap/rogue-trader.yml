@@ -1,15 +1,21 @@
 ---
 # Provision rogue-trader: a persistent Hetzner cx33 in the emmas-edit project,
-# joined to the home VPN at boot. Its cloud firewall lives in terraform/
-# (firewall-rogue-trader.tf), not here. cloud-init installs the tooling, writes
-# the tunnel config, then brings it up; it is a split tunnel
-# (AllowedIPs 192.168.0.0/16), so only home-network traffic uses the VPN
+# joined to the home VPN. Its cloud firewall lives in terraform/
+# (firewall-rogue-trader.tf), not here. cloud-init installs the tooling only —
+# the tunnel config is placed by hand afterwards (see below), because Hetzner
+# serves user_data from the metadata endpoint for the life of the server, so a
+# private key written there stays readable by every process and every container
+# on the box forever, with no way to revoke it short of a rebuild. It is a split
+# tunnel (AllowedIPs 192.168.0.0/16), so only home-network traffic uses the VPN
 # and the public interface stays up. Provision-once: user_data applies only at
 # first boot, so re-running is a no-op (ssh_key and server state=started are
-# idempotent) and does not re-render wg0.conf on an existing server. Run from
-# the repo root:
+# idempotent). Run from the repo root:
 #   ansible-playbook bootstrap/rogue-trader.yml \
 #     -e @inventory/group_vars/all/vault.yml --vault-password-file .vault_pass
+#
+# Then, over the Hetzner console, write rogue_trader_wireguard_conf to
+# /etc/wireguard/wg0.conf (0600 root:root) and `systemctl enable --now
+# wg-quick@wg0`. The closing wait_for below is the confirmation that landed.
 - name: Provision rogue-trader
   hosts: localhost
   connection: local
@@ -21,22 +27,17 @@
     rogue_trader_image: opensuse-16
     rogue_trader_vpn_address: 192.168.3.3
     # openresolv backs wg-quick's DNS= line; python3 lets Ansible drive the box
-    # over the VPN afterwards.
+    # over the VPN afterwards. No write_files and no runcmd: nothing secret may
+    # enter user_data, and wg-quick is left disabled so it cannot fail at boot
+    # against a config that is not there yet.
     rogue_trader_cloud_config:
       packages:
         - python3
         - wireguard-tools
         - openresolv
-      write_files:
-        - path: /etc/wireguard/wg0.conf
-          owner: root:root
-          permissions: "0600"
-          content: "{{ rogue_trader_wireguard_conf }}"
-      runcmd:
-        - [systemctl, enable, --now, wg-quick@wg0]
-  # hcloud_token_emmas_edit and rogue_trader_wireguard_conf come from the vault,
-  # supplied at run time: -e @inventory/group_vars/all/vault.yml. Kept out of
-  # vars_files so ansible-lint (no vault password in CI) need not decrypt it.
+  # hcloud_token_emmas_edit comes from the vault, supplied at run time:
+  # -e @inventory/group_vars/all/vault.yml. Kept out of vars_files so
+  # ansible-lint (no vault password in CI) need not decrypt it.
   tasks:
     - name: Upload the SSH key to Hetzner
       hetzner.hcloud.ssh_key:
@@ -45,9 +46,10 @@
         public_key: "{{ lookup('file', '~/.ssh/id_ed25519.pub') }}"
         state: present
 
-    # user_data carries the WireGuard config, which holds a private key, so the
-    # task is no_log; api_token is already redacted by the module spec. firewalls
-    # is omitted (unmanaged here) so terraform's apply_to owns the attachment: run
+    # no_log keeps the origin IP out of the run log — the whole point of the
+    # proxied Cloudflare records; api_token is already redacted by the module
+    # spec. firewalls is omitted (unmanaged here) so terraform's apply_to owns
+    # the attachment: run
     # `tofu apply` right after a from-zero rebuild, which is otherwise
     # firewall-less (all inbound open) until it does.
     - name: Create the server
@@ -63,10 +65,10 @@
         state: started
       no_log: true
 
-    # Post-provision smoke test: a connect over the VPN confirms the box joined
-    # and the router already has its peer. It depends on router-side state this
-    # play does not own, so for a peer not yet added to the router it times out
-    # even though provisioning itself succeeded.
+    # Post-provision smoke test: a connect over the VPN confirms the tunnel
+    # config was placed and the router already has its peer. It depends on both
+    # the hand-placed wg0.conf and router-side state this play does not own, so
+    # it times out until those are done even though provisioning succeeded.
     - name: Wait for rogue-trader to come up on the VPN
       ansible.builtin.wait_for:
         host: "{{ rogue_trader_vpn_address }}"
