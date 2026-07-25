@@ -80,8 +80,9 @@ the podman repos.
 
 Three Synology Hyper Backup tasks mirror the on-NAS backups to a Hetzner storage
 box over rsync — each a plain mirror (latest state only, no version history),
-encrypted in transit but stored unencrypted, the box trusted like the NAS share
-itself. Each is a true mirror — a file removed on the NAS is removed off-site too,
+encrypted in transit. The restic repos carry their own encryption, so the off-site
+copy of them is opaque to the provider; `photos-backup` is not a restic repo and
+is stored as-is. Each is a true mirror — a file removed on the NAS is removed off-site too,
 so a pruned restic snapshot or a deleted photo does not linger. They sit on
 separate weekly slots so they don't contend on the uplink, each after the run it
 copies so it never captures a mid-write repo:
