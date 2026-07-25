@@ -14,12 +14,17 @@ home_backup_paths:
 # Re-acquirable churn to keep out of the repo: package/tool caches, virtualenvs,
 # the VS Code remote server, node_modules. Basename patterns, matched at any depth
 # under /home. restic ships no restore of these, but they rebuild on demand.
+# `.vault_pass` is excluded for the opposite reason — it is not re-acquirable, it
+# is the master secret. The repo is unencrypted (`--insecure-no-password`) on a
+# share every fleet host mounts, and is mirrored off-site, so a snapshot of the
+# control host's home would hand the whole vault to anything that reads either.
 home_backup_excludes:
   - .cache
   - .npm
   - .vscode-server
   - .venv
   - node_modules
+  - .vault_pass
 
 # Weekly, on a slot no other scheduled job uses — a day after the podman backup
 # (Wed 01:00) and its off-site mirror (Wed 02:00), so the two restic runs never

@@ -33,6 +33,16 @@
         fail_msg: "the home backup script does not snapshot /home"
         quiet: true
 
+    # The repo is unencrypted and every fleet host mounts the share it sits on,
+    # so the vault password reaching a snapshot is a full-vault disclosure. Pin
+    # the exclude here rather than trusting the default to stay put.
+    - name: The script excludes the vault password
+      ansible.builtin.assert:
+        that:
+          - "'--exclude=.vault_pass' in (home_backup_script_content.content | b64decode)"
+        fail_msg: "the home backup script does not exclude .vault_pass"
+        quiet: true
+
     # daemon_reload is a no-op that just makes the module gather and return the
     # timer's systemctl-show properties to assert against; it reads, not mutates.
     - name: Read the backup timer's state
