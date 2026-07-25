@@ -111,6 +111,14 @@
       "automerge": true
     },
     {
+      "description": "No unattended bump where a compromised image reads the host or fronts the internet. cadvisor runs as root with a read-only bind of the entire host filesystem, so an image compromise reads every secret on the host — measured: it reads a mode-0600 root-owned file, cannot write, and holds no capability. caddy terminates TLS for the public sites, holds the Cloudflare API token, and is the only container publishing 80/443. node_exporter is deliberately NOT here: it mounts the host D-Bus system bus, but the upstream image runs it as an unprivileged uid, so systemd refuses it StartTransientUnit, and its molecule verify now asserts that user — the one image change that would make the mount dangerous fails the tier before automerge can reach it. Must stay after the pinDigest rule above: later rules win. A packageRule is the right shape even though :automergeMinor and :automergeDigest set automerge through update-type objects instead — flatten applies packageRules once more after merging those, so this still has the last word.",
+      "matchPackageNames": [
+        "ghcr.io/google/cadvisor",
+        "ghcr.io/caddybuilds/caddy-cloudflare"
+      ],
+      "automerge": false
+    },
+    {
       "description": "linuxserver images carry legacy build-number (151), two-part (5.14), and four-part tags that docker versioning reads as upgrades; their releases are strict semver, so reject the rest.",
       "matchPackageNames": ["lscr.io/linuxserver/**"],
       "versioning": "semver"
