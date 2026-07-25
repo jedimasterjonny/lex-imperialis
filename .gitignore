@@ -14,6 +14,10 @@ __pycache__/
 # Vault password file
 .vault_pass
 
+# restic repository password, staged here for collection into the password
+# manager and out-of-band placement on each host. Never committed.
+.restic_pass
+
 # OpenTofu/Terraform (state and *.tfvars hold secrets; .terraform.lock.hcl is committed)
 .terraform/
 *.tfstate
