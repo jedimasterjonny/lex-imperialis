@@ -15,9 +15,9 @@ home_backup_paths:
 # the VS Code remote server, node_modules. Basename patterns, matched at any depth
 # under /home. restic ships no restore of these, but they rebuild on demand.
 # `.vault_pass` is excluded for the opposite reason — it is not re-acquirable, it
-# is the master secret. The repo is unencrypted (`--insecure-no-password`) on a
-# share every fleet host mounts, and is mirrored off-site, so a snapshot of the
-# control host's home would hand the whole vault to anything that reads either.
+# is the master secret. The repos are encrypted now, but it still must not enter
+# one: the repo key itself comes from the vault, so a snapshot holding the vault
+# password turns any future repo-key disclosure into a full-vault disclosure.
 home_backup_excludes:
   - .cache
   - .npm

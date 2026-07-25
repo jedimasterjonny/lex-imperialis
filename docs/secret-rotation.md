@@ -39,6 +39,7 @@ apply target, and any wrinkle.
 | `arr_wireguard_conf` | commercial VPN provider portal (new WG key/peer) | `PLAY=solar` | Confirm the tunnel handshakes and egress is the VPN IP; the kill-switch holds if it fails |
 | `rogue_trader_wordpress_db_password` | self-chosen MariaDB app password | `PLAY=rogue-trader` | **First-init only** — also `ALTER USER` in the `wordpress-db` container to match |
 | `rogue_trader_wordpress_db_root_password` | self-chosen MariaDB root password | `PLAY=rogue-trader` | Same first-init `ALTER USER` caveat |
+| `solar_restic_password` / `scholam_restic_password` / `rogue_trader_restic_password` | self-chosen, one per host | `PLAY=<host>` | **Repo-side too** — `restic key add` the new one and `restic key remove` the old on that host's repos, or the backup locks itself out. One key per host by design: a host must not be able to open another's repos |
 
 **First-init caveat.** MariaDB and Grafana bake the password in on first
 container init, so a vault edit + apply alone will not change an already-running

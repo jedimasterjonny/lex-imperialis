@@ -16,7 +16,8 @@ tag="{{ restic_backup_tag }}"
 export RESTIC_REPOSITORY="$repo"
 # No $HOME under sudo/ssh, so pin restic's cache where the backup script does.
 export RESTIC_CACHE_DIR=/var/cache/restic
-restic() { command restic --insecure-no-password "$@"; }
+# Host-scoped key: this host can open its own repos and no other host's.
+export RESTIC_PASSWORD_FILE="{{ restic_backup_password_file }}"
 mkdir -p "$RESTIC_CACHE_DIR"
 
 # Fail before touching anything if there is nothing to restore, rather than

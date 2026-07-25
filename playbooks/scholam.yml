@@ -29,6 +29,9 @@
     # hosts don't snapshot to the same astropath export at once and contend on the
     # mount that already blips under load (the engine's retry() exists for that).
     home_backup_oncalendar: "Thu *-*-* 02:00:00"
+    # This host's restic key. One per host, so a host that is compromised can
+    # open only its own repos — the astropath export carries every host's.
+    restic_backup_password: "{{ scholam_restic_password }}"
     # node_exporter, scraped by Prometheus on administratum over the LAN.
     firewalld_ports:
       - 9100/tcp

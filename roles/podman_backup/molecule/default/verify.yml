@@ -114,7 +114,7 @@
         quiet: true
 
     - name: Restore the latest snapshot to a scratch directory
-      ansible.builtin.command: "restic --insecure-no-password --repo {{ podman_backup_repo }} restore latest --target /var/tmp/restore"
+      ansible.builtin.command: "restic --password-file /etc/restic/password --repo {{ podman_backup_repo }} restore latest --target /var/tmp/restore"
       changed_when: false
       become: true
 
@@ -235,7 +235,7 @@
       become: true
 
     - name: Run the integrity check against the corrupt copy
-      ansible.builtin.command: "restic --insecure-no-password --repo {{ podman_backup_repo }}-corrupt check"
+      ansible.builtin.command: "restic --password-file /etc/restic/password --repo {{ podman_backup_repo }}-corrupt check"
       register: podman_backup_corrupt_check
       changed_when: false
       failed_when: false
@@ -287,14 +287,14 @@
       become: true
 
     - name: A metadata-only check does not notice the flipped byte
-      ansible.builtin.command: "restic --insecure-no-password --repo {{ podman_backup_repo }}-bitrot check"
+      ansible.builtin.command: "restic --password-file /etc/restic/password --repo {{ podman_backup_repo }}-bitrot check"
       register: podman_backup_bitrot_meta
       changed_when: false
       failed_when: false
       become: true
 
     - name: A read-data check catches the flipped byte
-      ansible.builtin.command: "restic --insecure-no-password --repo {{ podman_backup_repo }}-bitrot check --read-data"
+      ansible.builtin.command: "restic --password-file /etc/restic/password --repo {{ podman_backup_repo }}-bitrot check --read-data"
       register: podman_backup_bitrot_read
       changed_when: false
       failed_when: false

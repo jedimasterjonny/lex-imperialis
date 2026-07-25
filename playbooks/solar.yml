@@ -68,6 +68,9 @@
     cadvisor_listen_ip: "{{ ansible_facts['default_ipv4']['address'] }}"
     # Grafana reads the Prometheus on administratum (the NAS) over the LAN.
     grafana_prometheus_url: http://administratum:9090
+    # This host's restic key. One per host, so a host that is compromised can
+    # open only its own repos — the astropath export carries every host's.
+    restic_backup_password: "{{ solar_restic_password }}"
   roles:
     - common
     - sshd

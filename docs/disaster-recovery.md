@@ -162,7 +162,8 @@ play, run locally, then the home restore.
    what step 3 did not already rebuild:
 
    ```bash
-   restic --insecure-no-password --repo /nfs/astropath/scholam-home-backup \
+   restic --password-file /etc/restic/password \
+     --repo /nfs/astropath/scholam-home-backup \
      restore latest --target /var/tmp/home-restore
    ```
 

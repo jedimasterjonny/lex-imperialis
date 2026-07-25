@@ -18,8 +18,12 @@ call is retried: the astropath NFS mount intermittently serves a spurious ENOENT
 mid-run that would otherwise fail an isolated operation.
 
 The repo lives at `<restic_backup_root>/<hostname>-<restic_backup_name>-backup`,
-unencrypted (`--insecure-no-password`): the NAS share is trusted. Assumes the
-`nfs` role has mounted the target; podman-volumes mode also assumes `podman`.
+unlocked by a password rendered to `restic_backup_password_file` (0600 root) from
+a host-scoped vault var. One key per host, not one per fleet: the export carries
+every host's repos and is mirrored to a third party, so a host that is
+compromised must not be able to open another host's backups. An empty
+`restic_backup_password` is rejected at converge. Assumes the `nfs` role has
+mounted the target; podman-volumes mode also assumes `podman`.
 
 Consumers `include_role` this engine and set the vars — `podman_backup` and
 `home_backup` are the two. The on-NAS repos are mirrored off-site out of band by

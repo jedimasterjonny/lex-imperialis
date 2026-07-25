@@ -12,11 +12,39 @@
       nothing would be backed up.
     quiet: true
 
+- name: A backup must configure a repository password
+  ansible.builtin.assert:
+    that:
+      - restic_backup_password | length > 0
+    fail_msg: >-
+      restic_backup_password is empty — the repository would be readable by
+      anything that can reach the share, and by the off-site mirror.
+    quiet: true
+
 - name: Install restic
   community.general.zypper:
     name: "{{ restic_backup_package }}"
     state: present
   become: true
+
+- name: Create the password directory
+  ansible.builtin.file:
+    path: "{{ restic_backup_password_file | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  become: true
+
+- name: Install the repository password
+  ansible.builtin.copy:
+    content: "{{ restic_backup_password }}"
+    dest: "{{ restic_backup_password_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  no_log: true
 
 - name: Install the backup and metric scripts
   ansible.builtin.template:
