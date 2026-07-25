@@ -8,6 +8,17 @@
 # restic is the backup engine and its own rotation tool (restic forget --prune).
 restic_backup_package: restic
 
+# Repository password, one per host so a compromised host can open only its own
+# repos — the share carries every host's, and the off-site mirror is a third
+# party. Empty is rejected at converge: an empty password is what
+# --insecure-no-password meant, and it left the repos readable by anything that
+# could reach the mount. Set from a host-scoped vault var in the play.
+restic_backup_password: ""
+
+# Where the password is rendered, 0600 root. Host-wide rather than per instance:
+# both consumers on a host share the host's key.
+restic_backup_password_file: /etc/restic/password
+
 # The repo lives at <root>/<hostname>-<name>-backup; the script appends the
 # hostname at run time. Default root is the astropath NFS share.
 restic_backup_root: /nfs/astropath

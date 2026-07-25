@@ -15,6 +15,25 @@
       register: restic_backup_restic
       changed_when: false
 
+    # The repo password is the only thing standing between the share (which
+    # carries every host's repos, and is mirrored to a third party) and anyone
+    # who can read it. Pin its mode, and pin that the scripts actually use it —
+    # a reintroduced --insecure-no-password would silently unlock the repo.
+    - name: Stat the repository password file
+      ansible.builtin.stat:
+        path: /etc/restic/password
+      register: restic_backup_password_stat
+      become: true
+
+    - name: The repository password is installed 0600 root
+      ansible.builtin.assert:
+        that:
+          - restic_backup_password_stat.stat.exists
+          - restic_backup_password_stat.stat.mode == '0600'
+          - restic_backup_password_stat.stat.pw_name == 'root'
+        fail_msg: "/etc/restic/password is missing or not 0600 root"
+        quiet: true
+
     - name: Stat the backup script
       ansible.builtin.stat:
         path: "{{ restic_backup_script }}"
@@ -79,7 +98,7 @@
       become: true
 
     - name: Restore the latest snapshot to a scratch directory
-      ansible.builtin.command: "restic --insecure-no-password --repo {{ restic_backup_repo }} restore latest --target /var/tmp/restore"
+      ansible.builtin.command: "restic --password-file /etc/restic/password --repo {{ restic_backup_repo }} restore latest --target /var/tmp/restore"
       changed_when: false
       become: true
 
@@ -152,6 +171,14 @@
         fail_msg: "the backup script does not run restic check with a read-data slice"
         quiet: true
 
+    - name: The backup script unlocks the repo by password file, never empty
+      ansible.builtin.assert:
+        that:
+          - "'RESTIC_PASSWORD_FILE=' in (restic_backup_script_content.content | b64decode)"
+          - "'--insecure-no-password' not in (restic_backup_script_content.content | b64decode)"
+        fail_msg: "the backup script does not use a password file, or reintroduces --insecure-no-password"
+        quiet: true
+
     - name: Discard any prior corrupt copy
       ansible.builtin.file:
         path: "{{ restic_backup_repo }}-corrupt"
@@ -170,7 +197,7 @@
       become: true
 
     - name: Run the integrity check against the corrupt copy
-      ansible.builtin.command: "restic --insecure-no-password --repo {{ restic_backup_repo }}-corrupt check"
+      ansible.builtin.command: "restic --password-file /etc/restic/password --repo {{ restic_backup_repo }}-corrupt check"
       register: restic_backup_corrupt_check
       changed_when: false
       failed_when: false

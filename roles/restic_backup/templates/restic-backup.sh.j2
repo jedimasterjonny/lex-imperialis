@@ -18,7 +18,8 @@ tag="{{ restic_backup_tag }}"
 export RESTIC_REPOSITORY="$repo"
 # systemd runs this with no $HOME, so pin restic's cache somewhere it can find it.
 export RESTIC_CACHE_DIR=/var/cache/restic
-restic() { command restic --insecure-no-password "$@"; }
+# Host-scoped key: this host can open its own repos and no other host's.
+export RESTIC_PASSWORD_FILE="{{ restic_backup_password_file }}"
 
 # The astropath NFS mount intermittently serves a spurious ENOENT for a file that
 # exists — a lock, or the repo config — aborting a restic call mid-run. Retry each

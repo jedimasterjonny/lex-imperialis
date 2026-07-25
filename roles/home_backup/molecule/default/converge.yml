@@ -6,5 +6,7 @@
     # job, not this role's. Set on the engine directly (home_backup inherits the
     # root default rather than passing it through).
     restic_backup_root: /var/tmp/backup
+    # Throwaway repo password; the engine rejects an empty one.
+    restic_backup_password: molecule-probe-repo-password
   roles:
     - role: home_backup
