@@ -10,3 +10,12 @@ platforms:
     config:
       security.nesting: "true"
       raw.lxc: lxc.apparmor.profile=unconfined
+provisioner:
+  inventory:
+    group_vars:
+      all:
+        # Restated rather than shared: a scenario's molecule.yml is standalone, and
+        # the tier's base.yml is common to every role so it cannot carry this. Leap
+        # is the tier rogue-trader actually runs, so the override path is worth
+        # covering on both.
+        podman_backup_oncalendar: "Tue *-*-* 04:00:00"

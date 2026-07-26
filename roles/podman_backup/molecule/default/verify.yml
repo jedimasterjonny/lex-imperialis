@@ -70,14 +70,29 @@
       register: podman_backup_timer
       become: true
 
-    - name: The timer is enabled and fires at 01:00 on Wednesdays
+    # Assert the whole OnCalendar= against the var converge set, not two literals.
+    # TimersCalendar reads
+    #   { OnCalendar=<spec> ; next_elapse=<resolved time> }
+    # so bare substrings can be satisfied across the two halves: a daily
+    # '*-*-* 01:00:00' spec supplies '01:00:00' itself and lets next_elapse supply
+    # 'Wed' every Tuesday, passing a weekly-to-daily regression one day in seven.
+    # Anchoring on OnCalendar= reads only the spec. Same defect C17 found in
+    # home_backup; this is the other half of that fix.
+    #
+    # The group_vars value is deliberately not the role default, so the pass-through
+    # to restic_backup_oncalendar in tasks/main.yml has to actually carry it. A
+    # literal here would have passed on a pass-through hard-coded to Wed 01:00.
+    - name: The timer is enabled and fires on the configured schedule
       ansible.builtin.assert:
         that:
           - podman_backup_timer.status.ActiveState == 'active'
           - podman_backup_timer.status.UnitFileState == 'enabled'
-          - "'Wed' in podman_backup_timer.status.TimersCalendar"
-          - "'01:00:00' in podman_backup_timer.status.TimersCalendar"
-        fail_msg: "the backup timer is not enabled for Wed 01:00"
+          - >-
+            'OnCalendar=' ~ podman_backup_oncalendar
+            in podman_backup_timer.status.TimersCalendar
+        fail_msg: >-
+          the backup timer is not enabled for {{ podman_backup_oncalendar }} —
+          TimersCalendar is {{ podman_backup_timer.status.TimersCalendar | default('unset') }}
         quiet: true
 
     # Ordering that stops a Persistent= catch-up run at boot racing the quadlet
