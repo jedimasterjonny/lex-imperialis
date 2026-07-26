@@ -67,7 +67,9 @@ Tunable (defaulted): `restic_backup_root`, `restic_backup_tag`,
 - **Podman-volumes** (`restic_backup_podman_volumes: true`) — the sources are the
   host's podman volume mountpoints, enumerated at run time; the quadlet container
   units are quiesced for a consistent snapshot and always restarted (a trap, so
-  they return even if the backup fails). This mode also installs `<name>-restore.sh`,
+  they return even if the backup fails). A quadlet glob matching nothing fails the
+  run rather than proceeding: this mode exists to avoid snapshotting a live
+  database, so nothing to quiesce means a broken assumption, not an idle night. This mode also installs `<name>-restore.sh`,
   the inverse of the backup for disaster recovery: run it on a host **after its
   play has converged** — it quiesces the units, empties each volume, restores the
   latest snapshot over them (restic preserves ownership and mode), and restarts

@@ -91,9 +91,21 @@ fi
 # restart them however the backup exits. Only .container quadlets run on the
 # fleet; .pod/.kube units would need handling here.
 {% raw %}
+# nullglob so a moved quadlet directory yields an empty array rather than the
+# literal pattern. Without the guard the loop would just match nothing and the
+# backup would sail on, snapshotting a live, un-quiesced MariaDB and reporting
+# success — this mode exists precisely to avoid that, so an empty match is a
+# broken assumption, not an empty day's work.
+shopt -s nullglob
+unit_files=(/etc/containers/systemd/*.container)
+shopt -u nullglob
+if ((${#unit_files[@]} == 0)); then
+    echo "no .container quadlets in /etc/containers/systemd — refusing to snapshot un-quiesced" >&2
+    exit 1
+fi
+
 units=()
-for unit_file in /etc/containers/systemd/*.container; do
-    [ -e "$unit_file" ] || continue
+for unit_file in "${unit_files[@]}"; do
     unit="$(basename "${unit_file%.container}").service"
     if systemctl is-active --quiet "$unit"; then
         units+=("$unit")

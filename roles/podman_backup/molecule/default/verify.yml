@@ -309,3 +309,67 @@
           metadata rc={{ podman_backup_bitrot_meta.rc }} (want 0),
           read-data rc={{ podman_backup_bitrot_read.rc }} (want non-zero)
         quiet: true
+
+    # The quiesce globs /etc/containers/systemd/*.container. Unguarded, a moved
+    # quadlet directory makes it match nothing, and the run then snapshots every
+    # volume live and un-quiesced — a torn MariaDB — while reporting success.
+    # Take the probe quadlet out of the glob's reach and confirm it refuses.
+    # No daemon-reload either side, so the running unit is left undisturbed.
+    - name: Stage the probe quadlet outside the quadlet directory
+      ansible.builtin.copy:
+        src: /etc/containers/systemd/lex-probe.container
+        dest: /var/tmp/lex-probe.container.staged
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Remove the probe quadlet so the glob matches nothing
+      ansible.builtin.file:
+        path: /etc/containers/systemd/lex-probe.container
+        state: absent
+      become: true
+
+    - name: Fire the backup service with no quadlet to quiesce
+      ansible.builtin.systemd_service:
+        name: podman-backup.service
+        state: started
+      register: podman_backup_noquadlet_run
+      ignore_errors: true
+      become: true
+
+    - name: Read the outcome metric after the no-quadlet run
+      ansible.builtin.slurp:
+        src: "{{ podman_backup_textfile_dir }}/podman-backup.prom"
+      register: podman_backup_metric_noquadlet
+      become: true
+
+    - name: A quiesce that would match no quadlet fails the run
+      ansible.builtin.assert:
+        that:
+          - podman_backup_noquadlet_run is failed
+          - "'podman_backup_success 0' in (podman_backup_metric_noquadlet.content | b64decode)"
+        fail_msg: "the backup snapshotted the volumes without quiescing anything"
+        quiet: true
+
+    - name: Put the probe quadlet back
+      ansible.builtin.copy:
+        src: /var/tmp/lex-probe.container.staged
+        dest: /etc/containers/systemd/lex-probe.container
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Discard the staged copy
+      ansible.builtin.file:
+        path: /var/tmp/lex-probe.container.staged
+        state: absent
+      become: true
+
+    - name: Clear the failed state the no-quadlet run left
+      ansible.builtin.command: systemctl reset-failed podman-backup.service
+      changed_when: true
+      become: true
