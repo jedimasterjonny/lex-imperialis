@@ -209,3 +209,65 @@
           - restic_backup_corrupt_check.rc != 0
         fail_msg: "restic check passed a repo with its data removed"
         quiet: true
+
+    # The share is _netdev and the quiesce itself can unmount it mid-run, so the
+    # engine must refuse to write when the repository root is not mounted.
+    # Unmounted, the root is the empty directory the bind mount covers — exactly
+    # where an unguarded mkdir -p creates a shadow repo that restic init's, backs
+    # up into, and reports as a success while the real repo silently stops
+    # receiving snapshots. Run last, and remount, so a standalone `make verify`
+    # re-run still starts from a mounted share.
+    - name: Unmount the share stand-in
+      ansible.posix.mount:
+        path: "{{ restic_backup_repo_root }}"
+        state: unmounted
+      become: true
+
+    # ignore_errors, not failed_when: false — the run is meant to fail, and
+    # failed_when would clear the very flag the assertion below reads.
+    - name: Fire the backup service with the repository root unmounted
+      ansible.builtin.systemd_service:
+        name: probe-backup.service
+        state: started
+      register: restic_backup_unmounted_run
+      ignore_errors: true
+      become: true
+
+    - name: Read the outcome metric after the unmounted run
+      ansible.builtin.slurp:
+        src: "{{ restic_backup_textfile_dir }}/probe-backup.prom"
+      register: restic_backup_metric_unmounted
+      become: true
+
+    - name: List anything the unmounted run left on the root filesystem
+      ansible.builtin.find:
+        paths: "{{ restic_backup_repo_root }}"
+        file_type: any
+        hidden: true
+      register: restic_backup_shadow
+      become: true
+
+    - name: An unmounted root fails the run and leaves no shadow repo
+      ansible.builtin.assert:
+        that:
+          - restic_backup_unmounted_run is failed
+          - "'probe_backup_success 0' in (restic_backup_metric_unmounted.content | b64decode)"
+          - restic_backup_shadow.files | length == 0
+        fail_msg: >-
+          the backup wrote to an unmounted repository root:
+          {{ restic_backup_shadow.files | map(attribute='path') | list }}
+        quiet: true
+
+    - name: Remount the share stand-in
+      ansible.posix.mount:
+        path: "{{ restic_backup_repo_root }}"
+        src: /var/tmp/backup-store
+        fstype: none
+        opts: bind
+        state: mounted
+      become: true
+
+    - name: Clear the failed state the unmounted run left
+      ansible.builtin.command: systemctl reset-failed probe-backup.service
+      changed_when: true
+      become: true

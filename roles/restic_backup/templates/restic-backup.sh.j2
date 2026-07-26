@@ -34,6 +34,20 @@ retry() {
     return 1
 }
 
+# The share is _netdev, and stopping the last podman bridge fires an NM event
+# that unmounts it mid-run (roles/podman/tasks/main.yml). Unmounted, the
+# mountpoint directory is still there on the root fs: mkdir -p would create a
+# shadow repo inside it, restic init it, back up into it, and exit 0 with
+# success 1 — the real repo silently stops receiving snapshots and no alert ever
+# fires. Assert immediately before each write rather than once at the top, since
+# the quiesce that triggers the unmount runs in between.
+require_mounted() {
+    if ! mountpoint -q {{ restic_backup_root | quote }}; then
+        echo "{{ restic_backup_root }} is not mounted — refusing to write a shadow repo" >&2
+        exit 1
+    fi
+}
+
 {% if restic_backup_check_read_data_weeks | int > 0 %}
 # Re-hash one deterministic 1/N slice of data packs during the integrity check to
 # catch bit-rot the metadata check misses; the n/t slice rotates by ISO week and
@@ -114,8 +128,10 @@ exclude_args=(
 exclude_args=()
 {% endif %}
 
+require_mounted
 mkdir -p "$repo" "$RESTIC_CACHE_DIR"
 retry restic snapshots >/dev/null 2>&1 || retry restic init
+require_mounted
 retry restic backup --tag "$tag" "${exclude_args[@]}" "${sources[@]}"
 retry restic forget --tag "$tag" \
     --keep-weekly "$keep_weekly" --keep-monthly "$keep_monthly" --prune

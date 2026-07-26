@@ -25,6 +25,15 @@ compromised must not be able to open another host's backups. An empty
 `restic_backup_password` is rejected at converge. Assumes the `nfs` role has
 mounted the target; podman-volumes mode also assumes `podman`.
 
+`restic_backup_root` must be a live mountpoint, asserted immediately before the
+repository is created and again before the snapshot is written — not once at the
+top, because in podman-volumes mode the quiesce runs in between and stopping the
+last podman bridge is itself what fires the NetworkManager event that unmounts
+the `_netdev` share (see `roles/podman`). Unmounted, the mountpoint directory
+remains on the root filesystem, so an unguarded run would create a shadow repo
+there, initialise it, back up into it and exit 0 reporting success while the real
+repository silently stopped receiving snapshots.
+
 Consumers `include_role` this engine and set the vars — `podman_backup` and
 `home_backup` are the two. The on-NAS repos are mirrored off-site out of band by
 a NAS-side Synology Hyper Backup task. See [`docs/backups.md`](../../docs/backups.md)
