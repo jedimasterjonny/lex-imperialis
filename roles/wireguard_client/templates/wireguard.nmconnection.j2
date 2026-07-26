@@ -1,0 +1,32 @@
+# {{ ansible_managed }}
+[connection]
+id={{ wireguard_client_interface }}
+uuid={{ wireguard_client_uuid }}
+type=wireguard
+interface-name={{ wireguard_client_interface }}
+autoconnect=true
+
+[wireguard]
+private-key={{ wireguard_client_private_key }}
+mtu={{ wireguard_client_mtu }}
+{% if wireguard_client_listen_port | length > 0 %}
+listen-port={{ wireguard_client_listen_port }}
+{% endif %}
+
+[wireguard-peer.{{ wireguard_client_peer_public_key }}]
+endpoint={{ wireguard_client_peer_endpoint }}
+allowed-ips={{ wireguard_client_peer_allowed_ips }};
+{% if wireguard_client_peer_keepalive | length > 0 %}
+persistent-keepalive={{ wireguard_client_peer_keepalive }}
+{% endif %}
+
+[ipv4]
+method=manual
+address1={{ wireguard_client_address }}
+{% if wireguard_client_dns | length > 0 %}
+dns={{ wireguard_client_dns }};
+dns-priority={{ wireguard_client_dns_priority }}
+{% endif %}
+
+[ipv6]
+method=disabled

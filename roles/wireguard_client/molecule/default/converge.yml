@@ -1,0 +1,24 @@
+---
+- name: Converge
+  hosts: all
+  tasks:
+    # A synthetic tunnel definition with throwaway keys. Every value differs from
+    # the role's defaults, so an assertion cannot pass on a default that happens
+    # to match; AllowedIPs and DNS carry the comma-separated form the keyfile has
+    # to render as semicolons.
+    - name: Apply the wireguard_client role
+      ansible.builtin.include_role:
+        name: wireguard_client
+      vars:
+        wireguard_client_conf: |
+          [Interface]
+          PrivateKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          ListenPort = 51821
+          Address = 10.9.9.2/32
+          DNS = 10.9.9.1, 10.9.9.5
+
+          [Peer]
+          PublicKey = BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=
+          AllowedIPs = 10.9.0.0/16, 172.31.0.0/16
+          Endpoint = tunnel.example.com:51821
+          PersistentKeepalive = 25
