@@ -254,7 +254,7 @@ groups:
       # about, so a service with no bespoke alert fails silently. This keys on the
       # terminal failed state, where ServiceRestartStorm and WireguardTunnelDown key
       # on the restart counter (flapping but still alive) — a unit is in one state or
-      # the other, so they never double-report one fault. The six exclusions do have
+      # the other, so they never double-report one fault. The seven exclusions do have
       # a bespoke alert: each writes a *_success metric whose *Failed rule carries a
       # richer description and the right severity (a failed backup or reconcile is
       # critical, this is a warning). group_by is on alertname, so without the
