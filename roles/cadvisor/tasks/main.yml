@@ -1,13 +1,8 @@
 ---
-# cadvisor's native podman factory reads the podman API socket to label
-# containers by name and image; without it containers show only as cgroup ids.
-- name: Enable the podman API socket
-  ansible.builtin.systemd_service:
-    name: podman.socket
-    enabled: true
-    state: started
-  become: true
-
+# No podman.socket task: cadvisor no longer reads the podman API, so nothing in
+# the fleet needs that socket enabled. It is left as the host found it rather than
+# disabled here — podman's host configuration belongs to roles/podman, not to a
+# consumer of it.
 - name: Install the cadvisor container unit
   ansible.builtin.template:
     src: cadvisor.container.j2

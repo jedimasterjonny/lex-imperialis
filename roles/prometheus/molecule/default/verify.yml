@@ -129,16 +129,23 @@
           The running prometheus did not pick up the config change — the container
           was not recreated (stale single-file bind mount).
 
-    # The Docker-monitoring dashboard groups by `container`; the cadvisor job
-    # mirrors cadvisor's `name` into it. Assert the relabel rendered into the
-    # loaded config so dropping it fails here, not silently as empty panels.
-    - name: The cadvisor job mirrors name into a container label
+    # The Docker-monitoring dashboard groups by `container` and selects series with
+    # image!=""; the cadvisor job rebuilds both from the cgroup id, because cadvisor
+    # no longer mounts the root-equivalent podman socket that used to supply them.
+    # Assert both relabels reached the loaded config, so dropping either fails here
+    # rather than silently as empty panels. The id pattern is asserted too: without
+    # it a `target_label: container` line could be present but matching nothing.
+    - name: The cadvisor job rebuilds the container and image labels from the cgroup id
+      vars:
+        loaded: "{{ prometheus_loaded_config.json.data.yaml }}"
       ansible.builtin.assert:
         that:
-          - "'target_label: container' in prometheus_loaded_config.json.data.yaml"
+          - "'target_label: container' in loaded"
+          - "'target_label: image' in loaded"
+          - "'libpod-payload-' in loaded"
         fail_msg: >-
-          the cadvisor metric_relabel that mirrors name into container is missing
-          from the loaded config
+          the cadvisor metric_relabel_configs that rebuild container and image from
+          the cgroup id are missing from the loaded config
 
     # The checks above prove prometheus works; they can't prove its capability set
     # is minimal. Assert the posture directly so a regression that widens the caps

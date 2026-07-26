@@ -28,10 +28,26 @@ scrape_configs:
     static_configs:
       - targets: {{ prometheus_cadvisor_targets | to_json }}
     # The Docker-monitoring dashboard (grafana 15798) groups container series by a
-    # `container` label; cadvisor labels them `name`, so mirror it at ingest.
+    # `container` label and selects them with image!="". Both labels used to come
+    # from cadvisor's podman factory, which needed the root-equivalent podman API
+    # socket; cadvisor no longer mounts it, so rebuild both from the cgroup id here.
+    # A quadlet container's leaf cgroup is
+    # /system.slice/<name>.service/libpod-payload-<id>, so the unit name is the
+    # container name, and matching that path at all is what marks a series as a real
+    # container — the parent .service and .service/runtime cgroups do not match, so
+    # exactly one series per container is labelled, as before.
+    # image is a constant, not a ref: the dashboard only ever tests it for
+    # emptiness and never displays it, and the image is not recoverable from a
+    # cgroup path. Anything keying on a real image ref must not use this label.
     metric_relabel_configs:
-      - source_labels: [name]
+      - source_labels: [id]
+        regex: '/system\.slice/(.+)\.service/libpod-payload-[0-9a-f]+'
         target_label: container
+        replacement: $1
+      - source_labels: [id]
+        regex: '/system\.slice/(.+)\.service/libpod-payload-[0-9a-f]+'
+        target_label: image
+        replacement: podman
 {% if prometheus_probe_targets %}
 
   # Blackbox probes: each target is passed to the blackbox_exporter as ?target=, and

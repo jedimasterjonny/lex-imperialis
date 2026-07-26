@@ -1,9 +1,5 @@
 [Unit]
 Description=cAdvisor container metrics exporter
-# The podman factory needs the API socket up first, else it never registers and
-# containers lose their name and image labels.
-Wants=podman.socket
-After=podman.socket
 {% if cadvisor_after %}
 Wants={{ cadvisor_after }}
 After={{ cadvisor_after }}
@@ -13,23 +9,27 @@ After={{ cadvisor_after }}
 ContainerName=cadvisor
 Image={{ cadvisor_image }}
 # Host network so Prometheus scrapes it like the other exporters. The host cgroup
-# namespace so it sees every container's cgroups, not just its own; read-only
-# binds of / and /sys for machine and cgroup stats; and the podman socket so its
-# native podman factory labels containers by name and image.
+# namespace so it sees every container's cgroups, not just its own, and read-only
+# binds of / and /sys for machine and cgroup stats.
+# Deliberately NOT the podman API socket: mounting it gave cadvisor's podman
+# factory the name and image labels, but an API socket is root-equivalent whatever
+# the mount says (`:ro` does not stop a write, and DropCapability=all does not
+# fence it) — so a moved image digest was arbitrary root on the host. Prometheus
+# reconstructs both labels from the cgroup id at ingest instead; see the cadvisor
+# job's metric_relabel_configs in roles/prometheus.
 # label=disable lifts SELinux container_t confinement: on an enforcing host it
-# otherwise denies the inotify watch on /sys/fs/cgroup (fatal) and the write to
-# the podman socket. Trusted first-party container, so disabling the label beats
-# shipping a bespoke policy module.
+# otherwise denies the inotify watch on /sys/fs/cgroup, which is fatal. Trusted
+# first-party container, so disabling the label beats shipping a bespoke policy
+# module.
 Network=host
 PodmanArgs=--cgroupns=host --security-opt=label=disable
 # Drop every capability and bar privilege escalation. cadvisor reads cgroup and
-# machine stats through the world-readable /sys and /rootfs binds and dials the
-# root-owned podman socket as root, so it needs no capability back.
+# machine stats through the world-readable /sys and /rootfs binds as root, so it
+# needs no capability back.
 NoNewPrivileges=true
 DropCapability=all
 Volume=/:/rootfs:ro,rslave
 Volume=/sys:/sys:ro
-Volume=/run/podman/podman.sock:/var/run/podman/podman.sock:ro
 Exec=--port={{ cadvisor_port }}{% if cadvisor_listen_ip %} --listen_ip={{ cadvisor_listen_ip }}{% endif %} --housekeeping_interval={{ cadvisor_housekeeping_interval }} --store_container_labels=false --disable_metrics={{ cadvisor_disable_metrics }}
 
 [Service]

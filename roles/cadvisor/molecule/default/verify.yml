@@ -5,20 +5,37 @@
   vars_files:
     - ../../defaults/main.yml
   tasks:
-    # name="cadvisor" proves the whole chain: --cgroupns=host lets it see its own
-    # cgroup, and the podman factory (fed by the mounted socket) labels it by name
-    # rather than a bare cgroup id. Retried: the first housekeeping pass that
-    # discovers the container can land just after the endpoint starts serving.
-    - name: Wait for cadvisor to export named container metrics
+    # Its own leaf cgroup id proves the whole chain: --cgroupns=host lets cadvisor
+    # see the host's cgroup tree rather than only its own, and the raw factory
+    # tracks the per-container leaf. This replaced a name="cadvisor" assertion,
+    # which only held while the podman API socket was mounted. Retried: the first
+    # housekeeping pass that discovers the container can land just after the
+    # endpoint starts serving.
+    - name: Wait for cadvisor to export its own container's leaf cgroup
       ansible.builtin.uri:
         url: http://127.0.0.1:8080/metrics
         return_content: true
       register: cadvisor_metrics
       until:
         - cadvisor_metrics.status == 200
-        - '''name="cadvisor"'' in cadvisor_metrics.content'
+        - cadvisor_metrics.content is search('id="/system\.slice/cadvisor\.service/libpod-payload-[0-9a-f]+"')
       retries: 30
       delay: 2
+
+    # Pins the premise of the prometheus cadvisor job's metric_relabel_configs,
+    # which rebuild the container and image labels from this id with this pattern.
+    # If podman ever changes the leaf cgroup layout, it fails here rather than
+    # silently emptying the dashboard's panels. '\\1' not '\1' — Jinja reads the
+    # latter as an octal escape, not a capture-group reference.
+    - name: The leaf cgroup id yields the container name the relabel extracts
+      vars:
+        cadvisor_id_pattern: 'id="/system\.slice/(.+)\.service/libpod-payload-[0-9a-f]+"'
+      ansible.builtin.assert:
+        that:
+          - cadvisor_metrics.content | regex_search(cadvisor_id_pattern, '\\1') | first == 'cadvisor'
+        fail_msg: >-
+          the leaf cgroup id does not yield the container name the prometheus
+          relabel extracts from it
 
     - name: Container metrics are exported
       ansible.builtin.assert:
@@ -59,4 +76,30 @@
           - "cadvisor.BoundingCaps | default([], true) | sort == []"
           - "'no-new-privileges' in (cadvisor.HostConfig.SecurityOpt | default([], true))"
         fail_msg: "cadvisor's capability or no-new-privileges posture has regressed"
+        quiet: true
+
+    # Capabilities are only half the posture: --privileged, a widened mount set, a
+    # borrowed namespace or an extra security-opt all leave BoundingCaps untouched,
+    # so the assertion above passes while the container gains the host. Pin the rest
+    # of the surface exactly — an equality on the mount set, not a substring, so an
+    # *added* mount fails too. The podman API socket is the one that matters: it is
+    # root-equivalent regardless of :ro, so its absence is the security contract.
+    - name: The cAdvisor container takes no privileged escape hatch
+      vars:
+        cadvisor: "{{ cadvisor_inspect.stdout | from_json | first }}"
+      ansible.builtin.assert:
+        that:
+          - not (cadvisor.HostConfig.Privileged | default(false, true))
+          - cadvisor.HostConfig.SecurityOpt | default([], true) | sort == ['label=disable', 'no-new-privileges']
+          - cadvisor.HostConfig.CgroupMode | default('', true) == 'host'
+          - cadvisor.HostConfig.NetworkMode | default('', true) == 'host'
+          - cadvisor.HostConfig.PidMode | default('', true) != 'host'
+          - cadvisor.HostConfig.IpcMode | default('', true) != 'host'
+          - cadvisor.HostConfig.Binds | default([], true) | map('regex_replace', ':[^:]*$', '') | sort == ['/:/rootfs', '/sys:/sys']
+        fail_msg: >-
+          cadvisor's namespace, security-opt or mount posture has regressed —
+          SecurityOpt={{ cadvisor.HostConfig.SecurityOpt | default([], true) }}
+          CgroupMode={{ cadvisor.HostConfig.CgroupMode | default('', true) }}
+          PidMode={{ cadvisor.HostConfig.PidMode | default('', true) }}
+          Binds={{ cadvisor.HostConfig.Binds | default([], true) }}
         quiet: true
