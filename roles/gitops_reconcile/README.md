@@ -13,8 +13,11 @@ model, keeping `.vault_pass` on one host.
 jitter; `Persistent`, so a reboot-missed run catches up). The script:
 
 1. exits early if the pause flag is present (a no-op success — see Kill-switches);
-2. `git fetch` + `reset --hard origin/main` in `gitops_reconcile_repo_dir` —
-   `origin/main` is the only source of truth, never a local or feature branch;
+2. `git fetch` + `reset --hard origin/main` + `clean -xffd` in
+   `gitops_reconcile_repo_dir` — `origin/main` is the only source of truth, never
+   a local or feature branch, and never a file the reset would have left behind
+   (`inventory` is a *directory* to `ansible.cfg`, so an untracked file under it
+   is read as an inventory source and survives a revert);
 3. short-circuits if `main` has not advanced since the last applied SHA, so an
    idle cycle is near-free;
 4. otherwise runs `ansible-playbook playbooks/site.yml` from the clone root

@@ -147,6 +147,22 @@
         mode: "0644"
       become: true
 
+    # Plant what a merged-then-reverted commit would leave behind: reset --hard
+    # keeps untracked files, and ansible.cfg reads `inventory` as a directory, so
+    # this file would be parsed as an inventory source on every later reconcile.
+    # The second path is gitignored, so only `clean -x` reaches it.
+    - name: Plant untracked files in the clone
+      ansible.builtin.copy:
+        content: "planted\n"
+        dest: "{{ gitops_reconcile_repo_dir }}/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - inventory/zz_planted.yml
+        - .vault_pass
+      become: true
+
     - name: Run the reconcile script with HEAD unchanged
       ansible.builtin.command: "{{ gitops_reconcile_script }}"
       register: gitops_reconcile_unchanged
@@ -160,6 +176,27 @@
           - "'nothing to apply' in gitops_reconcile_unchanged.stdout"
         fail_msg: "the unchanged-HEAD short-circuit did not skip the apply"
         quiet: true
+
+    - name: Stat the planted files after the reconcile
+      ansible.builtin.stat:
+        path: "{{ gitops_reconcile_repo_dir }}/{{ item }}"
+      register: gitops_reconcile_planted
+      loop:
+        - inventory/zz_planted.yml
+        - .vault_pass
+      become: true
+
+    # Runs even on the no-op path: the clean sits before the unchanged-HEAD
+    # short-circuit, so an idle reconcile still scrubs the tree.
+    - name: The reconcile cleans untracked files out of the clone
+      ansible.builtin.assert:
+        that:
+          - not item.stat.exists
+        fail_msg: "{{ item.item }} survived the reconcile — untracked files persist across a revert"
+        quiet: true
+      loop: "{{ gitops_reconcile_planted.results }}"
+      loop_control:
+        label: "{{ item.item }}"
 
     # The pause flag must short-circuit before any git or apply work — the only
     # part of the reconcile script safe to run in a container with no fleet.
