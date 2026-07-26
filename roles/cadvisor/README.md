@@ -6,19 +6,26 @@ network, exporting per-container metrics on `{{ cadvisor_listen_ip }}:{{ cadviso
 
 The container is unprivileged. `--cgroupns=host` and read-only binds of `/`
 (`/rootfs`) and `/sys` let it read every container's cgroup, filesystem, and
-machine stats rather than only its own. The role enables `podman.socket` and
-mounts it read-only so cadvisor's native podman factory labels containers by
-`name` and `image`; without it containers show only as cgroup ids.
+machine stats rather than only its own.
+
+It does **not** mount the podman API socket. Doing so gave cadvisor's native
+podman factory the `name` and `image` labels, but an API socket is
+root-equivalent whatever the mount options claim — `:ro` does not prevent a
+write, and `DropCapability=all` does not fence it — so a moved image digest was
+arbitrary root on the host. Prometheus reconstructs both labels from the cgroup
+id at ingest instead (see the `cadvisor` job's `metric_relabel_configs` in
+`roles/prometheus`), which is why the leaf cgroup layout is pinned in this role's
+`verify`. Consequently `podman.socket` no longer needs enabling for monitoring;
+this role neither enables nor disables it.
 
 It drops every Linux capability (`DropCapability=all`) and bars privilege
 escalation (`NoNewPrivileges=true`). Reading cgroup and machine stats through the
-world-readable `/sys` and `/rootfs` binds and dialling the root-owned podman
-socket as root needs no capability back.
+world-readable `/sys` and `/rootfs` binds as root needs no capability back.
 
 `--security-opt=label=disable` lifts SELinux `container_t` confinement. On an
-enforcing host it otherwise denies the inotify watch on `/sys/fs/cgroup` (which
-crashes cadvisor) and the write to the podman socket. A non-enforcing host (e.g.
-the incus molecule container) ignores it.
+enforcing host it otherwise denies the inotify watch on `/sys/fs/cgroup`, which
+crashes cadvisor. A non-enforcing host (e.g. the incus molecule container)
+ignores it.
 
 OOM-event detection is off: it reads `/dev/kmsg`, which an unprivileged container
 cannot, so `container_oom_events_total` stays flat. The rest of the collectors
