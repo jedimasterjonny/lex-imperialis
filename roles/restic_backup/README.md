@@ -58,7 +58,17 @@ Tunable (defaulted): `restic_backup_root`, `restic_backup_tag`,
 `restic_backup_paths`, `restic_backup_excludes`, `restic_backup_podman_volumes`,
 `restic_backup_script_dir`, `restic_backup_textfile_dir`,
 `restic_backup_keep_weekly`, `restic_backup_keep_monthly`,
-`restic_backup_check_read_data_weeks`, `restic_backup_package`.
+`restic_backup_check_read_data_weeks`, `restic_backup_timeout_start_sec`,
+`restic_backup_package`.
+
+`restic_backup_timeout_start_sec` (default `1h`) caps a run. `Type=oneshot`
+disables the start timeout altogether rather than inheriting
+`DefaultTimeoutStartSec`, so unset means *infinity*: with `hard` NFS a wedged call
+holds the unit in `activating` indefinitely, and in podman-volumes mode it does so
+with every container stopped. Nothing else covers that — `SystemdUnitFailed`
+excludes these units by regex, and a unit stuck in `activating` never reaches
+`failed`. On expiry the script takes SIGTERM, its EXIT trap restarts the
+containers, and the failed unit trips the usual `*BackupFailed` alert.
 
 ## Modes
 

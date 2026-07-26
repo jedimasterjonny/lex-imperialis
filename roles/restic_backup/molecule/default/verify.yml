@@ -9,6 +9,9 @@
     restic_backup_script: /usr/local/sbin/probe-backup.sh
     restic_backup_metric_script: /usr/local/sbin/probe-backup-metric.sh
     restic_backup_probe_content: "lex-imperialis restic backup probe\n"
+    # Matches restic_backup_timeout_start_sec in the engine defaults, as systemd
+    # renders it back.
+    restic_backup_timeout: 1h
   tasks:
     - name: Confirm restic is installed and runnable
       ansible.builtin.command: restic version
@@ -77,6 +80,29 @@
           - "'Thu' in restic_backup_timer.status.TimersCalendar"
           - "'02:00:00' in restic_backup_timer.status.TimersCalendar"
         fail_msg: "the backup timer is not enabled for Thu 02:00"
+        quiet: true
+
+    # Type=oneshot leaves the start timeout disabled unless the unit sets one, so
+    # unset means infinity rather than the manager's 90s default. With `hard` NFS
+    # that lets a wedged call hold the service in activating indefinitely — in
+    # podman-volumes mode with every container stopped — and nothing catches it:
+    # SystemdUnitFailed excludes these units by regex, and a unit stuck in
+    # activating never reaches failed to begin with.
+    - name: Read the backup service's state
+      ansible.builtin.systemd_service:
+        name: probe-backup.service
+        daemon_reload: true
+      register: restic_backup_service
+      become: true
+
+    - name: The backup service bounds a single run
+      ansible.builtin.assert:
+        that:
+          - restic_backup_service.status.TimeoutStartUSec != 'infinity'
+          - restic_backup_service.status.TimeoutStartUSec == restic_backup_timeout
+        fail_msg: >-
+          the backup service's start timeout is
+          {{ restic_backup_service.status.TimeoutStartUSec }}, want {{ restic_backup_timeout }}
         quiet: true
 
     # The script derives the repo from $(hostname); match it the same way.
