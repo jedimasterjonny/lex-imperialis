@@ -154,3 +154,16 @@ repos:
         entry: promtool check rules --lint=all --lint-fatal
         language: system
         files: '^roles/prometheus/files/rules/.*\.ya?ml$'
+      # check rules only proves the file parses. These are the behavioural tests:
+      # roles/prometheus/tests/ drives the shipped rules through both polarities of
+      # the fault each one names, with for:, labels and annotations evaluated. A rule
+      # that can never fire — the whole reason ScheduledJobMetricMissing exists —
+      # parses perfectly, so the gate above cannot catch it and this one can.
+      # pass_filenames is off and the pattern covers the rules as well as the tests,
+      # so editing an expression re-runs them rather than only editing a test.
+      - id: promtool-test
+        name: promtool test
+        entry: promtool test rules roles/prometheus/tests/alerts_test.yml
+        language: system
+        pass_filenames: false
+        files: '^roles/prometheus/(files/rules|tests)/.*\.ya?ml$'

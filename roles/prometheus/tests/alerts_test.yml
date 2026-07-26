@@ -1,0 +1,136 @@
+---
+# promtool unit tests for the shipped alert rules. Run by the promtool-test
+# pre-commit hook, which fires on a change to either this file or the rules.
+#
+# These drive the rules the fleet actually loads — rule_files points at the real
+# alerts.yml, resolved relative to this file — so a test cannot pass against a
+# restated copy of an expression while the shipped one is broken.
+#
+# Deliberately not molecule's job: the scenario asserts the rules load in a real
+# Prometheus (by name and count), which is the deployment half. Whether an
+# expression fires on the fault it names is a property of the file, and promtool
+# evaluates for: windows, labels and annotations in milliseconds without a
+# container tier.
+rule_files:
+  - ../files/rules/alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # ScheduledJobMetricMissing exists because a *Failed rule whose metric family
+  # has vanished matches an empty vector and never fires. A test that only
+  # asserted the rule parsed would repeat exactly that mistake, so both
+  # polarities are named cases here.
+  - interval: 1m
+    name: a unit whose outcome metric is never published alerts
+    input_series:
+      - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="home-backup.service",state="active"}'
+        values: "1x70"
+    alert_rule_test:
+      # Past the rule's for: 1h, so this covers the wait as well as the match.
+      - eval_time: 65m
+        alertname: ScheduledJobMetricMissing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: solar:9100
+              name: home-backup.service
+            exp_annotations:
+              summary: "home-backup.service on solar:9100 publishes no outcome metric"
+              description: >-
+                home-backup.service is installed on solar:9100 but its textfile outcome
+                metric is absent, so that unit's bespoke *Failed and *Overdue rules match
+                an empty vector and can never fire — and SystemdUnitFailed excludes it on
+                the assumption they do.
+      # Still inside for:, so the alert is pending rather than firing. Without
+      # this the case above would also pass a rule with no for: at all.
+      - eval_time: 30m
+        alertname: ScheduledJobMetricMissing
+        exp_alerts: []
+
+  # The negative control, and the reason the case above means anything: publish
+  # the metric and the same rule must go quiet.
+  - interval: 1m
+    name: a unit publishing its outcome metric does not alert
+    input_series:
+      - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="home-backup.service",state="active"}'
+        values: "1x70"
+      - series: 'home_backup_success{job="node",instance="solar:9100"}'
+        values: "1x70"
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: ScheduledJobMetricMissing
+        exp_alerts: []
+
+  # node_exporter emits one series per unit *per state*, so the left-hand
+  # group by (instance, name) is load-bearing: without it each state would
+  # survive the join and one broken family would raise five identical alerts.
+  - interval: 1m
+    name: the many states of one unit raise exactly one alert
+    input_series:
+      - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="home-backup.service",state="active"}'
+        values: "1x70"
+      - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="home-backup.service",state="failed"}'
+        values: "0x70"
+      - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="home-backup.service",state="inactive"}'
+        values: "0x70"
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: ScheduledJobMetricMissing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: solar:9100
+              name: home-backup.service
+            exp_annotations:
+              summary: "home-backup.service on solar:9100 publishes no outcome metric"
+              description: >-
+                home-backup.service is installed on solar:9100 but its textfile outcome
+                metric is absent, so that unit's bespoke *Failed and *Overdue rules match
+                an empty vector and can never fire — and SystemdUnitFailed excludes it on
+                the assumption they do.
+
+  # The right-hand side is joined with `unless on (instance)`, which builds a
+  # signature set and so collapses duplicates on its own — no aggregation needed
+  # to suppress a family that reports more than one series per host. Pins that,
+  # since it is why the right-hand sides are bare metric selectors.
+  - interval: 1m
+    name: a multi-series outcome metric still suppresses the alert
+    input_series:
+      - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="wordpress-db-dump.service",state="active"}'
+        values: "1x70"
+      - series: 'wordpress_db_dump_success{job="node",instance="solar:9100",site="one"}'
+        values: "1x70"
+      - series: 'wordpress_db_dump_success{job="node",instance="solar:9100",site="two"}'
+        values: "1x70"
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: ScheduledJobMetricMissing
+        exp_alerts: []
+
+  # One host losing its metric must not mask another host that still has one,
+  # and the alert has to name the host that broke.
+  - interval: 1m
+    name: the alert is per host, not fleet-wide
+    input_series:
+      - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="podman-backup.service",state="active"}'
+        values: "1x70"
+      - series: 'node_systemd_unit_state{job="node",instance="rogue-trader:9100",name="podman-backup.service",state="active"}'
+        values: "1x70"
+      - series: 'podman_backup_success{job="node",instance="solar:9100"}'
+        values: "1x70"
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: ScheduledJobMetricMissing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: rogue-trader:9100
+              name: podman-backup.service
+            exp_annotations:
+              summary: "podman-backup.service on rogue-trader:9100 publishes no outcome metric"
+              description: >-
+                podman-backup.service is installed on rogue-trader:9100 but its textfile
+                outcome metric is absent, so that unit's bespoke *Failed and *Overdue
+                rules match an empty vector and can never fire — and SystemdUnitFailed
+                excludes it on the assumption they do.

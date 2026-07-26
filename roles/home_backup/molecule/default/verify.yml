@@ -52,14 +52,28 @@
       register: home_backup_timer
       become: true
 
-    - name: The timer is enabled and fires at 01:00 on Thursdays
+    # Assert the whole OnCalendar= against the var converge set, not a literal.
+    # TimersCalendar reads
+    #   { OnCalendar=<spec> ; next_elapse=<resolved time> }
+    # so matching bare substrings lets the next_elapse half satisfy them — 'Thu' and
+    # '01:00:00' both appear there on a Thursday 01:00 run whatever the spec says.
+    # Anchoring on OnCalendar= reads only the spec.
+    #
+    # This is the wiring under test: every host's schedule is a play-level override
+    # of home_backup_oncalendar, and a literal here tested only that the default
+    # equalled itself. The scenario's group_vars set a non-default value, so the var
+    # has to reach the rendered timer for this to pass.
+    - name: The timer is enabled and fires on the configured schedule
       ansible.builtin.assert:
         that:
           - home_backup_timer.status.ActiveState == 'active'
           - home_backup_timer.status.UnitFileState == 'enabled'
-          - "'Thu' in home_backup_timer.status.TimersCalendar"
-          - "'01:00:00' in home_backup_timer.status.TimersCalendar"
-        fail_msg: "the backup timer is not enabled for Thu 01:00"
+          - >-
+            'OnCalendar=' ~ home_backup_oncalendar
+            in home_backup_timer.status.TimersCalendar
+        fail_msg: >-
+          the backup timer is not enabled for {{ home_backup_oncalendar }} —
+          TimersCalendar is {{ home_backup_timer.status.TimersCalendar | default('unset') }}
         quiet: true
 
     # Starting the oneshot blocks until it exits, so a clean start proves the

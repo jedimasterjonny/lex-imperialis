@@ -80,6 +80,25 @@
         fail_msg: "the backup timer is not enabled for Wed 01:00"
         quiet: true
 
+    # Ordering that stops a Persistent= catch-up run at boot racing the quadlet
+    # units' start and quiescing nothing — the rationale is in roles/restic_backup's
+    # README. The race needs a reboot to reproduce, which this tier cannot do, but
+    # the ordering that removes it is a property of the rendered unit.
+    - name: Read the backup service's ordering
+      ansible.builtin.systemd_service:
+        name: podman-backup.service
+      register: podman_backup_service
+      become: true
+
+    - name: The podman-volumes backup is ordered after the container units are up
+      ansible.builtin.assert:
+        that:
+          - "'multi-user.target' in podman_backup_service.status.After"
+        fail_msg: >-
+          podman-backup.service is not ordered after multi-user.target, so a
+          Persistent= catch-up run at boot can quiesce nothing and snapshot live data
+        quiet: true
+
     # The script derives the repo from $(hostname); match it the same way.
     - name: Determine the host's repo path
       ansible.builtin.command: hostname

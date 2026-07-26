@@ -140,7 +140,17 @@ standing pile of no-match albums awaiting hand-processing); the `monitoring` gro
 have silently stopped producing series) and `PrometheusConfigReloadFailed` (a config
 or rule file Prometheus rejected at reload, leaving it on the previous config) — the
 two ways an unattended `gitops_reconcile` deploy of these very files fails silently,
-both read off the `prometheus` self-scrape job; and the `watchdog`
+both read off the `prometheus` self-scrape job — and `ScheduledJobMetricMissing`
+(a host running one of the seven oneshots `SystemdUnitFailed` excludes while
+publishing no matching `*_success` metric. That exclusion is only sound while the
+metric exists: `== 0` and `time() - <gauge> > N` both match nothing on an empty
+vector, so a family that stops being written disables its own `*Failed` and
+`*Overdue` rules and is already exempt from the catch-all. Keyed on
+`node_systemd_unit_state` rather than `absent()`, so it fires per host — the unit's
+presence is exact ground truth for which hosts owe the metric, and carries no
+topology — and it reports which family broke. Its roster and `SystemdUnitFailed`'s
+exclusion regex are the same seven units held in two syntaxes, so the scenario
+asserts the two sets are equal); and the `watchdog`
 group's always-firing `Watchdog` (`vector(1)`, no `for:`), whose silence at the
 deadman receiver signals a broken Prometheus -> Alertmanager -> heartbeat
 pipeline. The backup, dump,
@@ -151,6 +161,16 @@ metric `wp-update-check.sh` writes itself rather than via an `ExecStopPost` hook
 rules sit
 in a directory mount, so a changed rule reaches the container — but, like a config
 change, only a recreate makes Prometheus reload it.
+
+`tests/alerts_test.yml` holds `promtool test rules` cases, run by the `promtool-test`
+pre-commit hook on a change to either the rules or the tests. They point at the
+shipped `files/rules/alerts.yml`, so an expression is driven through both polarities
+of the fault it names, with `for:`, labels and annotations evaluated. The division is
+deliberate: `promtool check rules` only proves a file parses, and a rule that can
+never fire parses perfectly, while the molecule scenario proves the rules load in a
+real Prometheus — the deployment half rather than the semantic one. The tests live
+outside `files/` so neither the `promtool` hook's glob nor the rules directory mount
+picks them up.
 
 A changed `prometheus.yml` recreates the container. The config is bind-mounted as
 a single file; Ansible's atomic write gives it a new inode that the pinned mount

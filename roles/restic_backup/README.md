@@ -80,6 +80,19 @@ containers, and the failed unit trips the usual `*BackupFailed` alert.
   they return even if the backup fails). A quadlet glob matching nothing fails the
   run rather than proceeding: this mode exists to avoid snapshotting a live
   database, so nothing to quiesce means a broken assumption, not an idle night.
+  The service is additionally ordered `After=multi-user.target` in this mode. The
+  timer is `Persistent=true`, so a host that was off over its window fires a
+  catch-up run at boot, and unordered that run races the quadlet units' start —
+  the quiesce finds none of them active yet, stops nothing, and snapshots a live
+  database while reporting success. The zero-match guard does not cover it: the
+  `.container` files are all present, they are simply not started. Every quadlet
+  unit is `Type=notify` with `Before=multi-user.target`, so the target is reached
+  only once each container has signalled ready. Ordering only, so a container that
+  fails to start delays nothing, and a no-op for the normal scheduled run. Path
+  mode does not take this ordering — it has nothing to quiesce. Deliberately not an
+  "the quiesce stopped at least one unit" assertion instead: a fleet stopped for
+  maintenance quiesces nothing and is genuinely consistent, so that would fail
+  correct runs.
   This mode also installs `<name>-restore.sh`, the inverse of the backup for
   disaster recovery: run it on a host **after its play has converged**. It takes
   an optional snapshot ID (default `latest`), so a recovery can skip past a bad

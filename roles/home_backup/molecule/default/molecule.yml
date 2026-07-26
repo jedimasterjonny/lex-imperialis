@@ -5,3 +5,15 @@ platforms:
   # nested-container config.
   - name: "lex-home-backup-incus-${MOLECULE_RUN_ID:-local}"
     image: images:opensuse/tumbleweed/cloud
+provisioner:
+  inventory:
+    group_vars:
+      all:
+        # Deliberately not the role default: every host sets its own slot in its
+        # play (solar takes the Thu 01:00 default, scholam Thu 02:00, rogue-trader
+        # Thu 03:00), so converging on the default would only prove the default
+        # equals itself. This is rogue-trader's real schedule. One source, read by
+        # converge as the input and by verify as the expectation — stating it in
+        # both plays would be the hand-maintained invariant this role's own alert
+        # story is about.
+        home_backup_oncalendar: "Thu *-*-* 03:00:00"
