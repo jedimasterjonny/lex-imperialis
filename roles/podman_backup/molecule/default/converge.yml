@@ -9,6 +9,26 @@
     # Throwaway repo password; the engine rejects an empty one.
     restic_backup_password: molecule-probe-repo-password
   pre_tasks:
+    # The engine refuses to write to an unmounted repository root, so the stand-in
+    # for the share must be a real mountpoint; a bind mount models it exactly.
+    - name: Create the share stand-in's backing directory
+      ansible.builtin.file:
+        path: /var/tmp/backup-store
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      become: true
+
+    - name: Mount the share stand-in
+      ansible.posix.mount:
+        path: /var/tmp/backup
+        src: /var/tmp/backup-store
+        fstype: none
+        opts: bind
+        state: mounted
+      become: true
+
     - name: Install podman (the runtime whose volumes are backed up)
       community.general.zypper:
         name: podman

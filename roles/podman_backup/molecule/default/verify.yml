@@ -309,3 +309,263 @@
           metadata rc={{ podman_backup_bitrot_meta.rc }} (want 0),
           read-data rc={{ podman_backup_bitrot_read.rc }} (want non-zero)
         quiet: true
+
+    # The quiesce globs /etc/containers/systemd/*.container. Unguarded, a moved
+    # quadlet directory makes it match nothing, and the run then snapshots every
+    # volume live and un-quiesced — a torn MariaDB — while reporting success.
+    # Take the probe quadlet out of the glob's reach and confirm it refuses.
+    # No daemon-reload either side, so the running unit is left undisturbed.
+    - name: Stage the probe quadlet outside the quadlet directory
+      ansible.builtin.copy:
+        src: /etc/containers/systemd/lex-probe.container
+        dest: /var/tmp/lex-probe.container.staged
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Remove the probe quadlet so the glob matches nothing
+      ansible.builtin.file:
+        path: /etc/containers/systemd/lex-probe.container
+        state: absent
+      become: true
+
+    - name: Fire the backup service with no quadlet to quiesce
+      ansible.builtin.systemd_service:
+        name: podman-backup.service
+        state: started
+      register: podman_backup_noquadlet_run
+      ignore_errors: true
+      become: true
+
+    - name: Read the outcome metric after the no-quadlet run
+      ansible.builtin.slurp:
+        src: "{{ podman_backup_textfile_dir }}/podman-backup.prom"
+      register: podman_backup_metric_noquadlet
+      become: true
+
+    - name: A quiesce that would match no quadlet fails the run
+      ansible.builtin.assert:
+        that:
+          - podman_backup_noquadlet_run is failed
+          - "'podman_backup_success 0' in (podman_backup_metric_noquadlet.content | b64decode)"
+        fail_msg: "the backup snapshotted the volumes without quiescing anything"
+        quiet: true
+
+    - name: Put the probe quadlet back
+      ansible.builtin.copy:
+        src: /var/tmp/lex-probe.container.staged
+        dest: /etc/containers/systemd/lex-probe.container
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Discard the staged copy
+      ansible.builtin.file:
+        path: /var/tmp/lex-probe.container.staged
+        state: absent
+      become: true
+
+    - name: Clear the failed state the no-quadlet run left
+      ansible.builtin.command: systemctl reset-failed podman-backup.service
+      changed_when: true
+      become: true
+
+    # The restore reads the whole snapshot into a scratch target before it touches
+    # a live volume, so a repository that resolves but cannot be read must cost
+    # nothing. Removing data/ models exactly the case a --dry-run precheck cannot
+    # see: the snapshot metadata still resolves, so the restore commits to running
+    # and only discovers the fault while writing. Corrupt the live repo rather
+    # than a copy — the script derives its own repo path — so save it first.
+    - name: Save the repo before corrupting it
+      ansible.builtin.command: "cp -a {{ podman_backup_repo }} {{ podman_backup_repo }}-saved"
+      changed_when: true
+      become: true
+
+    - name: Drop a marker into the live volume
+      ansible.builtin.copy:
+        content: "marker\n"
+        dest: /var/lib/containers/storage/volumes/lex-probe/_data/marker.txt
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Remove the repo's data so it resolves but cannot be read
+      ansible.builtin.file:
+        path: "{{ podman_backup_repo }}/data"
+        state: absent
+      become: true
+
+    - name: Run the restore against the unreadable repo
+      ansible.builtin.command: "{{ podman_backup_restore_script }}"
+      register: podman_backup_bad_restore
+      changed_when: false
+      failed_when: false
+      become: true
+
+    - name: Stat the marker after the failed restore
+      ansible.builtin.stat:
+        path: /var/lib/containers/storage/volumes/lex-probe/_data/marker.txt
+      register: podman_backup_marker
+      become: true
+
+    # stat, not slurp: the pre-fix script wipes the volume, and a slurp of a file
+    # that is gone fails the task itself — which fails the run, but reports a
+    # missing file rather than the reason it is missing.
+    - name: Stat the probe file after the failed restore
+      ansible.builtin.stat:
+        path: /var/lib/containers/storage/volumes/lex-probe/_data/probe.txt
+      register: podman_backup_probe_stat_after_bad
+      become: true
+
+    - name: Read the probe unit's state after the failed restore
+      ansible.builtin.systemd_service:
+        name: lex-probe
+      register: podman_backup_unit_after_bad
+      become: true
+
+    - name: A restore that cannot read the repo leaves the volumes untouched
+      ansible.builtin.assert:
+        that:
+          - podman_backup_bad_restore.rc != 0
+          - podman_backup_marker.stat.exists
+          - podman_backup_probe_stat_after_bad.stat.exists
+          - podman_backup_unit_after_bad.status.ActiveState == 'active'
+        fail_msg: >-
+          the failed restore disturbed live data (rc={{ podman_backup_bad_restore.rc }},
+          marker present={{ podman_backup_marker.stat.exists }},
+          probe present={{ podman_backup_probe_stat_after_bad.stat.exists }},
+          unit={{ podman_backup_unit_after_bad.status.ActiveState }})
+        quiet: true
+
+    - name: Read the probe file back after the failed restore
+      ansible.builtin.slurp:
+        src: /var/lib/containers/storage/volumes/lex-probe/_data/probe.txt
+      register: podman_backup_probe_after_bad
+      become: true
+
+    - name: The failed restore left the volume's contents unchanged
+      ansible.builtin.assert:
+        that:
+          - (podman_backup_probe_after_bad.content | b64decode) == podman_backup_probe_content
+        fail_msg: "the failed restore altered the volume's contents"
+        quiet: true
+
+    - name: Discard the corrupted repo
+      ansible.builtin.file:
+        path: "{{ podman_backup_repo }}"
+        state: absent
+      become: true
+
+    - name: Put the saved repo back
+      ansible.builtin.command: "mv {{ podman_backup_repo }}-saved {{ podman_backup_repo }}"
+      changed_when: true
+      become: true
+
+    # Now the sound-repo path, driven by an explicit snapshot ID rather than
+    # latest — the argument that lets a recovery skip past a bad snapshot. It must
+    # also clear the marker, which the snapshot never held.
+    - name: List the snapshots to name one explicitly
+      ansible.builtin.command: "restic --password-file /etc/restic/password --repo {{ podman_backup_repo }} snapshots --json"
+      register: podman_backup_snapshot_list
+      changed_when: false
+      become: true
+
+    - name: Restore an explicitly named snapshot
+      ansible.builtin.command: >-
+        {{ podman_backup_restore_script }}
+        {{ (podman_backup_snapshot_list.stdout | from_json | last).short_id }}
+      changed_when: true
+      become: true
+
+    - name: Stat the marker after the named-snapshot restore
+      ansible.builtin.stat:
+        path: /var/lib/containers/storage/volumes/lex-probe/_data/marker.txt
+      register: podman_backup_marker_after_good
+      become: true
+
+    - name: Read the probe file after the named-snapshot restore
+      ansible.builtin.slurp:
+        src: /var/lib/containers/storage/volumes/lex-probe/_data/probe.txt
+      register: podman_backup_probe_after_good
+      become: true
+
+    - name: Read the probe unit's state after the named-snapshot restore
+      ansible.builtin.systemd_service:
+        name: lex-probe
+      register: podman_backup_unit_after_good
+      become: true
+
+    - name: A named snapshot restores exactly, and the units come back
+      ansible.builtin.assert:
+        that:
+          - not podman_backup_marker_after_good.stat.exists
+          - (podman_backup_probe_after_good.content | b64decode) == podman_backup_probe_content
+          - podman_backup_unit_after_good.status.ActiveState == 'active'
+        fail_msg: "restoring a named snapshot did not mirror the volume or did not restart the units"
+        quiet: true
+
+    # The restore's quiesce globs the same directory the backup's does, and here
+    # the zero-match case is worse: the swap wipes and replaces live volumes, so a
+    # glob that silently matched nothing would do that with the containers still
+    # running and writing. Take the quadlet out of the glob's reach and confirm
+    # the restore refuses before it touches anything.
+    - name: Stage the probe quadlet outside the quadlet directory for the restore
+      ansible.builtin.copy:
+        src: /etc/containers/systemd/lex-probe.container
+        dest: /var/tmp/lex-probe.container.staged
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Remove the probe quadlet so the restore's glob matches nothing
+      ansible.builtin.file:
+        path: /etc/containers/systemd/lex-probe.container
+        state: absent
+      become: true
+
+    - name: Run the restore with no quadlet to quiesce
+      ansible.builtin.command: "{{ podman_backup_restore_script }}"
+      register: podman_backup_noquadlet_restore
+      changed_when: false
+      failed_when: false
+      become: true
+
+    - name: Stat the probe file after the no-quadlet restore
+      ansible.builtin.stat:
+        path: /var/lib/containers/storage/volumes/lex-probe/_data/probe.txt
+      register: podman_backup_probe_after_noquadlet
+      become: true
+
+    - name: A restore that would quiesce nothing refuses to swap
+      ansible.builtin.assert:
+        that:
+          - podman_backup_noquadlet_restore.rc != 0
+          - podman_backup_probe_after_noquadlet.stat.exists
+        fail_msg: >-
+          the restore swapped volumes without quiescing anything
+          (rc={{ podman_backup_noquadlet_restore.rc }},
+          probe present={{ podman_backup_probe_after_noquadlet.stat.exists }})
+        quiet: true
+
+    - name: Put the probe quadlet back after the restore check
+      ansible.builtin.copy:
+        src: /var/tmp/lex-probe.container.staged
+        dest: /etc/containers/systemd/lex-probe.container
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Discard the staged copy from the restore check
+      ansible.builtin.file:
+        path: /var/tmp/lex-probe.container.staged
+        state: absent
+      become: true

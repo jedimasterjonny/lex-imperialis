@@ -25,6 +25,15 @@ compromised must not be able to open another host's backups. An empty
 `restic_backup_password` is rejected at converge. Assumes the `nfs` role has
 mounted the target; podman-volumes mode also assumes `podman`.
 
+`restic_backup_root` must be a live mountpoint, asserted immediately before the
+repository is created and again before the snapshot is written — not once at the
+top, because in podman-volumes mode the quiesce runs in between and stopping the
+last podman bridge is itself what fires the NetworkManager event that unmounts
+the `_netdev` share (see `roles/podman`). Unmounted, the mountpoint directory
+remains on the root filesystem, so an unguarded run would create a shadow repo
+there, initialise it, back up into it and exit 0 reporting success while the real
+repository silently stopped receiving snapshots.
+
 Consumers `include_role` this engine and set the vars — `podman_backup` and
 `home_backup` are the two. The on-NAS repos are mirrored off-site out of band by
 a NAS-side Synology Hyper Backup task. See [`docs/backups.md`](../../docs/backups.md)
@@ -49,7 +58,17 @@ Tunable (defaulted): `restic_backup_root`, `restic_backup_tag`,
 `restic_backup_paths`, `restic_backup_excludes`, `restic_backup_podman_volumes`,
 `restic_backup_script_dir`, `restic_backup_textfile_dir`,
 `restic_backup_keep_weekly`, `restic_backup_keep_monthly`,
-`restic_backup_check_read_data_weeks`, `restic_backup_package`.
+`restic_backup_check_read_data_weeks`, `restic_backup_timeout_start_sec`,
+`restic_backup_package`.
+
+`restic_backup_timeout_start_sec` (default `1h`) caps a run. `Type=oneshot`
+disables the start timeout altogether rather than inheriting
+`DefaultTimeoutStartSec`, so unset means *infinity*: with `hard` NFS a wedged call
+holds the unit in `activating` indefinitely, and in podman-volumes mode it does so
+with every container stopped. Nothing else covers that — `SystemdUnitFailed`
+excludes these units by regex, and a unit stuck in `activating` never reaches
+`failed`. On expiry the script takes SIGTERM, its EXIT trap restarts the
+containers, and the failed unit trips the usual `*BackupFailed` alert.
 
 ## Modes
 
@@ -58,13 +77,29 @@ Tunable (defaulted): `restic_backup_root`, `restic_backup_tag`,
 - **Podman-volumes** (`restic_backup_podman_volumes: true`) — the sources are the
   host's podman volume mountpoints, enumerated at run time; the quadlet container
   units are quiesced for a consistent snapshot and always restarted (a trap, so
-  they return even if the backup fails). This mode also installs `<name>-restore.sh`,
-  the inverse of the backup for disaster recovery: run it on a host **after its
-  play has converged** — it quiesces the units, empties each volume, restores the
-  latest snapshot over them (restic preserves ownership and mode), and restarts
-  the units. It aborts before touching anything if the repo holds no snapshot, and
-  confirms before wiping when run from a terminal. A path backup restores by hand
-  with `restic restore`.
+  they return even if the backup fails). A quadlet glob matching nothing fails the
+  run rather than proceeding: this mode exists to avoid snapshotting a live
+  database, so nothing to quiesce means a broken assumption, not an idle night.
+  This mode also installs `<name>-restore.sh`, the inverse of the backup for
+  disaster recovery: run it on a host **after its play has converged**. It takes
+  an optional snapshot ID (default `latest`), so a recovery can skip past a bad
+  snapshot instead of being stuck with whichever is newest. A path backup restores
+  by hand with `restic restore`.
+
+  The restore reads the **whole snapshot into a scratch target first** and swaps
+  it into the live volumes only once that has succeeded, so a repository that is
+  unreachable, truncated or bit-rotted costs nothing: the volumes are untouched
+  and the containers never stop. That ordering is the point. A `restic restore
+  --dry-run` precheck resolves snapshot *metadata* only — it passes a repository
+  whose data packs are missing or corrupt — so anything that wipes before the real
+  read can destroy live data on a repo that looked sound. The units are quiesced
+  only for the swap, which is a local rename (restic has already restored
+  ownership, mode and SELinux label), and are restarted only if the swap
+  completed: one that fails part-way deliberately leaves them down and keeps the
+  scratch copy rather than serving half-restored data. It confirms before wiping
+  when run from a terminal, and leaves alone any volume the snapshot does not
+  contain rather than emptying it. Peak disk use is roughly double the restored
+  set for the duration.
 
 ## Alerting
 

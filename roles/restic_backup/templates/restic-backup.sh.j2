@@ -34,6 +34,20 @@ retry() {
     return 1
 }
 
+# The share is _netdev, and stopping the last podman bridge fires an NM event
+# that unmounts it mid-run (roles/podman/tasks/main.yml). Unmounted, the
+# mountpoint directory is still there on the root fs: mkdir -p would create a
+# shadow repo inside it, restic init it, back up into it, and exit 0 with
+# success 1 — the real repo silently stops receiving snapshots and no alert ever
+# fires. Assert immediately before each write rather than once at the top, since
+# the quiesce that triggers the unmount runs in between.
+require_mounted() {
+    if ! mountpoint -q {{ restic_backup_root | quote }}; then
+        echo "{{ restic_backup_root }} is not mounted — refusing to write a shadow repo" >&2
+        exit 1
+    fi
+}
+
 {% if restic_backup_check_read_data_weeks | int > 0 %}
 # Re-hash one deterministic 1/N slice of data packs during the integrity check to
 # catch bit-rot the metadata check misses; the n/t slice rotates by ISO week and
@@ -77,9 +91,21 @@ fi
 # restart them however the backup exits. Only .container quadlets run on the
 # fleet; .pod/.kube units would need handling here.
 {% raw %}
+# nullglob so a moved quadlet directory yields an empty array rather than the
+# literal pattern. Without the guard the loop would just match nothing and the
+# backup would sail on, snapshotting a live, un-quiesced MariaDB and reporting
+# success — this mode exists precisely to avoid that, so an empty match is a
+# broken assumption, not an empty day's work.
+shopt -s nullglob
+unit_files=(/etc/containers/systemd/*.container)
+shopt -u nullglob
+if ((${#unit_files[@]} == 0)); then
+    echo "no .container quadlets in /etc/containers/systemd — refusing to snapshot un-quiesced" >&2
+    exit 1
+fi
+
 units=()
-for unit_file in /etc/containers/systemd/*.container; do
-    [ -e "$unit_file" ] || continue
+for unit_file in "${unit_files[@]}"; do
     unit="$(basename "${unit_file%.container}").service"
     if systemctl is-active --quiet "$unit"; then
         units+=("$unit")
@@ -114,8 +140,10 @@ exclude_args=(
 exclude_args=()
 {% endif %}
 
+require_mounted
 mkdir -p "$repo" "$RESTIC_CACHE_DIR"
 retry restic snapshots >/dev/null 2>&1 || retry restic init
+require_mounted
 retry restic backup --tag "$tag" "${exclude_args[@]}" "${sources[@]}"
 retry restic forget --tag "$tag" \
     --keep-weekly "$keep_weekly" --keep-monthly "$keep_monthly" --prune

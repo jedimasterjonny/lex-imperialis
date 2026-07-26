@@ -7,6 +7,10 @@ RequiresMountsFor={{ restic_backup_root }}
 
 [Service]
 Type=oneshot
+# Type=oneshot disables the start timeout outright — DefaultTimeoutStartSec does
+# not apply — so without this the service can sit in activating forever, and in
+# podman-volumes mode it does so with every container stopped.
+TimeoutStartSec={{ restic_backup_timeout_start_sec }}
 ExecStart={{ restic_backup_script_dir }}/{{ restic_backup_name }}-backup.sh
 # Runs whether ExecStart succeeded or failed, reading $SERVICE_RESULT to record
 # the outcome as a node_exporter metric.

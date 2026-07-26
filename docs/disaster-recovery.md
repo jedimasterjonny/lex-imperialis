@@ -68,11 +68,22 @@ NAS is recoverable from it — see [administratum](#administratum-nas).
    sudo /usr/local/sbin/podman-restore.sh
    ```
 
-   It quiesces the quadlet units, empties each volume, restores the latest
-   snapshot (ownership and mode preserved), and restarts the units; it aborts
-   before touching anything if the repo holds no snapshot to restore. The
+   It restores the latest snapshot to a scratch target first, and only once that
+   has fully succeeded does it quiesce the quadlet units, swap the restored data
+   into each volume (ownership, mode and SELinux label preserved) and restart
+   them. A repository that is unreachable or unreadable therefore costs nothing:
+   the volumes are untouched and the containers never stop. The
    freshly-initialised data from step 3's first start is replaced wholesale, so
    no app-level reconciliation is needed — the volumes return as last backed up.
+
+   Pass a snapshot ID to restore something other than the newest —
+   `sudo /usr/local/sbin/podman-restore.sh <id>`, with IDs from
+   `sudo restic -r /nfs/astropath/<host>-podman-backup --password-file
+   /etc/restic/password snapshots`. Use it when the latest snapshot is itself
+   suspect. If the swap fails part-way the script leaves the containers **down**
+   on purpose and keeps the restored copy under `/var/tmp/podman-restore.*`;
+   that is a half-restored volume set, so recover it by hand rather than starting
+   the units.
 
 5. `solar` also carries a `solar-home-backup` repo. If its `/home` is wanted back,
    restore it by hand as in [scholam](#scholam-control-host) step 5 (restic to a
