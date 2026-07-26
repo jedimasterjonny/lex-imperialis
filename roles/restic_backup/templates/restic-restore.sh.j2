@@ -1,17 +1,24 @@
 #!/usr/bin/env bash
 # {{ ansible_managed }}
-# Restore this host's podman volumes from the latest restic snapshot in its
-# per-host repository on the astropath NFS share — the inverse of
+# Restore this host's podman volumes from a restic snapshot in its per-host
+# repository on the astropath NFS share — the inverse of
 # {{ restic_backup_name }}-backup.sh, for disaster recovery
 # (docs/disaster-recovery.md). Run after the host's play has converged, so the
-# volumes exist and are registered: it quiesces the quadlet container units,
-# empties each volume, restores the snapshot over them (restic preserves
-# ownership and mode, so no chowns), and restarts the units (trap on EXIT, so
-# they return even if the restore fails).
+# volumes exist and are registered.
+#
+# Takes an optional snapshot ID; default is the latest tagged one. The snapshot
+# is restored to a scratch target FIRST and swapped into the live volumes only
+# once that has fully succeeded, so a repository that is unreachable, incomplete
+# or corrupt costs nothing: the live data is untouched and the containers keep
+# running. The units are quiesced only for the swap, and started again only if
+# the swap completed.
 set -euo pipefail
 
 repo="{{ restic_backup_root }}/$(hostname)-{{ restic_backup_name }}-backup"
 tag="{{ restic_backup_tag }}"
+# An explicit ID overrides the tag filter — restic applies --tag only when
+# resolving `latest` — so naming a snapshot restores exactly that one.
+snapshot="${1:-latest}"
 
 export RESTIC_REPOSITORY="$repo"
 # No $HOME under sudo/ssh, so pin restic's cache where the backup script does.
@@ -20,30 +27,85 @@ export RESTIC_CACHE_DIR=/var/cache/restic
 export RESTIC_PASSWORD_FILE="{{ restic_backup_password_file }}"
 mkdir -p "$RESTIC_CACHE_DIR"
 
-# Fail before touching anything if there is nothing to restore, rather than
-# wiping the volumes and then discovering the repository is empty, unreachable,
-# or holds no tagged snapshot. A dry-run resolves the very snapshot the real
-# restore selects and writes nothing, so it fails closed here if none matches.
-if ! restic restore --tag "$tag" latest --target / --dry-run >/dev/null 2>&1; then
-    echo "no $tag snapshot to restore at $repo" >&2
-    exit 1
-fi
+# Defined out here because the body below is raw-fenced: bash's array-length
+# expansion opens with a brace-hash pair, which Jinja reads as a comment. Do not
+# write that pair literally anywhere outside the fence, including in a comment.
+scratch_root="/var/tmp/{{ restic_backup_name }}-restore"
+
+# The astropath NFS mount intermittently serves a spurious ENOENT mid-call, which
+# would otherwise abort the one operation that is the last line of defence.
+retry() {
+    for _ in 1 2 3; do
+        if "$@"; then
+            return 0
+        fi
+        sleep 5
+    done
+    return 1
+}
 {% raw %}
 # Each podman volume's mountpoint — the absolute paths the snapshot stored.
 volumes="$(podman volume ls --format '{{ .Mountpoint }}')"
 mounts=()
 [ -n "$volumes" ] && mapfile -t mounts <<<"$volumes"
+if ((${#mounts[@]} == 0)); then
+    echo "no podman volumes to restore" >&2
+    exit 1
+fi
 
-# The restore wipes live volume data, so confirm when run interactively; molecule
+# The swap wipes live volume data, so confirm when run interactively; molecule
 # and other non-TTY callers proceed unattended.
 if [ -t 0 ]; then
-    read -r -p "Restore ${#mounts[@]} podman volume(s) from $repo? [y/N] " reply
+    read -r -p "Restore ${#mounts[@]} podman volume(s) from $repo@$snapshot? [y/N] " reply
     [ "$reply" = y ] || [ "$reply" = Y ] || { echo "aborted"; exit 1; }
 fi
 
-# Quiesce the running quadlet container services so nothing writes mid-restore,
-# and restart them however this exits. Only .container quadlets run on the fleet.
 units=()
+# none: volumes untouched, safe to restart. partial: mid-swap, so the volumes
+# hold a mix of old and restored data and must NOT be served — leave the
+# containers down and keep the scratch copy for the operator.
+swap=none
+
+cleanup() {
+    if [ "$swap" = partial ]; then
+        echo "SWAP FAILED PART-WAY: volumes hold a mix of old and restored data." >&2
+        echo "Containers left stopped deliberately. Restored copy kept at $scratch" >&2
+        return
+    fi
+    rm -rf "$scratch"
+    if ((${#units[@]})); then
+        systemctl start "${units[@]}"
+    fi
+}
+
+# Same filesystem as the volumes on the fleet's single-root hosts, so the swap
+# below is a rename rather than a copy; mv falls back to copying if not.
+scratch="$(mktemp -d "$scratch_root.XXXXXX")"
+trap cleanup EXIT
+
+# Read the whole snapshot before anything live is touched. restic verifies each
+# blob against its hash as it writes, so an unreachable, truncated or bit-rotted
+# repository fails HERE — with the containers still running on intact data.
+retry restic restore --tag "$tag" "$snapshot" --target "$scratch"
+
+# The snapshot stored absolute paths, so each volume reappears under the scratch
+# root at its own path. A volume created after the snapshot has no counterpart:
+# leave it alone rather than wiping it to nothing.
+restorable=()
+for mount in "${mounts[@]}"; do
+    if [ -d "$scratch$mount" ]; then
+        restorable+=("$mount")
+    else
+        echo "warning: $mount is not in snapshot $snapshot — leaving it untouched" >&2
+    fi
+done
+if ((${#restorable[@]} == 0)); then
+    echo "snapshot $snapshot holds none of this host's volumes" >&2
+    exit 1
+fi
+
+# Quiesce only now: the repository read is done, so nothing below needs the NFS
+# share, and the containers were up for all of it.
 for unit_file in /etc/containers/systemd/*.container; do
     [ -e "$unit_file" ] || continue
     unit="$(basename "${unit_file%.container}").service"
@@ -52,23 +114,17 @@ for unit_file in /etc/containers/systemd/*.container; do
     fi
 done
 
-restart_units() {
-    if ((${#units[@]})); then
-        systemctl start "${units[@]}"
-    fi
-}
-trap restart_units EXIT
-
 if ((${#units[@]})); then
     systemctl stop "${units[@]}"
 fi
 
-# Empty each volume so the restore is an exact mirror, not an overlay on top of
-# the fresh data the play's first container start created. restic then writes the
-# snapshot back to the same absolute paths, restoring ownership and mode.
-for mount in "${mounts[@]}"; do
-    [ -d "$mount" ] && find "$mount" -mindepth 1 -delete
+# Swap: empty each volume and move its restored tree in, so the result is an
+# exact mirror rather than an overlay on whatever the play's first container
+# start created. Local renames only — restic already preserved ownership and mode.
+swap=partial
+for mount in "${restorable[@]}"; do
+    find "$mount" -mindepth 1 -delete
+    find "$scratch$mount" -mindepth 1 -maxdepth 1 -exec mv -t "$mount" -- {} +
 done
+swap=complete
 {% endraw %}
-
-restic restore --tag "$tag" latest --target /

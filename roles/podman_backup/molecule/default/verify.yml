@@ -373,3 +373,138 @@
       ansible.builtin.command: systemctl reset-failed podman-backup.service
       changed_when: true
       become: true
+
+    # The restore reads the whole snapshot into a scratch target before it touches
+    # a live volume, so a repository that resolves but cannot be read must cost
+    # nothing. Removing data/ models exactly the case a --dry-run precheck cannot
+    # see: the snapshot metadata still resolves, so the restore commits to running
+    # and only discovers the fault while writing. Corrupt the live repo rather
+    # than a copy — the script derives its own repo path — so save it first.
+    - name: Save the repo before corrupting it
+      ansible.builtin.command: "cp -a {{ podman_backup_repo }} {{ podman_backup_repo }}-saved"
+      changed_when: true
+      become: true
+
+    - name: Drop a marker into the live volume
+      ansible.builtin.copy:
+        content: "marker\n"
+        dest: /var/lib/containers/storage/volumes/lex-probe/_data/marker.txt
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Remove the repo's data so it resolves but cannot be read
+      ansible.builtin.file:
+        path: "{{ podman_backup_repo }}/data"
+        state: absent
+      become: true
+
+    - name: Run the restore against the unreadable repo
+      ansible.builtin.command: "{{ podman_backup_restore_script }}"
+      register: podman_backup_bad_restore
+      changed_when: false
+      failed_when: false
+      become: true
+
+    - name: Stat the marker after the failed restore
+      ansible.builtin.stat:
+        path: /var/lib/containers/storage/volumes/lex-probe/_data/marker.txt
+      register: podman_backup_marker
+      become: true
+
+    # stat, not slurp: the pre-fix script wipes the volume, and a slurp of a file
+    # that is gone fails the task itself — which fails the run, but reports a
+    # missing file rather than the reason it is missing.
+    - name: Stat the probe file after the failed restore
+      ansible.builtin.stat:
+        path: /var/lib/containers/storage/volumes/lex-probe/_data/probe.txt
+      register: podman_backup_probe_stat_after_bad
+      become: true
+
+    - name: Read the probe unit's state after the failed restore
+      ansible.builtin.systemd_service:
+        name: lex-probe
+      register: podman_backup_unit_after_bad
+      become: true
+
+    - name: A restore that cannot read the repo leaves the volumes untouched
+      ansible.builtin.assert:
+        that:
+          - podman_backup_bad_restore.rc != 0
+          - podman_backup_marker.stat.exists
+          - podman_backup_probe_stat_after_bad.stat.exists
+          - podman_backup_unit_after_bad.status.ActiveState == 'active'
+        fail_msg: >-
+          the failed restore disturbed live data (rc={{ podman_backup_bad_restore.rc }},
+          marker present={{ podman_backup_marker.stat.exists }},
+          probe present={{ podman_backup_probe_stat_after_bad.stat.exists }},
+          unit={{ podman_backup_unit_after_bad.status.ActiveState }})
+        quiet: true
+
+    - name: Read the probe file back after the failed restore
+      ansible.builtin.slurp:
+        src: /var/lib/containers/storage/volumes/lex-probe/_data/probe.txt
+      register: podman_backup_probe_after_bad
+      become: true
+
+    - name: The failed restore left the volume's contents unchanged
+      ansible.builtin.assert:
+        that:
+          - (podman_backup_probe_after_bad.content | b64decode) == podman_backup_probe_content
+        fail_msg: "the failed restore altered the volume's contents"
+        quiet: true
+
+    - name: Discard the corrupted repo
+      ansible.builtin.file:
+        path: "{{ podman_backup_repo }}"
+        state: absent
+      become: true
+
+    - name: Put the saved repo back
+      ansible.builtin.command: "mv {{ podman_backup_repo }}-saved {{ podman_backup_repo }}"
+      changed_when: true
+      become: true
+
+    # Now the sound-repo path, driven by an explicit snapshot ID rather than
+    # latest — the argument that lets a recovery skip past a bad snapshot. It must
+    # also clear the marker, which the snapshot never held.
+    - name: List the snapshots to name one explicitly
+      ansible.builtin.command: "restic --password-file /etc/restic/password --repo {{ podman_backup_repo }} snapshots --json"
+      register: podman_backup_snapshot_list
+      changed_when: false
+      become: true
+
+    - name: Restore an explicitly named snapshot
+      ansible.builtin.command: >-
+        {{ podman_backup_restore_script }}
+        {{ (podman_backup_snapshot_list.stdout | from_json | last).short_id }}
+      changed_when: true
+      become: true
+
+    - name: Stat the marker after the named-snapshot restore
+      ansible.builtin.stat:
+        path: /var/lib/containers/storage/volumes/lex-probe/_data/marker.txt
+      register: podman_backup_marker_after_good
+      become: true
+
+    - name: Read the probe file after the named-snapshot restore
+      ansible.builtin.slurp:
+        src: /var/lib/containers/storage/volumes/lex-probe/_data/probe.txt
+      register: podman_backup_probe_after_good
+      become: true
+
+    - name: Read the probe unit's state after the named-snapshot restore
+      ansible.builtin.systemd_service:
+        name: lex-probe
+      register: podman_backup_unit_after_good
+      become: true
+
+    - name: A named snapshot restores exactly, and the units come back
+      ansible.builtin.assert:
+        that:
+          - not podman_backup_marker_after_good.stat.exists
+          - (podman_backup_probe_after_good.content | b64decode) == podman_backup_probe_content
+          - podman_backup_unit_after_good.status.ActiveState == 'active'
+        fail_msg: "restoring a named snapshot did not mirror the volume or did not restart the units"
+        quiet: true

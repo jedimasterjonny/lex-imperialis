@@ -79,13 +79,27 @@ containers, and the failed unit trips the usual `*BackupFailed` alert.
   units are quiesced for a consistent snapshot and always restarted (a trap, so
   they return even if the backup fails). A quadlet glob matching nothing fails the
   run rather than proceeding: this mode exists to avoid snapshotting a live
-  database, so nothing to quiesce means a broken assumption, not an idle night. This mode also installs `<name>-restore.sh`,
-  the inverse of the backup for disaster recovery: run it on a host **after its
-  play has converged** — it quiesces the units, empties each volume, restores the
-  latest snapshot over them (restic preserves ownership and mode), and restarts
-  the units. It aborts before touching anything if the repo holds no snapshot, and
-  confirms before wiping when run from a terminal. A path backup restores by hand
-  with `restic restore`.
+  database, so nothing to quiesce means a broken assumption, not an idle night.
+  This mode also installs `<name>-restore.sh`, the inverse of the backup for
+  disaster recovery: run it on a host **after its play has converged**. It takes
+  an optional snapshot ID (default `latest`), so a recovery can skip past a bad
+  snapshot instead of being stuck with whichever is newest. A path backup restores
+  by hand with `restic restore`.
+
+  The restore reads the **whole snapshot into a scratch target first** and swaps
+  it into the live volumes only once that has succeeded, so a repository that is
+  unreachable, truncated or bit-rotted costs nothing: the volumes are untouched
+  and the containers never stop. That ordering is the point. A `restic restore
+  --dry-run` precheck resolves snapshot *metadata* only — it passes a repository
+  whose data packs are missing or corrupt — so anything that wipes before the real
+  read can destroy live data on a repo that looked sound. The units are quiesced
+  only for the swap, which is a local rename (restic has already restored
+  ownership, mode and SELinux label), and are restarted only if the swap
+  completed: one that fails part-way deliberately leaves them down and keeps the
+  scratch copy rather than serving half-restored data. It confirms before wiping
+  when run from a terminal, and leaves alone any volume the snapshot does not
+  contain rather than emptying it. Peak disk use is roughly double the restored
+  set for the duration.
 
 ## Alerting
 
