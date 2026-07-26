@@ -105,6 +105,19 @@
           {{ restic_backup_service.status.TimeoutStartUSec }}, want {{ restic_backup_timeout }}
         quiet: true
 
+    # The other half of the podman-volumes ordering (asserted in podman_backup's
+    # scenario): generic mode has nothing to quiesce, so it must not pay that
+    # ordering. Guards the template conditional — dropped, every path-mode backup
+    # would start waiting on multi-user.target for nothing.
+    - name: Generic mode is not ordered after the container units
+      ansible.builtin.assert:
+        that:
+          - "'multi-user.target' not in restic_backup_service.status.After"
+        fail_msg: >-
+          the generic-mode backup service is ordered after multi-user.target — that
+          ordering belongs to podman-volumes mode, which has units to quiesce
+        quiet: true
+
     # The script derives the repo from $(hostname); match it the same way.
     - name: Determine the host's repo path
       ansible.builtin.command: hostname

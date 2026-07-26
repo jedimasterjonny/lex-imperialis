@@ -4,6 +4,17 @@ Description=Back up {{ restic_backup_description }} to the astropath NFS share
 # Orders after the _netdev NFS mount (which already waits on the network), and
 # pulls it in if absent.
 RequiresMountsFor={{ restic_backup_root }}
+{% if restic_backup_podman_volumes %}
+# The timer is Persistent=true, so a host that was off over its window fires a
+# catch-up run at boot. Without this the run races the quadlet units' start: the
+# quiesce below finds none of them active yet, stops nothing, and snapshots a live
+# MariaDB while reporting success. The zero-match guard does not cover it — the
+# .container files are all present, they are simply not started. multi-user.target
+# is the join point because every quadlet unit is Type=notify with
+# Before=multi-user.target. Ordering only, so a container that fails to start
+# blocks nothing. Full rationale in the role's README.
+After=multi-user.target
+{% endif %}
 
 [Service]
 Type=oneshot
