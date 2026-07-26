@@ -508,3 +508,64 @@
           - podman_backup_unit_after_good.status.ActiveState == 'active'
         fail_msg: "restoring a named snapshot did not mirror the volume or did not restart the units"
         quiet: true
+
+    # The restore's quiesce globs the same directory the backup's does, and here
+    # the zero-match case is worse: the swap wipes and replaces live volumes, so a
+    # glob that silently matched nothing would do that with the containers still
+    # running and writing. Take the quadlet out of the glob's reach and confirm
+    # the restore refuses before it touches anything.
+    - name: Stage the probe quadlet outside the quadlet directory for the restore
+      ansible.builtin.copy:
+        src: /etc/containers/systemd/lex-probe.container
+        dest: /var/tmp/lex-probe.container.staged
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Remove the probe quadlet so the restore's glob matches nothing
+      ansible.builtin.file:
+        path: /etc/containers/systemd/lex-probe.container
+        state: absent
+      become: true
+
+    - name: Run the restore with no quadlet to quiesce
+      ansible.builtin.command: "{{ podman_backup_restore_script }}"
+      register: podman_backup_noquadlet_restore
+      changed_when: false
+      failed_when: false
+      become: true
+
+    - name: Stat the probe file after the no-quadlet restore
+      ansible.builtin.stat:
+        path: /var/lib/containers/storage/volumes/lex-probe/_data/probe.txt
+      register: podman_backup_probe_after_noquadlet
+      become: true
+
+    - name: A restore that would quiesce nothing refuses to swap
+      ansible.builtin.assert:
+        that:
+          - podman_backup_noquadlet_restore.rc != 0
+          - podman_backup_probe_after_noquadlet.stat.exists
+        fail_msg: >-
+          the restore swapped volumes without quiescing anything
+          (rc={{ podman_backup_noquadlet_restore.rc }},
+          probe present={{ podman_backup_probe_after_noquadlet.stat.exists }})
+        quiet: true
+
+    - name: Put the probe quadlet back after the restore check
+      ansible.builtin.copy:
+        src: /var/tmp/lex-probe.container.staged
+        dest: /etc/containers/systemd/lex-probe.container
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Discard the staged copy from the restore check
+      ansible.builtin.file:
+        path: /var/tmp/lex-probe.container.staged
+        state: absent
+      become: true

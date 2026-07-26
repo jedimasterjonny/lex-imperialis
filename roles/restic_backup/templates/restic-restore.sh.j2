@@ -105,9 +105,19 @@ if ((${#restorable[@]} == 0)); then
 fi
 
 # Quiesce only now: the repository read is done, so nothing below needs the NFS
-# share, and the containers were up for all of it.
-for unit_file in /etc/containers/systemd/*.container; do
-    [ -e "$unit_file" ] || continue
+# share, and the containers were up for all of it. Same zero-match guard as the
+# backup, and load-bearing for the same reason: the swap below wipes and replaces
+# live volumes, so a glob that silently matched nothing would do that underneath
+# running containers.
+shopt -s nullglob
+unit_files=(/etc/containers/systemd/*.container)
+shopt -u nullglob
+if ((${#unit_files[@]} == 0)); then
+    echo "no .container quadlets in /etc/containers/systemd — refusing to swap under running containers" >&2
+    exit 1
+fi
+
+for unit_file in "${unit_files[@]}"; do
     unit="$(basename "${unit_file%.container}").service"
     if systemctl is-active --quiet "$unit"; then
         units+=("$unit")
