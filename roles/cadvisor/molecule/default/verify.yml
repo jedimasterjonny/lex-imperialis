@@ -77,3 +77,29 @@
           - "'no-new-privileges' in (cadvisor.HostConfig.SecurityOpt | default([], true))"
         fail_msg: "cadvisor's capability or no-new-privileges posture has regressed"
         quiet: true
+
+    # Capabilities are only half the posture: --privileged, a widened mount set, a
+    # borrowed namespace or an extra security-opt all leave BoundingCaps untouched,
+    # so the assertion above passes while the container gains the host. Pin the rest
+    # of the surface exactly — an equality on the mount set, not a substring, so an
+    # *added* mount fails too. The podman API socket is the one that matters: it is
+    # root-equivalent regardless of :ro, so its absence is the security contract.
+    - name: The cAdvisor container takes no privileged escape hatch
+      vars:
+        cadvisor: "{{ cadvisor_inspect.stdout | from_json | first }}"
+      ansible.builtin.assert:
+        that:
+          - not (cadvisor.HostConfig.Privileged | default(false, true))
+          - cadvisor.HostConfig.SecurityOpt | default([], true) | sort == ['label=disable', 'no-new-privileges']
+          - cadvisor.HostConfig.CgroupMode | default('', true) == 'host'
+          - cadvisor.HostConfig.NetworkMode | default('', true) == 'host'
+          - cadvisor.HostConfig.PidMode | default('', true) != 'host'
+          - cadvisor.HostConfig.IpcMode | default('', true) != 'host'
+          - cadvisor.HostConfig.Binds | default([], true) | map('regex_replace', ':[^:]*$', '') | sort == ['/:/rootfs', '/sys:/sys']
+        fail_msg: >-
+          cadvisor's namespace, security-opt or mount posture has regressed —
+          SecurityOpt={{ cadvisor.HostConfig.SecurityOpt | default([], true) }}
+          CgroupMode={{ cadvisor.HostConfig.CgroupMode | default('', true) }}
+          PidMode={{ cadvisor.HostConfig.PidMode | default('', true) }}
+          Binds={{ cadvisor.HostConfig.Binds | default([], true) }}
+        quiet: true
