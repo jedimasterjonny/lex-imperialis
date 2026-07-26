@@ -32,6 +32,12 @@ fi
 # in the clone — never apply a local or feature branch.
 git -C "$repo" fetch origin "$branch"
 git -C "$repo" reset --hard "origin/$branch"
+# reset --hard leaves untracked files, and ansible.cfg reads `inventory` as a
+# *directory* — so a file planted under inventory/ is parsed as an inventory source
+# on every later reconcile, outliving a revert of the commit that added it. -x so a
+# .gitignore match is no hiding place, -ff to recurse into a planted nested clone.
+# Nothing the reconciler needs is untracked here: venv, vault pass and key are not.
+git -C "$repo" clean -xffd
 target="$(git -C "$repo" rev-parse HEAD)"
 
 # Near-free idle run: apply only when the branch has actually advanced.
