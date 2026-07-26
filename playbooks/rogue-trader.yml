@@ -8,14 +8,20 @@
     # Staggered autoupdate: the public VPS updates mid-week, after solar's canary
     # run, so one bad rolling snapshot can't brick the whole fleet in one night.
     autoupdate_oncalendar: "Wed *-*-* 03:00:00"
+    # The tunnel definition, in wg-quick's format. It stays in that format because
+    # the same text is what /etc/wireguard/wg0.conf holds, so re-enabling
+    # wg-quick@wg0 remains a working rollback from a NetworkManager that will not
+    # bring the tunnel up — and the private key keeps one copy in the vault.
+    wireguard_client_conf: "{{ rogue_trader_wireguard_conf }}"
     # podman_backup writes to the astropath share; mount it from the NAS. No arr
     # stack here, so scriptorum stays unmounted. The backup runs as root, which
     # the NAS squashes to the admin uid its astropath ACL grants.
     nfs_shares:
-      # By the NAS's stable LAN IP, not its hostname: over WireGuard rogue-trader
-      # resolves LAN names only via wg-quick's DNS, which NetworkManager drops on
-      # any reload (e.g. the podman conf.d drop-in), breaking a hostname mount. The
-      # IP carries no such dependency.
+      # By the NAS's stable LAN IP, not its hostname: rogue-trader resolves LAN
+      # names only over the tunnel. NetworkManager now owns that resolver and
+      # re-applies it on reload, where wg-quick's openresolv copy was dropped by
+      # any reload (e.g. the podman conf.d drop-in) — but the IP still depends on
+      # nothing, so it stays.
       - name: astropath
         server: 192.168.1.225
         export: /volume2/astropath
@@ -40,11 +46,16 @@
     # interface never exposes them. The scrape rides the WG tunnel but arrives
     # with the LAN source (the router forwards it without NAT), so the ports are
     # permitted from the LAN subnet. Start the units after the tunnel so the bind
-    # can't race wg0's address at boot.
+    # can't race wg0's address at boot. NetworkManager owns the tunnel now, and it
+    # exposes no per-connection unit, so the barrier is the wait-online service:
+    # it holds until every autoconnect profile has reached activated state, which
+    # is address-configured rather than merely link-present. It has to be a unit
+    # that exists — systemd treats After= on an absent unit as a no-op, so an
+    # ordering left pointing at wg-quick@wg0.service would fail open silently.
     node_exporter_listen_address: 192.168.3.3:9100
-    node_exporter_after: wg-quick@wg0.service
+    node_exporter_after: NetworkManager-wait-online.service
     cadvisor_listen_ip: 192.168.3.3
-    cadvisor_after: wg-quick@wg0.service
+    cadvisor_after: NetworkManager-wait-online.service
     # Home backup after solar (Thu 01:00) and scholam (Thu 02:00), before the
     # off-site mirror (Thu 04:00). rogue-trader already mounts astropath for
     # podman_backup, so no extra NFS setup is needed.
@@ -66,9 +77,9 @@
     # above). The tunnel initiates outbound to the router, so its return traffic
     # rides conntrack — no inbound 51820/udp needed.
     - firewalld
-    # Keep the tunnel up across a home WAN-IP change: re-resolve the endpoint
-    # when the handshake goes stale. NFS and the metrics binds below ride it.
-    - wireguard_reresolve
+    # The WireGuard tunnel, run by NetworkManager, plus the refresh that keeps it
+    # up across a home WAN-IP change. NFS and the metrics binds below ride it.
+    - wireguard_client
     - podman
     - autoupdate
     - nfs
