@@ -119,6 +119,11 @@
       "automerge": false
     },
     {
+      "description": "requirements.txt pins the ansible that gitops_reconcile installs into its venv and then applies the whole fleet with, as root — so an unattended bump is new root-privileged code on every host that nobody read. Hashing the pin would not help: the apply is root from the fetched tree either way, and pip's hash mode is per-invocation, so it would force a pinned, hashed transitive closure onto requirements-dev.txt as well (CI, the Makefile, bootstrap/incus.yml and roles/dev all install through it). Requiring a human read is the control that fits.",
+      "matchPackageNames": ["ansible"],
+      "automerge": false
+    },
+    {
       "description": "linuxserver images carry legacy build-number (151), two-part (5.14), and four-part tags that docker versioning reads as upgrades; their releases are strict semver, so reject the rest.",
       "matchPackageNames": ["lscr.io/linuxserver/**"],
       "versioning": "semver"
