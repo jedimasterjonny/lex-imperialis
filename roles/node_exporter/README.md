@@ -12,6 +12,14 @@ escalation (`NoNewPrivileges=true`). Host introspection reads world-readable
 `/proc`, `/sys`, and the `/host` bind and needs nothing back; the sole exception
 is `CAP_SYS_TIME`, re-added for the timex collector (see below).
 
+It also runs as a **non-root** user, which the upstream image supplies (`USER
+nobody`) rather than this role. Treat that as load-bearing, not incidental: the
+container mounts the host D-Bus system bus (see the systemd collector below) and
+systemd authorises Manager calls by uid, so an unprivileged caller is refused
+`StartTransientUnit` while root would get arbitrary code execution as root on the
+host. Because the property comes from the image, an upstream change could drop it
+silently — so `verify` asserts the user explicitly.
+
 ## Exposure
 
 `node_exporter_listen_address` controls the bind. A public host sets it to a

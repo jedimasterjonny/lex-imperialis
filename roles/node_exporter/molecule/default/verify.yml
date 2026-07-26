@@ -87,3 +87,38 @@
           - "'no-new-privileges' in (node_exporter.HostConfig.SecurityOpt | default([], true))"
         fail_msg: "node-exporter's capability or no-new-privileges posture has regressed"
         quiet: true
+
+    # A non-root user is this container's load-bearing security property, not a
+    # detail. It mounts the host D-Bus system bus, and systemd authorises Manager
+    # calls by uid: as nobody, StartTransientUnit is refused where root succeeds, so
+    # the socket is a read-only view of unit state rather than arbitrary root. That
+    # comes from the *image* (`USER nobody`), not from anything this role sets — so
+    # an upstream image dropping it would silently turn the mount into a root
+    # escalation with nothing else here to notice. Hence assert the user, not just
+    # the caps.
+    #
+    # The rest is the other half of the posture: --privileged, an extra
+    # security-opt, a borrowed namespace or a widened mount set all leave
+    # BoundingCaps untouched. The mount set is an equality, not a substring, so an
+    # *added* bind fails too.
+    - name: The node-exporter container runs as a non-root user and takes no escape hatch
+      vars:
+        node_exporter: "{{ node_exporter_inspect.stdout | from_json | first }}"
+      ansible.builtin.assert:
+        that:
+          - node_exporter.Config.User | default('', true) not in ['', '0', 'root']
+          - not (node_exporter.HostConfig.Privileged | default(false, true))
+          - node_exporter.HostConfig.SecurityOpt | default([], true) | sort == ['label=disable', 'no-new-privileges']
+          - node_exporter.HostConfig.NetworkMode | default('', true) == 'host'
+          - node_exporter.HostConfig.PidMode | default('', true) == 'host'
+          - node_exporter.HostConfig.IpcMode | default('', true) != 'host'
+          - >-
+            node_exporter.HostConfig.Binds | default([], true)
+            | map('regex_replace', ':[^:]*$', '') | sort
+            == ['/:/host', '/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket']
+        fail_msg: >-
+          node-exporter's user, namespace or mount posture has regressed —
+          User={{ node_exporter.Config.User | default('', true) }}
+          PidMode={{ node_exporter.HostConfig.PidMode | default('', true) }}
+          Binds={{ node_exporter.HostConfig.Binds | default([], true) }}
+        quiet: true
