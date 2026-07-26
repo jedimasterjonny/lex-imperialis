@@ -443,6 +443,63 @@ groups:
           description: >-
             Prometheus on {{ $labels.instance }} rejected its last config reload and is
             running the previous config — a gitops-applied change has not taken effect.
+      # The seven oneshots SystemdUnitFailed excludes are excluded *because* each
+      # writes a *_success metric with a bespoke *Failed rule. That trade only holds
+      # while the metric is actually published: every one of those rules is `== 0` or
+      # `time() - <gauge> > N`, and both match nothing on an empty vector, so a family
+      # that stops being written disables its own alert AND is already exempt from the
+      # catch-all. Nothing else would ever say so — the units keep succeeding, so no
+      # rule anywhere has a series to fire on.
+      #
+      # The write is one `mkdir -p` away from silent: the textfile path is an
+      # independent literal in five role defaults (restic_backup, arr, autoupdate,
+      # wordpress, gitops_reconcile), tied to node_exporter_textfile_directory by a
+      # comment and nothing else. A one-character divergence lands the .prom outside
+      # the collector's glob and the family vanishes with every run still green.
+      #
+      # A bare absent() would need the family gone from EVERY host before it fired.
+      # Key on unit presence instead: node_exporter's systemd collector runs with
+      # --collector.systemd.unit-include=.+[.]service, so a host exports
+      # node_systemd_unit_state for the unit iff the role that writes the metric is
+      # deployed there — exact ground truth, per host, carrying no topology. Measured
+      # against the live fleet: the unit set and the metric set match family for
+      # family (home 3/3, podman 2/2, autoupdate 3/3, the wordpress trio and
+      # gitops-reconcile 1/1). Both sides ride the same node_exporter scrape, so a
+      # down host drops out of both and raises nothing here.
+      #
+      # The left group by (instance, name) is load-bearing twice over: it keeps `name`
+      # so the alert says which family broke, and it collapses node_exporter's
+      # one-series-per-state into one, or a single fault would raise five identical
+      # alerts. The right-hand sides need no aggregation — `unless on (instance)`
+      # builds a signature set, so a family reporting several series per host
+      # collapses on its own. Both properties are pinned in tests/alerts_test.yml.
+      #
+      # The roster must stay in step with SystemdUnitFailed's exclusion regex above;
+      # an eighth oneshot excluded there and forgotten here is uncovered by both.
+      # The prometheus scenario asserts the two sets are equal rather than trusting it.
+      #
+      # Fires on a newly built host until its first run writes the metric — correct,
+      # not noise: the unit is installed and has never recorded a successful run. On a
+      # weekly timer that stands for up to a week after a rebuild.
+      - alert: ScheduledJobMetricMissing
+        expr: >-
+          (group by (instance, name) (node_systemd_unit_state{name="podman-backup.service"}) unless on (instance) podman_backup_success)
+          or (group by (instance, name) (node_systemd_unit_state{name="home-backup.service"}) unless on (instance) home_backup_success)
+          or (group by (instance, name) (node_systemd_unit_state{name="wordpress-db-dump.service"}) unless on (instance) wordpress_db_dump_success)
+          or (group by (instance, name) (node_systemd_unit_state{name="wordpress-cron.service"}) unless on (instance) wordpress_cron_success)
+          or (group by (instance, name) (node_systemd_unit_state{name="wordpress-update-check.service"}) unless on (instance) wordpress_update_check_success)
+          or (group by (instance, name) (node_systemd_unit_state{name="autoupdate.service"}) unless on (instance) autoupdate_success)
+          or (group by (instance, name) (node_systemd_unit_state{name="gitops-reconcile.service"}) unless on (instance) gitops_reconcile_success)
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.name }} on {{ $labels.instance }} publishes no outcome metric"
+          description: >-
+            {{ $labels.name }} is installed on {{ $labels.instance }} but its textfile
+            outcome metric is absent, so that unit's bespoke *Failed and *Overdue rules
+            match an empty vector and can never fire — and SystemdUnitFailed excludes it
+            on the assumption they do.
 
   - name: watchdog
     rules:

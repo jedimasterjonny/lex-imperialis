@@ -106,12 +106,47 @@
                                         'GitopsReconcileStale', 'BeetsPipelineLidarrRejected',
                                         'BeetsPipelineQuarantineBacklog',
                                         'PrometheusRuleEvaluationFailing',
-                                        'PrometheusConfigReloadFailed', 'Watchdog'])
-            | list | length == 33
+                                        'PrometheusConfigReloadFailed',
+                                        'ScheduledJobMetricMissing', 'Watchdog'])
+            | list | length == 34
           - >-
             prometheus_loaded_rules.json.data.groups
-            | map(attribute='rules') | flatten | list | length == 33
+            | map(attribute='rules') | flatten | list | length == 34
         fail_msg: the loaded alert rules don't match those shipped in alerts.yml
+
+    # Whether a rule fires on its fault is promtool's job (roles/prometheus/tests).
+    # This is the property promtool cannot see: two rules holding the same roster of
+    # units in two syntaxes, 200 lines apart. SystemdUnitFailed excludes those units
+    # by regex on the grounds that each has a bespoke *Failed rule, and
+    # ScheduledJobMetricMissing is what makes that grounds true. Exclude an eighth
+    # oneshot there and forget it here and the unit is covered by neither — silently,
+    # which is the exact failure this pair exists to prevent. Compare the sets rather
+    # than trusting a comment; both queries are already in the register above.
+    - name: The two rules that share the oneshot roster agree on it
+      vars:
+        prometheus_roster_queries: >-
+          {{ prometheus_loaded_rules.json.data.groups | map(attribute='rules') | flatten
+             | selectattr('name', 'in', ['SystemdUnitFailed', 'ScheduledJobMetricMissing'])
+             | items2dict(key_name='name', value_name='query') }}
+        # SystemdUnitFailed carries the roster as one alternation inside a name!~
+        # matcher, so match each member on the | or ) that follows it — the trailing
+        # member has no pipe. ScheduledJobMetricMissing carries one name= per clause.
+        prometheus_excluded_units: >-
+          {{ prometheus_roster_queries.SystemdUnitFailed
+             | regex_findall('([a-z-]+)(?=[|)])') | sort }}
+        prometheus_covered_units: >-
+          {{ prometheus_roster_queries.ScheduledJobMetricMissing
+             | regex_findall('name="([a-z-]+)[.]service"') | sort }}
+      ansible.builtin.assert:
+        that:
+          - prometheus_excluded_units | length == 7
+          - prometheus_excluded_units == prometheus_covered_units
+        fail_msg: >-
+          SystemdUnitFailed excludes {{ prometheus_excluded_units }} but
+          ScheduledJobMetricMissing covers {{ prometheus_covered_units }} — a unit
+          excluded from the catch-all with no outcome-metric alert behind it is
+          monitored by neither rule
+        quiet: true
 
     - name: Read the loaded runtime config
       ansible.builtin.uri:
