@@ -10,3 +10,13 @@ platforms:
     config:
       security.nesting: "true"
       raw.lxc: lxc.apparmor.profile=unconfined
+provisioner:
+  inventory:
+    group_vars:
+      all:
+        # Deliberately not the role default (Wed 01:00), which is what both hosts
+        # running this role actually take — so converging on it would prove only
+        # that the default equals itself and would leave the pass-through to
+        # restic_backup_oncalendar untested. One source, read by converge as the
+        # input and by verify as the expectation.
+        podman_backup_oncalendar: "Tue *-*-* 04:00:00"
