@@ -56,6 +56,21 @@
   become: true
   when: ansible_selinux.status == 'enabled'
 
+# sdbootutil-update-predictions.service runs after every snapper snapshot, and its
+# ExecStartPre unconditionally backs up /var/lib/pcrlock.d — a directory only a TPM2
+# LUKS enrolment creates. Unenrolled, the prediction itself is a no-op returning 0,
+# so creating the directory is the whole fix. Keep this ahead of the zypper task
+# below: that transaction snapshots, and so arms the unit, on a fresh host's first
+# converge.
+- name: Ensure sdbootutil's TPM prediction directory exists
+  ansible.builtin.file:
+    path: /var/lib/pcrlock.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
 - name: Ensure the owner's supplementary groups exist
   ansible.builtin.group:
     name: "{{ item }}"

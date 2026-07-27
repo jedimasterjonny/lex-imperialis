@@ -94,6 +94,21 @@
         fail_msg: "the modprobe drop-in does not bar lex_absent_module from loading"
         quiet: true
 
+    - name: Stat sdbootutil's TPM prediction directory
+      ansible.builtin.stat:
+        path: /var/lib/pcrlock.d
+      register: common_pcrlock_dir
+
+    - name: TPM prediction directory exists and is root-owned
+      ansible.builtin.assert:
+        that:
+          - common_pcrlock_dir.stat.exists
+          - common_pcrlock_dir.stat.isdir
+          - common_pcrlock_dir.stat.mode == '0755'
+          - common_pcrlock_dir.stat.pw_name == 'root'
+          - common_pcrlock_dir.stat.gr_name == 'root'
+        fail_msg: "/var/lib/pcrlock.d is missing or not owned root:root mode 0755"
+
     - name: Gather installed package facts
       ansible.builtin.package_facts:
         manager: auto
