@@ -1,0 +1,36 @@
+---
+wireguard_client_interface: wg0
+
+# The tunnel definition, in wg-quick's own format, supplied from the vault. It is
+# parsed into the NetworkManager keyfile in vars/main.yml rather than restated as
+# discrete variables so the private key keeps exactly one copy in the vault, and
+# so /etc/wireguard/<iface>.conf stays a usable rollback artefact. Empty by
+# default so molecule runs with no vault; the scenario supplies a fixture.
+wireguard_client_conf: ""
+
+# Pinned rather than left for NetworkManager to derive: a stable UUID makes a
+# re-render idempotent and cannot orphan the previous profile.
+wireguard_client_uuid: 599a97bd-cb02-44b0-b63c-abc5859318e7
+
+# wg-quick derives the MTU from the endpoint route (1500 - 80); NetworkManager
+# would leave the kernel default instead. Pin it, because the tunnel carries an
+# NFS mount whose 1 MiB rsize makes a wrong MTU a stall rather than an error.
+wireguard_client_mtu: 1420
+
+# Resolver ordering, lowest first. NetworkManager's default for a non-VPN profile
+# is 100, so the tunnel's DNS wins while the public interface's stays in
+# resolv.conf behind it. That fallback is load-bearing: re-activating the profile
+# makes NetworkManager re-resolve the peer endpoint through the system resolver,
+# so a tunnel-only resolver would leave a dead tunnel unable to name the peer
+# that would revive it.
+wireguard_client_dns_priority: 10
+
+# Queried directly rather than through the system resolver: the refresh below has
+# to tell a moved endpoint from a healthy one while the tunnel is down, which is
+# exactly when the tunnel's own DNS is unreachable.
+wireguard_client_resolver: 1.1.1.1
+
+# Only act once the peer's latest handshake is older than this; a healthy tunnel
+# rehandshakes well within it, so the timer no-ops.
+wireguard_client_stale_seconds: 150
+wireguard_client_interval: 1min

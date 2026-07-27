@@ -1,7 +1,0 @@
----
-# semodule -i loads the local policy module into the store, changing the policy.
-- name: Load the wireguard-reresolve SELinux module
-  ansible.builtin.command:
-    cmd: semodule -i /etc/selinux/wireguard-reresolve.cil
-  changed_when: true
-  become: true

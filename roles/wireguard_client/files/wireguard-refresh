@@ -1,0 +1,70 @@
+#!/bin/sh
+# Re-resolve a WireGuard peer's DNS endpoint and re-activate the tunnel when the
+# WAN IP behind the hostname changes. WireGuard resolves the endpoint only when
+# the interface is configured, so a dynamic-IP gateway reboot strands the tunnel
+# on the stale address.
+#
+# NetworkManager re-resolves only on activation: `nmcli device reapply` pushes
+# the cached sockaddr back to the kernel and silently changes nothing, because
+# its short-circuit compares the endpoint string rather than the resolved
+# address. So re-activation is the only re-resolve, and it is gated on the
+# address having actually moved -- an unconditional re-activation would flap the
+# interface every tick, and the tunnel carries a hard NFS mount.
+#
+# The hostname is read from the keyfile because `wg show` reports only the
+# resolved IP, and it is resolved against a resolver passed in rather than the
+# system one, which a downed tunnel may take with it.
+#
+# Usage: wireguard-refresh <interface> <resolver> <stale_seconds>
+set -u
+
+iface=${1:?usage: wireguard-refresh <interface> <resolver> <stale_seconds>}
+resolver=${2:?}
+stale=${3:?}
+keyfile="/etc/NetworkManager/system-connections/${iface}.nmconnection"
+
+# Absent interface or profile (e.g. a test container): nothing to refresh.
+[ -e "/sys/class/net/${iface}" ] || exit 0
+[ -r "$keyfile" ] || exit 0
+
+pubkey=$(sed -n 's/^\[wireguard-peer\.\(.*\)\]$/\1/p' "$keyfile" | head -n1)
+endpoint=$(sed -n 's/^[[:space:]]*endpoint[[:space:]]*=[[:space:]]*//p' "$keyfile" | head -n1)
+if [ -z "$pubkey" ] || [ -z "$endpoint" ]; then
+    exit 0
+fi
+
+host=${endpoint%:*}
+port=${endpoint##*:}
+
+# An IP literal has nothing to re-resolve.
+case "$host" in
+    *[!0-9.]*) ;;
+    *) exit 0 ;;
+esac
+
+# A healthy tunnel rehandshakes within the threshold, so this is the no-op common
+# path. A peer that has never handshaked reports 0, which is stale by definition:
+# a tunnel brought up against an address that had already moved never handshakes
+# at all, and subtracting from 0 would call that fresh for 55 years.
+handshake=$(wg show "$iface" latest-handshakes | awk -v k="$pubkey" '$1 == k {print $2; exit}')
+[ -n "$handshake" ] || exit 0
+if [ "$handshake" -ne 0 ]; then
+    age=$(( $(date +%s) - handshake ))
+    [ "$age" -gt "$stale" ] || exit 0
+fi
+
+# No answer (resolver unreachable, NXDOMAIN): leave the tunnel alone and retry
+# next tick rather than tear down a working one on a DNS blip.
+newip=$(dig +short +time=3 +tries=2 "@${resolver}" "$host" A | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -n1)
+[ -n "$newip" ] || exit 0
+
+current=$(wg show "$iface" endpoints | awk -v k="$pubkey" '$1 == k {print $2; exit}')
+if [ "${current%:*}" != "$newip" ]; then
+    if nmcli connection up "$iface" >/dev/null 2>&1; then
+        logger -t wireguard-refresh \
+            "${iface} endpoint ${current:-none} -> ${newip}:${port} (handshake ${age:-never} stale)"
+    else
+        logger -t wireguard-refresh "${iface} re-activation failed for ${newip}:${port}"
+        exit 1
+    fi
+fi

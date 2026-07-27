@@ -1,0 +1,22 @@
+---
+# Parsed out of wireguard_client_conf. regex_search returns None when a key is
+# absent, so each field falls back to an empty string and the assertion in
+# tasks/main.yml fails the run rather than rendering a profile with a hole in it.
+# AllowedIPs and DNS are comma-separated in wg-quick's format and
+# semicolon-separated in a NetworkManager keyfile.
+wireguard_client_private_key: >-
+  {{ (wireguard_client_conf | regex_search('(?m)^\s*PrivateKey\s*=\s*(\S+)', '\1') or ['']) | first }}
+wireguard_client_listen_port: >-
+  {{ (wireguard_client_conf | regex_search('(?m)^\s*ListenPort\s*=\s*(\S+)', '\1') or ['']) | first }}
+wireguard_client_address: >-
+  {{ (wireguard_client_conf | regex_search('(?m)^\s*Address\s*=\s*(\S+)', '\1') or ['']) | first }}
+wireguard_client_dns: >-
+  {{ (wireguard_client_conf | regex_search('(?m)^\s*DNS\s*=\s*(.+?)\s*$', '\1') or ['']) | first | regex_replace('\s*,\s*', ';') }}
+wireguard_client_peer_public_key: >-
+  {{ (wireguard_client_conf | regex_search('(?m)^\s*PublicKey\s*=\s*(\S+)', '\1') or ['']) | first }}
+wireguard_client_peer_allowed_ips: >-
+  {{ (wireguard_client_conf | regex_search('(?m)^\s*AllowedIPs\s*=\s*(.+?)\s*$', '\1') or ['']) | first | regex_replace('\s*,\s*', ';') }}
+wireguard_client_peer_endpoint: >-
+  {{ (wireguard_client_conf | regex_search('(?m)^\s*Endpoint\s*=\s*(\S+)', '\1') or ['']) | first }}
+wireguard_client_peer_keepalive: >-
+  {{ (wireguard_client_conf | regex_search('(?m)^\s*PersistentKeepalive\s*=\s*(\S+)', '\1') or ['']) | first }}

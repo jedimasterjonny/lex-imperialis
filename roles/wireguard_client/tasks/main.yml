@@ -1,0 +1,140 @@
+---
+- name: Install the WireGuard and DNS tooling the refresh needs
+  community.general.zypper:
+    name:
+      - wireguard-tools
+      - bind-utils
+    state: present
+  become: true
+
+# NetworkManager owns the tunnel, so every task that talks to it is gated on it
+# actually running -- the molecule containers have no NetworkManager, and there
+# the role's job stops at rendering the profile and the timer.
+- name: Check whether NetworkManager is running
+  ansible.builtin.systemd_service:
+    name: NetworkManager
+  register: wireguard_client_nm
+  failed_when: false
+  become: true
+
+- name: Record whether NetworkManager is running
+  ansible.builtin.set_fact:
+    wireguard_client_nm_active: "{{ (wireguard_client_nm.status | default({})).ActiveState | default('') == 'active' }}"
+
+- name: The tunnel definition supplies every field the profile needs
+  ansible.builtin.assert:
+    that:
+      - wireguard_client_private_key | length > 0
+      - wireguard_client_address | length > 0
+      - wireguard_client_peer_public_key | length > 0
+      - wireguard_client_peer_allowed_ips | length > 0
+      - wireguard_client_peer_endpoint | length > 0
+    fail_msg: >-
+      wireguard_client_conf is missing one of PrivateKey, Address, PublicKey,
+      AllowedIPs or Endpoint
+    quiet: true
+
+- name: Create the NetworkManager keyfile directory
+  ansible.builtin.file:
+    path: /etc/NetworkManager/system-connections
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+- name: Install the NetworkManager tunnel profile
+  ansible.builtin.template:
+    src: wireguard.nmconnection.j2
+    dest: "/etc/NetworkManager/system-connections/{{ wireguard_client_interface }}.nmconnection"
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  no_log: true
+  notify: Reload the NetworkManager profiles
+
+# NetworkManager has to know the profile before the tunnel changes hands, and
+# the handler would otherwise not fire until the end of the play.
+- name: Load the profile before the handover
+  ansible.builtin.meta: flush_handlers
+
+- name: Check whether wg-quick still owns the tunnel
+  ansible.builtin.systemd_service:
+    name: "wg-quick@{{ wireguard_client_interface }}"
+  register: wireguard_client_wg_quick
+  failed_when: false
+  become: true
+
+# wg-quick and NetworkManager cannot both own the interface, so the switch is one
+# step: the gap is sub-second, which the SSH session driving this play rides out
+# on TCP retransmit. If NetworkManager cannot bring the tunnel up -- a profile it
+# rejects, an endpoint that will not resolve -- wg-quick goes straight back,
+# because on the public VPS this tunnel is the only route to the host and a failed
+# handover would otherwise strand it behind a serial console.
+- name: Hand the tunnel from wg-quick to NetworkManager
+  ansible.builtin.shell: |
+    set -e
+    systemctl disable --now wg-quick@{{ wireguard_client_interface }}
+    if ! nmcli connection up {{ wireguard_client_interface }}; then
+        systemctl enable --now wg-quick@{{ wireguard_client_interface }}
+        echo "NetworkManager could not bring up {{ wireguard_client_interface }}; wg-quick restored" >&2
+        exit 1
+    fi
+  changed_when: true
+  when:
+    - wireguard_client_nm_active
+    - (wireguard_client_wg_quick.status | default({})).ActiveState | default('') == 'active'
+  become: true
+
+- name: Install the refresh script
+  ansible.builtin.copy:
+    src: wireguard-refresh
+    dest: /usr/local/sbin/wireguard-refresh
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+- name: Install the refresh service
+  ansible.builtin.template:
+    src: wireguard-refresh.service.j2
+    dest: /etc/systemd/system/wireguard-refresh.service
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+
+- name: Install the refresh timer
+  ansible.builtin.template:
+    src: wireguard-refresh.timer.j2
+    dest: /etc/systemd/system/wireguard-refresh.timer
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+
+# daemon_reload picks up unit changes before enabling; it does not itself report
+# changed, so the task stays idempotent.
+- name: Enable and start the refresh timer
+  ansible.builtin.systemd_service:
+    name: wireguard-refresh.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true
+
+# Re-read rather than reuse the earlier check: the handover above may have just
+# changed the answer, and if it failed it will have put wg-quick back. Retiring
+# wg-quick's supporting artefacts while it is still carrying the tunnel would
+# take away the fallback the handover depends on.
+- name: Check whether wg-quick still owns the tunnel after the handover
+  ansible.builtin.systemd_service:
+    name: "wg-quick@{{ wireguard_client_interface }}"
+  register: wireguard_client_wg_quick_after
+  failed_when: false
+  become: true
+
+- name: Retire wg-quick's supporting artefacts
+  ansible.builtin.include_tasks: retire.yml
+  when: (wireguard_client_wg_quick_after.status | default({})).ActiveState | default('') != 'active'

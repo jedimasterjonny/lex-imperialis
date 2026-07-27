@@ -1,0 +1,178 @@
+---
+- name: Verify
+  hosts: all
+  vars:
+    wireguard_client_keyfile: /etc/NetworkManager/system-connections/wg0.nmconnection
+  tasks:
+    - name: Read the tunnel profile's file metadata
+      ansible.builtin.stat:
+        path: "{{ wireguard_client_keyfile }}"
+      register: wireguard_client_profile_stat
+      become: true
+
+    # The profile holds the tunnel's private key, and NetworkManager refuses to
+    # load a keyfile other users can read.
+    - name: The profile is present and readable only by root
+      ansible.builtin.assert:
+        that:
+          - wireguard_client_profile_stat.stat.exists
+          - wireguard_client_profile_stat.stat.mode == '0600'
+          - wireguard_client_profile_stat.stat.pw_name == 'root'
+        fail_msg: "the tunnel profile is missing or not a root-only 0600 file"
+        quiet: true
+
+    - name: Read the tunnel profile
+      ansible.builtin.slurp:
+        src: "{{ wireguard_client_keyfile }}"
+      register: wireguard_client_profile
+      become: true
+
+    - name: Split the tunnel profile into lines
+      ansible.builtin.set_fact:
+        wireguard_client_profile_lines: "{{ (wireguard_client_profile.content | b64decode).splitlines() }}"
+
+    - name: The profile declares an autoconnecting WireGuard connection on the interface
+      ansible.builtin.assert:
+        that:
+          - "'[connection]' in wireguard_client_profile_lines"
+          - "'id=wg0' in wireguard_client_profile_lines"
+          - "'uuid=599a97bd-cb02-44b0-b63c-abc5859318e7' in wireguard_client_profile_lines"
+          - "'type=wireguard' in wireguard_client_profile_lines"
+          - "'interface-name=wg0' in wireguard_client_profile_lines"
+          - "'autoconnect=true' in wireguard_client_profile_lines"
+        fail_msg: "the profile does not declare an autoconnecting wireguard connection named wg0"
+        quiet: true
+
+    # Whole-line matches, not substrings: `mtu=1420` must not be satisfied by a
+    # `mtu=14200`, and the MTU is what keeps the 1 MiB-rsize NFS mount off the
+    # fragmentation path.
+    - name: The interface section carries the parsed key, the pinned MTU and the listen port
+      ansible.builtin.assert:
+        that:
+          - "'[wireguard]' in wireguard_client_profile_lines"
+          - "'private-key=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=' in wireguard_client_profile_lines"
+          - "'mtu=1420' in wireguard_client_profile_lines"
+          - "'listen-port=51821' in wireguard_client_profile_lines"
+        fail_msg: "the [wireguard] section does not carry the parsed private key, mtu=1420 and listen-port=51821"
+        quiet: true
+
+    # The peer's public key is the section name, and AllowedIPs arrives
+    # comma-separated in wg-quick's format but must be semicolon-separated here.
+    - name: The peer section is keyed on the public key and lists the converted allowed-ips
+      ansible.builtin.assert:
+        that:
+          - "'[wireguard-peer.BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=]' in wireguard_client_profile_lines"
+          - "'endpoint=tunnel.example.com:51821' in wireguard_client_profile_lines"
+          - "'allowed-ips=10.9.0.0/16;172.31.0.0/16;' in wireguard_client_profile_lines"
+          - "'persistent-keepalive=25' in wireguard_client_profile_lines"
+        fail_msg: "the peer section is missing, mis-keyed, or did not convert AllowedIPs to semicolons"
+        quiet: true
+
+    # dns-priority below NetworkManager's default of 100 keeps the tunnel's
+    # resolver first while the public interface's stays behind it as the fallback
+    # that lets a re-activation resolve the peer at all.
+    - name: The ipv4 section carries the address, the converted DNS list and the priority
+      ansible.builtin.assert:
+        that:
+          - "'[ipv4]' in wireguard_client_profile_lines"
+          - "'method=manual' in wireguard_client_profile_lines"
+          - "'address1=10.9.9.2/32' in wireguard_client_profile_lines"
+          - "'dns=10.9.9.1;10.9.9.5;' in wireguard_client_profile_lines"
+          - "'dns-priority=10' in wireguard_client_profile_lines"
+        fail_msg: "the [ipv4] section does not carry address1, the semicolon-separated dns list and dns-priority=10"
+        quiet: true
+
+    - name: Read the refresh timer's state
+      ansible.builtin.systemd_service:
+        name: wireguard-refresh.timer
+        daemon_reload: true
+      register: wireguard_client_timer
+      become: true
+
+    - name: The refresh timer is enabled and active
+      ansible.builtin.assert:
+        that:
+          - wireguard_client_timer.status.ActiveState == 'active'
+          - wireguard_client_timer.status.UnitFileState == 'enabled'
+        fail_msg: "the refresh timer is not enabled and active"
+        quiet: true
+
+    - name: Read the refresh service definition
+      ansible.builtin.systemd_service:
+        name: wireguard-refresh.service
+      register: wireguard_client_service
+      become: true
+
+    - name: The service invokes the refresh script with the configured arguments
+      ansible.builtin.assert:
+        that:
+          - "'/usr/local/sbin/wireguard-refresh' in wireguard_client_service.status.ExecStart"
+          - "'wg0 1.1.1.1 150' in wireguard_client_service.status.ExecStart"
+        fail_msg: "the service does not invoke the refresh script with 'wg0 1.1.1.1 150'"
+        quiet: true
+
+    # With no wg0 interface in the container the script must exit cleanly at its
+    # guard rather than error — the real re-activation path needs a live tunnel
+    # and a running NetworkManager, exercised on the host, not here.
+    - name: Run the refresh script with no tunnel present
+      ansible.builtin.command: /usr/local/sbin/wireguard-refresh wg0 1.1.1.1 150
+      register: wireguard_client_refresh_run
+      changed_when: false
+      become: true
+
+    - name: It exits cleanly when the interface is absent
+      ansible.builtin.assert:
+        that:
+          - wireguard_client_refresh_run.rc == 0
+        fail_msg: "the refresh script errored without a wg0 interface present"
+        quiet: true
+
+    - name: Read what the retirement should have removed
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/systemd/system/wireguard-reresolve.timer
+        - /etc/systemd/system/wireguard-reresolve.service
+        - /usr/local/sbin/wireguard-reresolve
+        - /etc/selinux/wireguard-reresolve.cil
+      register: wireguard_client_retired
+      become: true
+
+    # prepare.yml planted all four and started the timer, so their absence is the
+    # retirement having run, not a container that never had them.
+    - name: The retired re-resolve artefacts are gone
+      ansible.builtin.assert:
+        that:
+          - wireguard_client_retired.results | rejectattr('stat.exists') | list | length == 4
+        fail_msg: >-
+          the retirement left one of the wireguard-reresolve units, its script or
+          its SELinux policy source behind
+        quiet: true
+
+    - name: Read the installed packages
+      ansible.builtin.package_facts:
+      become: true
+
+    # prepare.yml installed it, so its absence is the retirement having removed
+    # it rather than an image that never shipped it.
+    - name: The openresolv package is gone
+      ansible.builtin.assert:
+        that:
+          - "'openresolv' not in ansible_facts.packages"
+        fail_msg: "openresolv is still installed after the retirement"
+        quiet: true
+
+    # The rollback path: re-enabling wg-quick@wg0 has to have something to read,
+    # so the retirement must leave this file alone. prepare.yml plants it.
+    - name: Read the wg-quick config the rollback depends on
+      ansible.builtin.stat:
+        path: /etc/wireguard/wg0.conf
+      register: wireguard_client_wg_quick_conf
+      become: true
+
+    - name: The retirement left the wg-quick config in place
+      ansible.builtin.assert:
+        that:
+          - wireguard_client_wg_quick_conf.stat.exists
+        fail_msg: "the retirement deleted /etc/wireguard/wg0.conf, which the rollback needs"
+        quiet: true
