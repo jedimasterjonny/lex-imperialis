@@ -17,6 +17,11 @@ host that defaults permissive — a live `permissive`→`enforcing` transition, 
 reboot. Gated on `ansible_selinux.status == 'enabled'`, so the SELinux-less
 molecule containers skip it.
 
+Creates `/var/lib/pcrlock.d`. `sdbootutil-update-predictions.service` runs after
+every snapper snapshot and its `ExecStartPre` fails without that directory, which
+only a TPM2 LUKS enrolment would otherwise create — so an unenrolled TPM2 host
+raises `SystemdUnitFailed` on its next zypper transaction.
+
 `common_blacklisted_modules` bars kernel modules via
 `/etc/modprobe.d/common-blacklist.conf` — `blacklist` plus `install
 <module> /bin/false` — and unloads any already live rather than leaving
