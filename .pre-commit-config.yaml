@@ -124,6 +124,16 @@ repos:
         language: script
         pass_filenames: false
         always_run: true
+      # renovate-config-validator above exits 0 on a manager whose patterns match
+      # no file, so a manager killed by a moved path is otherwise invisible.
+      # always_run because neither trigger need touch renovate.json: a digest can
+      # be added anywhere, and a rename can strand a manager from the other side.
+      - id: renovate-coverage
+        name: renovate-coverage
+        entry: python3 bin/check-renovate-coverage.py
+        language: system
+        pass_filenames: false
+        always_run: true
       # The fleet scenario's fixtures project the fleet plays, so a hand-edited one
       # is a second source of truth and the converge would test a host that does not
       # exist. Regenerate on every touch of either side and let pre-commit fail the

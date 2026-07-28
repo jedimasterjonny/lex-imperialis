@@ -50,7 +50,7 @@
     {
       "customType": "regex",
       "description": "OpenTofu pinned for CI in both workflows' setup-opentofu step (lint.yml and terraform.yml); no zypper package renovate can track, so it follows upstream releases. Same depName, so both bump together; the terraform workflow's destructive-plan gate guards the live apply a terraform.yml bump fires, so minor/patch automerge like any other bump.",
-      "managerFilePatterns": ["/^\\.github/workflows/(lint|terraform)\\.yml$/"],
+      "managerFilePatterns": ["/^\\.github/workflows/lint\\.yml$/", "/^\\.github/workflows/terraform\\.yml$/"],
       "matchStrings": ["tofu_version:\\s*\"(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "opentofu/opentofu",
       "datasourceTemplate": "github-releases",
@@ -59,7 +59,7 @@
     {
       "customType": "regex",
       "description": "Hugo pinned in the Firebase deploy workflows and the go.sum autofix workflow (peaceiris/actions-hugo hugo-version); no zypper/pip package.",
-      "managerFilePatterns": ["/^\\.github/workflows/(firebase-hosting-(merge|pull-request)|hugo-gosum-autofix)\\.yml$/"],
+      "managerFilePatterns": ["/^\\.github/workflows/firebase-hosting-merge\\.yml$/", "/^\\.github/workflows/firebase-hosting-pull-request\\.yml$/", "/^\\.github/workflows/hugo-gosum-autofix\\.yml$/"],
       "matchStrings": ["hugo-version:\\s*\"(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "gohugoio/hugo",
       "datasourceTemplate": "github-releases",
@@ -68,7 +68,7 @@
     {
       "customType": "regex",
       "description": "firebase-tools pinned in the Firebase deploy workflows (npx firebase-tools@<version>); the CLI does the keyless deploy.",
-      "managerFilePatterns": ["/^\\.github/workflows/firebase-hosting-(merge|pull-request)\\.yml$/"],
+      "managerFilePatterns": ["/^\\.github/workflows/firebase-hosting-merge\\.yml$/", "/^\\.github/workflows/firebase-hosting-pull-request\\.yml$/"],
       "matchStrings": ["firebase-tools@(?<currentValue>\\S+)"],
       "depNameTemplate": "firebase-tools",
       "datasourceTemplate": "npm"
