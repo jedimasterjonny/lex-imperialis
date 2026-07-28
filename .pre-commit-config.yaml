@@ -134,17 +134,15 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
-      # The fleet scenario's fixtures project the fleet plays, so a hand-edited one
-      # is a second source of truth and the converge would test a host that does not
-      # exist. Regenerate on every touch of either side and let pre-commit fail the
-      # commit when the committed copy moves. language: system rather than script,
-      # since check-executables-have-shebangs is active.
+      # Regenerate on every touch of an input and let pre-commit fail the commit when
+      # the committed copy moves; bin/README.md has the invariants. language: system
+      # rather than script, since check-executables-have-shebangs is active.
       - id: gen-fixture-hostvars
         name: gen-fixture-hostvars
         entry: python3 bin/gen-fixture-hostvars.py
         language: system
         pass_filenames: false
-        files: '^(playbooks/|bin/gen-fixture-hostvars\.py|roles/fleet/molecule/default/(converge\.yml|inventory/group_vars/))'
+        files: '^(playbooks/|inventory/|bin/gen-fixture-hostvars\.py|roles/fleet/molecule/default/(converge\.yml|inventory/group_vars/))'
       # OpenTofu gates for terraform/, mirroring the yamllint/ansible-lint style:
       # local hooks calling the tofu on PATH (zypper-installed; setup-opentofu in CI).
       - id: tofu-fmt

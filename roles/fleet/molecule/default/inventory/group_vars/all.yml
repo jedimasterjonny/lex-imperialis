@@ -1,8 +1,9 @@
 ---
 # Stand-in for inventory/group_vars/all/vault.yml, which molecule cannot decrypt.
-# Ansible resolves this beneath the generated per-group files, so a play var always
-# wins. Values are non-empty and structurally valid because eight template branches
-# take their absent arm on an empty secret; roles/fleet/README.md argues it.
+# Ansible resolves this beneath the generated per-group files, so the host's own
+# declaration always wins. Values are non-empty and structurally valid because eight
+# template branches take their absent arm on an empty secret; roles/fleet/README.md
+# argues it.
 #
 # Two vault vars are deliberately absent and re-adding either will look like a fix:
 # arr_wireguard_conf (a valid value restart-loops seven containers forever) and

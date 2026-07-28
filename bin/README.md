@@ -80,11 +80,16 @@ a digest can be added anywhere and a rename can strand a manager without touchin
 
 ## gen-fixture-hostvars.py
 
-Projects each fleet play's `vars:` block into
+Projects each fleet host's `inventory/host_vars/<host>.yml` into
 `roles/fleet/molecule/default/inventory/group_vars/<group>.yml`, the fixtures the
 composed-fleet scenario converges against, and holds that scenario's `converge.yml`
-role list to the play's. Backs the `gen-fixture-hostvars` hook, which regenerates
-and fails the commit on drift, so neither can become a second source of truth.
+role list to the play's. Two invariants come with it, both enforced against
+every playbook and the real inventory: no play may carry a variable in any form —
+role params included, which is why `roles:` entries must be bare names — and
+`inventory/host_vars/` holds exactly one non-empty `<host>.yml` per host in
+`inventory/hosts.yml`. The script argues both where it enforces them. Backs the
+`gen-fixture-hostvars` hook, which regenerates and fails the commit on drift, so
+neither can become a second source of truth.
 Extend `PLAYS` alongside the instance that converges the shape. Needs the venv
 (PyYAML).
 
