@@ -39,7 +39,10 @@ endef
 # PLAY selects which playbook in playbooks/ to run, e.g. make check PLAY=solar.
 PLAY ?= scholam
 
-.PHONY: lint ansible-lint yamllint codespell hooks pre-commit converge verify destroy test test-leap test-vm test-hetzner destroy-hetzner check apply tofu-fmt tofu-validate tofu-lint tofu-plan tofu-apply hugo-serve hugo-build
+# BASE is the ref make render-drift compares the working tree's render against.
+BASE ?= main
+
+.PHONY: lint ansible-lint yamllint codespell hooks pre-commit converge verify destroy test test-leap test-vm test-hetzner destroy-hetzner render-drift check apply tofu-fmt tofu-validate tofu-lint tofu-plan tofu-apply hugo-serve hugo-build
 
 lint: yamllint ansible-lint codespell
 
@@ -89,6 +92,12 @@ test-hetzner:
 destroy-hetzner: override SCENARIO := hetzner
 destroy-hetzner:
 	$(call molecule,destroy)
+
+# Converge the composed fleet on BASE and on the working tree, and diff what the
+# two rendered. Four instance converges, so budget ~20 min; CI runs it only when
+# the change can reach a watched artefact.
+render-drift:
+	. .venv/bin/activate && python3 bin/check-render-drift.py $(BASE)
 
 # Dry run against the live fleet: --check --diff (check mode is best-effort —
 # unguarded command/shell tasks are skipped, so it under-reports). .vault_pass

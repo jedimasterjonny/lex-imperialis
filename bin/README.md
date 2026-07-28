@@ -21,6 +21,39 @@ fence, which bash's `${#array[@]}` supplies; `shellcheck-jinja.sh` rewrites
 resolves no variables and looks up no filters, so Ansible-only filters do not
 trip it. Needs the venv (jinja2, via ansible-core).
 
+## check-render-drift.py
+
+Converges the composed-fleet scenario on a base ref and on the working tree, then
+diffs the artefact roots — `/etc/containers/systemd` and `/etc/caddy/sites{,-public}`,
+each a directory the repo wholly owns, so `find -type f` is an exact artefact set
+and no path list is needed. No committed baseline: the comparison is
+head-against-base, so an intended change is reviewed in the PR rather than
+recorded. Backs the `render-drift` CI job and `make render-drift BASE=<ref>`.
+
+Solar's play templates `ansible_facts['default_ipv4']['address']` into two
+quadlets, so the instance's DHCP address is normalised before the diff; without
+that, `cadvisor.container` and `node-exporter.container` differ on every run. Only
+the default route's source — the addresses `prepare.yml` adds to `lo` are fixture
+literals and must still compare.
+
+`--applies BASE HEAD` prints `run`/`skip` without converging; `discover` gates the
+CI job on it. Which roles reach a watched root is derived from their `dest:` paths,
+so the trigger cannot drift from what it gates and Phase 3's `container_workload`
+is picked up as soon as its `dest:` lands. A PR whose only relevant change is a
+renovate digest bump is skipped — those automerge, and the `Image=` move is the
+point of them.
+
+`--base-capture DIR` reuses a previous run's base render from `DIR`, or writes it
+there; CI caches `DIR` keyed on the base commit and this script, converging one
+side instead of two. A wrong base can only produce a false red, never a false
+green, since it cannot coincidentally equal a changed head.
+
+**Two limits.** It sees solar and rogue-trader only, so the templates
+`restic_backup`, `gitops_reconcile`, `incus`, `libvirt`, `prometheus`,
+`blackbox_exporter`, `common`, `dev` and `docker_prune` render are gated by
+nothing. And it compares head against base, so it catches a change a PR makes,
+never a render that was always wrong. Needs the venv and incus.
+
 ## check-renovate-coverage.py
 
 Fails when a renovate custom manager reaches nothing, or a pinned digest sits
