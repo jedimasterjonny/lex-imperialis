@@ -1,0 +1,31 @@
+---
+# Each play is its host's production role list, in production order, minus the roles
+# with nothing to compose. bin/gen-fixture-hostvars.py holds both lists to the play.
+
+- name: Converge solar's roles together
+  hosts: solar
+  roles:
+    - podman
+    - autoupdate
+    - caddy
+    - grafana
+    - homepage
+    - arr
+    - podman_backup
+    - home_backup
+    - node_exporter
+    - cadvisor
+    - alertmanager
+
+- name: Converge rogue-trader's roles together
+  hosts: rogue_trader
+  roles:
+    - wireguard_client
+    - podman
+    - autoupdate
+    - caddy
+    - wordpress
+    - podman_backup
+    - home_backup
+    - node_exporter
+    - cadvisor

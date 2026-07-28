@@ -1,0 +1,52 @@
+---
+# Each stub stands in for state a real host has and no role in the converge
+# creates. Adding one is a review-blocking change — roles/fleet/README.md says why.
+
+# Probe before escalating, so a local run with the module already loaded never
+# prompts for sudo. That is also why this is invisible on a workstation running
+# WireGuard and only bites on a clean runner.
+- name: Prepare the host's wireguard module
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Probe for the wireguard module
+      ansible.builtin.stat:
+        path: /sys/module/wireguard
+      register: fleet_wireguard_module
+
+    - name: Load the wireguard module
+      community.general.modprobe:
+        name: wireguard
+      become: true
+      when: not fleet_wireguard_module.stat.exists
+
+- name: Prepare the exporter bind address
+  hosts: rogue_trader
+  gather_facts: false
+  become: true
+  tasks:
+    # `address replace` rather than `add`, so a re-run is a no-op.
+    - name: Pin the exporter bind address on loopback
+      ansible.builtin.command: "ip address replace {{ fleet_bind_address }}/32 dev lo"
+      changed_when: false
+
+- name: Prepare arr's NFS bind sources
+  hosts: solar
+  gather_facts: false
+  become: true
+  tasks:
+    # Every distinct source in `grep '^Volume=/nfs' /etc/containers/systemd/*.container`:
+    # arr_data_root itself for the four `data: root` apps, downloads for
+    # transmission, and plex's three flat media mounts.
+    - name: Create the media bind sources the NAS owns in production
+      ansible.builtin.file:
+        path: "{{ arr_data_root }}/{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - ""
+        - downloads
+        - media/movies
+        - media/tv
+        - media/music

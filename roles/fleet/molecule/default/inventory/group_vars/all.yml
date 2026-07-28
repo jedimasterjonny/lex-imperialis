@@ -1,0 +1,60 @@
+---
+# Stand-in for inventory/group_vars/all/vault.yml, which molecule cannot decrypt.
+# Ansible resolves this beneath the generated per-group files, so a play var always
+# wins. Values are non-empty and structurally valid because eight template branches
+# take their absent arm on an empty secret; roles/fleet/README.md argues it.
+#
+# Two vault vars are deliberately absent and re-adding either will look like a fix:
+# arr_wireguard_conf (a valid value restart-loops seven containers forever) and
+# grafana_admin_password (production renders that file empty — the empty arm is the
+# production arm). caddy_domain is left undummied so the real apex stays out of a
+# public repo. Each is argued in the README.
+
+caddy_cloudflare_api_token: molecule-dummy-caddy-cloudflare-token-00
+
+# rogue-trader overrides the caddy token with this emmasedit-scoped one.
+emmasedit_cloudflare_api_token: molecule-dummy-emmasedit-cloudflare-tok
+
+# One restic repository key per host.
+solar_restic_password: molecule-dummy-solar-restic-password
+rogue_trader_restic_password: molecule-dummy-rogue-trader-restic-password
+
+# Presence is what makes the discord and deadman receivers render at all.
+alertmanager_discord_webhook_url: https://discord.com/api/webhooks/000000000000000000/molecule-dummy-discord-webhook-token
+alertmanager_deadman_ping_url: https://hc-ping.com/00000000-0000-4000-8000-000000000000
+
+# app.container.j2:57 gates the EnvironmentFile on username *and* password, so
+# dummying only the password lands that branch on its empty arm.
+arr_transmission_username: molecule
+arr_transmission_password: moleculepass
+arr_api_keys:
+  lidarr: c3d4e5f60718293a4b5c6d7e8f90a1b2
+  prowlarr: d4e5f60718293a4b5c6d7e8f90a1b2c3
+  radarr: a1b2c3d4e5f60718293a4b5c6d7e8f90
+  sonarr: b2c3d4e5f60718293a4b5c6d7e8f90a1
+rogue_trader_wordpress_db_password: molecule-dummy-wordpress-db-password
+rogue_trader_wordpress_db_root_password: molecule-dummy-wordpress-db-root-password
+
+# wg-quick format: wireguard_client/vars/main.yml regex-parses it and tasks/main.yml
+# asserts PrivateKey, Address, PublicKey, AllowedIPs and Endpoint are all non-empty.
+# The keys are base64 of ASCII marker text and the endpoint is TEST-NET-1.
+rogue_trader_wireguard_conf: '[Interface]
+
+  PrivateKey = TU9MRUNVTEUtRFVNTVktV0ctUFJJVkFURS1LRVktMDE=
+
+  Address = 192.168.3.3/24
+
+  DNS = 192.168.1.1
+
+
+  [Peer]
+
+  PublicKey = TU9MRUNVTEUtRFVNTVktV0ctUEVFUi1QVUJLRVktMDE=
+
+  AllowedIPs = 192.168.1.0/24
+
+  Endpoint = 192.0.2.1:51820
+
+  PersistentKeepalive = 25
+
+  '

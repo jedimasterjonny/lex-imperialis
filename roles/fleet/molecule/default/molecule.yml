@@ -1,0 +1,30 @@
+---
+# One instance per host shape, converging that host's real roles together against
+# its generated fixture. Instance names carry the shape between the
+# role and the scenario token, so the ${MOLECULE_RUN_ID} tail still does the
+# collision work concurrent runs need.
+platforms:
+  - name: "lex-fleet-solar-incus-${MOLECULE_RUN_ID:-local}"
+    image: images:opensuse/tumbleweed/cloud
+    # podman mounts overlays for its storage, which incus only permits in a
+    # nested-container-capable instance. The CI runner's AppArmor denies nested
+    # runtime's sysctl fd-reopen, so drop the profile — the instance is throwaway.
+    config:
+      security.nesting: "true"
+      raw.lxc: lxc.apparmor.profile=unconfined
+    groups:
+      - solar
+  - name: "lex-fleet-rogue-trader-incus-${MOLECULE_RUN_ID:-local}"
+    image: images:opensuse/tumbleweed/cloud
+    config:
+      security.nesting: "true"
+      raw.lxc: lxc.apparmor.profile=unconfined
+    groups:
+      - rogue_trader
+provisioner:
+  # A second inventory source, so the fixtures land in inventory scope. Neither
+  # provisioner.inventory.host_vars nor .links can serve — roles/fleet/README.md
+  # says why, and the reasons are not obvious.
+  ansible_args:
+    - -i
+    - "${MOLECULE_SCENARIO_DIRECTORY}/inventory"
