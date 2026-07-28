@@ -1,0 +1,47 @@
+---
+# One play over every instance, not one per shape: ansible aborts the whole run
+# once all hosts in a play have failed, so a per-shape play would let a solar
+# failure leave rogue-trader unverified.
+
+- name: Verify the converged fleet
+  hosts: all
+  gather_facts: false
+  vars:
+    fleet_shape: "{{ group_names | reject('equalto', 'ungrouped') | first }}"
+  tasks:
+    - name: Load this shape's expectations
+      ansible.builtin.include_vars: "fixtures/expected_{{ fleet_shape }}.yml"
+
+    - name: List the podman named volumes
+      ansible.builtin.command: podman volume ls --format json
+      changed_when: false
+      register: fleet_volume_ls
+
+    - name: The named-volume set must be exactly as declared
+      ansible.builtin.assert:
+        that: fleet_volume_found == fleet_volumes | sort
+        fail_msg: >-
+          volume set drifted — a rename orphans the restic backing store.
+          got {{ fleet_volume_found }}, declared {{ fleet_volumes | sort }}
+        quiet: true
+      vars:
+        fleet_volume_found: "{{ fleet_volume_ls.stdout | from_json | map(attribute='Name') | sort }}"
+
+    - name: Read the files the secret-dependent branches render into
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop: "{{ fleet_branch_assertions | map(attribute='path') | unique | list }}"
+      register: fleet_branch_files
+
+    - name: Every secret-dependent branch must render its production arm
+      ansible.builtin.assert:
+        that: >-
+          item.expect in (
+            fleet_branch_files.results
+            | selectattr("item", "equalto", item.path) | first
+          ).content | b64decode
+        fail_msg: "{{ item.name }}: {{ item.path }} is on its empty arm — expected {{ item.expect | to_json }}"
+        quiet: true
+      loop: "{{ fleet_branch_assertions }}"
+      loop_control:
+        label: "{{ item.name }}"

@@ -4,10 +4,33 @@
 # from the repo root.
 #
 # useDefault pulls in the complete upstream ruleset unchanged — nothing is
-# relaxed and no allowlist weakens detection. The file exists to declare that
-# intent and to give one scoped place to add an allowlist entry should a false
-# positive ever appear.
+# relaxed. The one allowlist below is scoped to specific literal values, not to a
+# path, so real detection is untouched everywhere.
 title = "lex-imperialis"
 
 [extend]
 useDefault = true
+
+# The fleet scenario converges with no vault, so it commits a set of deliberately
+# fake secrets. They are structurally valid by necessity — an empty secret flips
+# eight template branches, so a converge with hollow ones would exercise code paths
+# production never runs — which is exactly why they read as real to the
+# generic-api-key and cloudflare-api-key rules.
+#
+# Scoped to these exact values and deliberately NOT to a path. Measured: a `paths`
+# entry suppresses every finding under it even with `condition = "AND"` set, so a
+# real secret committed alongside these would go unreported. Values alone are safe
+# to allow repo-wide — each carries a unique marker, so nothing but these literals
+# is ever exempt, anywhere.
+[[allowlists]]
+description = "fleet scenario dummy secrets"
+regexes = [
+  # Every hand-written dummy carries this marker.
+  '''molecule-dummy-[a-z0-9-]+''',
+  # The WireGuard key is base64 of ASCII marker text, so it is a valid 32-byte key
+  # that decodes to a statement that it is fake. gitleaks base64-decodes candidates
+  # in --staged mode and reports the plaintext, but scans the literal in directory
+  # mode (the CI secret-scan job), so both forms are listed.
+  '''^MOLECULE-DUMMY-[A-Z0-9-]+$''',
+  '''^TU9MRUNVTEUt[A-Za-z0-9+/]+=*$''',
+]
