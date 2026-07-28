@@ -36,6 +36,7 @@ jobs:
       incus: ${{ steps.set.outputs.incus }}
       leap: ${{ steps.set.outputs.leap }}
       hetzner: ${{ steps.set.outputs.hetzner }}
+      render_drift: ${{ steps.drift.outputs.render_drift }}
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -115,6 +116,29 @@ jobs:
             echo "hetzner=$hetzner"
           } >> "$GITHUB_OUTPUT"
           echo "incus: $incus  leap: $leap  hetzner: $hetzner"
+
+      # The render-drift gate decides its own scope: which roles reach a watched
+      # artefact root is derived from their dest: paths, not listed here, so the
+      # trigger cannot drift from the thing it gates. Kept out of the step above
+      # because that one reasons about roles and this reasons about renders — a
+      # role can be in every tier and still be unable to move a rendered byte.
+      # PR-only: there is no base to diff against otherwise, and `make
+      # render-drift BASE=<ref>` is the by-hand path.
+      - name: Decide whether the render-drift gate applies
+        id: drift
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          decision=$(python3 bin/check-render-drift.py --applies "$BASE_SHA" "$HEAD_SHA")
+          if [ "$decision" = run ]; then
+            echo "render_drift=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "render_drift=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "render-drift: $decision"
 
   incus:
     name: incus (${{ matrix.role }})
@@ -275,10 +299,85 @@ jobs:
   # third clause: a tier whose matrix is non-empty yet whose job is skipped fails
   # the gate. It is qualified on discover having succeeded, because a skipped
   # discover (draft PR) emits an empty output that would otherwise read as in-scope.
+  # Converges the composed fleet on the merge-base and on the head and diffs the
+  # artefact roots. The phases that collapse the caddy snippets and the ten
+  # quadlets are judged on the rendered bytes not moving, and with no golden
+  # nothing else asserts that against a fleet gitops_reconcile applies every 15
+  # minutes.
+  render-drift:
+    name: render-drift
+    needs: discover
+    if: needs.discover.outputs.render_drift == 'true'
+    runs-on: ubuntu-latest
+    # Generous on purpose: a cold run is two converges, and `Set up incus` has
+    # measured anywhere from 13s to 876s. See roles/fleet/README.md.
+    timeout-minutes: 45
+    steps:
+      # Full history: the base side is a worktree checked out at the merge-base.
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dev tooling
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install -r requirements-dev.txt
+
+      - name: Set up incus
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y incus
+          sudo incus admin init --auto --storage-backend=dir
+          sudo iptables -P FORWARD ACCEPT
+          sudo incus network set incusbr0 ipv6.address none
+          sudo usermod -aG incus-admin "$USER"
+
+      # The base side is a function of the base commit and of the script's capture
+      # rules, so both key the cache and a hit converges one side instead of two.
+      # It is 28 small text files, so unlike an image cache it restores instantly.
+      - name: Restore the base side's render
+        id: base-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/render-drift-base
+          key: >-
+            render-drift-base-${{ github.event.pull_request.base.sha }}-${{
+            hashFiles('bin/check-render-drift.py') }}
+
+      - name: Diff the rendered artefacts against the merge-base
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_DIR: ${{ runner.temp }}/render-drift-base
+        run: >-
+          sg incus-admin -c
+          "python3 bin/check-render-drift.py --base-capture $BASE_DIR $BASE_SHA"
+
+      # always(): a moved render fails the step above, and that is precisely when
+      # the next push most wants the base side already in hand.
+      - name: Save the base side's render
+        if: always() && steps.base-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/render-drift-base
+          key: >-
+            render-drift-base-${{ github.event.pull_request.base.sha }}-${{
+            hashFiles('bin/check-render-drift.py') }}
+
   molecule-gate:
     name: molecule-gate
     if: always()
-    needs: [discover, incus, leap, hetzner]
+    needs: [discover, incus, leap, hetzner, render-drift]
     runs-on: ubuntu-latest
     steps:
       - name: Fail if any tier failed, was cancelled, or was skipped in scope
