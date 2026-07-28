@@ -134,6 +134,8 @@ make converge ROLE=fleet     # both instances
 make verify   ROLE=fleet     # the volume and branch assertions
 make test     ROLE=fleet     # full lifecycle, including the idempotence check
 make destroy  ROLE=fleet
+
+make render-drift BASE=main  # converge both sides, diff what they rendered
 ```
 
 `make test ROLE=fleet` is **11–13 minutes** for two instances, nearly all of it
@@ -143,23 +145,37 @@ container image pulls. The whole CI job — checkout and `incus admin init` incl
 adding a third shape: a timeout resolves to `cancelled`, which `molecule-gate`
 turns into a red required check.
 
+`make render-drift` converges both sides: **~16 min**, halving to ~8 when CI
+restores the base side from cache. Its `timeout-minutes: 45` is sized for the
+runner, not the converge — `Set up incus` has measured 13s and 876s on different
+runs, and the slow one alone took a normal run to 31 min. Do not trim it.
+
 ## Known gaps
 
-- **This does not gate rendered bytes.** A refactor that changes what a template
-  emits passes here as long as the fleet still converges. A byte-exact golden was
-  built and dropped rather than shipped: it gates unintended *change*, while the
-  drift this repo has actually had was omission-on-addition (`477b6d0`, `3570ebb`,
-  `92d6443`) or handler-only (`e2937a3`) — none of which a golden fails. Worth
-  revisiting for the duration of any refactor that moves renders around.
-- **The automatic CI trigger and the value are disjoint.** `discover` maps a
-  changed path to that role alone, so renaming a handler in `roles/caddy/` runs
-  nothing here — the exact bug class this exists for. Editing a host's play `vars:`
-  *does* run it, because the hook regenerates a fixture under this directory, and
-  that is the case with no composition risk. Wiring the rest in was tried and
-  dropped: ~13 min on roughly 45% of commits is a poor trade. Treat this as a
-  manual pre-merge tool and the CI run as incidental — run it by hand when
+- **The converge itself does not gate rendered bytes** — that is now
+  `bin/check-render-drift.py`'s job, which converges this scenario on a base ref
+  as well and diffs the artefact roots (see `bin/README.md`). A byte-exact golden
+  was built and dropped rather than shipped: it gates unintended *change*, while
+  the drift this repo has actually had was omission-on-addition (`477b6d0`,
+  `3570ebb`, `92d6443`) or handler-only (`e2937a3`) — none of which a golden
+  fails. The differential check answers the other question, whether a refactor
+  moved a byte, without a baseline to keep.
+  **Its two limits are this scenario's limits.** It sees solar and rogue-trader
+  only, so the templates `restic_backup`, `gitops_reconcile`, `incus`, `libvirt`,
+  `prometheus`, `blackbox_exporter`, `common`, `dev` and `docker_prune` render are
+  gated by nothing; and it compares head against base, so it catches a change a PR
+  makes, never a render that was always wrong.
+- **The scenario's own CI trigger and its value are still disjoint.** `discover`
+  maps a changed path to that role alone, so renaming a handler in `roles/caddy/`
+  runs nothing here — the exact bug class this exists for. Editing a host's play
+  `vars:` *does* run it, because the hook regenerates a fixture under this
+  directory, and that is the case with no composition risk. Wiring the rest in was
+  tried and dropped: ~13 min on roughly 45% of commits is a poor trade. Treat this
+  as a manual pre-merge tool and the CI run as incidental — run it by hand when
   composing behaviour changes: role order, a handler name, a directory one role
   creates for another.
+  The `render-drift` job is a separate trade with its own trigger, derived from
+  which roles template into a watched root — 24% of the last 120 merges.
 - **The handler-collision class is exercised, not observed.** Running the roles
   together makes a collision *possible*; nothing here detects one unless it stops
   a container starting.
