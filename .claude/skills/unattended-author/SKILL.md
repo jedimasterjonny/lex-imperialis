@@ -143,10 +143,11 @@ roles=$(git diff --name-only "$BASE"..HEAD | grep -vE '\.md$' | sed -n 's#^roles
 
 For each `playbooks/<host>.yml`, it is affected if its `roles:` list names any
 of `$roles`. The `PLAY` value is that file's basename without `.yml` — the host
-name for every play except `scholam.yml`, which targets `this_host`. A change
-that also touches shared runtime config read fleet-wide (`inventory/`,
-`group_vars/`) affects **every** play — widen the set to all hosts rather than
-guess. A change that wires into **no** play (a role not yet added to any host, or
+name for every play except `scholam.yml`, which targets `this_host`. A change to
+`inventory/host_vars/<host>.yml` is that one host, the same as its play. A change
+that also touches config read fleet-wide (`inventory/hosts.yml`,
+`inventory/group_vars/`) affects **every** play — widen the set to all hosts rather
+than guess. A change that wires into **no** play (a role not yet added to any host, or
 a molecule/docs-only change) has nothing to apply: skip Phases 4-apply and 5, and
 let green CI alone gate the Phase 6 merge — say so explicitly.
 

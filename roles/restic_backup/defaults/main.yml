@@ -12,7 +12,7 @@ restic_backup_package: restic
 # repos — the share carries every host's, and the off-site mirror is a third
 # party. Empty is rejected at converge: an empty password is what
 # --insecure-no-password meant, and it left the repos readable by anything that
-# could reach the mount. Set from a host-scoped vault var in the play.
+# could reach the mount. Set from a host-scoped vault var in inventory/host_vars/.
 restic_backup_password: ""
 
 # Where the password is rendered, 0600 root. Host-wide rather than per instance:

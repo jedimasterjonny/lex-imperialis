@@ -40,7 +40,7 @@ zypper updates run unattended and staggered: `solar` Monday as the canary, the V
 ## Layout
 
 - `roles/` — where the work is. Each ships a README covering its variables and contracts.
-- `playbooks/` — one play per host, and the play is that host's spec: its `roles:` and `vars:` are the whole story. `site.yml` is the fleet in one run.
+- `playbooks/` — one play per host, listing the roles that build it; the host's variables live in `inventory/host_vars/`. `site.yml` is the fleet in one run.
 - `terraform/` — OpenTofu for the cloud edge: Cloudflare zones, the Hetzner firewall, the GCP projects behind the site and keyless CI. Remote state in a GCS bucket, applied on merge.
 - `jonnyoc-site/` — Hugo source for the personal site, built and deployed to Firebase Hosting by CI.
 
@@ -74,7 +74,7 @@ Actions are pinned by commit SHA. `VAULT_PASSWORD` is the only secret in CI: it 
 
 ## Secrets
 
-Everything lives in one `ansible-vault` file, `inventory/group_vars/all/vault.yml` — encrypted whole, one vault id, no inline `!vault` strings — opened with a gitignored `.vault_pass`. Vault variables are scoped by host and purpose, and mapped onto a role's generic variable in the play's `vars:`; one named identically to a role's default is picked up from `group_vars/all` with no wiring at all.
+Everything lives in one `ansible-vault` file, `inventory/group_vars/all/vault.yml` — encrypted whole, one vault id, no inline `!vault` strings — opened with a gitignored `.vault_pass`. Vault variables are scoped by host and purpose, and mapped onto a role's generic variable in `inventory/host_vars/<host>.yml`; one named identically to a role's default is picked up from `group_vars/all` with no wiring at all.
 
 OpenTofu cannot read a vault, so its provider tokens are sourced through `bin/vault-var.sh` into `TF_VAR_` at run time.
 

@@ -1,11 +1,11 @@
 ---
-# common_hostname has no default — each play sets it per host, since the
-# inventory name isn't always the real one (this_host is the alias for scholam).
+# common_hostname has no default — each host sets it in inventory/host_vars/, since
+# the inventory name isn't always the real one (this_host is the alias for scholam).
 
 # Owner account: the identity mirrors the local Tumbleweed install. wheel is
 # added for sudo; no password is managed.
 common_user_name: jonny
-# Every play overrides this to 1026 (NAS uid alignment); the 1000 default is
+# Every host overrides this to 1026 (NAS uid alignment); the 1000 default is
 # exercised only by molecule, whose prepare frees uid 1000 on the image.
 common_user_uid: 1000
 common_user_group: users

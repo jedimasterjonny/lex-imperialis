@@ -1,6 +1,7 @@
 # playbooks
 
-One play per fleet host, each the host's full spec; `make` defaults
+One play per fleet host, listing the roles that build it; the host's
+variables live in `inventory/host_vars/`. `make` defaults
 `PLAY=scholam`. Dry-run a host with `make check PLAY=<host>`; the
 operator applies with `make apply PLAY=<host>`. Names are 40K-themed, not
 descriptive:

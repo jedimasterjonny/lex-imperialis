@@ -44,7 +44,7 @@ keeping `cpu`, `cpuLoad`, `memory`, `network`, `disk`, `diskIO`, and `oom_event`
 `cadvisor_listen_ip` controls the bind. A public host sets it to a private IP
 (e.g. a WireGuard address) so cadvisor never listens on its public interface;
 pair that with a source-scoped `firewalld` rule. Opening the port for the
-scraper is the playbook's job, not the role's.
+scraper is the host's `firewalld_ports`, not the role's.
 
 When that address belongs to a VPN interface, set `cadvisor_after` to its unit
 (e.g. `wg-quick@wg0.service`) so cadvisor starts after the interface and the bind

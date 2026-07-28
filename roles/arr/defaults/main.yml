@@ -20,14 +20,14 @@ arr_data_dirs:
   downloads: transmission
 
 # The NAS's arr gid, so media written over NFS is group-owned by a gid the NAS
-# recognises and the importers co-write. Host-coupled — override in the play for
-# a host whose NAS uses a different gid.
+# recognises and the importers co-write. Host-coupled — override in the host's
+# inventory/host_vars/ file for a host whose NAS uses a different gid.
 arr_gid: 65537
 
-# Apps to deploy; the whole stack by default. Override per host (in the play) to
-# bring containers up incrementally — each app's user, group, unit and proxy
-# snippet, plus the shared group, data dirs and wireguard tunnel, are gated on
-# the apps actually enabled.
+# Apps to deploy; the whole stack by default. Override per host in
+# inventory/host_vars/ to bring containers up incrementally — each app's user,
+# group, unit and proxy snippet, plus the shared group, data dirs and wireguard
+# tunnel, are gated on the apps actually enabled.
 arr_enabled: "{{ arr_apps.keys() | list }}"
 
 # wg-quick client config routing transmission's traffic (vault-sourced).

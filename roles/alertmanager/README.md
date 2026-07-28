@@ -2,7 +2,7 @@
 
 [Alertmanager](https://github.com/prometheus/alertmanager) as a Podman quadlet on
 the host network, serving `:9093`. Prometheus on the NAS pushes alerts to it over
-the LAN; opening the port for that scraper is the playbook's job, not the role's.
+the LAN; opening the port for that scraper is the host's `firewalld_ports`, not the role's.
 
 ## Config
 

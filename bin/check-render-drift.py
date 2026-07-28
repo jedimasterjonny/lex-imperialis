@@ -28,8 +28,9 @@ SHAPES = ("solar", "rogue-trader")
 # which holds the fixtures converged against. Not playbooks/ — gen-fixture-hostvars
 # projects only solar and rogue-trader, and its pre-commit hook (re-run by CI's
 # pre-commit job) fails on drift, so a play edit that moves a render must ship a
-# regenerated fixture under this same prefix. Not inventory/ either: molecule
-# passes its own -i, so the repo's inventory is never loaded here.
+# regenerated fixture under this same prefix. Not inventory/host_vars/ either, for
+# that same reason — it is projected into that fixture. Nothing else under inventory/
+# reaches a render: molecule passes its own -i, so the repo's inventory never loads.
 INPUT_PREFIXES = ("roles/fleet/",)
 
 # A renovate image bump rewrites the pinned line whole, so every changed line
@@ -125,7 +126,7 @@ def destroy(tree, run_id):
 
 
 def default_ipv4(name):
-    """The address ansible_facts['default_ipv4'] resolves to. solar's play
+    """The address ansible_facts['default_ipv4'] resolves to. solar
     templates it into two quadlets and it is DHCP-assigned per instance, so
     unnormalised those two differ on every run. Only the default route's source:
     the addresses prepare.yml adds to lo are fixture literals and must compare."""

@@ -25,7 +25,7 @@ silently — so `verify` asserts the user explicitly.
 `node_exporter_listen_address` controls the bind. A public host sets it to a
 private IP (e.g. a WireGuard address) so the exporter never listens on its
 public interface; pair that with a source-scoped `firewalld` rule. Opening
-`9100/tcp` for the scraper is the playbook's job, not the role's.
+`9100/tcp` for the scraper is the host's `firewalld_ports`, not the role's.
 
 When that address belongs to a VPN interface, set `node_exporter_after` to its
 unit (e.g. `wg-quick@wg0.service`) so the exporter starts after the interface
