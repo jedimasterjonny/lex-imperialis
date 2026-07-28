@@ -1,0 +1,53 @@
+---
+# What solar's converge must be true of. See roles/fleet/README.md.
+fleet_volumes:
+  - alertmanager-data
+  - beets-config
+  - caddy-config
+  - caddy-data
+  - flaresolverr-config
+  - grafana-data
+  - homepage-config
+  - lidarr-config
+  - plex-config
+  - prowlarr-config
+  - radarr-config
+  - recyclarr-config
+  - sonarr-config
+  - transmission-config
+  - wireguard-config
+
+fleet_branch_assertions:
+  - name: caddy acme_dns block
+    path: /etc/caddy/Caddyfile
+    expect: "acme_dns cloudflare"
+  - name: caddy TLS wildcard vhost
+    path: /etc/caddy/Caddyfile
+    expect: "\n*."
+  - name: radarr EnvironmentFile
+    path: /etc/containers/systemd/radarr.container
+    expect: "EnvironmentFile=/etc/arr/radarr.env"
+  - name: sonarr EnvironmentFile
+    path: /etc/containers/systemd/sonarr.container
+    expect: "EnvironmentFile=/etc/arr/sonarr.env"
+  - name: lidarr EnvironmentFile
+    path: /etc/containers/systemd/lidarr.container
+    expect: "EnvironmentFile=/etc/arr/lidarr.env"
+  - name: prowlarr EnvironmentFile
+    path: /etc/containers/systemd/prowlarr.container
+    expect: "EnvironmentFile=/etc/arr/prowlarr.env"
+  - name: transmission EnvironmentFile
+    path: /etc/containers/systemd/transmission.container
+    expect: "EnvironmentFile=/etc/arr/transmission.env"
+  - name: alertmanager discord receiver
+    path: /etc/alertmanager/alertmanager.yml
+    expect: "discord_configs"
+  - name: alertmanager deadman receiver
+    path: /etc/alertmanager/alertmanager.yml
+    expect: "webhook_configs"
+  - name: recyclarr radarr secret populated
+    path: /etc/arr/recyclarr/secrets.yml
+    expect: "radarr_api_key"
+  - name: recyclarr sonarr secret populated
+    path: /etc/arr/recyclarr/secrets.yml
+    expect: "sonarr_api_key"

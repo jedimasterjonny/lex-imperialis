@@ -1,0 +1,12 @@
+---
+# What rogue-trader's converge must be true of. See roles/fleet/README.md.
+fleet_volumes:
+  - caddy-config
+  - caddy-data
+  - wordpress-db
+  - wordpress-html
+
+fleet_branch_assertions:
+  - name: caddy acme_dns block
+    path: /etc/caddy/Caddyfile
+    expect: "acme_dns cloudflare"

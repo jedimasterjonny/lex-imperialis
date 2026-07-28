@@ -21,6 +21,16 @@ fence, which bash's `${#array[@]}` supplies; `shellcheck-jinja.sh` rewrites
 resolves no variables and looks up no filters, so Ansible-only filters do not
 trip it. Needs the venv (jinja2, via ansible-core).
 
+## gen-fixture-hostvars.py
+
+Projects each fleet play's `vars:` block into
+`roles/fleet/molecule/default/inventory/group_vars/<group>.yml`, the fixtures the
+composed-fleet scenario converges against, and holds that scenario's `converge.yml`
+role list to the play's. Backs the `gen-fixture-hostvars` hook, which regenerates
+and fails the commit on drift, so neither can become a second source of truth.
+Extend `PLAYS` alongside the instance that converges the shape. Needs the venv
+(PyYAML).
+
 ## shellcheck-jinja.sh
 
 Shellchecks the shell-in-Jinja templates the plain `shellcheck` hook skips —
