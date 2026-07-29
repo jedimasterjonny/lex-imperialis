@@ -2,9 +2,13 @@
 - name: Verify
   hosts: all
   gather_facts: false
+  # fixtures.yml comes last: it must outrank the role defaults above, whose empty
+  # secret placeholders would otherwise shadow it and make the re-applies below
+  # re-render every unit without its EnvironmentFile.
   vars_files:
     - ../../defaults/main.yml
     - ../../vars/main.yml
+    - fixtures.yml
   tasks:
     - name: Wait for each app to answer through the proxy
       ansible.builtin.uri:

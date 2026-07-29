@@ -1,6 +1,8 @@
 ---
 - name: Converge
   hosts: all
+  vars_files:
+    - fixtures.yml
   tasks:
     - name: Apply the podman role
       ansible.builtin.include_role:
