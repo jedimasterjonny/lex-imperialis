@@ -1,0 +1,17 @@
+---
+# Scenario fixtures for the vault-sourced secrets, loaded by both converge and
+# verify. They cannot live in the scenario's inventory group_vars: verify loads
+# the role's defaults through vars_files, which outranks inventory, so the empty
+# placeholders there would shadow them and verify's re-applies would render
+# every unit without its EnvironmentFile.
+
+# Exercise the API-key injection the way real hosts do (vault-sourced).
+arr_api_keys:
+  radarr: a1b2c3d4e5f60718293a4b5c6d7e8f90
+  sonarr: b2c3d4e5f60718293a4b5c6d7e8f90a1
+  lidarr: c3d4e5f60718293a4b5c6d7e8f90a1b2
+  prowlarr: d4e5f60718293a4b5c6d7e8f90a1b2c3
+
+# Exercise the transmission RPC auth-on path (and the -u healthcheck).
+arr_transmission_username: molecule
+arr_transmission_password: moleculepass

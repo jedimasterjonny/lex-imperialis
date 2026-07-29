@@ -7,6 +7,11 @@ profile: production
 exclude_paths:
   - inventory/group_vars/all/vault.yml
 
+# A .yml under a molecule scenario is inferred as a playbook, so a scenario's
+# fixtures file fails syntax-check as "not a list of plays". Declare its kind.
+kinds:
+  - vars: "**/molecule/*/fixtures.yml"
+
 # Opt-in rules the production profile leaves off but that apply cleanly here.
 # The three omitted don't fit this layout: only-builtins would reject the
 # containers.podman / community.general / ansible.posix modules the fleet runs
