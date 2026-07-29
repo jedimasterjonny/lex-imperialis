@@ -9,8 +9,8 @@
     ":semanticCommitTypeAll(build)"
   ],
   "description": [
-    "minimumReleaseAge holds every bump for 3 days. Automerge reaches containers that are root-equivalent on every fleet host (see the cadvisor/node_exporter rule below), and gitops_reconcile applies a merge within ~15 min, so a version published an hour ago could otherwise be live in one cycle with no human in the loop. Three days is the window in which a compromised or broken release is normally yanked.",
-    "Two defaults make this cheap rather than costly, both checked against the pinned renovate: internalChecksFilter is strict, so a too-young release opens no PR at all instead of a pending one; and vulnerabilityAlerts sets minimumReleaseAge to null with prCreation immediate, so an OSV fix still lands the moment it exists."
+    "minimumReleaseAge holds a version bump for 3 days. Automerge reaches root-equivalent containers and gitops_reconcile applies a merge within ~15 min, so an unheld bump could be live in one cycle with nobody in the loop.",
+    "internalChecksFilter is strict, so a too-young version opens no PR at all. vulnerabilityAlerts clears minimumReleaseAge with prCreation immediate, so an OSV fix still lands at once. Digest updates and container images are exempt — see the rules below."
   ],
   "semanticCommits": "enabled",
   "timezone": "Europe/London",
@@ -27,7 +27,7 @@
     },
     {
       "customType": "regex",
-      "description": "The disaster-recovery runbook hardcodes the wordpress-db mariadb image so its fallback SQL load runs on the engine the role pins; same depName as roles/wordpress/vars wordpress_db_image, so renovate bumps the runbook copy in the same PR.",
+      "description": "The disaster-recovery runbook hardcodes the mariadb roles/wordpress pins, so its fallback SQL load runs on that engine. Same depName, so both bump in one PR.",
       "managerFilePatterns": ["/^docs/disaster-recovery\\.md$/"],
       "matchStrings": ["(?<depName>docker\\.io/library/mariadb):(?<currentValue>[^\\s@]+)(?:@(?<currentDigest>sha256:\\S+))?"],
       "autoReplaceStringTemplate": "{{{depName}}}:{{{newValue}}}{{#if newDigest}}@{{{newDigest}}}{{/if}}",
@@ -35,13 +35,13 @@
     },
     {
       "customType": "regex",
-      "description": "Grafana dashboard revisions pinned in role vars; the role fetches them from grafana.com at converge.",
+      "description": "Grafana dashboard revisions pinned in role vars; the role fetches them at converge.",
       "managerFilePatterns": ["/^roles/.+/vars/main\\.yml$/"],
       "matchStrings": ["# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+) packageName=(?<packageName>\\S+)\\s+\\S+: (?<currentValue>\\d+)"]
     },
     {
       "customType": "regex",
-      "description": "tflint pinned for CI (the lint workflow's setup-tflint) and the workstation (roles/dev/vars); no zypper package. Same depName, so both bump together; the pattern matches tflint_version and dev_tflint_version.",
+      "description": "tflint for CI and the workstation; no zypper package. One depName, so tflint_version and dev_tflint_version bump together.",
       "managerFilePatterns": ["/^\\.github/workflows/lint\\.yml$/", "/^roles/dev/vars/main\\.yml$/"],
       "matchStrings": ["(?:dev_)?tflint_version:\\s*\"(?<currentValue>v[^\"]+)\""],
       "depNameTemplate": "terraform-linters/tflint",
@@ -49,7 +49,7 @@
     },
     {
       "customType": "regex",
-      "description": "OpenTofu pinned for CI in both workflows' setup-opentofu step (lint.yml and terraform.yml); no zypper package renovate can track, so it follows upstream releases. Same depName, so both bump together; the terraform workflow's destructive-plan gate guards the live apply a terraform.yml bump fires, so minor/patch automerge like any other bump.",
+      "description": "OpenTofu for both workflows' setup-opentofu; no zypper package. One depName, so both bump together; terraform.yml's destructive-plan gate guards the apply a bump fires, so minor/patch automerge.",
       "managerFilePatterns": ["/^\\.github/workflows/(lint|terraform)\\.yml$/"],
       "matchStrings": ["tofu_version:\\s*\"(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "opentofu/opentofu",
@@ -58,7 +58,7 @@
     },
     {
       "customType": "regex",
-      "description": "Hugo pinned in the Firebase deploy workflows and the go.sum autofix workflow (peaceiris/actions-hugo hugo-version); no zypper/pip package.",
+      "description": "Hugo for peaceiris/actions-hugo in the Firebase and go.sum autofix workflows; no zypper/pip package.",
       "managerFilePatterns": ["/^\\.github/workflows/(firebase-hosting-(merge|pull-request)|hugo-gosum-autofix)\\.yml$/"],
       "matchStrings": ["hugo-version:\\s*\"(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "gohugoio/hugo",
@@ -67,7 +67,7 @@
     },
     {
       "customType": "regex",
-      "description": "firebase-tools pinned in the Firebase deploy workflows (npx firebase-tools@<version>); the CLI does the keyless deploy.",
+      "description": "firebase-tools runs the keyless deploy in the Firebase workflows.",
       "managerFilePatterns": ["/^\\.github/workflows/firebase-hosting-(merge|pull-request)\\.yml$/"],
       "matchStrings": ["firebase-tools@(?<currentValue>\\S+)"],
       "depNameTemplate": "firebase-tools",
@@ -75,7 +75,7 @@
     },
     {
       "customType": "regex",
-      "description": "The ansible MCP server pinned in .mcp.json (npx @ansible/ansible-mcp-server@<version>); no pip/zypper package, so it follows the npm release like firebase-tools, alongside the ansible-lint/molecule pins in requirements-dev.txt.",
+      "description": "The ansible MCP server pinned in .mcp.json; no pip/zypper package.",
       "managerFilePatterns": ["/^\\.mcp\\.json$/"],
       "matchStrings": ["ansible-mcp-server@(?<currentValue>[^\"]+)"],
       "depNameTemplate": "@ansible/ansible-mcp-server",
@@ -83,7 +83,7 @@
     },
     {
       "customType": "regex",
-      "description": "terraform/main.tf's required_version constrains the OpenTofu CLI, but renovate's terraform manager tracks it as hashicorp/terraform (disabled in a packageRule below). Track it against opentofu/opentofu instead, matching the tofu_version CI pin; hashicorp versioning parses the ~> range.",
+      "description": "required_version constrains the OpenTofu CLI, but the terraform manager mis-tracks it as hashicorp/terraform (disabled below). hashicorp versioning parses the ~> range.",
       "managerFilePatterns": ["/^terraform/main\\.tf$/"],
       "matchStrings": ["required_version\\s*=\\s*\"(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "opentofu/opentofu",
@@ -106,12 +106,22 @@
       "versioning": "regex:^(?<major>\\d+)$"
     },
     {
-      "description": "pinDigest updates carry no version change, so the lint check is enough to merge them unattended.",
+      "description": "pinDigest carries no version change, so the lint check is enough to merge it unattended.",
       "matchUpdateTypes": ["pinDigest"],
       "automerge": true
     },
     {
-      "description": "No unattended bump where a compromised image reads the host or fronts the internet. cadvisor runs as root with a read-only bind of the entire host filesystem, so an image compromise reads every secret on the host — measured: it reads a mode-0600 root-owned file, cannot write, and holds no capability. caddy terminates TLS for the public sites, holds the Cloudflare API token, and is the only container publishing 80/443. node_exporter is deliberately NOT here: it mounts the host D-Bus system bus, but the upstream image runs it as an unprivileged uid, so systemd refuses it StartTransientUnit, and its molecule verify now asserts that user — the one image change that would make the mount dangerous fails the tier before automerge can reach it. Must stay after the pinDigest rule above: later rules win. A packageRule is the right shape even though :automergeMinor and :automergeDigest set automerge through update-type objects instead — flatten applies packageRules once more after merging those, so this still has the last word.",
+      "description": "Renovate reads no releaseTimestamp for a digest (renovate#38656), and minimumReleaseAgeBehaviour defaults to timestamp-required, so these park forever on a stability-days check no elapsed time clears. Sets no automerge, so the cadvisor/caddy rule below still holds.",
+      "matchUpdateTypes": ["digest", "pinDigest"],
+      "minimumReleaseAge": null
+    },
+    {
+      "description": "No registry read here returns a releaseTimestamp, so a container version bump parks the same way. The rule above covers digests on the other datasources, where the github-actions pins live.",
+      "matchDatasources": ["docker"],
+      "minimumReleaseAge": null
+    },
+    {
+      "description": "No unattended bump where a compromised image reads the host or fronts the internet. cadvisor runs as root with a read-only bind of the whole host filesystem; caddy terminates TLS for the public sites, holds the Cloudflare API token, and alone publishes 80/443. node_exporter is deliberately absent: it mounts the host D-Bus system bus, but runs as an unprivileged uid systemd refuses StartTransientUnit, and its molecule verify asserts that user. Must stay after the pinDigest rule — later rules win, and flatten reapplies packageRules after the update-type presets, so this has the last word.",
       "matchPackageNames": [
         "ghcr.io/google/cadvisor",
         "ghcr.io/caddybuilds/caddy-cloudflare"
@@ -119,12 +129,12 @@
       "automerge": false
     },
     {
-      "description": "requirements.txt pins the ansible that gitops_reconcile installs into its venv and then applies the whole fleet with, as root — so an unattended bump is new root-privileged code on every host that nobody read. Hashing the pin would not help: the apply is root from the fetched tree either way, and pip's hash mode is per-invocation, so it would force a pinned, hashed transitive closure onto requirements-dev.txt as well (CI, the Makefile, bootstrap/incus.yml and roles/dev all install through it). Requiring a human read is the control that fits.",
+      "description": "gitops_reconcile installs this ansible and applies the fleet as root, so an unattended bump is unread root code on every host. Hashing the pin would not help: pip's hash mode is per-invocation, so it would force a hashed closure onto requirements-dev.txt too.",
       "matchPackageNames": ["ansible"],
       "automerge": false
     },
     {
-      "description": "linuxserver images carry legacy build-number (151), two-part (5.14), and four-part tags that docker versioning reads as upgrades; their releases are strict semver, so reject the rest.",
+      "description": "linuxserver images carry legacy build-number, two-part and four-part tags that docker versioning reads as upgrades; their releases are strict semver.",
       "matchPackageNames": ["lscr.io/linuxserver/**"],
       "versioning": "semver"
     },
@@ -134,24 +144,24 @@
       "allowedVersions": "<8"
     },
     {
-      "description": "Merging a plex bump deploys a container restart that kills active streams; only automerge in the small hours.",
+      "description": "Merging a plex bump restarts the container and kills active streams.",
       "matchPackageNames": ["lscr.io/linuxserver/plex"],
       "automergeSchedule": ["after 1am and before 5am"]
     },
     {
-      "description": "python-dateutil is a hard dep of hetzner.hcloud (its vendored hcloud SDK imports dateutil.parser.isoparse); upstream tried datetime.fromisoformat and reverted over the ISO-8601 Z suffix. It's stable, not abandoned, just release-inactive.",
+      "description": "Hard dep of hetzner.hcloud's vendored SDK, which imports dateutil.parser.isoparse. Stable, not abandoned — just release-inactive.",
       "matchPackageNames": ["python-dateutil"],
       "abandonmentThreshold": null
     },
     {
-      "description": "Blowfish (the Hugo theme) is an indirect gomod require in jonnyoc-site; config:best-practices skips indirect gomod deps, so enable them for that go.mod or the theme never updates. Minor/patch automerge like hugo: site-gate catches a build/compat break, and hugo-gosum-autofix.yml completes go.sum and re-triggers the gate on its amended commit.",
+      "description": "config:best-practices skips indirect gomod deps, so enable them for this go.mod or the Blowfish theme never updates. site-gate catches a break, and hugo-gosum-autofix completes go.sum and re-triggers it.",
       "matchManagers": ["gomod"],
       "matchFileNames": ["jonnyoc-site/go.mod"],
       "matchDepTypes": ["indirect"],
       "enabled": true
     },
     {
-      "description": "required_version in terraform/main.tf constrains the OpenTofu CLI, not HashiCorp Terraform; the terraform manager mis-tracks it as hashicorp/terraform. Disable that — the custom manager above tracks it as opentofu/opentofu.",
+      "description": "required_version is the OpenTofu CLI, not HashiCorp Terraform; the custom manager above tracks it.",
       "matchManagers": ["terraform"],
       "matchPackageNames": ["hashicorp/terraform"],
       "enabled": false
