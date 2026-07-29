@@ -131,19 +131,26 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up Python
+        id: python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.14"
-          cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
 
+      # uv resolves and installs this set an order of magnitude faster than pip,
+      # and owns the wheel cache setup-python's cache: pip used to hold.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: requirements*.txt
+
+      # The make targets activate .venv, so mirror the local layout. The venv is
+      # built against setup-python's interpreter, not a uv-managed download, so
+      # the python under test stays the one this job pinned.
       - name: Install dev tooling
         run: |
-          python -m venv .venv
-          . .venv/bin/activate
-          pip install -r requirements-dev.txt
+          uv venv .venv --python '${{ steps.python.outputs.python-path }}'
+          uv pip install --python .venv/bin/python -r requirements-dev.txt
 
       # The dev-host preseed pins a btrfs pool; GitHub runners are ext4, so init
       # with --auto and a dir pool — the storage driver is irrelevant to the test.
@@ -182,19 +189,26 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up Python
+        id: python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.14"
-          cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
 
+      # uv resolves and installs this set an order of magnitude faster than pip,
+      # and owns the wheel cache setup-python's cache: pip used to hold.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: requirements*.txt
+
+      # The make targets activate .venv, so mirror the local layout. The venv is
+      # built against setup-python's interpreter, not a uv-managed download, so
+      # the python under test stays the one this job pinned.
       - name: Install dev tooling
         run: |
-          python -m venv .venv
-          . .venv/bin/activate
-          pip install -r requirements-dev.txt
+          uv venv .venv --python '${{ steps.python.outputs.python-path }}'
+          uv pip install --python .venv/bin/python -r requirements-dev.txt
 
       # Same incus setup as the default-image tier above; see its comments.
       - name: Set up incus
@@ -231,19 +245,26 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up Python
+        id: python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.14"
-          cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
 
+      # uv resolves and installs this set an order of magnitude faster than pip,
+      # and owns the wheel cache setup-python's cache: pip used to hold.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: requirements*.txt
+
+      # The make targets activate .venv, so mirror the local layout. The venv is
+      # built against setup-python's interpreter, not a uv-managed download, so
+      # the python under test stays the one this job pinned.
       - name: Install dev tooling
         run: |
-          python -m venv .venv
-          . .venv/bin/activate
-          pip install -r requirements-dev.txt
+          uv venv .venv --python '${{ steps.python.outputs.python-path }}'
+          uv pip install --python .venv/bin/python -r requirements-dev.txt
 
       # HCLOUD_TOKEN is the CI test-project token (a repo secret scoped to a
       # throwaway Hetzner project with no production server), so this job never
