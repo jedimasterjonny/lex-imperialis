@@ -1,0 +1,188 @@
+---
+# Stage 2: boot stage 1's snapshot as an ordinary server, install what the fleet
+# roles need, and strip the machine identity.
+#
+# NOT idempotent, by design. It runs once, on a throwaway server, to produce a
+# snapshot.
+- name: Provision the MicroOS ContainerHost image
+  hosts: all
+  remote_user: root
+  # Cannot be true at the start: the kvm-and-xen image ships ZERO python
+  # packages, and fact gathering needs an interpreter. Gathered explicitly once
+  # the bootstrap below has put one on the box.
+  gather_facts: false
+  # podman_packages carries a ternary on the distribution fact, so it is read
+  # from the role rather than restated -- a copy of an expression can evaluate
+  # differently without looking different. The plain package names below are
+  # restated deliberately: microos_packages is the delta the image needs, not
+  # everything the roles install, and a literal cannot drift invisibly.
+  vars_files:
+    - ../roles/podman/defaults/main.yml
+  vars:
+    # Derived from the roles in playbooks/rogue-trader.yml, cross-cut against
+    # the image's published SBOM -- aardvark-dns, netavark, runc, sudo, growpart
+    # and NetworkManager already ship and are deliberately absent (cloud-init
+    # does not ship, which is what makes Ignition the first-boot path at all).
+    # A package missed here is not merely a slow converge: zypper stages
+    # into a new snapshot on MicroOS, so a role that installs one and uses it in
+    # the next task fails against a running system that does not have it yet.
+    microos_packages:
+      - bind-utils
+      - firewalld
+      - git
+      - htop
+      - nfs-client
+      - restic
+      - tmux
+      - vim
+      - wireguard-tools
+    # Installed with the list above but kept out of it: zypper resolves
+    # python3-firewall through a Provides of the versioned python313-firewall,
+    # and package_facts records the versioned name, so a name check on it would
+    # fail an install that in fact worked. Verified functionally below instead.
+    microos_provided_packages:
+      - python3-firewall
+
+  tasks:
+    # ansible.cfg points at inventory/, so a bare ansible-playbook run of this
+    # file would target the fleet -- and this play ends by deleting the machine
+    # id, the host keys and root's authorized_keys. The alias comes from the
+    # provisioner's host_alias in microos.pkr.hcl. Asserted rather than narrowed
+    # in hosts:, which would silently match nothing and yield an unprovisioned
+    # snapshot from a green build.
+    - name: Refuse to run outside the packer build
+      ansible.builtin.assert:
+        that:
+          - inventory_hostname == 'packer-microos'
+        fail_msg: >-
+          This play strips machine identity and must only run against packer's
+          build server, not {{ inventory_hostname }}.
+        success_msg: Packer build server confirmed.
+
+    # raw, because there is no interpreter yet for a module to run against.
+    # python3-base is a Provides: of the versioned python313-base, so it
+    # resolves without pinning a Python version that moves under a rolling
+    # distro.
+    - name: Bootstrap a Python interpreter
+      ansible.builtin.raw: transactional-update --non-interactive pkg install python3-base
+      changed_when: true
+
+    # --no-block, and not detached: raw ignores async and fails the task on the
+    # non-zero return a torn-down session produces, while a backgrounded
+    # subshell, nohup and systemd-run are all killed as the task returns, so the
+    # box never reboots at all. systemd owns the job instead, and returns rc 0
+    # immediately. Test any change to this on a cold-start box -- one that
+    # already has Python cannot fail it, however it is written.
+    - name: Reboot into the snapshot carrying Python
+      ansible.builtin.raw: systemctl --no-block reboot
+      changed_when: true
+
+    - name: Wait for the box to come back with an interpreter
+      ansible.builtin.wait_for_connection:
+        delay: 15
+        timeout: 600
+
+    # Fails the build if the bootstrap above left no interpreter to discover.
+    - name: Gather facts
+      ansible.builtin.setup:
+
+    # The one assumption the whole move rests on: that community.general.zypper
+    # detects MicroOS (read-only root plus /usr/sbin/transactional-update) and
+    # transparently wraps zypper in transactional-update. Exercising it here
+    # means a failure lands on a throwaway server rather than on rogue-trader.
+    - name: Install the packages the fleet roles need
+      community.general.zypper:
+        name: "{{ microos_packages + microos_provided_packages + podman_packages }}"
+        state: present
+
+    # transactional-update stages into a new snapshot; nothing above is live
+    # until the server boots into it.
+    - name: Reboot into the new snapshot
+      ansible.builtin.reboot:
+        reboot_timeout: 600
+
+    - name: Re-read the package database after the reboot
+      ansible.builtin.package_facts:
+        manager: auto
+
+    # podman_packages included: it is the list that grows behind your back when
+    # roles/podman changes, so it is the one the assertion is most worth on.
+    - name: Confirm every package survived into the booted snapshot
+      ansible.builtin.assert:
+        that:
+          - item in ansible_facts.packages
+        fail_msg: "{{ item }} is not installed in the booted snapshot."
+        success_msg: "{{ item }} present."
+      loop: "{{ microos_packages + podman_packages }}"
+
+    - name: Confirm the firewalld python bindings are usable
+      ansible.builtin.command: python3 -c 'import firewall'
+      changed_when: false
+
+    # Everything below strips the machine's identity and must stay LAST, after
+    # the reboot above: a reboot regenerates the machine id and the host keys,
+    # so clearing them any earlier bakes one identity into every server built
+    # from this snapshot. There is no cloud-init state to clear on this variant.
+    #
+    # /var/lib/systemd/random-seed is deliberately not among these: the builder
+    # shuts the server down gracefully before snapshotting, and
+    # systemd-random-seed.service's ExecStop rewrites the file on the way out,
+    # so removing it here would be theatre. The kernel credits no entropy from a
+    # seed file, so a shared one does not make the RNG predictable.
+
+    # Removed, not emptied. The gate that runs Ignition is openSUSE's initrd
+    # firstboot-detect, which fires only when the file is absent, carries
+    # systemd's not-yet-set marker word, or a firstboot karg is set -- an empty
+    # file satisfies none of those, so emptying it would leave a snapshot with
+    # no users and no keys, and nothing here would have said so.
+    - name: Remove the machine id
+      ansible.builtin.file:
+        path: /etc/machine-id
+        state: absent
+
+    - name: Find the SSH host keys
+      ansible.builtin.find:
+        paths: /etc/ssh
+        patterns: ssh_host_*
+      register: microos_host_keys
+
+    - name: Remove the SSH host keys
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ microos_host_keys.files }}"
+      loop_control:
+        label: "{{ item.path }}"
+
+    # A readback rather than a comment: it is what makes the "must stay LAST"
+    # ordering above enforceable.
+    - name: Read back the stripped identity
+      ansible.builtin.find:
+        paths:
+          - /etc
+          - /etc/ssh
+        patterns: machine-id,ssh_host_*
+      register: microos_identity_left
+
+    - name: Refuse a snapshot that still carries a machine identity
+      ansible.builtin.assert:
+        that:
+          - microos_identity_left.files | length == 0
+        fail_msg: >-
+          The snapshot still carries
+          {{ microos_identity_left.files | map(attribute='path') | join(', ') }};
+          every server built from it would share that identity.
+        success_msg: Machine id and host keys absent.
+
+    # Genuinely last: this is the key the play's own SSH connection authenticated
+    # with, so nothing may run after it. Safe today because the ControlPersist
+    # master is already open and the hcloud builder powers off through the API
+    # rather than over SSH -- but a task added below would depend on both.
+    #
+    # Ignition wrote it at stage 1's first boot, and rogue-trader's production
+    # config declares only the ansible user, so nothing later removes it: without
+    # this the snapshot ships root-authorised for a key thrown away with the build.
+    - name: Remove the build identity's authorised keys
+      ansible.builtin.file:
+        path: /root/.ssh
+        state: absent
