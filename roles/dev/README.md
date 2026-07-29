@@ -17,9 +17,9 @@ knowingly on the host that holds `.vault_pass` and fleet-wide NOPASSWD root.
 
 The `terraform/` pre-commit gates need `tofu` and `tflint` on PATH, so the
 workstation provisions both: OpenTofu from zypper (`opentofu` in `dev_packages`),
-and tflint — which has no zypper package — via its upstream install script
-(which checksum-verifies the download), pinned by `dev_tflint_version`. That pin
-matches the CI gate (`.github/workflows/lint.yml`), kept in sync by one renovate
+and tflint — which has no zypper package — via its upstream install script,
+fetched at the `dev_tflint_version` tag and checksum-verifying its download. That
+pin matches the CI gate (`.github/workflows/lint.yml`), kept in sync by one renovate
 custom manager that bumps both. Unlike Claude Code, tflint does not self-update,
 so a version check drives the install, not `creates:`.
 

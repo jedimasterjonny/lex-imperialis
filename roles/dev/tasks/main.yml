@@ -62,7 +62,8 @@
 
 # tflint has no zypper package, and does not self-update, so a version check
 # (not creates:) drives idempotence and picks up renovate bumps. The upstream
-# script checksum-verifies the download.
+# script checksum-verifies the download, and is fetched at the pinned tag rather
+# than master so the code piped into root's shell moves only when the pin does.
 - name: Check the installed tflint version
   ansible.builtin.command: /usr/local/bin/tflint --version
   register: dev_tflint_installed
@@ -72,7 +73,7 @@
 
 - name: Install tflint at the pinned version
   ansible.builtin.shell:
-    cmd: set -o pipefail && curl -fsSL https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
+    cmd: set -o pipefail && curl -fsSL https://raw.githubusercontent.com/terraform-linters/tflint/{{ dev_tflint_version }}/install_linux.sh | bash
   become: true
   environment:
     TFLINT_VERSION: "{{ dev_tflint_version }}"
