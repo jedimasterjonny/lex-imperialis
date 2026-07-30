@@ -139,4 +139,13 @@ jobs:
           curl -sSfL --retry 3 --retry-all-errors -H "Authorization: Bearer $GITHUB_TOKEN" -O "${base}/gitleaks_${version}_checksums.txt"
           sha256sum -c --ignore-missing "gitleaks_${version}_checksums.txt"
           tar -xzf "gitleaks_${version}_linux_x64.tar.gz" gitleaks
-          ./gitleaks git . --no-banner --redact
+          # Scope the walk to the checked-out commit's own history. gitleaks' git
+          # mode otherwise defaults to `git log --all`, and fetch-depth:0 leaves
+          # every origin branch in the checkout -- so a finding on any unrelated
+          # branch (an allowlisted false positive not yet on the base, or a
+          # secret in a feature branch's history) fails this job on every open
+          # PR, not just the branch that carries it. HEAD still spans the full
+          # merge and base history, so a secret added and later deleted within
+          # this branch is caught, and on a push to main it is the full-history
+          # backstop.
+          ./gitleaks git . --no-banner --redact --log-opts=HEAD
