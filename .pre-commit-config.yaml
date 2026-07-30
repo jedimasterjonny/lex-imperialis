@@ -58,7 +58,7 @@ repos:
   # golang; the rev is renovate-tracked (:enablePreCommit). Rules live in
   # .markdownlint-cli2.yaml — every default on, only MD013 line-length relaxed.
   - repo: https://github.com/DavidAnson/markdownlint-cli2
-    rev: v0.23.1
+    rev: v0.23.2
     hooks:
       - id: markdownlint-cli2
   # renovate-config-validator schema-checks renovate.json — its custom regex
