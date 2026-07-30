@@ -144,6 +144,34 @@ repos:
         language: system
         pass_filenames: false
         files: '(\.tf$|\.tflint\.hcl$)'
+      # Packer gates for packer/, mirroring the tofu pair. Both go through the
+      # script that also runs the build, so its binary guard and throwaway
+      # keypair are each written once.
+      - id: packer-fmt
+        name: packer-fmt
+        entry: bin/packer.sh fmt-check
+        language: script
+        pass_filenames: false
+        files: '\.pkr\.hcl$'
+      # validate, not validate -syntax-only: syntax-only parses the HCL and stops,
+      # so it passes a misspelt block name that validate rejects by name. It does
+      # not catch runtime defects -- it passed cleanly before every failed build --
+      # so treat it as a schema gate, not evidence the build works.
+      - id: packer-validate
+        name: packer-validate
+        entry: bin/packer.sh validate
+        language: script
+        pass_filenames: false
+        files: '^packer/.*\.(pkr\.hcl|yml)$'
+      # butane compiles bootstrap/*.bu into the Ignition config rogue-trader boots
+      # from. An invalid one is a box nobody can log into, and nothing between here
+      # and first boot would say so, which is the same silent-brick class the
+      # machine-id handling exists to avoid. --strict fails on warnings too.
+      - id: butane
+        name: butane
+        entry: bin/butane-lint.sh
+        language: script
+        files: '\.bu$'
       # promtool validates the static Prometheus alert rules (the templated
       # prometheus.yml is left to molecule). --lint=all --lint-fatal makes every
       # lint check — not just the default duplicate-rules — fail the gate. Needs

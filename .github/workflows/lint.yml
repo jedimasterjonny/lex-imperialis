@@ -92,6 +92,47 @@ jobs:
           sudo install "prometheus-${version}.linux-amd64/promtool" /usr/local/bin/promtool
           promtool --version
 
+      # packer has no zypper package and cannot get one -- see bin/packer.sh. The
+      # action provides the real binary for the packer-fmt and packer-validate hooks.
+      - name: Set up packer
+        uses: hashicorp/setup-packer@ce93c3c08a6c2ff2275bf4b54ff0d9a75f6c9789 # v3.4.0
+        with:
+          # renovate: datasource=github-releases depName=hashicorp/packer
+          version: "1.16.0"
+
+      # packer-validate runs packer init, which fetches the hcloud and ansible
+      # plugins (~62 MB) from GitHub releases, and pre-commit runs --all-files, so
+      # it fires on every lint run. No restore-keys: the key is the template hash
+      # and the template pins exact plugin versions, so a miss must re-fetch those
+      # rather than accept binaries cached for a different pin.
+      - name: Cache packer plugins
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.config/packer
+          key: packer-plugins-${{ hashFiles('packer/microos.pkr.hcl') }}
+
+      # Done here, not left to the hook, so the token lifting the anonymous
+      # release-download limit stays in one trusted step. The lint gate runs
+      # third-party pre-commit hooks, and its own init is then a no-op.
+      - name: Install packer plugins
+        env:
+          PACKER_GITHUB_API_TOKEN: ${{ github.token }}
+        run: packer init packer/microos.pkr.hcl
+
+      # butane has no ubuntu package, and its GitHub release publishes GPG
+      # signatures but no checksums, so verifying a downloaded binary would mean
+      # pinning a new signing key. The digest-pinned image needs no new trust root
+      # -- it is content-addressed, and renovate bumps it like the fleet's other
+      # image pins.
+      - name: Set up butane
+        run: |
+          image=quay.io/coreos/butane:v0.29.0@sha256:13fec166cb47a8e053dcc23256c0ca41aaa1c61cab39793832aaf8894ca78c8f
+          cid=$(docker create "$image")
+          docker cp "$cid:/usr/local/bin/butane" /tmp/butane
+          docker rm "$cid" >/dev/null
+          sudo install /tmp/butane /usr/local/bin/butane
+          butane --version
+
       - name: Run lint gate
         run: make pre-commit
 

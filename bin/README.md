@@ -29,6 +29,13 @@ extensionless-bash `wp`/`wp-db-dump` templates. Rewrites Jinja to valid shell
 first (`{% … %}` → `:`, `{{ … }}` → `X`), then pipes the result through
 shellcheck.
 
+## butane-lint.sh
+
+Compiles each `*.bu` with `butane --strict --check`, discarding the output — the
+compiled Ignition is never committed, so the check is the whole point. One file
+per invocation, because butane takes a single input and exits 2 on a batch.
+Backs the `butane` hook; needs `butane` on PATH (`roles/dev`).
+
 ## packer.sh
 
 Everything that runs HashiCorp packer, behind one binary guard: `fmt` (writes)
