@@ -19,7 +19,7 @@ running system.
 | Stage | Runs on | Does |
 | --- | --- | --- |
 | `stage1-base` | Hetzner rescue | Writes the MicroOS qcow2 to the disk, points `ignition.platform.id` at Hetzner. Snapshot labelled `custom_image=microos-base`. |
-| `stage2-containerhost` | stage 1's snapshot, booted normally | Installs what the fleet roles need, reboots, strips machine identity. Snapshot labelled `custom_image=microos-containerhost`. |
+| `stage2-containerhost` | stage 1's snapshot, booted normally | Installs what the fleet roles need, reboots, deletes the superseded btrfs snapshots, strips machine identity. Snapshot labelled `custom_image=microos-containerhost`. |
 
 Terraform will select the result by its `custom_image=microos-containerhost`
 label, never by id, so a rebuild needs no lookup and nothing here carries a
@@ -76,6 +76,12 @@ rebuild the image when the roles on rogue-trader change what they install.
 - **Stage 2's pre-Python reboot must not be detached**, and identity clearing
   must stay last. Test any change to either on a **cold-start** box — one that
   already has Python, or already has an identity, cannot fail them.
+- **The identity lives in every btrfs snapshot, not just the booted one.**
+  Ignition writes it at stage 1's first boot and each `transactional-update`
+  branches a new snapshot off that, so stage 2 prunes back to the booted
+  snapshot before it strips. Audit a built image from **rescue**, mounting the
+  btrfs top level (`mount -o subvolid=5 /dev/sda3 /mnt`) — a normal boot runs
+  firstboot, regenerates the machine id and the host keys, and masks the answer.
 - **Neither playbook is idempotent**, by design: stage 1 overwrites a block
   device, stage 2 deletes the machine's identity. `ansible.cfg` points at
   `inventory/`, so both assert they are running against packer's build server

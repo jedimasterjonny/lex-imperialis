@@ -119,6 +119,49 @@
       ansible.builtin.command: python3 -c 'import firewall'
       changed_when: false
 
+    # Ignition generated the machine id and the host keys at stage 1's first
+    # boot, into the image's first snapshot, and every transactional-update
+    # since branched a new snapshot off it -- so the strip below, which reaches
+    # only the booted snapshot, leaves the build server's private host keys in
+    # that snapshot's predecessors, one `transactional-update rollback` away
+    # from being served by every host built from the image. A freshly built
+    # image has no rollback history worth keeping, so the predecessors go.
+    #
+    # snapper refuses to delete snapshot 0, the mounted snapshot and the btrfs
+    # default subvolume, so the filter below is what stops the delete erroring,
+    # not what keeps the booted snapshot alive.
+    - name: List the snapshots the build has accumulated
+      ansible.builtin.command:
+        argv:
+          - snapper
+          - --machine-readable
+          - csv
+          - --no-headers
+          - list
+          - --columns
+          - number,default,active
+      changed_when: false
+      register: microos_snapshots
+
+    - name: Delete every snapshot but the booted one
+      ansible.builtin.command:
+        argv:
+          - snapper
+          - delete
+          - --sync
+          - "{{ item.split(',') | first }}"
+      loop: "{{ microos_snapshots.stdout_lines | select('match', '[1-9][0-9]*,no,no$') }}"
+      changed_when: true
+
+    # Deleting the snapshot Ignition first booted into is the one step here that
+    # could plausibly cost the image its bootability, and packer powers the
+    # server off rather than rebooting it, so the build would never find out.
+    # Cheap to prove: a reboot creates no snapshot, and the identity it
+    # regenerates is stripped below anyway.
+    - name: Reboot to prove the pruned snapshot tree still boots
+      ansible.builtin.reboot:
+        reboot_timeout: 600
+
     # Everything below strips the machine's identity and must stay LAST, after
     # the reboot above: a reboot regenerates the machine id and the host keys,
     # so clearing them any earlier bakes one identity into every server built
@@ -155,13 +198,18 @@
         label: "{{ item.path }}"
 
     # A readback rather than a comment: it is what makes the "must stay LAST"
-    # ordering above enforceable.
+    # ordering above enforceable. It walks the whole of /.snapshots rather than
+    # taking the prune on trust -- what has to hold of the image is that no copy
+    # of the identity survives anywhere in the btrfs tree, and only a read of
+    # the tree says so. /etc is walked as well, so the readback still covers the
+    # booted snapshot if /.snapshots ever stops exposing it.
     - name: Read back the stripped identity
       ansible.builtin.find:
         paths:
           - /etc
-          - /etc/ssh
+          - /.snapshots
         patterns: machine-id,ssh_host_*
+        recurse: true
       register: microos_identity_left
 
     - name: Refuse a snapshot that still carries a machine identity
