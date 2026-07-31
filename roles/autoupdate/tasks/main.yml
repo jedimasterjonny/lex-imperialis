@@ -1,4 +1,23 @@
 ---
+# MicroOS's own transactional-update.timer runs a daily update and reboot, so it
+# is stopped and masked before this role's timer is installed and the two are
+# never armed together. Two tasks, and in this order: masking a running unit
+# strands it at ActiveState=failed permanently, and the module masks before it
+# stops, so one combined task lands in exactly that state.
+- name: Take over the distribution's own update timer
+  when: autoupdate_transactional | bool
+  become: true
+  block:
+    - name: Stop the distribution's own update timer
+      ansible.builtin.systemd_service:
+        name: transactional-update.timer
+        state: stopped
+
+    - name: Mask the distribution's own update timer
+      ansible.builtin.systemd_service:
+        name: transactional-update.timer
+        masked: true
+
 - name: Install the update timer
   ansible.builtin.template:
     src: autoupdate.timer.j2

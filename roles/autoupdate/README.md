@@ -11,7 +11,9 @@ codes count as success; a real failure skips the reboot, leaving the system up
 for inspection.
 
 `autoupdate_transactional`, derived from `ansible_facts['distribution']`, selects
-the transactional command.
+the transactional command and stops and masks the distribution's own
+`transactional-update.timer`, which would otherwise update and reboot daily,
+writing none of the metrics below.
 
 An `ExecStopPost` hook writes each run's outcome to
 `autoupdate_textfile_dir/autoupdate.prom` — `autoupdate_success` (1/0 from
@@ -21,5 +23,6 @@ scrapes that file (its `node_exporter_textfile_directory` must match), and the
 failed or overdue update.
 
 No fleet host runs MicroOS yet — the branch goes live with the `packer/` rebuild
-— and no molecule tier boots it, so verify pins the selector's third branch by
-resolving the defaults against a MicroOS fact rather than on a host.
+— and no molecule tier boots it, so **the takeover is unproven until it runs on a
+real host**. No container ships `transactional-update.timer`, so no scenario can
+catch the stop-before-mask ordering being reversed; that rests on measurement.
