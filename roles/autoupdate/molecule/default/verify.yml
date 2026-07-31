@@ -48,6 +48,21 @@
         fail_msg: "the service does not run `{{ autoupdate_expected_command }}`, accept 102/103, reboot, then record the outcome"
         quiet: true
 
+    # A mirror lag that aborts the commit must heal unattended rather than strand
+    # the host for a week. The two intervals carry systemd's USec property names
+    # but report a formatted duration, hence '1h' and '1d' rather than a count.
+    - name: A failed update retries on an hourly cadence, three times over
+      ansible.builtin.assert:
+        that:
+          - autoupdate_service.status.Restart == 'on-failure'
+          - autoupdate_service.status.RestartUSec == '1h'
+          # The burst caps the retries; the interval has to exceed the retry span
+          # (3h) or the cap expires mid-burst and stops bounding anything.
+          - autoupdate_service.status.StartLimitBurst == '4'
+          - autoupdate_service.status.StartLimitIntervalUSec == '1d'
+        fail_msg: "a failed update does not retry hourly under a bounded start limit"
+        quiet: true
+
     # Starting the service would reboot the host (ExecStartPost), so drive the
     # ExecStopPost writer directly the way systemd would — with SERVICE_RESULT set
     # — to prove it records each outcome as the metric node_exporter scrapes.

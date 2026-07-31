@@ -134,3 +134,43 @@ tests:
                 outcome metric is absent, so that unit's bespoke *Failed and *Overdue
                 rules match an empty vector and can never fire — and SystemdUnitFailed
                 excludes it on the assumption they do.
+
+  # AutoupdateFailed's for: is sized to outlast autoupdate.service's retry burst
+  # (RestartSec=1h x StartLimitBurst=4 = 3h), so these two cases are really one
+  # assertion about that coupling: shorten the for: back to minutes and the
+  # healing case below starts paging for a mirror lag that fixed itself.
+  - interval: 1m
+    name: an update still inside its retry burst does not alert
+    input_series:
+      # Fails, then a retry an hour in succeeds and rewrites the metric.
+      - series: 'autoupdate_success{job="node",instance="scholam:9100"}'
+        values: "0x60 1x200"
+    alert_rule_test:
+      - eval_time: 4h5m
+        alertname: AutoupdateFailed
+        exp_alerts: []
+
+  - interval: 1m
+    name: an update that exhausts its retries alerts
+    input_series:
+      - series: 'autoupdate_success{job="node",instance="scholam:9100"}'
+        values: "0x260"
+    alert_rule_test:
+      # Past for:, so the retries are spent and the host really is unpatched.
+      - eval_time: 4h5m
+        alertname: AutoupdateFailed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: scholam:9100
+            exp_annotations:
+              summary: "unattended update failed on scholam:9100"
+              description: >-
+                The last unattended zypper update on scholam:9100 failed — the host may be
+                unpatched or did not reboot.
+      # Still pending: without this the case above would also pass a for: of 15m,
+      # which is the value this change moved away from.
+      - eval_time: 3h55m
+        alertname: AutoupdateFailed
+        exp_alerts: []
