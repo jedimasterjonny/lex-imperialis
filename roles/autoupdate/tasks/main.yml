@@ -19,9 +19,6 @@
     mode: "0755"
   become: true
 
-# Both units are templated: the service for the distro-specific upgrade command
-# (dup on Tumbleweed, patch on Leap), the timer for the per-host schedule
-# (autoupdate_oncalendar).
 - name: Install the update service
   ansible.builtin.template:
     src: autoupdate.service.j2

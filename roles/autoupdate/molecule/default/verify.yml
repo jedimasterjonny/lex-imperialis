@@ -4,10 +4,6 @@
   vars_files:
     - ../../defaults/main.yml
   tasks:
-    - name: Determine the upgrade command expected for this distribution
-      ansible.builtin.set_fact:
-        autoupdate_expected_command: "{{ 'dup' if ansible_facts['distribution'] == 'openSUSE Tumbleweed' else 'patch' }}"
-
     # daemon_reload is a no-op that just makes the module gather and return the
     # timer's systemctl-show properties to assert against; it reads, not mutates.
     - name: Read the update timer's state
@@ -34,17 +30,22 @@
       register: autoupdate_service
       become: true
 
-    - name: The service runs the distro's zypper command then reboots
+    - name: The service runs this distribution's update command then reboots
       ansible.builtin.assert:
         that:
-          - "'zypper' in autoupdate_service.status.ExecStart"
-          - autoupdate_expected_command in autoupdate_service.status.ExecStart
+          # The whole argv, not a substring of it: an appended argument — say
+          # --download-only — would otherwise pass while the host quietly stopped
+          # patching, exiting 0 and recording a success every week.
+          - "('argv[]=' ~ autoupdate_expected_command ~ ' ;') in autoupdate_service.status.ExecStart"
           # The reboot only fires because 102/103 count as success; drop this and
           # a reboot-recommended run exits non-zero and ExecStartPost is skipped.
           - autoupdate_service.status.SuccessExitStatus == '102 103'
-          - "'reboot' in autoupdate_service.status.ExecStartPost"
+          # Pinned to systemctl, not just to "reboot": handing the job to
+          # rebootmgr is the plausible edit here, and the one the unit template
+          # argues against — it exits 0 having never rebooted.
+          - "'argv[]=/usr/bin/systemctl reboot ;' in autoupdate_service.status.ExecStartPost"
           - "'autoupdate-metric.sh' in autoupdate_service.status.ExecStopPost"
-        fail_msg: "the service does not run zypper {{ autoupdate_expected_command }}, accept 102/103, reboot, then record the outcome"
+        fail_msg: "the service does not run `{{ autoupdate_expected_command }}`, accept 102/103, reboot, then record the outcome"
         quiet: true
 
     # Starting the service would reboot the host (ExecStartPost), so drive the
@@ -90,3 +91,16 @@
           - "'autoupdate_success 0' in (autoupdate_metric_fail.content | b64decode)"
         fail_msg: "the update outcome metric did not report a failed run"
         quiet: true
+
+    # No tier boots MicroOS. This pins the selector's third branch and nothing
+    # else — the defaults template lazily, so shadowing the one fact they read
+    # resolves them as a MicroOS host would. No role task runs here.
+    - name: The defaults update transactionally on MicroOS
+      ansible.builtin.assert:
+        that:
+          - autoupdate_update_command == '/usr/sbin/transactional-update --non-interactive dup'
+        fail_msg: "the defaults do not run transactional-update on MicroOS"
+        quiet: true
+      vars:
+        ansible_facts:
+          distribution: openSUSE MicroOS
