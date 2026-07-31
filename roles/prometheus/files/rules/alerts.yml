@@ -274,9 +274,13 @@ groups:
 
   - name: maintenance
     rules:
+      # Coupled to autoupdate.service's Restart=on-failure: RestartSec=1h with
+      # StartLimitBurst=4 retries a transient mirror miss for 3h, each attempt
+      # rewriting the metric. Wait longer than that burst so only an update that
+      # has exhausted its retries pages, not one still healing itself.
       - alert: AutoupdateFailed
         expr: autoupdate_success == 0
-        for: 15m
+        for: 4h
         labels:
           severity: warning
         annotations:
