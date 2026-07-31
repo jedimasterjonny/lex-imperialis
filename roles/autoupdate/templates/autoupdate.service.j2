@@ -1,15 +1,20 @@
 [Unit]
-Description=Unattended zypper {{ autoupdate_zypper_command }} and reboot
+Description=Unattended system update and reboot
 Wants=network-online.target
 After=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/zypper --non-interactive {{ autoupdate_zypper_command }} --auto-agree-with-licenses
+ExecStart={{ autoupdate_update_command }}
 # 102/103 are zypper's "reboot/restart recommended" infos on a successful run,
 # not failures: accept them so the reboot still fires. A real failure (a lower
 # exit code) skips ExecStartPost, leaving the system un-rebooted for inspection.
+# transactional-update absorbs both codes and exits 0, so this is inert there.
 SuccessExitStatus=102 103
+# Reboot here rather than hand the job to rebootmgr on MicroOS: a
+# transactional-update asked to reboot exits 0 even when rebootmgrd is down and
+# the reboot silently never happens, which the metric below would still record
+# as a successful run on a host left on the old snapshot.
 ExecStartPost=/usr/bin/systemctl reboot
 # Runs whether the update succeeded (then the reboot above) or failed, reading
 # $SERVICE_RESULT to record the outcome as a node_exporter metric — a silently
