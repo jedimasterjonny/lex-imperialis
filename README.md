@@ -43,6 +43,7 @@ zypper updates run unattended and staggered: `solar` Monday as the canary, the V
 - `playbooks/` — one play per host, and the play is that host's spec: its `roles:` and `vars:` are the whole story. `site.yml` is the fleet in one run.
 - `terraform/` — OpenTofu for the cloud edge: Cloudflare zones, the Hetzner firewall, the GCP projects behind the site and keyless CI. Remote state in a GCS bucket, applied on merge.
 - `jonnyoc-site/` — Hugo source for the personal site, built and deployed to Firebase Hosting by CI.
+- `packer/` — a two-stage build for an openSUSE MicroOS image for the VPS, since Hetzner ships none. Run by hand, not by CI, and not yet in service.
 
 ## Running plays
 

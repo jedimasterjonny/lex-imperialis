@@ -26,9 +26,15 @@
 # ignore list that blinds the checker rather than sharpening it, so they stay off.
 # check-hidden and check-filenames widen coverage to dotfiles and file names (their
 # empty values are how codespell's config sets a boolean flag).
+#
+# ignore-regex exempts Butane's `.bu` extension (bootstrap/rogue-trader.bu), which
+# check-filenames surfaces and the rare dictionary reads as by/be/but. Scoped to the
+# extension rather than added to ignore-words-list, which would blind the checker to
+# that word everywhere in the repo.
 [codespell]
 builtin = clear,rare
 dictionary = .codespell-en-GB.txt,-
+ignore-regex = \.bu\b
 check-hidden =
 check-filenames =
 skip = .git,.venv,LICENSE,.codespell-en-GB.txt,*.png,*.jpg,*.ico,*.sum,go.mod,.ruff_cache,.pytest_cache,__pycache__

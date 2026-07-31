@@ -41,6 +41,28 @@
     },
     {
       "customType": "regex",
+      "description": "Packer for the lint gate's packer-fmt/packer-validate hooks; no zypper package, and it cannot have one — cracklib owns the name.",
+      "managerFilePatterns": ["/^\\.github/workflows/lint\\.yml$/"],
+      "matchStrings": ["# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+version: \"(?<currentValue>[^\"]+)\""],
+      "extractVersionTemplate": "^v(?<version>.+)$"
+    },
+    {
+      "customType": "regex",
+      "description": "Packer plugins, pinned exactly because packer init writes no lock file.",
+      "managerFilePatterns": ["/^packer/.+\\.pkr\\.hcl$/"],
+      "matchStrings": ["# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+version = \"(?<currentValue>[^\"]+)\""],
+      "extractVersionTemplate": "^v(?<version>.+)$"
+    },
+    {
+      "customType": "regex",
+      "description": "butane for the lint gate; the binary comes out of a digest-pinned image because the GitHub release ships signatures but no checksums.",
+      "managerFilePatterns": ["/^\\.github/workflows/lint\\.yml$/"],
+      "matchStrings": ["image=(?<depName>[^\\s:]+):(?<currentValue>[^\\s@]+)(?:@(?<currentDigest>sha256:\\S+))?"],
+      "autoReplaceStringTemplate": "image={{{depName}}}:{{{newValue}}}{{#if newDigest}}@{{{newDigest}}}{{/if}}",
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
       "description": "tflint for CI and the workstation; no zypper package. One depName, so tflint_version and dev_tflint_version bump together.",
       "managerFilePatterns": ["/^\\.github/workflows/lint\\.yml$/", "/^roles/dev/vars/main\\.yml$/"],
       "matchStrings": ["(?:dev_)?tflint_version:\\s*\"(?<currentValue>v[^\"]+)\""],

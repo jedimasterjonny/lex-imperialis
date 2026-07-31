@@ -1,7 +1,8 @@
 # bootstrap
 
 One-shot, operator-run entry points that take a host to the point Ansible — or
-molecule — can manage it. All three are idempotent.
+molecule — can manage it. All three are idempotent; `rogue-trader.bu` is a
+config, not an entry point.
 
 ## host.sh
 
@@ -52,3 +53,17 @@ therefore placed by hand over the Hetzner console after provisioning: write
 
 The closing VPN smoke test needs that placement plus router-side peer state this
 play doesn't own, so it can time out despite a successful provision.
+
+## rogue-trader.bu
+
+Butane source for the Ignition config that will replace the cloud-init above,
+once rogue-trader is rebuilt from the MicroOS image in `packer/` — MicroOS ships
+no cloud-init. Nothing compiles it yet; the play that does comes later.
+
+Its scope is `host.sh`'s — the `ansible` account, its key, NOPASSWD sudo, sshd —
+plus `/etc/hostname`, so the box is named before Ansible reaches it. The file
+itself argues the rest; read it rather than this.
+
+The compiled `.ign` is never committed. `butane --strict --check`
+(`bin/butane-lint.sh`) is the only gate between a bad config and a box that
+cannot be logged into.

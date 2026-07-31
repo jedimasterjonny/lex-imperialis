@@ -34,6 +34,10 @@
       ansible.builtin.command: tofu version
       changed_when: false
 
+    - name: Butane is usable
+      ansible.builtin.command: butane --version
+      changed_when: false
+
     - name: The Google Cloud CLI is usable
       ansible.builtin.command: gcloud version
       changed_when: false

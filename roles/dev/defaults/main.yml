@@ -1,6 +1,8 @@
 ---
 # Developer tooling for the workstation.
 dev_packages:
+  # Compiles bootstrap/*.bu; the pre-commit butane hook calls it on PATH.
+  - butane
   - direnv
   - gh
   - git

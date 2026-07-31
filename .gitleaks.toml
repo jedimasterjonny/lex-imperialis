@@ -11,3 +11,16 @@ title = "lex-imperialis"
 
 [extend]
 useDefault = true
+
+# The one allowlist entry the header above anticipated. generic-api-key reads the
+# pinned openSUSE Project Signing Key fingerprint in packer/stage1-write-image.yml
+# as a high-entropy token (entropy 3.80). It is the exact opposite of a secret: a
+# public key fingerprint, published by openSUSE, and pinning it is the control —
+# stage 1 refuses to write an image unless the key that signed the checksum matches
+# this value. Scoped to the literal fingerprint rather than to the file or the rule,
+# and anchored, so it cannot widen: gitleaks matches an allowlist regex against the
+# extracted secret as a substring test, so unanchored it would also suppress any
+# secret that merely contained the fingerprint.
+[[allowlists]]
+description = "openSUSE Project Signing Key fingerprint, pinned deliberately"
+regexes = ['''^AD485664E901B867051AB15F35A2F86E29B700A4$''']

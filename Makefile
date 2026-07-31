@@ -39,7 +39,7 @@ endef
 # PLAY selects which playbook in playbooks/ to run, e.g. make check PLAY=solar.
 PLAY ?= scholam
 
-.PHONY: lint ansible-lint yamllint codespell hooks pre-commit converge verify destroy test test-leap test-vm test-hetzner destroy-hetzner check apply tofu-fmt tofu-validate tofu-lint tofu-plan tofu-apply hugo-serve hugo-build
+.PHONY: lint ansible-lint yamllint codespell hooks pre-commit converge verify destroy test test-leap test-vm test-hetzner destroy-hetzner check apply tofu-fmt tofu-validate tofu-lint tofu-plan tofu-apply packer-fmt packer-validate image hugo-serve hugo-build
 
 lint: yamllint ansible-lint codespell
 
@@ -121,6 +121,20 @@ tofu-plan:
 
 tofu-apply:
 	$(TOFU_VAULT_TOKENS) tofu -chdir=terraform apply
+
+# Packer (packer/); the local forms of the gates, as the tofu targets are —
+# packer-fmt writes where the hook checks. image builds rogue-trader's MicroOS
+# snapshot: it bills real servers and needs .vault_pass for the Hetzner token.
+# Override the guarded binary with `make image PACKER=/path/to/packer`; see
+# bin/packer.sh.
+packer-fmt:
+	bin/packer.sh fmt
+
+packer-validate:
+	bin/packer.sh validate
+
+image:
+	bin/packer.sh build
 
 # Hugo (jonnyoc-site); needs hugo and go on PATH (module theme fetch), no venv.
 # serve for local preview; build mirrors the live deploy (honours buildFuture=false).

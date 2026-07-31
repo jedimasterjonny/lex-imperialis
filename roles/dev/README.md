@@ -23,6 +23,22 @@ pin matches the CI gate (`.github/workflows/lint.yml`), kept in sync by one reno
 custom manager that bumps both. Unlike Claude Code, tflint does not self-update,
 so a version check drives the install, not `creates:`.
 
+## Butane and packer gate tools
+
+The `butane` pre-commit hook compiles every `*.bu`, so the workstation gets
+`butane` from zypper (in `dev_packages`). That package is rolling, while CI takes
+the binary from a digest-pinned image, so the two versions can differ — and
+`--strict` promotes warnings to errors, so a config can in principle pass locally
+and fail CI. Accepted rather than pinned: the zypper package cannot be held to a
+version under a rolling distro.
+
+The `packer` gates need HashiCorp packer, which this role does not install. The
+tflint pattern would work — an upstream install to `/usr/local/bin`, which
+outranks the `/usr/sbin/packer` that openSUSE's cracklib owns — but packer is
+needed only when `packer/` changes, roughly twice a year, so it follows
+`promtool`: installed by hand, not provisioned. `bin/packer.sh` guards which
+binary it finds.
+
 ## Google Cloud CLI
 
 `gcloud` has no openSUSE package, so the role imports Google's package-signing

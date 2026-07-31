@@ -1,0 +1,336 @@
+---
+# Stage 1: write the openSUSE MicroOS ContainerHost disk image onto the build
+# server's disk, from the Hetzner rescue system.
+#
+# NOT idempotent, by design: it overwrites a block device. The two assertions
+# below are all that stand between this play and a live box.
+- name: Write the MicroOS ContainerHost image from rescue
+  hosts: all
+  remote_user: root
+  # Nothing here reads a fact, and false keeps the guards below the first thing
+  # that runs on the target.
+  gather_facts: false
+  vars:
+    # Undated symlinks, so a build tracks the current Tumbleweed snapshot rather
+    # than pinning a date that goes stale. Integrity comes from the signature.
+    microos_mirror: https://download.opensuse.org/tumbleweed/appliances
+    # kvm-and-xen, not OpenStack-Cloud: this variant ships ignition and
+    # combustion and no cloud-init, which is what makes first-boot state
+    # declarative. It also ships no Python at all -- stage 2 deals with that.
+    microos_image: openSUSE-MicroOS.x86_64-ContainerHost-kvm-and-xen.qcow2
+    microos_workdir: /tmp/microos
+    # openSUSE Project Signing Key <opensuse@opensuse.org>, rsa4096, expires
+    # 2030-05-27.
+    microos_signing_key_fingerprint: AD485664E901B867051AB15F35A2F86E29B700A4
+    microos_signing_key_url: https://download.opensuse.org/tumbleweed/repo/oss/gpg-pubkey-29b700a4-6a17fa38.asc
+    microos_target_disk: /dev/sda
+    microos_mountpoint: /mnt/microos
+    # Measured on the published qcow2, not taken from kiwi's documented layout:
+    # sda1 is a 2 MB BIOS boot partition carrying no filesystem, sda2 the vfat
+    # ESP, sda3 the btrfs root, and the booted subvolume is btrfs default id 258.
+    microos_efi_partition: "2"
+    microos_root_partition: "3"
+    microos_root_subvolume: "@/.snapshots/1/snapshot"
+
+  tasks:
+    # The motd check below cannot do this on its own: any Hetzner box currently
+    # in rescue passes it, and rogue-trader's own recovery route is exactly
+    # that. ansible.cfg points at inventory/, so a bare ansible-playbook run of
+    # this file would reach it. The alias comes from the provisioner's
+    # host_alias in microos.pkr.hcl.
+    - name: Refuse to run outside the packer build
+      ansible.builtin.assert:
+        that:
+          - inventory_hostname == 'packer-microos-rescue'
+        fail_msg: >-
+          This play overwrites {{ microos_target_disk }} and must only run
+          against packer's build server, not {{ inventory_hostname }}.
+        success_msg: Packer build server confirmed.
+
+    - name: Read the rescue system's motd
+      ansible.builtin.command: cat /etc/motd
+      register: microos_motd
+      changed_when: false
+
+    - name: Refuse to run outside the Hetzner rescue system
+      ansible.builtin.assert:
+        that:
+          - "'Hetzner Rescue' in microos_motd.stdout"
+        fail_msg: >-
+          Not running in the Hetzner rescue system. This play overwrites
+          {{ microos_target_disk }} and must never touch a live host.
+        success_msg: Rescue system confirmed.
+
+    - name: Confirm the target is a block device
+      ansible.builtin.stat:
+        path: "{{ microos_target_disk }}"
+      register: microos_disk
+
+    - name: Refuse to run without the target disk
+      ansible.builtin.assert:
+        that:
+          - microos_disk.stat.exists
+          - microos_disk.stat.isblk
+        fail_msg: "{{ microos_target_disk }} is not a block device."
+        success_msg: "{{ microos_target_disk }} confirmed as a block device."
+
+    - name: Install the image tooling the rescue system lacks
+      ansible.builtin.apt:
+        name:
+          - qemu-utils
+          - gnupg
+        update_cache: true
+
+    - name: Create the working directory
+      ansible.builtin.file:
+        path: "{{ microos_workdir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Download the image, its checksum and the detached signature
+      ansible.builtin.get_url:
+        url: "{{ microos_mirror }}/{{ item }}"
+        dest: "{{ microos_workdir }}/{{ item }}"
+        owner: root
+        group: root
+        mode: "0600"
+      loop:
+        - "{{ microos_image }}"
+        - "{{ microos_image }}.sha256"
+        - "{{ microos_image }}.sha256.asc"
+
+    - name: Fetch the openSUSE signing key
+      ansible.builtin.get_url:
+        url: "{{ microos_signing_key_url }}"
+        dest: "{{ microos_workdir }}/signing-key.asc"
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Create an isolated GnuPG home
+      ansible.builtin.file:
+        path: "{{ microos_workdir }}/gnupg"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Import the signing key
+      ansible.builtin.command:
+        cmd: gpg --homedir {{ microos_workdir }}/gnupg --import {{ microos_workdir }}/signing-key.asc
+      changed_when: true
+
+    # --status-fd, and asserted on VALIDSIG rather than on gpg's exit code: the
+    # keyring holds whatever the mirror served, and a bare `gpg --verify` accepts
+    # a signature from ANY key in it. Checking only that the pinned fingerprint
+    # appears in --list-keys would pass a key file carrying the real openSUSE key
+    # alongside an attacker's. VALIDSIG names the key that actually made the
+    # signature -- its last field is the primary fingerprint, so this binds the
+    # signature to the pin whether openSUSE signs with the primary or a subkey.
+    - name: Verify the checksum file's signature
+      ansible.builtin.command:
+        cmd: >-
+          gpg --homedir {{ microos_workdir }}/gnupg --verify --status-fd 1
+          {{ microos_workdir }}/{{ microos_image }}.sha256.asc
+          {{ microos_workdir }}/{{ microos_image }}.sha256
+      register: microos_signature
+      changed_when: false
+
+    # Both lines, because neither alone is enough. VALIDSIG binds the signature
+    # to the pin but is emitted for a REVOKED or EXPIRED key too -- gpg prints a
+    # warning to stderr and still exits 0 -- so a stolen-then-revoked openSUSE
+    # key would sail through on its own. GOODSIG is absent in exactly those
+    # cases, and on its own says nothing about which key signed.
+    - name: Refuse a checksum not signed by the pinned openSUSE Project Signing Key
+      ansible.builtin.assert:
+        that:
+          - microos_good_sig | length > 0
+          - microos_valid_sig | length > 0
+        fail_msg: >-
+          The checksum is not covered by a good signature from the pinned
+          openSUSE Project Signing Key ({{ microos_signing_key_fingerprint }});
+          the key may have been revoked or have expired.
+        success_msg: Checksum signed by the pinned key.
+      vars:
+        microos_good_sig: >-
+          {{ microos_signature.stdout_lines
+             | select('search', '^\[GNUPG:\] GOODSIG')
+             | list }}
+        microos_valid_sig: >-
+          {{ microos_signature.stdout_lines
+             | select('search', '^\[GNUPG:\] VALIDSIG .*' ~ microos_signing_key_fingerprint)
+             | list }}
+
+    - name: Verify the image against the signed checksum
+      ansible.builtin.command:
+        cmd: sha256sum --check {{ microos_image }}.sha256
+        chdir: "{{ microos_workdir }}"
+      changed_when: false
+
+    # convert, not dd: the artefact is a qcow2 (openSUSE publishes no raw for
+    # the cloud variants), so dd would write a qcow2 blob to the block device
+    # and the server would not boot.
+    - name: Write the image to the target disk
+      ansible.builtin.command:
+        cmd: >-
+          qemu-img convert -f qcow2 -O raw
+          {{ microos_workdir }}/{{ microos_image }}
+          {{ microos_target_disk }}
+      changed_when: true
+
+    - name: Re-read the partition table now the disk has been rewritten
+      ansible.builtin.command:
+        cmd: partprobe {{ microos_target_disk }}
+      changed_when: true
+
+    # Everything below exists for one kernel parameter. Without
+    # ignition.platform.id=hetzner, ignition-suse-generator's autodetect matches
+    # only *vmware*|*oracle*|*kvm*|*qemu*; Hetzner is KVM, so it resolves to
+    # qemu, looks for config in QEMU fw_cfg, finds none, and the box boots with
+    # no users and no keys. Silently -- which is why this is worth a chroot.
+    - name: Create the image mountpoint
+      ansible.builtin.file:
+        path: "{{ microos_mountpoint }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    # MicroOS boots a btrfs snapshot, not the top-level subvolume. ephemeral
+    # throughout: these are transient mounts on a throwaway rescue system, and
+    # `mounted` would write them into the rescue system's fstab.
+    - name: Mount the image root
+      ansible.posix.mount:
+        src: "{{ microos_target_disk }}{{ microos_root_partition }}"
+        path: "{{ microos_mountpoint }}"
+        fstype: btrfs
+        opts: subvol={{ microos_root_subvolume }}
+        state: ephemeral
+
+    - name: Mount the EFI system partition
+      ansible.posix.mount:
+        src: "{{ microos_target_disk }}{{ microos_efi_partition }}"
+        path: "{{ microos_mountpoint }}/boot/efi"
+        fstype: vfat
+        state: ephemeral
+
+    - name: Bind the kernel filesystems into the image
+      ansible.posix.mount:
+        src: "/{{ item }}"
+        path: "{{ microos_mountpoint }}/{{ item }}"
+        fstype: none
+        opts: rbind
+        state: ephemeral
+      loop:
+        - proc
+        - sys
+        - dev
+
+    # The image carries an explicit ignition.platform.id=qemu, so substitute
+    # that one value: rewriting the line would mean restating kargs the image
+    # ships, the serial console among them.
+    - name: Point the ignition platform id at Hetzner
+      ansible.builtin.replace:
+        path: "{{ microos_mountpoint }}/etc/default/grub"
+        regexp: ignition\.platform\.id=\w+
+        replace: ignition.platform.id=hetzner
+
+    # ro is a property of the btrfs snapshot rather than of the mount, so
+    # mounting rw is not enough and grub2-mkconfig fails with EROFS. The nested
+    # etc subvolume is separately writable, which is why the edit above
+    # succeeds where this would not. Restored immediately after.
+    - name: Clear the read-only property for the regeneration
+      ansible.builtin.command:
+        cmd: btrfs property set -ts {{ microos_mountpoint }} ro false
+      changed_when: true
+
+    - name: Regenerate the boot configuration
+      ansible.builtin.command:
+        cmd: chroot {{ microos_mountpoint }} grub2-mkconfig -o /boot/grub2/grub.cfg
+      changed_when: true
+
+    - name: Restore the read-only property
+      ansible.builtin.command:
+        cmd: btrfs property set -ts {{ microos_mountpoint }} ro true
+      changed_when: true
+
+    # Proves the parameter reached the generated config rather than only the
+    # template it was written into. failed_when: false because grep exits 1 on
+    # no match, which would kill the play on the very failure the assert below
+    # exists to explain. Both counts, not just hetzner: a partial regeneration
+    # that left some entries on qemu would pass a >0 check.
+    - name: Count the boot entries carrying each ignition platform id
+      ansible.builtin.command:
+        cmd: grep -c 'ignition\.platform\.id={{ item }}' {{ microos_mountpoint }}/boot/grub2/grub.cfg
+      register: microos_karg_counts
+      changed_when: false
+      failed_when: false
+      loop:
+        - hetzner
+        - qemu
+
+    - name: Refuse an image whose boot entries lack the ignition platform id
+      ansible.builtin.assert:
+        that:
+          - microos_karg_hetzner | int > 0
+          - microos_karg_qemu | int == 0
+        fail_msg: >-
+          grub.cfg carries {{ microos_karg_hetzner }} hetzner and
+          {{ microos_karg_qemu }} qemu boot entries; on any qemu entry Ignition
+          looks for config in QEMU fw_cfg, finds none, and the box boots with no
+          users and no keys.
+        success_msg: "Platform id present in {{ microos_karg_hetzner }} boot entries, none left on qemu."
+      vars:
+        microos_karg_hetzner: "{{ microos_karg_counts.results[0].stdout | trim }}"
+        microos_karg_qemu: "{{ microos_karg_counts.results[1].stdout | trim }}"
+
+    # Only a first boot pulls in ignition-complete.target, and openSUSE's initrd
+    # firstboot-detect calls it one when the machine id is absent. The image
+    # ships none; if anything above created one, stage 2 would boot with no root
+    # key and fail to connect for a reason that looks nothing like its cause.
+    - name: Read back the image's machine id
+      ansible.builtin.stat:
+        path: "{{ microos_mountpoint }}/etc/machine-id"
+      register: microos_machine_id
+
+    - name: Refuse an image that would not be detected as first boot
+      ansible.builtin.assert:
+        that:
+          - not microos_machine_id.stat.exists
+        fail_msg: >-
+          /etc/machine-id exists in the written image, so firstboot-detect would
+          not fire, Ignition would never run, and the box would boot with no
+          identity.
+        success_msg: No machine id present; the image will be detected as first boot.
+
+    # rbind views of the rescue system's own kernel filesystems: they hold
+    # nothing of the image and need no flush, but they carry its submounts and
+    # the rescue system keeps using them, so /sys/fs/cgroup stays busy even
+    # under a recursive unmount. Lazy clears the tree immediately, which is all
+    # the two real unmounts below need.
+    - name: Detach the kernel filesystems from the image
+      ansible.builtin.command:
+        cmd: umount -R --lazy {{ microos_mountpoint }}/{{ item }}
+      changed_when: true
+      loop:
+        - proc
+        - sys
+        - dev
+
+    - name: Unmount the image filesystems
+      ansible.posix.mount:
+        path: "{{ item }}"
+        state: unmounted
+      loop:
+        - "{{ microos_mountpoint }}/boot/efi"
+        - "{{ microos_mountpoint }}"
+
+    # No working-directory cleanup follows: microos_workdir is on the rescue
+    # system's own root, not on the disk being snapshotted, and the server is
+    # destroyed moments later.
+    - name: Flush the write cache before packer powers the server down
+      ansible.builtin.command:
+        cmd: sync
+      changed_when: false

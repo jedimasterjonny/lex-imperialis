@@ -29,6 +29,27 @@ extensionless-bash `wp`/`wp-db-dump` templates. Rewrites Jinja to valid shell
 first (`{% … %}` → `:`, `{{ … }}` → `X`), then pipes the result through
 shellcheck.
 
+## butane-lint.sh
+
+Compiles each `*.bu` with `butane --strict --check`, discarding the output — the
+compiled Ignition is never committed, so the check is the whole point. One file
+per invocation, because butane takes a single input and exits 2 on a batch.
+Backs the `butane` hook; needs `butane` on PATH (`roles/dev`).
+
+## packer.sh
+
+Everything that runs HashiCorp packer, behind one binary guard: `fmt` (writes)
+and `fmt-check` (the `packer-fmt` hook), `validate` (the `packer-validate` hook),
+and `build` (`make image`). The guard is there because openSUSE's cracklib owns
+`/usr/sbin/packer` and that binary hangs rather than failing; set `PACKER` to
+point at the real one.
+
+`validate` and `build` activate the venv, since packer's ansible provisioner
+needs `ansible-playbook`, and generate a throwaway ed25519 pair — packer parses
+the private half even to validate. Only `build` reaches Hetzner: it uploads the
+public half, which is why the pair cannot be one of yours, sources the API token
+through `vault-var.sh`, and bills real servers. See `packer/README.md`.
+
 ## tofu-validate.sh
 
 Validates `terraform/` offline: `tofu init -backend=false` (skips the GCS state

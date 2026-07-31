@@ -1,0 +1,65 @@
+# Butane source for rogue-trader's Ignition config, to be delivered as Hetzner
+# user_data at server creation:
+#
+#   butane --strict bootstrap/rogue-trader.bu > rogue-trader.ign
+#
+# NOT yet wired up: bootstrap/rogue-trader.yml still provisions the current
+# cloud-init box, and the play that compiles this comes later. The compiled
+# output stays uncommitted so there is one source of truth.
+#
+# Scope is bootstrap/host.sh's, plus the hostname below: the ansible account,
+# its key, NOPASSWD sudo and sshd. The owner account, packages, dotfiles and
+# every service belong to the roles in playbooks/rogue-trader.yml, which take
+# over the moment this lets them in.
+#
+# Ignition cannot install packages, so this alone does not make the box
+# manageable -- the Python interpreter has to be baked into the image already.
+# See packer/README.md.
+#
+# fcos 1.6.0 emits spec 3.5.0, exactly what openSUSE's pristine Ignition 2.26.0
+# speaks. Only spec-generic fields are used, so the output is portable.
+variant: fcos
+version: 1.6.0
+
+passwd:
+  users:
+    # The account the plays connect as. A system account with no password set,
+    # so it is key-only, matching bootstrap/host.sh's useradd --system.
+    - name: ansible
+      system: true
+      home_dir: /home/ansible
+      shell: /bin/bash
+      # Inlined rather than fetched from GitHub the way host.sh does: a failed
+      # fetch in the initrd leaves a box nobody can log into. The cost is that a
+      # key rotation needs a commit here too.
+      ssh_authorized_keys:
+        - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDHpcn9yrjN0+bAFrmfGo7X4qMdklxvJ3bqdSiyJf5ju jonny@scholam
+
+storage:
+  files:
+    # roles/common sets the hostname too, from common_hostname. This is here so
+    # the box is correctly named before Ansible ever reaches it -- logs, the
+    # restic repo name and the journal all read it at first boot.
+    - path: /etc/hostname
+      mode: 0644
+      overwrite: true
+      contents:
+        inline: rogue-trader
+
+    # NOPASSWD so plays escalate unattended. host.sh runs visudo -cf before
+    # installing this; Ignition has no validate hook, so the content is kept to
+    # the single line host.sh writes and nothing more.
+    - path: /etc/sudoers.d/ansible
+      mode: 0440
+      overwrite: true
+      contents:
+        inline: |
+          ansible ALL=(ALL:ALL) NOPASSWD: ALL
+
+systemd:
+  units:
+    # MicroOS's presets may already enable this; stating it makes the box's
+    # reachability a property of this file rather than of a preset that can
+    # change under a rolling distro.
+    - name: sshd.service
+      enabled: true
