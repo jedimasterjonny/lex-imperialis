@@ -12,7 +12,9 @@ Recovery is driven from a control host with:
 - `.vault_pass` — gitignored, so restore it from the password manager. It is the
   only secret not in git.
 - The venv: `python -m venv .venv && . .venv/bin/activate && pip install -r requirements-dev.txt`.
-- SSH (or, for rogue-trader, WireGuard) reach to the host being recovered.
+- SSH reach to the host being recovered — over the LAN, or over WireGuard for a
+  rogue-trader that still has its tunnel. A rebuilt rogue-trader has neither
+  until step 3, so it is reached at its public address instead.
 
 `scholam` is the usual control host. If `scholam` itself is lost, recover it
 first (below), or drive the others from any machine meeting the above.
@@ -91,29 +93,58 @@ NAS is recoverable from it — see [administratum](#administratum-nas).
 
 ## rogue-trader (Hetzner VM)
 
-The VM is provisioned by cloud-init, not a reinstall. SSH is not exposed
-publicly, so if the WireGuard tunnel can't be brought up, the Hetzner web console
-is the only way in.
+The VM is re-imaged from the MicroOS snapshot `packer/` builds, not reinstalled.
+Ignition supplies the first-boot identity, so there is no `bootstrap/host.sh`
+step. The image carries no console password for `root` or `ansible`, so the
+console is not a way in — Hetzner **rescue mode** is.
 
-1. Re-provision from the repo root (recreates the server and installs the tunnel
-   tooling):
+On the rebuild path the server survives, and so does its firewall — which
+carries no inbound 22, while the tunnel dies with the disk. So first merge a
+temporary inbound-22 rule into `terraform/firewall-rogue-trader.tf`, scoped to
+the workstation's **public egress** address, and let CI apply it; adding it in
+the Hetzner console instead is a trap, since the next merge to `main`
+auto-applies terraform over the top of it. From zero there is nothing to open
+and no server for `data.hcloud_server.rogue_trader` to read, so terraform cannot
+plan at all until step 1 has created one.
+
+**The rebuild path is unexercised through this play, and it destroys the disk**
+— step 4 is mandatory, not optional, and step 5 where the raw copy will not
+start.
+
+1. Re-image the server from the repo root:
 
    ```bash
    ansible-playbook bootstrap/rogue-trader.yml \
-     -e @inventory/group_vars/all/vault.yml --vault-password-file .vault_pass
+     -e @inventory/group_vars/all/vault.yml --vault-password-file .vault_pass \
+     -e rogue_trader_state=rebuild
    ```
 
-   Then, over the Hetzner console, write `rogue_trader_wireguard_conf` to
-   `/etc/wireguard/wg0.conf` (0600 root:root) and `systemctl enable --now
-   wg-quick@wg0`. It is not shipped in `user_data`: the metadata endpoint serves
-   that for the life of the server, to every process and container on the box.
-   The play's closing wait is the confirmation the tunnel came up.
-2. As root on the box (over the VPN): `bootstrap/host.sh` — cloud-init installs
-   the tunnel tooling and python but not the `ansible` account, so this still runs.
-3. From the control host: `make apply PLAY=rogue-trader`.
+   From zero — no server at all — drop `rogue_trader_state` and pass a
+   `rogue_trader_server_type` matching what the box should be; the default is
+   the spike's size. Then `make tofu-apply`: it attaches the firewall, and from
+   zero it also re-points the A/AAAA records at the new IP.
+2. The play does not wait on this path, and a rebuild does not power the box on
+   — `hcloud server poweron rogue-trader` if it comes back off. Then drop the
+   old host keys, which went with the disk, and confirm it is up in one step:
+   `ssh-keygen -R <public IPv4>` then `ssh ansible@<public IPv4> true`, which
+   also accepts the new key so the converge does not stall on verification.
+   `ssh-keygen -R 192.168.3.3` too, once the tunnel is back.
+3. Converge over the public address, since the inventory reaches this host at
+   its VPN address and the tunnel does not exist yet:
+
+   ```bash
+   ansible-playbook playbooks/rogue-trader.yml --vault-password-file .vault_pass \
+     -e ansible_host=<public IPv4>
+   ```
+
+   This is what places the WireGuard key and brings the tunnel up;
+   `make apply PLAY=rogue-trader` works only afterwards. Then revert the
+   temporary firewall rule.
 4. Once its play has converged, on rogue-trader:
    `sudo /usr/local/sbin/podman-restore.sh` — restores the WordPress and
-   database volumes.
+   database volumes. Until it has run, WordPress is a blank install, so
+   `wordpress-cron.service` fails and `WordpressCronFailed` fires; that clears
+   with the restore and is not a fault to chase.
 5. The database travels as a raw `/var/lib/mysql` copy, which a newer mariadb
    than it was taken on may refuse to start. If it does, recover the database
    from the logical dump instead. Step 4 restored the raw copy into

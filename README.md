@@ -43,7 +43,7 @@ zypper updates run unattended and staggered: `solar` Monday as the canary, the V
 - `playbooks/` — one play per host, and the play is that host's spec: its `roles:` and `vars:` are the whole story. `site.yml` is the fleet in one run.
 - `terraform/` — OpenTofu for the cloud edge: Cloudflare zones, the Hetzner firewall, the GCP projects behind the site and keyless CI. Remote state in a GCS bucket, applied on merge.
 - `jonnyoc-site/` — Hugo source for the personal site, built and deployed to Firebase Hosting by CI.
-- `packer/` — a two-stage build for an openSUSE MicroOS image for the VPS, since Hetzner ships none. Run by hand, not by CI, and not yet in service.
+- `packer/` — a two-stage build for an openSUSE MicroOS image for the VPS, since Hetzner ships none. Run by hand, not by CI. `bootstrap/rogue-trader.yml` provisions from its snapshot; the VPS itself has not moved onto it yet.
 
 ## Running plays
 
@@ -83,11 +83,11 @@ On a host, a secret is rendered into a 0600 `EnvironmentFile` that the quadlet r
 
 ## Bootstrap and recovery
 
-Three one-shot entry points in `bootstrap/`, all idempotent:
+Three one-shot entry points in `bootstrap/` — idempotent, apart from `rogue-trader.yml`'s rebuild path, which re-images the disk every run:
 
 - `host.sh` — run as root on a fresh Tumbleweed install, before the host joins the inventory. Installs sshd and the key-only `ansible` account `scholam` connects as; everything past "Ansible can log in and escalate" belongs to the `common` role.
 - `incus.yml` — sets up the molecule runner, the one host molecule cannot provision for itself.
-- `rogue-trader.yml` — creates the Hetzner VM and joins it to the home VPN at first boot.
+- `rogue-trader.yml` — creates the Hetzner VM from the MicroOS snapshot `packer/` builds, or re-images the existing one in place; Ignition gives it the `ansible` account at first boot, and its play does the rest.
 
 Recovery walks the same path: re-bootstrap the host, run its play to rebuild everything declarative, then restore its podman volumes from the restic repository on the NAS. `docs/disaster-recovery.md` covers it host by host, along with what the backup does and does not hold; `docs/backups.md` is the backup architecture in full. `.vault_pass` is the one thing the repo cannot give you back — it comes from the password manager.
 
