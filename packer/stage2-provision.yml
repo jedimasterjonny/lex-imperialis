@@ -54,6 +54,13 @@
     microos_provided_packages:
       - python3-firewall
       - python3-selinux
+    # Mirrors roles/nfs's nfs_mount_root and the shares in
+    # playbooks/rogue-trader.yml, which is where the consequence of adding one is
+    # written down. Baked because / is read-only at run time, so roles/nfs can
+    # create neither the root nor the directory under it.
+    microos_nfs_points:
+      - /nfs
+      - /nfs/astropath
 
   tasks:
     # ansible.cfg points at inventory/, so a bare ansible-playbook run of this
@@ -107,6 +114,22 @@
         name: "{{ microos_packages + microos_provided_packages + podman_packages }}"
         state: present
 
+    # --continue extends the snapshot the install above just created, rather
+    # than branching a second one off the still-running old root, which would
+    # ship the mount points and lose every package. Made here rather than in
+    # stage 1's writable window because rescue is Debian and sets no SELinux
+    # xattr at all: run inside a transaction on a booted MicroOS the policy
+    # labels them default_t, which is what rogue-trader carries today and what
+    # the mount and the restic service expect. One transaction for all of them,
+    # not one each: mkdir -p takes the lot, where a loop would chain a snapshot
+    # per directory.
+    - name: Create the NFS mount points
+      ansible.builtin.command:
+        argv: >-
+          {{ ['transactional-update', '--non-interactive', '--continue', 'run', 'mkdir', '-p']
+             + microos_nfs_points }}
+      changed_when: true
+
     # transactional-update stages into a new snapshot; nothing above is live
     # until the server boots into it.
     - name: Reboot into the new snapshot
@@ -126,6 +149,38 @@
         fail_msg: "{{ item }} is not installed in the booted snapshot."
         success_msg: "{{ item }} present."
       loop: "{{ microos_packages + podman_packages }}"
+
+    - name: Stat the NFS mount points
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        # Off by default, and the context is the point of the assert below.
+        get_selinux_context: true
+      loop: "{{ microos_nfs_points }}"
+      register: microos_nfs_stat
+
+    # Both halves matter and fail differently: a missing directory stops the
+    # mount, and one carrying no label -- what stage 1's rescue window would
+    # have produced -- mounts and then denies the service that reads it.
+    #
+    # selinux_context is a [user, role, type, range] list, so membership is an
+    # exact match on the type field. The default() guards are not decoration:
+    # fail_msg is templated during argument finalisation, before any `that:`
+    # runs, so an absent key there fails the task with a Jinja error instead of
+    # the message it exists to print.
+    - name: Refuse a snapshot whose NFS mount points are missing or unlabelled
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.isdir
+          - "'default_t' in (item.stat.selinux_context | default([]))"
+        fail_msg: >-
+          {{ item.item }} is missing, or carries
+          {{ item.stat.selinux_context | default('no SELinux label') }} rather
+          than default_t.
+        success_msg: "{{ item.item }} present and labelled."
+      loop: "{{ microos_nfs_stat.results }}"
+      loop_control:
+        label: "{{ item.item }}"
 
     # The import is the assertion: both packages resolve through a Provides, so
     # only running the thing the module runs says the binding is really there.

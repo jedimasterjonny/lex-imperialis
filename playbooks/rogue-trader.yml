@@ -16,6 +16,9 @@
     # podman_backup writes to the astropath share; mount it from the NAS. No arr
     # stack here, so scriptorum stays unmounted. The backup runs as root, which
     # the NAS squashes to the admin uid its astropath ACL grants.
+    # Adding a share here also needs its mount point added to packer/ and the
+    # image rebuilt — roles/nfs cannot create one on MicroOS's read-only root,
+    # and nothing detects the omission.
     nfs_shares:
       # By the NAS's stable LAN IP, not its hostname: rogue-trader resolves LAN
       # names only over the tunnel. NetworkManager now owns that resolver and
