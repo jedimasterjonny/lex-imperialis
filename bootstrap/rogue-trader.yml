@@ -1,77 +1,145 @@
 ---
-# Provision rogue-trader: a persistent Hetzner cx33 in the emmas-edit project,
-# joined to the home VPN. Its cloud firewall lives in terraform/
-# (firewall-rogue-trader.tf), not here. cloud-init installs the tooling only —
-# the tunnel config is placed by hand afterwards (see below), because Hetzner
-# serves user_data from the metadata endpoint for the life of the server, so a
-# private key written there stays readable by every process and every container
-# on the box forever, with no way to revoke it short of a rebuild. It is a split
-# tunnel (AllowedIPs 192.168.0.0/16), so only home-network traffic uses the VPN
-# and the public interface stays up. Provision-once: user_data applies only at
-# first boot, so re-running is a no-op (ssh_key and server state=started are
-# idempotent). Run from the repo root:
+# Provision a MicroOS server in the emmas-edit project: the packer snapshot for
+# the disk, Ignition for the first-boot identity, and playbooks/rogue-trader.yml
+# for everything after it. Its cloud firewall lives in terraform/
+# (firewall-rogue-trader.tf), not here.
+#
+# MicroOS ships no cloud-init: user_data is an Ignition config, compiled below
+# from rogue-trader.bu. Nothing secret enters it — user_data stays readable from
+# the metadata endpoint for the life of the server, so the tunnel's private key
+# is placed over SSH by roles/wireguard_client during the converge, not baked in.
+#
+# Provision-once: user_data applies only at first boot, so re-running is a no-op.
+# Run from the repo root:
 #   ansible-playbook bootstrap/rogue-trader.yml \
 #     -e @inventory/group_vars/all/vault.yml --vault-password-file .vault_pass
 #
-# Then, over the Hetzner console, write rogue_trader_wireguard_conf to
-# /etc/wireguard/wg0.conf (0600 root:root) and `systemctl enable --now
-# wg-quick@wg0`. The closing wait_for below is the confirmation that landed.
+# Then converge the host: ansible-playbook playbooks/rogue-trader.yml.
 - name: Provision rogue-trader
   hosts: localhost
   connection: local
   gather_facts: false
   vars:
     rogue_trader_name: rogue-trader
-    rogue_trader_server_type: cx33
+    # started creates one; rebuild re-images the existing box in place, which is
+    # how the OS move happens — same server id, same IP, same firewall
+    # attachment, and the same compiled Ignition below, since Hetzner takes fresh
+    # user_data on a rebuild rather than replaying what the server was created
+    # with. UNEXERCISED: the spike proved the create path, not this one.
+    rogue_trader_state: started
+    # The spike's size, not production's: rogue-trader is a cx33 and Hetzner no
+    # longer sells the cx line. Only ever read when creating — see the lookup
+    # below.
+    rogue_trader_server_type: cpx12
     rogue_trader_location: hel1
-    rogue_trader_image: opensuse-16
-    rogue_trader_vpn_address: 192.168.3.3
-    # openresolv backs wg-quick's DNS= line; python3 lets Ansible drive the box
-    # over the VPN afterwards. No write_files and no runcmd: nothing secret may
-    # enter user_data, and wg-quick is left disabled so it cannot fail at boot
-    # against a config that is not there yet.
-    rogue_trader_cloud_config:
-      packages:
-        - python3
-        - wireguard-tools
-        - openresolv
+    # By label, never by id: packer relabels each new snapshot it builds, so
+    # nothing here carries a reference that rots when the image is rebuilt.
+    rogue_trader_image_selector: custom_image=microos-containerhost
+    # Both lazily evaluated, so they read the register below despite being
+    # written above it. A snapshot mid-creation is listed but cannot be booted
+    # from, and ids increase, so the newest available id is the one to build on.
+    rogue_trader_available: >-
+      {{ rogue_trader_images.hcloud_image_info
+         | selectattr('status', 'equalto', 'available') | list }}
+    rogue_trader_image_id: "{{ rogue_trader_available | map(attribute='id') | max }}"
   # hcloud_token_emmas_edit comes from the vault, supplied at run time:
   # -e @inventory/group_vars/all/vault.yml. Kept out of vars_files so
   # ansible-lint (no vault password in CI) need not decrypt it.
   tasks:
-    - name: Upload the SSH key to Hetzner
-      hetzner.hcloud.ssh_key:
+    - name: Find the MicroOS snapshots packer has built
+      hetzner.hcloud.image_info:
         api_token: "{{ hcloud_token_emmas_edit }}"
-        name: "{{ rogue_trader_name }}-key"
-        public_key: "{{ lookup('file', '~/.ssh/id_ed25519.pub') }}"
-        state: present
+        type: snapshot
+        label_selector: "{{ rogue_trader_image_selector }}"
+      register: rogue_trader_images
+
+    # Checked before it is used, because the failure it prevents is unreadable:
+    # with nothing selected, the id above is a `max` over an empty sequence, and
+    # the run dies while templating the create's arguments with "No aggregated
+    # item, sequence was empty" — which says nothing about the snapshot having
+    # been pruned or the label having been mistyped.
+    - name: The selector matches a snapshot that can be built from
+      ansible.builtin.assert:
+        that: rogue_trader_available | length > 0
+        fail_msg: >-
+          No available snapshot matches {{ rogue_trader_image_selector }} in this
+          project — build one with `make image`.
+        quiet: true
+
+    # The production identity, and deliberately not packer's build identity,
+    # which stage 2 strips from the snapshot. Compiled here rather than
+    # committed so the .bu is the only place it is written down.
+    #
+    # Rendered through the template lookup and fed on stdin so butane validates
+    # the document that actually ships, hostname included. Patching the compiled
+    # JSON afterwards would validate one document and send another, and would
+    # silently outlive any change in how butane encodes inline contents.
+    - name: Compile the Ignition config from the Butane source
+      ansible.builtin.command:
+        argv:
+          - butane
+          - --strict
+        stdin: "{{ lookup('template', playbook_dir ~ '/rogue-trader.bu') }}"
+      register: rogue_trader_butane
+      changed_when: false
+      # It only reads a file and writes stdout, and everything downstream parses
+      # that stdout — skipping it under --check would fail the run on an empty
+      # string rather than dry-running it.
+      check_mode: false
+
+    # Looked up rather than assumed: server_type must not reach a server that
+    # already exists. The module resizes on any difference, and this play's
+    # default is the spike's size, so a re-run against production would try to
+    # shrink it — which is also why the rebuild path below passes no size at all.
+    - name: Look for an existing server of this name
+      hetzner.hcloud.server_info:
+        api_token: "{{ hcloud_token_emmas_edit }}"
+        name: "{{ rogue_trader_name }}"
+      register: rogue_trader_existing
+      # It returns the origin IP, which the create below is at pains to keep out
+      # of the log. Registering is unaffected.
+      no_log: true
 
     # no_log keeps the origin IP out of the run log — the whole point of the
     # proxied Cloudflare records; api_token is already redacted by the module
-    # spec. firewalls is omitted (unmanaged here) so terraform's apply_to owns
-    # the attachment: run
-    # `tofu apply` right after a from-zero rebuild, which is otherwise
-    # firewall-less (all inbound open) until it does.
-    - name: Create the server
+    # spec. No ssh_keys: without cloud-init nothing performs Hetzner's key
+    # injection, so passing one would be inert config that reads as a way in.
+    # firewalls is omitted (unmanaged here) so terraform's apply_to owns the
+    # attachment: run `tofu apply` right after a from-zero rebuild, which is
+    # otherwise firewall-less (all inbound open) until it does.
+    - name: Create or rebuild the server
       hetzner.hcloud.server:
         api_token: "{{ hcloud_token_emmas_edit }}"
         name: "{{ rogue_trader_name }}"
-        server_type: "{{ rogue_trader_server_type }}"
-        image: "{{ rogue_trader_image }}"
+        server_type: "{{ omit if rogue_trader_existing.hcloud_server_info else rogue_trader_server_type }}"
+        image: "{{ rogue_trader_image_id }}"
         location: "{{ rogue_trader_location }}"
-        ssh_keys:
-          - "{{ rogue_trader_name }}-key"
-        user_data: "#cloud-config\n{{ rogue_trader_cloud_config | to_nice_yaml }}"
-        state: started
+        user_data: "{{ rogue_trader_butane.stdout }}"
+        state: "{{ rogue_trader_state }}"
+      register: rogue_trader_server
       no_log: true
 
-    # Post-provision smoke test: a connect over the VPN confirms the tunnel
-    # config was placed and the router already has its peer. It depends on both
-    # the hand-placed wg0.conf and router-side state this play does not own, so
-    # it times out until those are done even though provisioning succeeded.
-    - name: Wait for rogue-trader to come up on the VPN
+    # First boot runs Ignition from the initrd, so sshd answering is the whole
+    # of this play's contract: the account, its key, sudo and the hostname are
+    # all in place by the time it does. The tunnel is not — that is the
+    # converge's job — so this waits on the public address.
+    #
+    # Only on the create path, which is the only one where the public address
+    # answers: a fresh server carries no cloud firewall until `tofu apply`
+    # attaches it by id. A rebuild keeps that firewall, which has no inbound 22
+    # at all, so waiting here would time out for 300 s after a perfectly good
+    # rebuild — the same false alarm the old VPN smoke test used to raise. What
+    # to do instead is in bootstrap/README.md; it is a terraform change, not a
+    # console one.
+    - name: Wait for the server to come up
       ansible.builtin.wait_for:
-        host: "{{ rogue_trader_vpn_address }}"
+        host: "{{ rogue_trader_server.hcloud_server.ipv4_address }}"
         port: 22
         delay: 15
-        timeout: 420
+        timeout: 300
+      # A check-mode create returns no server to wait for, and skipping this is
+      # what lets --check dry-run the whole play against the live API.
+      when:
+        - not ansible_check_mode
+        - not rogue_trader_existing.hcloud_server_info
+      no_log: true

@@ -3,9 +3,13 @@
 #
 #   butane --strict bootstrap/rogue-trader.bu > rogue-trader.ign
 #
-# NOT yet wired up: bootstrap/rogue-trader.yml still provisions the current
-# cloud-init box, and the play that compiles this comes later. The compiled
-# output stays uncommitted so there is one source of truth.
+# bootstrap/rogue-trader.yml renders it through Ansible's template lookup and
+# pipes the result into butane at provision time, passing the compiled Ignition
+# as user_data; that output stays uncommitted so there is one source of truth.
+# The one templated value is the hostname, which is what lets the same document
+# serve a spike. `butane --strict --check` still gates this file — the
+# placeholder is just a string to butane — and the provision-time compile
+# validates the document that actually ships.
 #
 # Scope is bootstrap/host.sh's, plus the hostname below: the ansible account,
 # its key, NOPASSWD sudo and sshd. The owner account, packages, dotfiles and
@@ -32,19 +36,26 @@ passwd:
       # Inlined rather than fetched from GitHub the way host.sh does: a failed
       # fetch in the initrd leaves a box nobody can log into. The cost is that a
       # key rotation needs a commit here too.
+      #
+      # This write is why packer's stage 2 puts x-initrd.mount on /home: Ignition
+      # runs in the initrd, which mounts only /etc, /root and /var by default,
+      # and the snapshot holding /home there is read-only. Without that image
+      # change the key write fails and takes the whole config with it.
       ssh_authorized_keys:
         - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDHpcn9yrjN0+bAFrmfGo7X4qMdklxvJ3bqdSiyJf5ju jonny@scholam
 
 storage:
   files:
-    # roles/common sets the hostname too, from common_hostname. This is here so
-    # the box is correctly named before Ansible ever reaches it -- logs, the
-    # restic repo name and the journal all read it at first boot.
+    # roles/common sets the hostname too, from common_hostname, and that is what
+    # the box carries from the converge onwards -- including when the backup
+    # scripts read `hostname` to derive their repo names, which happens on a
+    # timer long afterwards. This is only the name first boot runs under, so its
+    # journal and logs are attributable before Ansible arrives.
     - path: /etc/hostname
       mode: 0644
       overwrite: true
       contents:
-        inline: rogue-trader
+        inline: "{{ rogue_trader_name }}"
 
     # NOPASSWD so plays escalate unattended. host.sh runs visudo -cf before
     # installing this; Ignition has no validate hook, so the content is kept to

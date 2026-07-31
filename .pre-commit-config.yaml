@@ -112,11 +112,14 @@ repos:
       # gitops_reconcile applies as root within ~15 min of a merge. Parse every
       # template here instead. Complements shellcheck-jinja, which rewrites
       # {% %} and {{ }} but not comment tags, so it cannot see an unclosed one.
+      # Butane sources are covered too: bootstrap/rogue-trader.bu is rendered
+      # through the template lookup before butane sees it, so a Jinja error
+      # there is a provision-time failure the butane gate cannot catch.
       - id: jinja-syntax
         name: jinja-syntax
         entry: python3 bin/check-jinja-syntax.py
         language: system
-        files: '\.j2$'
+        files: '\.j2$|\.bu$'
       # Every role must ship an incus or libvirt test (libvirt implies hetzner).
       - id: role-test-coverage
         name: role-test-coverage

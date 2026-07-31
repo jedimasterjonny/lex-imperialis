@@ -21,9 +21,9 @@ running system.
 | `stage1-base` | Hetzner rescue | Writes the MicroOS qcow2 to the disk, points `ignition.platform.id` at Hetzner. Snapshot labelled `custom_image=microos-base`. |
 | `stage2-containerhost` | stage 1's snapshot, booted normally | Installs what the fleet roles need, reboots, deletes the superseded btrfs snapshots, strips machine identity. Snapshot labelled `custom_image=microos-containerhost`. |
 
-Terraform will select the result by its `custom_image=microos-containerhost`
-label, never by id, so a rebuild needs no lookup and nothing here carries a
-snapshot reference that rots. Nothing consumes it yet.
+`bootstrap/rogue-trader.yml` selects the result by its
+`custom_image=microos-containerhost` label, never by id, so nothing carries a
+snapshot reference that rots when the image is rebuilt.
 
 ## Running it
 
@@ -76,6 +76,13 @@ rebuild the image when the roles on rogue-trader change what they install.
 - **Stage 2's pre-Python reboot must not be detached**, and identity clearing
   must stay last. Test any change to either on a **cold-start** box — one that
   already has Python, or already has an identity, cannot fail them.
+- **Ignition can only write where the initrd has mounted.** The initrd mounts
+  the fstab entries carrying `x-initrd.mount` — `/etc`, `/root`, `/var` — and
+  the snapshot around them is read-only, so a first-boot write under `/home`
+  fails and fails the whole config: the user is created (that is `/etc`) and its
+  `authorized_keys` is not, leaving a box with no sshd and no way in. Stage 2
+  adds the option to `/home` for that reason. A config that only touches `/etc`
+  or root's home — packer's own build identity — never sees it.
 - **The identity lives in every btrfs snapshot, not just the booted one.**
   Ignition writes it at stage 1's first boot and each `transactional-update`
   branches a new snapshot off that, so stage 2 prunes back to the booted

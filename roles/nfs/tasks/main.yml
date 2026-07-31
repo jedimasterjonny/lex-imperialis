@@ -5,8 +5,10 @@
     state: present
   become: true
 
-# ansible.posix.mount creates the mount point (and /nfs) when absent, writes the
-# fstab entry, and mounts now — idempotent once the entry and mount match.
+# ansible.posix.mount creates the mount point (and the root above it) when
+# absent, writes the fstab entry, and mounts now — idempotent once the entry and
+# mount match. It cannot create either on a read-only root: a transactional host
+# needs both baked into its image, which is what packer/ does for rogue-trader.
 - name: Mount the NFS shares
   ansible.posix.mount:
     path: "{{ nfs_mount_root }}/{{ item.name }}"
