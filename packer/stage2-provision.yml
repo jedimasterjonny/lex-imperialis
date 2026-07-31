@@ -119,6 +119,21 @@
       ansible.builtin.command: python3 -c 'import firewall'
       changed_when: false
 
+    # Ignition runs in the initrd, which mounts only the x-initrd.mount fstab
+    # entries; without this a first-boot write under /home lands on the
+    # read-only snapshot and takes the whole config down with it. The worked
+    # example is in packer/README.md.
+    #
+    # A lookahead rather than a changed-guard, so an image that one day ships
+    # the option itself does not fail the build. The readback after the final
+    # reboot is the guard, and it catches a regexp that matched nothing equally
+    # well.
+    - name: Mount /home from the initrd, where Ignition writes
+      ansible.builtin.replace:
+        path: /etc/fstab
+        regexp: '^(\S+\s+/home\s+btrfs\s+(?!.*x-initrd\.mount)\S+)'
+        replace: '\1,x-initrd.mount'
+
     # Ignition generated the machine id and the host keys at stage 1's first
     # boot, into the image's first snapshot, and every transactional-update
     # since branched a new snapshot off it -- so the strip below, which reaches
@@ -161,6 +176,25 @@
     - name: Reboot to prove the pruned snapshot tree still boots
       ansible.builtin.reboot:
         reboot_timeout: 600
+
+    # Read back from the fstab as the kernel's own parser sees it, after a
+    # reboot -- so a malformed edit that still contains the string cannot pass.
+    # Deliberately not `systemctl show home.mount -p Options`: that reports the
+    # options the filesystem is *mounted* with, which on a booted MicroOS does
+    # carry x-initrd.mount, but only because the initrd honoured it -- circular,
+    # where the fstab read is direct.
+    - name: Confirm /home carries the initrd mount option
+      ansible.builtin.command:
+        argv:
+          - findmnt
+          - --fstab
+          - --noheadings
+          - --output
+          - OPTIONS
+          - /home
+      register: microos_home_mount
+      changed_when: false
+      failed_when: "'x-initrd.mount' not in microos_home_mount.stdout"
 
     # Everything below strips the machine's identity and must stay LAST, after
     # the reboot above: a reboot regenerates the machine id and the host keys,

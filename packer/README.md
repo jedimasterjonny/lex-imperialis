@@ -76,6 +76,13 @@ rebuild the image when the roles on rogue-trader change what they install.
 - **Stage 2's pre-Python reboot must not be detached**, and identity clearing
   must stay last. Test any change to either on a **cold-start** box — one that
   already has Python, or already has an identity, cannot fail them.
+- **Ignition can only write where the initrd has mounted.** The initrd mounts
+  the fstab entries carrying `x-initrd.mount` — `/etc`, `/root`, `/var` — and
+  the snapshot around them is read-only, so a first-boot write under `/home`
+  fails and fails the whole config: the user is created (that is `/etc`) and its
+  `authorized_keys` is not, leaving a box with no sshd and no way in. Stage 2
+  adds the option to `/home` for that reason. A config that only touches `/etc`
+  or root's home — packer's own build identity — never sees it.
 - **The identity lives in every btrfs snapshot, not just the booted one.**
   Ignition writes it at stage 1's first boot and each `transactional-update`
   branches a new snapshot off that, so stage 2 prunes back to the booted
