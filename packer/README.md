@@ -21,9 +21,9 @@ running system.
 | `stage1-base` | Hetzner rescue | Writes the MicroOS qcow2 to the disk, points `ignition.platform.id` at Hetzner. Snapshot labelled `custom_image=microos-base`. |
 | `stage2-containerhost` | stage 1's snapshot, booted normally | Installs what the fleet roles need, reboots, deletes the superseded btrfs snapshots, strips machine identity. Snapshot labelled `custom_image=microos-containerhost`. |
 
-Terraform will select the result by its `custom_image=microos-containerhost`
-label, never by id, so a rebuild needs no lookup and nothing here carries a
-snapshot reference that rots. Nothing consumes it yet.
+`bootstrap/rogue-trader.yml` selects the result by its
+`custom_image=microos-containerhost` label, never by id, so nothing carries a
+snapshot reference that rots when the image is rebuilt.
 
 ## Running it
 
