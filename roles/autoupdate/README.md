@@ -10,6 +10,16 @@ every host in a single night. `zypper`'s 102/103 "reboot/restart recommended"
 codes count as success; a real failure skips the reboot, leaving the system up
 for inspection.
 
+A failed run retries hourly, three times (`Restart=on-failure`, `RestartSec=1h`,
+bounded by `StartLimitBurst=4` over a `StartLimitIntervalSec=1d` window that
+resets before the next weekly run). This exists for the one failure mode a
+retry actually fixes: a mirror serving repo metadata ahead of the RPMs it
+indexes, which aborts the whole commit with "Some packages could not be
+provided" and would otherwise leave the host unpatched for seven days over a lag
+that clears in hours. `AutoupdateFailed`'s `for:` is set longer than the 3 h the
+burst spans, so a run still healing itself does not page — change one and change
+the other.
+
 `autoupdate_transactional`, derived from `ansible_facts['distribution']`, selects
 the transactional command and stops and masks the distribution's own
 `transactional-update.timer`, which would otherwise update and reboot daily,

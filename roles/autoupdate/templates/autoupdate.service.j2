@@ -2,6 +2,10 @@
 Description=Unattended system update and reboot
 Wants=network-online.target
 After=network-online.target
+# Bounds the Restart= below to the initial run plus three retries. The window is
+# a day so a burst spent tonight never refuses next week's timer.
+StartLimitIntervalSec=1d
+StartLimitBurst=4
 
 [Service]
 Type=oneshot
@@ -11,6 +15,15 @@ ExecStart={{ autoupdate_update_command }}
 # exit code) skips ExecStartPost, leaving the system un-rebooted for inspection.
 # transactional-update absorbs both codes and exits 0, so this is inert there.
 SuccessExitStatus=102 103
+# A mirror serving repo metadata ahead of the RPMs it indexes aborts the whole
+# commit ("Some packages could not be provided"), which on a weekly timer with no
+# retry leaves the host unpatched for seven days over a lag that clears in hours.
+# Retry hourly so it heals unattended; the last attempt's ExecStopPost is what
+# rewrites the metric, so a retry that succeeds also clears AutoupdateFailed.
+# Only on-failure: a successful run has already reached ExecStartPost and is
+# rebooting. The 3h this spans is what the alert's for: has to outlast.
+Restart=on-failure
+RestartSec=1h
 # Reboot here rather than hand the job to rebootmgr on MicroOS: a
 # transactional-update asked to reboot exits 0 even when rebootmgrd is down and
 # the reboot silently never happens, which the metric below would still record
