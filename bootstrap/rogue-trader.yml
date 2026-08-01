@@ -25,7 +25,8 @@
     # how the OS move happens — same server id, same IP, same firewall
     # attachment, and the same compiled Ignition below, since Hetzner takes fresh
     # user_data on a rebuild rather than replaying what the server was created
-    # with. UNEXERCISED: the spike proved the create path, not this one.
+    # with. Rehearsed on a throwaway -- same server id, same IPv4, same Primary
+    # IP, fresh host keys -- but never yet on rogue-trader itself.
     rogue_trader_state: started
     # The spike's size, not production's: rogue-trader is a cx33 and Hetzner no
     # longer sells the cx line. Only ever read when creating — see the lookup
