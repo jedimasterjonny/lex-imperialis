@@ -22,6 +22,26 @@ That module imports `python3-selinux`, which `common_packages` carries — so
 enough**: the install lands in a new snapshot, so the image has to ship the
 binding already. `packer/stage2-provision.yml` reads `common_packages` for that.
 
+Seven of the fleet's package names resolve through a `Provides` of a versioned
+rpm — `python3-selinux` here, `python3-firewall` in firewalld,
+`python3-libvirt-python` and `python3-lxml` in libvirt, `python3`, `python3-pip`
+and `npm` in dev — and `community.general.zypper` prefilters `name:` on package
+name, so none short-circuits: every converge runs a real `zypper install`,
+reporting `ok`.
+
+**On MicroOS each becomes a `transactional-update` snapshot, created then
+dropped, and it is the *drop* that arms
+`sdbootutil-update-predictions.service`** — snapper's `delete-snapshot-pre` hook
+calls `set_update_predictions_timer`, where `create-snapshot-post` returns before
+reaching it on a transactional system. Re-measure when rogue-trader migrates.
+
+`zypper install` also upgrades, so those seven are eligible for upgrade on every
+merge-triggered apply, outside `autoupdate`'s weekly `zypper dup` — a correctness
+concern rather than a performance one. Unrealised so far, per `rpm -qa --last`.
+
+Unfixed upstream; left alone here, an `rpm --whatprovides` guard costing about
+what it saves.
+
 Creates `/var/lib/pcrlock.d`. `sdbootutil-update-predictions.service` runs after
 every snapper snapshot and its `ExecStartPre` fails without that directory, which
 only a TPM2 LUKS enrolment would otherwise create — so an unenrolled TPM2 host
