@@ -11,56 +11,35 @@
   # packages, and fact gathering needs an interpreter. Gathered explicitly once
   # the bootstrap below has put one on the box.
   gather_facts: false
-  # podman_packages carries a ternary on the distribution fact, so it is read
-  # from the role rather than restated -- a copy of an expression can evaluate
-  # differently without looking different. The plain package names below are
-  # restated deliberately: microos_packages is the delta the image needs, not
-  # everything the roles install, and a literal cannot drift invisibly.
+  # stow and restic_backup are here because common and podman_backup/home_backup
+  # reach them through an include_role, so they never appear in
+  # playbooks/rogue-trader.yml's roles list.
   vars_files:
+    - ../roles/common/defaults/main.yml
+    - ../roles/firewalld/defaults/main.yml
+    - ../roles/nfs/defaults/main.yml
     - ../roles/podman/defaults/main.yml
+    - ../roles/restic_backup/defaults/main.yml
+    - ../roles/stow/defaults/main.yml
+    - ../roles/wireguard_client/defaults/main.yml
   vars:
-    # Derived from the roles in playbooks/rogue-trader.yml, cross-cut against
-    # the image's published SBOM -- aardvark-dns, netavark, runc, sudo, growpart
-    # and NetworkManager already ship and are deliberately absent (cloud-init
-    # does not ship, which is what makes Ignition the first-boot path at all).
-    # A package missed here is not merely a slow converge: zypper stages
-    # into a new snapshot on MicroOS, so a role that installs one and uses it in
-    # the next task fails against a running system that does not have it yet.
-    microos_packages:
-      - bind-utils
-      - firewalld
-      - git
-      - htop
-      - nfs-client
-      - restic
-      # Not in playbooks/rogue-trader.yml's roles list: common reaches roles/stow
-      # through an include_role. It is the package the note above is about --
-      # the role installs it and then runs the binary later in the same play.
-      - stow
-      - tmux
-      - vim
-      - wireguard-tools
-    # Installed with the list above but kept out of it: zypper resolves these
-    # through a Provides of a versioned name (python313-firewall,
-    # python313-selinux), and package_facts records the versioned name, so a
-    # name check on them would fail an install that in fact worked. Verified
-    # functionally below instead.
+    # Not dereferenceable before Gather facts below: podman_packages resolves its
+    # runtime from ansible_facts['distribution'].
     #
-    # python3-selinux is the one no role declares -- roles/firewalld names its
-    # own binding, but roles/common's SELinux task just imports it through
-    # ansible.posix.selinux, so a list cross-cut from the roles' package
-    # variables misses it, and did: the converge died on the first spike against
-    # an image this build called complete.
-    microos_provided_packages:
-      - python3-firewall
-      - python3-selinux
-    # Mirrors roles/nfs's nfs_mount_root and the shares in
-    # playbooks/rogue-trader.yml, which is where the consequence of adding one is
-    # written down. Baked because / is read-only at run time, so roles/nfs can
-    # create neither the root nor the directory under it.
+    # Deliberately not a delta against the image's SBOM: a package that already
+    # ships is a no-op here, where one missed is not merely a slow converge --
+    # zypper stages into a new snapshot on MicroOS, so a role that installs a
+    # package and uses it in the next task fails against a running system that
+    # does not have it yet.
+    microos_packages: >-
+      {{ common_packages + firewalld_packages + podman_packages + wireguard_client_packages
+         + [nfs_package, restic_backup_package, stow_package] }}
+    # astropath stays literal: share names live in playbooks/rogue-trader.yml's
+    # nfs_shares, out of a vars_files' reach. Baked because / is read-only at run
+    # time, so roles/nfs can create neither the root nor the directory under it.
     microos_nfs_points:
-      - /nfs
-      - /nfs/astropath
+      - "{{ nfs_mount_root }}"
+      - "{{ nfs_mount_root }}/astropath"
 
   tasks:
     # ansible.cfg points at inventory/, so a bare ansible-playbook run of this
@@ -111,7 +90,7 @@
     # means a failure lands on a throwaway server rather than on rogue-trader.
     - name: Install the packages the fleet roles need
       community.general.zypper:
-        name: "{{ microos_packages + microos_provided_packages + podman_packages }}"
+        name: "{{ microos_packages }}"
         state: present
 
     # --continue extends the snapshot the install above just created, rather
@@ -136,19 +115,14 @@
       ansible.builtin.reboot:
         reboot_timeout: 600
 
-    - name: Re-read the package database after the reboot
-      ansible.builtin.package_facts:
-        manager: auto
-
-    # podman_packages included: it is the list that grows behind your back when
-    # roles/podman changes, so it is the one the assertion is most worth on.
+    # rpm, not package_facts: python3-firewall and python3-selinux resolve
+    # through a Provides of a versioned name, which is what package_facts would
+    # record, so a name check would fail an install that in fact worked. One call
+    # takes the whole list; its non-zero exit is the assertion.
     - name: Confirm every package survived into the booted snapshot
-      ansible.builtin.assert:
-        that:
-          - item in ansible_facts.packages
-        fail_msg: "{{ item }} is not installed in the booted snapshot."
-        success_msg: "{{ item }} present."
-      loop: "{{ microos_packages + podman_packages }}"
+      ansible.builtin.command:
+        argv: "{{ ['rpm', '--query', '--whatprovides'] + microos_packages }}"
+      changed_when: false
 
     - name: Stat the NFS mount points
       ansible.builtin.stat:

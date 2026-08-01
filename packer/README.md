@@ -59,12 +59,21 @@ Established on a running box, not inferred:
 - A 40 GB snapshot restores onto an 80 GB server and grows to fill it, on both
   the create and the `hcloud server rebuild` path.
 
-The package lists are fixed as at build time. A role that later gains a package
-leaves the snapshot stale, and nothing detects it — the cost is a transactional
-install and a forced reboot part-way through a converge on the live box, so
-rebuild the image when the roles on rogue-trader change what they install. crun
-is the standing instance: `roles/podman` now selects it on MicroOS and no
-snapshot built so far carries it, so rebuild before that role first converges.
+Stage 2 reads the package lists from the roles' own `defaults/`, so a role that
+adds to one needs no edit here — but the built snapshot is still fixed as at
+build time, and nothing detects that it has fallen behind. The cost is a
+transactional install and a forced reboot part-way through a converge on the live
+box, so rebuild the image when the roles on rogue-trader change what they
+install. crun is the standing instance: `roles/podman` now selects it on MicroOS
+and no snapshot built so far carries it, so rebuild before that role first
+converges.
+
+Two blind spots, both silent. `vars_files` is a hand-maintained list of seven
+roles, so a package installed by any other role `playbooks/rogue-trader.yml`
+reaches — or by a role added to that play later — never lands in the image. And
+it reads role `defaults/`, so a package list a play overrides in its `vars:` is
+missed too. Neither bites today: every package that play installs comes from one
+of the seven, and no play overrides a package list.
 
 ## Gotchas
 
