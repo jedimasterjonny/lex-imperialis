@@ -19,7 +19,7 @@
     prometheus_node_targets:
       - solar:9100
       - scholam:9100
-      - 192.168.3.3:9100
+      - 192.168.3.4:9100
     # No node_exporter on the NAS itself, by design: CPU/RAM/load stay DSM's
     # domain, its data-volume free space is already scraped via solar/rogue-trader's
     # NFS mounts of the exports (FilesystemSpaceLow covers nfs4), and a total outage
@@ -27,7 +27,7 @@
     # cadvisor on solar and rogue-trader, scraped the same way.
     prometheus_cadvisor_targets:
       - solar:8080
-      - 192.168.3.3:8080
+      - 192.168.3.4:8080
     # Route alerts to Alertmanager on solar over the LAN.
     prometheus_alertmanager_targets:
       - solar:9093
