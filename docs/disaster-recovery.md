@@ -113,9 +113,9 @@ the LAN here was made by hand (`02c0de6`) and dies with the disk: the box comes
 back accepting SSH from anything that reaches it. That is why the converge
 cannot lock itself out at this layer, and why step 6 puts the removal back.
 
-**The rebuild path is unexercised through this play, and it destroys the disk**
-— step 7 is mandatory, not optional, and step 8 where the raw copy will not
-start.
+**The rebuild path destroys the disk, and it has been exercised once — on a
+throwaway, never on this server.** So step 7 is mandatory, not optional, and step
+8 where the raw copy will not start.
 
 1. Pause the reconciler on scholam. It applies `site.yml` every 15 minutes, so
    an unpaused one races the converge below and re-applies the play into a
@@ -155,8 +155,8 @@ start.
    `rogue_trader_server_type` matching what the box should be; the default is
    the spike's size. Then `make tofu-apply`: it attaches the firewall, and from
    zero it also re-points the A/AAAA records at the new IP.
-4. The play does not wait on this path, and a rebuild does not power the box on
-   — `hcloud server poweron rogue-trader` if it comes back off. Then drop the
+4. The play does not wait on this path. The rehearsal came back up on its own —
+   `hcloud server poweron rogue-trader` if this one does not. Then drop the
    old host keys, which went with the disk, and confirm it is up in one step:
    `ssh-keygen -R <public IPv4>` then `ssh ansible@<public IPv4> true`, which
    also accepts the new key so the converge does not stall on verification.

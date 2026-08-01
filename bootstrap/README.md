@@ -72,7 +72,7 @@ ansible-playbook bootstrap/rogue-trader.yml \
   -e rogue_trader_state=rebuild
 ```
 
-**Unexercised through this play, and it destroys the disk.** It also leaves the
+**It destroys the disk, and has been exercised only on a throwaway.** It also leaves the
 box unreachable — no inbound 22 on the cloud firewall, no tunnel until the
 converge, and no console password for `root` or `ansible` — so it needs a
 temporary firewall rule merged first, a converge driven at the public address,
