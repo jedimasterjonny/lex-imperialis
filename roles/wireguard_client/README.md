@@ -8,10 +8,11 @@ The role renders `/etc/NetworkManager/system-connections/<iface>.nmconnection`
 (0600) from `wireguard_client_conf`, hands the interface over from `wg-quick` if
 it still owns it, then removes what only `wg-quick` needed.
 
-Variables in `defaults/main.yml`: `wireguard_client_interface`,
-`wireguard_client_conf`, `wireguard_client_uuid`, `wireguard_client_mtu`,
-`wireguard_client_dns_priority`, `wireguard_client_resolver`,
-`wireguard_client_stale_seconds`, `wireguard_client_interval`.
+Variables in `defaults/main.yml`: `wireguard_client_packages`,
+`wireguard_client_interface`, `wireguard_client_conf`, `wireguard_client_uuid`,
+`wireguard_client_mtu`, `wireguard_client_dns_priority`,
+`wireguard_client_resolver`, `wireguard_client_stale_seconds`,
+`wireguard_client_interval`.
 
 ## Input format
 

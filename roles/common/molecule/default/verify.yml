@@ -109,17 +109,13 @@
           - common_pcrlock_dir.stat.gr_name == 'root'
         fail_msg: "/var/lib/pcrlock.d is missing or not owned root:root mode 0755"
 
-    - name: Gather installed package facts
-      ansible.builtin.package_facts:
-        manager: auto
-
-    - name: Base packages are installed
-      ansible.builtin.assert:
-        that:
-          - item in ansible_facts.packages
-        fail_msg: "package {{ item }} is not installed"
-        quiet: true
-      loop: "{{ common_packages }}"
+    # python3-selinux is a Provides of a versioned python3XX-selinux, which is the
+    # name package_facts records — so resolve through rpm instead. One call takes
+    # the whole list; its non-zero exit is the assertion.
+    - name: Every base package resolves to an installed provider
+      ansible.builtin.command:
+        argv: "{{ ['rpm', '--query', '--whatprovides'] + common_packages }}"
+      changed_when: false
 
     - name: Stat the stowed bashrc
       ansible.builtin.stat:

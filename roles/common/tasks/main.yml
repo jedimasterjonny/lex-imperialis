@@ -44,18 +44,6 @@
     - not ansible_check_mode
   become: true
 
-# Declare the SELinux mode fleet-wide instead of leaning on the OS default, so it
-# is config-as-code: a no-op on the Tumbleweed hosts (already enforcing) that
-# flips the Leap host, which defaults permissive. permissive->enforcing is a live
-# transition (no reboot). Gated on a manageable SELinux so the SELinux-less
-# molecule containers skip it.
-- name: Set the SELinux mode
-  ansible.posix.selinux:
-    state: "{{ common_selinux_mode }}"
-    policy: targeted
-  become: true
-  when: ansible_selinux.status == 'enabled'
-
 # sdbootutil-update-predictions.service runs after every snapper snapshot, and its
 # ExecStartPre unconditionally backs up /var/lib/pcrlock.d — a directory only a TPM2
 # LUKS enrolment creates. Unenrolled, the prediction itself is a no-op returning 0,
@@ -70,6 +58,28 @@
     group: root
     mode: "0755"
   become: true
+
+- name: Install base packages
+  community.general.zypper:
+    name: "{{ common_packages }}"
+    state: present
+  become: true
+
+# Declare the SELinux mode fleet-wide instead of leaning on the OS default, so it
+# is config-as-code: a no-op on the Tumbleweed hosts (already enforcing) that
+# flips the Leap host, which defaults permissive. permissive->enforcing is a live
+# transition (no reboot). Gated on a manageable SELinux so the SELinux-less
+# molecule containers skip it.
+#
+# After the install above, which carries the python binding this module imports —
+# except on a transactional host, where that install lands in the next snapshot
+# and the image has to ship the binding already.
+- name: Set the SELinux mode
+  ansible.posix.selinux:
+    state: "{{ common_selinux_mode }}"
+    policy: targeted
+  become: true
+  when: ansible_selinux.status == 'enabled'
 
 - name: Ensure the owner's supplementary groups exist
   ansible.builtin.group:
@@ -88,12 +98,6 @@
     shell: "{{ common_user_shell }}"
     comment: "{{ common_user_comment }}"
     create_home: true
-  become: true
-
-- name: Install base packages
-  community.general.zypper:
-    name: "{{ common_packages }}"
-    state: present
   become: true
 
 # validate keeps a broken policy from ever reaching disk and locking out sudo.

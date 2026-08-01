@@ -1,7 +1,7 @@
 ---
 - name: Install stow
   community.general.zypper:
-    name: stow
+    name: "{{ stow_package }}"
     state: present
   become: true
 

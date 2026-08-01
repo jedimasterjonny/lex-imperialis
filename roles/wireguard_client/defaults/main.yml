@@ -1,4 +1,9 @@
 ---
+# bind-utils for the dig(1) the refresh queries the peer endpoint with.
+wireguard_client_packages:
+  - wireguard-tools
+  - bind-utils
+
 wireguard_client_interface: wg0
 
 # The tunnel definition, in wg-quick's own format, supplied from the vault. It is

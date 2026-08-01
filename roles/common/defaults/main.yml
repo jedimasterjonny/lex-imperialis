@@ -25,10 +25,11 @@ common_selinux_mode: enforcing
 # before the module it holds.
 common_blacklisted_modules: []
 
-# Base tools for every host.
+# Base tools, plus python3-selinux — the binding ansible.posix.selinux imports.
 common_packages:
   - vim
   - tmux
   - htop
   - sudo
   - git
+  - python3-selinux

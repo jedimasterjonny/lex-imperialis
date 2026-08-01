@@ -1,9 +1,7 @@
 ---
 - name: Install the WireGuard and DNS tooling the refresh needs
   community.general.zypper:
-    name:
-      - wireguard-tools
-      - bind-utils
+    name: "{{ wireguard_client_packages }}"
     state: present
   become: true
 
