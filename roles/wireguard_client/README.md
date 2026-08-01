@@ -47,6 +47,22 @@ The hostname is read from the keyfile (`wg show` reports only the resolved IP)
 and resolved against `wireguard_client_resolver` (`1.1.1.1`) rather than the
 system resolver, which a downed tunnel may take with it.
 
+## Re-keying
+
+A changed profile reaches the running tunnel only through activation. `nmcli
+connection reload` re-reads the keyfile and leaves the live connection as it is,
+so the role follows it with an activation when the tunnel is already up —
+without which a rotated key sits on disk while the box goes on presenting the
+old one, with Ansible reporting changed and nothing detecting the divergence
+(the refresh acts only on a stale handshake with a moved endpoint, which a
+re-key is neither). Where the tunnel is not up, the reload's autoconnect brings
+it up with the new profile already in force, so the activation is skipped.
+
+Activation flaps the interface, so a rotation driven over this tunnel re-keys
+the path it is running on, and a key the peer does not yet accept does not come
+back. Rotate at the host's public address, in the order `docs/secret-rotation.md`
+gives.
+
 ## DNS priority
 
 `wireguard_client_dns_priority` (10) beats NetworkManager's default of 100 for

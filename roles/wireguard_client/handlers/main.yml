@@ -8,6 +8,27 @@
   when: wireguard_client_nm_active
   become: true
 
+# A reload does not push the profile into a connection that is already up, so a
+# rotated key would sit on disk while the tunnel went on presenting the old one,
+# with Ansible reporting changed and nothing detecting the divergence -- the
+# refresh timer acts only on a stale handshake with a moved endpoint, which a
+# re-key is neither. Activation is what applies it: measured on MicroOS with a
+# peerless throwaway profile, where a reload left the old key running and this
+# one command swapped it. Skipped where the tunnel is not up, because there the
+# reload's autoconnect brings it up with the new profile already in force.
+#
+# Ordered after the reload, which is what puts the new profile where activation
+# reads it from.
+- name: Apply a changed profile to the running tunnel
+  ansible.builtin.shell: |
+    set -euo pipefail
+    if nmcli -t -f NAME connection show --active | grep -qx {{ wireguard_client_interface }}; then
+        nmcli connection up {{ wireguard_client_interface }}
+    fi
+  changed_when: true
+  when: wireguard_client_nm_active
+  become: true
+
 # openresolv's removal changes which resolv.conf writer NetworkManager picks, and
 # it only re-reads that at reload.
 - name: Reload NetworkManager

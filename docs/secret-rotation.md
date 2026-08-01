@@ -46,12 +46,28 @@ container init, so a vault edit + apply alone will not change an already-running
 store — pair it with the in-service change (`ALTER USER` / `grafana-cli reset`),
 or reset the volume (destroys data).
 
-`rogue_trader_wireguard_conf` is the one host secret with **no** `make apply`
-path — bootstrap writes it once and never re-renders an existing server. To
-rotate: `wg genkey` a new keypair, add the new public key as a peer on the home
-router, `ansible-vault edit` the value, then on the live box replace
-`/etc/wireguard/wg0.conf` (0600) and `systemctl restart wg-quick@wg0`; confirm
-the handshake and that the NFS + scrape binds recover, then remove the old peer.
+`rogue_trader_wireguard_conf` is rendered by `roles/wireguard_client` on every
+converge, so it does have an apply path — but it is the one rotation that can
+lock the operator out of a public box, because SSH to it rides the tunnel being
+re-keyed and applying the new key flaps that tunnel. So it is driven at the
+public address, never over the tunnel:
+
+1. Open a path that does not depend on the tunnel: a rich rule for the
+   workstation's public egress address on the host (`firewall-cmd --permanent
+   --add-rich-rule=… && firewall-cmd --reload`, over the tunnel while it still
+   works), and a temporary inbound-22 rule merged into
+   `terraform/firewall-rogue-trader.tf`.
+2. Mint the peer on the home router, which generates the keypair itself rather
+   than taking one — so the private key comes from its exported config, not from
+   `wg genkey`. Keep the same tunnel address, or the exporter binds, the NFS
+   export allowlist and the scrape targets all move with it.
+3. `ansible-vault edit`, then converge at the public address:
+   `ansible-playbook playbooks/rogue-trader.yml --vault-password-file .vault_pass
+   -e ansible_host=<public IPv4>`.
+4. Confirm the handshake (`sudo wg show`) and that the NFS mount and both
+   exporter binds recover, then remove the old peer on the router.
+5. Revoke both openings from step 1 explicitly — `roles/firewalld` only ever
+   adds, so re-converging without the rich rule leaves it in place.
 
 ## Tooling tokens (vault vars, not rendered to a host)
 
