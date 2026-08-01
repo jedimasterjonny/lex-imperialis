@@ -8,15 +8,23 @@ drop their units.
 ## OCI runtime
 
 `podman_runtime` is written to `/etc/containers/containers.conf.d/10-runtime.conf`
-and installed as the package of the same name. It is crun on Tumbleweed — the
-lighter of the two on the exec path, which is the path every container healthcheck
-takes — and runc anywhere else. Distro-derived rather than set per host, so a role
-composing podman need not override it on its Leap scenario. runc is never removed
-either way: podman hard-requires it. The `10-` prefix is load-bearing — it has to
-outrank libcontainers-common's `00-suse-containers.conf`, which pins runc.
+and installed as the package of the same name. It is crun on Tumbleweed and on
+the Tumbleweed-based MicroOS — the lighter of the two on the exec path, which is
+the path every container healthcheck takes — and runc on Leap, which packages no
+crun. Distro-derived rather than set per host, so a role composing podman need not
+override it on its Leap scenario. runc is never removed either way: podman
+hard-requires it. The `10-` prefix is load-bearing — it has to outrank
+libcontainers-common's `00-suse-containers.conf`, which pins runc.
 
-Only the Tumbleweed hosts move: on Leap the drop-in writes the runc podman was
-already using, so it is a no-op there.
+Only the Tumbleweed and MicroOS hosts move: on Leap the drop-in writes the runc
+podman was already using, so it is a no-op there.
+
+**On MicroOS the image must ship crun before this role first runs.** A package
+installs into a new snapshot, so a host whose image lacks crun stays on the old
+root without it while the drop-in already names crun — every container then fails
+to start until the next reboot. `packer/stage2-provision.yml` reads
+`podman_packages` from this role, so rebuilding the image bakes crun in; rebuild
+first, then converge.
 
 A container records its runtime at creation, so writing the file moves nothing
 that is already running. Each container adopts it whenever its unit next restarts,

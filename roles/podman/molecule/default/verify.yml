@@ -2,6 +2,11 @@
 - name: Verify
   hosts: all
   gather_facts: false
+  # podman_runtime, for the MicroOS assertion below. The scenario's group_vars
+  # sets only podman_expected_runtime, which is not a role default, so these
+  # cannot outrank it.
+  vars_files:
+    - ../../defaults/main.yml
   tasks:
     - name: Query the podman runtime
       ansible.builtin.command: podman info
@@ -47,6 +52,20 @@
           - (podman_probe_inspect.stdout | from_json)[0]['OCIRuntime'] == podman_expected_runtime
         fail_msg: "the probe container did not run under {{ podman_expected_runtime }}"
         quiet: true
+
+    # No tier boots MicroOS and none cheaply can. This pins the selector's MicroOS
+    # arm and nothing else — the default templates lazily, so shadowing the one
+    # fact it reads resolves it as a MicroOS host would. No role task runs here;
+    # the two container scenarios cover Tumbleweed and Leap against real hosts.
+    - name: The default selects crun on MicroOS
+      ansible.builtin.assert:
+        that:
+          - podman_runtime == 'crun'
+        fail_msg: "the default does not select crun on MicroOS"
+        quiet: true
+      vars:
+        ansible_facts:
+          distribution: openSUSE MicroOS
 
     # aardvark-dns is only *recommended* by the podman package, so the role
     # installs it explicitly; podman info lists it under the backend's dns only

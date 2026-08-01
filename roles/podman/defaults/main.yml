@@ -1,7 +1,9 @@
 ---
-# Distro-derived, not a tunable: only Tumbleweed packages crun. Anything else
-# falls back to runc, which podman hard-requires and so always has.
-podman_runtime: "{{ 'crun' if ansible_facts['distribution'] == 'openSUSE Tumbleweed' else 'runc' }}"
+# Distro-derived, not a tunable: crun is packaged for Tumbleweed and for the
+# Tumbleweed-based MicroOS. Anything else — Leap — falls back to runc, which
+# podman hard-requires and so always has. On MicroOS a package installs into the
+# next snapshot, so the image must already ship crun before this role runs there.
+podman_runtime: "{{ 'crun' if ansible_facts['distribution'] in ['openSUSE Tumbleweed', 'openSUSE MicroOS'] else 'runc' }}"
 
 # aardvark-dns is netavark's DNS resolver. zypper only recommends it, and the
 # zypper module skips recommends, so without naming it here containers on a
