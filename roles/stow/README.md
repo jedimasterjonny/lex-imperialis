@@ -1,8 +1,9 @@
 # stow
 
 Deploys GNU stow packages from the owner's dots checkout; common and dev
-include it for their dotfiles. Consumers set `stow_user`, `stow_user_home`
-and `stow_packages`, and ensure git is installed.
+include it for their dotfiles. Consumers set `stow_user`, `stow_user_home` and
+`stow_packages` (the dotfile trees), and ensure git is installed. `stow_package`
+is the OS package the role installs.
 
 - The clone is bootstrap-only (`update: false`): tracked files are the live
   targets of the deployed symlinks, so refreshing the tree is the
