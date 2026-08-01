@@ -52,7 +52,9 @@
     mode: "0600"
   become: true
   no_log: true
-  notify: Reload the NetworkManager profiles
+  notify:
+    - Reload the NetworkManager profiles
+    - Apply a changed profile to the running tunnel
 
 # NetworkManager has to know the profile before the tunnel changes hands, and
 # the handler would otherwise not fire until the end of the play.
