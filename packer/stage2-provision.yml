@@ -159,10 +159,13 @@
     # The import is the assertion: both packages resolve through a Provides, so
     # only running the thing the module runs says the binding is really there.
     # An ImportError names whichever of the two is missing.
+    #
+    # Ansible's discovered interpreter, not root's PATH python3: the bindings
+    # install for one flavour only.
     - name: Confirm the python bindings the fleet's modules import are usable
       ansible.builtin.command:
         argv:
-          - python3
+          - "{{ ansible_facts['python']['executable'] }}"
           - -c
           - import firewall, selinux
       changed_when: false
