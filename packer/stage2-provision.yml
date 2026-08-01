@@ -305,6 +305,36 @@
       loop_control:
         label: "{{ item.path }}"
 
+    # The build's own journal, which the two strips above do not reach: it lives
+    # on /var, a separate subvolume, so it is outside both the snapshot prune and
+    # the readback below -- and it is keyed by a machine id the image otherwise
+    # keeps no trace of, so nothing named it. 8 MB of this build ships without
+    # this: the kernel command line, the build server's reverse-DNS name, and
+    # sshd's accepted-key records for the throwaway build key.
+    #
+    # The directory itself stays. journald's Storage=auto keeps a persistent
+    # journal only where /var/log/journal exists, so removing it would quietly
+    # send every host built from this image to a volatile /run journal instead.
+    #
+    # What this guarantees is that the build's log *history* does not ship, not
+    # that the directory is empty in the snapshot: journald goes on logging until
+    # the builder powers the server off, and re-creates its own directory to do
+    # it. Nothing running inside the box can assert on the state after its own
+    # shutdown.
+    - name: Find the build's journal
+      ansible.builtin.find:
+        paths: /var/log/journal
+        file_type: directory
+      register: microos_journal
+
+    - name: Remove the build's journal
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ microos_journal.files }}"
+      loop_control:
+        label: "{{ item.path }}"
+
     # A readback rather than a comment: it is what makes the "must stay LAST"
     # ordering above enforceable. It walks the whole of /.snapshots rather than
     # taking the prune on trust -- what has to hold of the image is that no copy
@@ -320,15 +350,23 @@
         recurse: true
       register: microos_identity_left
 
+    - name: Read back the emptied journal
+      ansible.builtin.find:
+        paths: /var/log/journal
+        file_type: directory
+      register: microos_journal_left
+
     - name: Refuse a snapshot that still carries a machine identity
       ansible.builtin.assert:
         that:
           - microos_identity_left.files | length == 0
+          - microos_journal_left.files | length == 0
         fail_msg: >-
           The snapshot still carries
-          {{ microos_identity_left.files | map(attribute='path') | join(', ') }};
-          every server built from it would share that identity.
-        success_msg: Machine id and host keys absent.
+          {{ (microos_identity_left.files + microos_journal_left.files)
+             | map(attribute='path') | join(', ') }};
+          every server built from it would ship that identity or its logs.
+        success_msg: Machine id, host keys and the build's journal absent.
 
     # Genuinely last: this is the key the play's own SSH connection authenticated
     # with, so nothing may run after it. Safe today because the ControlPersist

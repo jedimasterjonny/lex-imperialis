@@ -89,6 +89,12 @@ rebuild the image when the roles on rogue-trader change what they install.
   snapshot before it strips. Audit a built image from **rescue**, mounting the
   btrfs top level (`mount -o subvolid=5 /dev/sda3 /mnt`) — a normal boot runs
   firstboot, regenerates the machine id and the host keys, and masks the answer.
+- **The build's journal lives outside the snapshots**, on `/var`, so neither the
+  prune nor the identity readback reaches it — it shipped in the image until
+  stage 2 was taught to remove it. On a booted host, any directory under
+  `/var/log/journal` not named after that host's own machine id is a build's.
+  Note the machine id is the DMI product UUID with the dashes dropped, so it is
+  the server's and survives a rebuild; only the host keys are regenerated.
 - **Neither playbook is idempotent**, by design: stage 1 overwrites a block
   device, stage 2 deletes the machine's identity. `ansible.cfg` points at
   `inventory/`, so both assert they are running against packer's build server
