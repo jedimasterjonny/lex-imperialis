@@ -160,7 +160,7 @@ throwaway, never on this server.** So step 7 is mandatory, not optional, and ste
    old host keys, which went with the disk, and confirm it is up in one step:
    `ssh-keygen -R <public IPv4>` then `ssh ansible@<public IPv4> true`, which
    also accepts the new key so the converge does not stall on verification.
-   `ssh-keygen -R 192.168.3.3` too, once the tunnel is back.
+   `ssh-keygen -R 192.168.3.4` too, once the tunnel is back.
 5. Converge over the public address, since the inventory reaches this host at
    its VPN address and the tunnel does not exist yet:
 
@@ -172,7 +172,7 @@ throwaway, never on this server.** So step 7 is mandatory, not optional, and ste
    This is what places the WireGuard key and brings the tunnel up;
    `make apply PLAY=rogue-trader` works only afterwards.
 6. Close the rebuild's openings. Everything here removes the public path, so
-   confirm the tunnel carries you first — `ssh ansible@192.168.3.3 true`. The
+   confirm the tunnel carries you first — `ssh ansible@192.168.3.4 true`. The
    temporary inbound-22 rule goes back out through terraform, merged and applied
    by CI like any other change. Then restore the SSH scoping the disk took with
    it, and re-pin the reconciler on the host keys the rebuild replaced:
@@ -183,8 +183,8 @@ throwaway, never on this server.** So step 7 is mandatory, not optional, and ste
    sudo firewall-cmd --reload
    sudo firewall-cmd --list-services  # http https — the reload makes runtime match
    # on scholam
-   sudo ssh-keygen -f /etc/gitops-reconcile/ssh/known_hosts -R 192.168.3.3
-   sudo sh -c 'ssh-keyscan -H 192.168.3.3 >>/etc/gitops-reconcile/ssh/known_hosts'
+   sudo ssh-keygen -f /etc/gitops-reconcile/ssh/known_hosts -R 192.168.3.4
+   sudo sh -c 'ssh-keyscan -H 192.168.3.4 >>/etc/gitops-reconcile/ssh/known_hosts'
    ```
 
    The reconciler pins each host against that file and never re-seeds it, so

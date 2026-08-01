@@ -55,9 +55,9 @@
     # is address-configured rather than merely link-present. It has to be a unit
     # that exists — systemd treats After= on an absent unit as a no-op, so an
     # ordering left pointing at wg-quick@wg0.service would fail open silently.
-    node_exporter_listen_address: 192.168.3.3:9100
+    node_exporter_listen_address: 192.168.3.4:9100
     node_exporter_after: NetworkManager-wait-online.service
-    cadvisor_listen_ip: 192.168.3.3
+    cadvisor_listen_ip: 192.168.3.4
     cadvisor_after: NetworkManager-wait-online.service
     # Home backup after solar (Thu 01:00) and scholam (Thu 02:00), before the
     # off-site mirror (Thu 04:00). rogue-trader already mounts astropath for
