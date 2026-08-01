@@ -105,16 +105,16 @@ the workstation's **public egress** address, and let CI apply it; adding it in
 the Hetzner console instead is a trap, since the next merge to `main`
 auto-applies terraform over the top of it. From zero there is nothing to open
 and no server for `data.hcloud_server.rogue_trader` to read, so terraform cannot
-plan at all until step 2 has created one.
+plan at all until step 3 has created one.
 
 The host firewall goes the other way. The stock `public` zone ships the `ssh`
 service and `roles/firewalld` only ever adds, so the removal that scopes SSH to
 the LAN here was made by hand (`02c0de6`) and dies with the disk: the box comes
 back accepting SSH from anything that reaches it. That is why the converge
-cannot lock itself out at this layer, and why step 5 puts the removal back.
+cannot lock itself out at this layer, and why step 6 puts the removal back.
 
 **The rebuild path is unexercised through this play, and it destroys the disk**
-— step 6 is mandatory, not optional, and step 7 where the raw copy will not
+— step 7 is mandatory, not optional, and step 8 where the raw copy will not
 start.
 
 1. Pause the reconciler on scholam. It applies `site.yml` every 15 minutes, so
@@ -127,8 +127,23 @@ start.
 
    A paused run still fires and exits as a clean success, so neither
    `GitopsReconcileFailed` nor `GitopsReconcileStale` sounds while the host is
-   down. Step 8 resumes it.
-2. Re-image the server from the repo root:
+   down. Step 9 resumes it.
+2. On a **planned** rebuild — the OS move, not recovery from a loss — take the
+   state with you first. `podman_backup` runs weekly (Wed 01:00), so step 7
+   would otherwise restore a site up to a week stale, and the dump step 8 falls
+   back to is only as fresh as the last daily run. On rogue-trader:
+
+   ```bash
+   sudo systemctl start wordpress-db-dump.service   # so the fresh dump is in the backup
+   sudo systemctl start podman-backup.service
+   sudo restic -r /nfs/astropath/rogue-trader-podman-backup \
+     --password-file /etc/restic/password snapshots --latest 1
+   ```
+
+   Then take a disk snapshot, which makes the rollback one command:
+   `hcloud server create-image --type snapshot --description pre-microos
+   rogue-trader`. Delete it once the rebuilt box is serving.
+3. Re-image the server from the repo root:
 
    ```bash
    ansible-playbook bootstrap/rogue-trader.yml \
@@ -140,13 +155,13 @@ start.
    `rogue_trader_server_type` matching what the box should be; the default is
    the spike's size. Then `make tofu-apply`: it attaches the firewall, and from
    zero it also re-points the A/AAAA records at the new IP.
-3. The play does not wait on this path, and a rebuild does not power the box on
+4. The play does not wait on this path, and a rebuild does not power the box on
    — `hcloud server poweron rogue-trader` if it comes back off. Then drop the
    old host keys, which went with the disk, and confirm it is up in one step:
    `ssh-keygen -R <public IPv4>` then `ssh ansible@<public IPv4> true`, which
    also accepts the new key so the converge does not stall on verification.
    `ssh-keygen -R 192.168.3.3` too, once the tunnel is back.
-4. Converge over the public address, since the inventory reaches this host at
+5. Converge over the public address, since the inventory reaches this host at
    its VPN address and the tunnel does not exist yet:
 
    ```bash
@@ -156,7 +171,7 @@ start.
 
    This is what places the WireGuard key and brings the tunnel up;
    `make apply PLAY=rogue-trader` works only afterwards.
-5. Close the rebuild's openings. Everything here removes the public path, so
+6. Close the rebuild's openings. Everything here removes the public path, so
    confirm the tunnel carries you first — `ssh ansible@192.168.3.3 true`. The
    temporary inbound-22 rule goes back out through terraform, merged and applied
    by CI like any other change. Then restore the SSH scoping the disk took with
@@ -175,14 +190,14 @@ start.
    The reconciler pins each host against that file and never re-seeds it, so
    until this runs every reconcile aborts at the connect — permanently, and
    reading like a machine-in-the-middle rather than a missing step.
-6. Once its play has converged, on rogue-trader:
+7. Once its play has converged, on rogue-trader:
    `sudo /usr/local/sbin/podman-restore.sh` — restores the WordPress and
    database volumes. Until it has run, WordPress is a blank install, so
    `wordpress-cron.service` fails and `WordpressCronFailed` fires; that clears
    with the restore and is not a fault to chase.
-7. The database travels as a raw `/var/lib/mysql` copy, which a newer mariadb
+8. The database travels as a raw `/var/lib/mysql` copy, which a newer mariadb
    than it was taken on may refuse to start. If it does, recover the database
-   from the logical dump instead. Step 4 restored the raw copy into
+   from the logical dump instead. Step 7 restored the raw copy into
    `wordpress-db`, so wipe that volume first:
 
    ```bash
@@ -210,10 +225,10 @@ start.
    sudo systemctl start wordpress
    ```
 
-8. Resume the reconciler on scholam: `sudo rm /var/lib/gitops-reconcile/pause`.
+9. Resume the reconciler on scholam: `sudo rm /var/lib/gitops-reconcile/pause`.
    Confirm the next fire applies rather than assuming it did —
    `/var/lib/gitops-reconcile/last-applied-sha` should reach `main`'s HEAD.
-9. `rogue-trader` also carries a `rogue-trader-home-backup` repo (its `/home` is
+10. `rogue-trader` also carries a `rogue-trader-home-backup` repo (its `/home` is
    minimal — service-account skeletons only); restore it by hand as in
    [scholam](#scholam-control-host) step 5 if wanted.
 
