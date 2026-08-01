@@ -17,6 +17,11 @@ host that defaults permissive — a live `permissive`→`enforcing` transition, 
 reboot. Gated on `ansible_selinux.status == 'enabled'`, so the SELinux-less
 molecule containers skip it.
 
+That module imports `python3-selinux`, which `common_packages` carries — so
+`Install base packages` must stay ahead of it. **On MicroOS that ordering is not
+enough**: the install lands in a new snapshot, so the image has to ship the
+binding already. `packer/stage2-provision.yml` reads `common_packages` for that.
+
 Creates `/var/lib/pcrlock.d`. `sdbootutil-update-predictions.service` runs after
 every snapper snapshot and its `ExecStartPre` fails without that directory, which
 only a TPM2 LUKS enrolment would otherwise create — so an unenrolled TPM2 host
