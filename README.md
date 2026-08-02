@@ -53,10 +53,9 @@ The standing exception is `gitops_reconcile`: a root timer on `scholam` that pul
 
 ## Testing
 
-Molecule, four tiers — three free, one billed:
+Molecule, three tiers — two free, one billed:
 
 - `default` — incus container on Tumbleweed. `make test ROLE=<role>`
-- `leap` — incus container on Leap 16, for the roles the VPS also runs. `make test-leap ROLE=<role>`
 - `libvirt` — full-boot VM, where a container can't exercise the role. `make test-vm ROLE=<role>`
 - `hetzner` — the VM tier's CI form on a real Hetzner VM, since Hetzner cannot nest KVM. `make test-hetzner ROLE=<role>`
 

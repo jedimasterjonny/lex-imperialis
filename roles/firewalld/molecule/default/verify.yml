@@ -43,7 +43,7 @@
 
     # One rule line scoping the port to the source — not two loose substrings
     # (a split rule would pass) nor the exact rule string (firewalld may requote
-    # or reorder tokens, differently across Tumbleweed and Leap).
+    # or reorder tokens).
     - name: The source-scoped rich rule is present
       ansible.builtin.assert:
         that:

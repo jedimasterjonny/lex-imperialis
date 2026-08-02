@@ -1,9 +1,0 @@
----
-platforms:
-  - name: "lex-firewalld-leap-${MOLECULE_RUN_ID:-local}"
-    image: images:opensuse/16.0/cloud
-    # firewalld writes nftables rules into the instance's net namespace; the CI
-    # runner's AppArmor denies that under the default profile, so drop it — the
-    # instance is throwaway.
-    config:
-      raw.lxc: lxc.apparmor.profile=unconfined

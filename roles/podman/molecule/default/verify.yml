@@ -2,11 +2,14 @@
 - name: Verify
   hosts: all
   gather_facts: false
-  # podman_runtime, for the MicroOS assertion below. The scenario's group_vars
-  # sets only podman_expected_runtime, which is not a role default, so these
-  # cannot outrank it.
+  # podman_runtime, for the MicroOS assertion below.
   vars_files:
     - ../../defaults/main.yml
+  # What this image must end up on, pinned here rather than read from the role,
+  # so changing the role's default fails this instead of moving the goalposts.
+  # Not a role default, so the vars_files above cannot outrank it.
+  vars:
+    podman_expected_runtime: crun
   tasks:
     - name: Query the podman runtime
       ansible.builtin.command: podman info
@@ -56,7 +59,7 @@
     # No tier boots MicroOS and none cheaply can. This pins the selector's MicroOS
     # arm and nothing else — the default templates lazily, so shadowing the one
     # fact it reads resolves it as a MicroOS host would. No role task runs here;
-    # the two container scenarios cover Tumbleweed and Leap against real hosts.
+    # the container scenario covers Tumbleweed against a real host.
     - name: The default selects crun on MicroOS
       ansible.builtin.assert:
         that:

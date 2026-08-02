@@ -3,6 +3,11 @@
   hosts: all
   vars_files:
     - ../../defaults/main.yml
+  # What this image must end up running, stated here rather than derived from the
+  # role's ternary, which would only assert that ternary back at itself. Not a
+  # role default, so the vars_files above cannot outrank it.
+  vars:
+    autoupdate_expected_command: /usr/bin/zypper --non-interactive dup --auto-agree-with-licenses
   tasks:
     # daemon_reload is a no-op that just makes the module gather and return the
     # timer's systemctl-show properties to assert against; it reads, not mutates.

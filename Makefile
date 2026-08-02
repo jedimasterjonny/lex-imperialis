@@ -9,11 +9,11 @@ export MOLECULE_RUN_ID
 # their own, e.g. make converge ROLE=nfs SCENARIO=libvirt.
 SCENARIO ?= default
 
-# A scenario's tier owns its provisioner config: both incus scenarios (default
-# and leap) take the incus tier's. Recursive (=), not simple (:=) — the test-*
-# targets set SCENARIO per target, which is only in scope once the recipe
-# expands; := would pin every tier to incus.
-TIER = $(if $(filter default leap,$(SCENARIO)),incus,$(SCENARIO))
+# A scenario's tier owns its provisioner config: the default scenario takes the
+# incus tier's. Recursive (=), not simple (:=) — the test-* targets set SCENARIO
+# per target, which is only in scope once the recipe expands; := would pin every
+# tier to incus.
+TIER = $(if $(filter default,$(SCENARIO)),incus,$(SCENARIO))
 
 BASE_CONFIG = molecule/$(TIER)/base.yml
 
@@ -39,7 +39,7 @@ endef
 # PLAY selects which playbook in playbooks/ to run, e.g. make check PLAY=solar.
 PLAY ?= scholam
 
-.PHONY: lint ansible-lint yamllint codespell hooks pre-commit converge verify destroy test test-leap test-vm test-hetzner destroy-hetzner check apply tofu-fmt tofu-validate tofu-lint tofu-plan tofu-apply packer-fmt packer-validate image hugo-serve hugo-build
+.PHONY: lint ansible-lint yamllint codespell hooks pre-commit converge verify destroy test test-vm test-hetzner destroy-hetzner check apply tofu-fmt tofu-validate tofu-lint tofu-plan tofu-apply packer-fmt packer-validate image hugo-serve hugo-build
 
 lint: yamllint ansible-lint codespell
 
@@ -69,11 +69,6 @@ destroy:
 	$(call molecule,destroy)
 
 test:
-	$(call molecule,test)
-
-# Free incus tier on the openSUSE Leap 16 image, for the LEAP_ROLES subset.
-test-leap: override SCENARIO := leap
-test-leap:
 	$(call molecule,test)
 
 test-vm: override SCENARIO := libvirt
