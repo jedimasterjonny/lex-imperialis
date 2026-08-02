@@ -51,8 +51,8 @@ hcloud image delete <id>
 
 Established on a running box, not inferred:
 
-- `ansible_facts['distribution']` is `openSUSE MicroOS`, so `roles/podman`
-  resolves `podman_runtime` to `crun`, which the image does not ship.
+- `ansible_facts['distribution']` is `openSUSE MicroOS`, which is what selects
+  `autoupdate`'s transactional arm.
 - `community.general.zypper` does wrap `transactional-update` — shown by the
   snapshot chain it leaves, which a direct zypper on a read-only root could not
   produce.
@@ -64,9 +64,7 @@ adds to one needs no edit here — but the built snapshot is still fixed as at
 build time, and nothing detects that it has fallen behind. The cost is a
 transactional install and a forced reboot part-way through a converge on the live
 box, so rebuild the image when the roles on rogue-trader change what they
-install. crun is the standing instance: `roles/podman` now selects it on MicroOS
-and no snapshot built so far carries it, so rebuild before that role first
-converges.
+install.
 
 Two blind spots, both silent. `vars_files` is a hand-maintained list of seven
 roles, so a package installed by any other role `playbooks/rogue-trader.yml`

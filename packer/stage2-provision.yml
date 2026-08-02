@@ -23,9 +23,6 @@
     - ../roles/stow/defaults/main.yml
     - ../roles/wireguard_client/defaults/main.yml
   vars:
-    # Not dereferenceable before Gather facts below: podman_packages resolves its
-    # runtime from ansible_facts['distribution'].
-    #
     # Deliberately not a delta against the image's SBOM: a package that already
     # ships is a no-op here, where one missed is not merely a slow converge --
     # zypper stages into a new snapshot on MicroOS, so a role that installs a

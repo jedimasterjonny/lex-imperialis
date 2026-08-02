@@ -8,16 +8,11 @@ drop their units.
 ## OCI runtime
 
 `podman_runtime` is written to `/etc/containers/containers.conf.d/10-runtime.conf`
-and installed as the package of the same name. It is crun on Tumbleweed and on
-the Tumbleweed-based MicroOS — the lighter of the two on the exec path, which is
-the path every container healthcheck takes — and runc on Leap, which packages no
-crun. Distro-derived rather than set per host, so a role composing podman need not
-override it on its Leap scenario. runc is never removed either way: podman
-hard-requires it. The `10-` prefix is load-bearing — it has to outrank
-libcontainers-common's `00-suse-containers.conf`, which pins runc.
-
-Only the Tumbleweed and MicroOS hosts move: on Leap the drop-in writes the runc
-podman was already using, so it is a no-op there.
+and installed as the package of the same name. It is crun fleet-wide, since
+Tumbleweed and the Tumbleweed-based MicroOS both package it and crun is lighter
+than runc on the exec path — the path every container healthcheck takes. runc is
+never removed: podman hard-requires it. The `10-` prefix is load-bearing — it has
+to outrank libcontainers-common's `00-suse-containers.conf`, which pins runc.
 
 **On MicroOS the image must ship crun before this role first runs.** A package
 installs into a new snapshot, so a host whose image lacks crun stays on the old
