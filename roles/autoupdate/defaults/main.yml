@@ -2,15 +2,13 @@
 # Distro-derived, not a tunable. See the README for what it switches.
 autoupdate_transactional: "{{ ansible_facts['distribution'] == 'openSUSE MicroOS' }}"
 
-# Rolling Tumbleweed upgrades the whole system with `dup`; Leap (and other point
-# releases) apply vendor patches with `patch`. The whole command line is the
+# The fleet is rolling either way, so both arms are a whole-system `dup`; what
+# differs is whether the root is read-only. The whole command line is the
 # variable, not just the subcommand, because the binary differs too.
 autoupdate_update_command: >-
   {{ '/usr/sbin/transactional-update --non-interactive dup'
      if autoupdate_transactional | bool
-     else '/usr/bin/zypper --non-interactive dup --auto-agree-with-licenses'
-     if ansible_facts['distribution'] == 'openSUSE Tumbleweed'
-     else '/usr/bin/zypper --non-interactive patch --auto-agree-with-licenses' }}
+     else '/usr/bin/zypper --non-interactive dup --auto-agree-with-licenses' }}
 
 # node_exporter textfile-collector directory the update outcome metric is written
 # to (autoupdate.prom). Must match the node_exporter role's

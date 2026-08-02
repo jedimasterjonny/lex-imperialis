@@ -1,7 +1,7 @@
 ---
-# Tier config for this tier's scenarios (default and leap): molecule deep-merges
-# it under a scenario's molecule.yml when the make targets pass it as the base
-# config (-c). See molecule/README.md.
+# Tier config for this tier's scenario: molecule deep-merges it under a
+# scenario's molecule.yml when the make targets pass it as the base config (-c).
+# See molecule/README.md.
 #
 # Never name playbooks.prepare here — a base config sets a floor, so it would
 # mask the prepare.yml a scenario ships.

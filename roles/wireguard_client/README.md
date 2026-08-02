@@ -102,9 +102,9 @@ reach activated state. `wg-quick@<iface>.service` no longer exists, and systemd
 treats `After=` on an absent unit as a no-op — so an ordering left pointing at it
 fails open, silently.
 
-## What the container tiers cannot test
+## What the container tier cannot test
 
-The molecule scenarios have no NetworkManager and no `wg0`, so they cover the
+The molecule scenario has no NetworkManager and no `wg0`, so it covers the
 rendered profile, the units and the refresh script's guards. Activation, the
 handover and the SELinux and openresolv removals are gated on state a container
 never reaches; they are exercised on the host. The `libvirt`/`hetzner` tiers the

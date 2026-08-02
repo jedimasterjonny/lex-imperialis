@@ -2,11 +2,3 @@
 platforms:
   - name: "lex-autoupdate-incus-${MOLECULE_RUN_ID:-local}"
     image: images:opensuse/tumbleweed/cloud
-provisioner:
-  inventory:
-    group_vars:
-      all:
-        # What this image must end up running. Stated, not derived: verify is
-        # shared with the leap scenario, and a re-derived expectation would only
-        # assert the role's own ternary back at itself.
-        autoupdate_expected_command: /usr/bin/zypper --non-interactive dup --auto-agree-with-licenses

@@ -6,9 +6,8 @@ pre-commit` in the lint CI gate) and the Makefile.
 ## check-role-test-coverage.sh
 
 Enforces the test-coverage contract over `roles/`: every role ships a
-`molecule/default` (incus) or `molecule/libvirt` scenario; a `libvirt` scenario
-requires a `molecule/hetzner` one (its real-VM CI form); and each role in the
-hardcoded Leap-16 subset (`leap_roles`) ships a `molecule/leap` scenario. Exits
+`molecule/default` (incus) or `molecule/libvirt` scenario, and a `libvirt`
+scenario requires a `molecule/hetzner` one (its real-VM CI form). Exits
 non-zero listing every gap; runs on every commit, ignoring filenames.
 
 ## check-jinja-syntax.py

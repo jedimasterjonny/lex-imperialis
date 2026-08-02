@@ -2,12 +2,11 @@
 name: molecule
 
 # "on" is quoted so yamllint's truthy rule does not read it as a boolean.
-# Three tiers, routed by the scenarios a role ships: incus runs free on the
-# GitHub runner on two images — Tumbleweed (default) and Leap 16 (leap, the
-# LEAP_ROLES subset); the full-VM tier runs on a billable Hetzner VM (Hetzner
-# Cloud cannot nest KVM, so the VM is the real machine). discover gates each to
-# the roles a PR actually touches. No push:main — the --no-ff merge tree equals
-# the validated PR tree.
+# Two tiers, routed by the scenarios a role ships: incus runs free on the GitHub
+# runner on the Tumbleweed image (default); the full-VM tier runs on a billable
+# Hetzner VM (Hetzner Cloud cannot nest KVM, so the VM is the real machine).
+# discover gates each to the roles a PR actually touches. No push:main — the
+# --no-ff merge tree equals the validated PR tree.
 "on":
   pull_request:
     # types replaces the default set, so opened/synchronize/reopened must stay;
@@ -34,7 +33,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       incus: ${{ steps.set.outputs.incus }}
-      leap: ${{ steps.set.outputs.leap }}
       hetzner: ${{ steps.set.outputs.hetzner }}
     steps:
       - name: Check out
@@ -44,10 +42,10 @@ jobs:
 
       # Emit one matrix per tier from the PR diff. A changed role runs its own
       # tiers; shared infra (anything outside roles/) is exercised via the motd
-      # harness. The incus tiers (Tumbleweed default + Leap) are free, so any
-      # shared change runs them; the billable hetzner VM validates real-machine
-      # behaviour, so a toolchain-only bump (requirements-dev.txt, the Makefile or
-      # the pre-commit hook set) stays on the free incus tiers.
+      # harness. The incus tier is free, so any shared change runs it; the
+      # billable hetzner VM validates real-machine behaviour, so a toolchain-only
+      # bump (requirements-dev.txt, the Makefile or the pre-commit hook set) stays
+      # on the free incus tier.
       - name: Determine roles and tiers
         id: set
         env:
@@ -107,14 +105,12 @@ jobs:
             printf '%s' "$out" | jq -R -s -c 'split("\n") | map(select(length > 0))'
           }
           incus=$(tier_matrix "$incus_cand" default)
-          leap=$(tier_matrix "$incus_cand" leap)
           hetzner=$(tier_matrix "$hetzner_cand" hetzner)
           {
             echo "incus=$incus"
-            echo "leap=$leap"
             echo "hetzner=$hetzner"
           } >> "$GITHUB_OUTPUT"
-          echo "incus: $incus  leap: $leap  hetzner: $hetzner"
+          echo "incus: $incus  hetzner: $hetzner"
 
   incus:
     name: incus (${{ matrix.role }})
@@ -173,57 +169,6 @@ jobs:
         env:
           ROLE: ${{ matrix.role }}
         run: sg incus-admin -c "make test ROLE=$ROLE"
-
-  leap:
-    name: leap (${{ matrix.role }})
-    needs: discover
-    if: needs.discover.outputs.leap != '[]'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        role: ${{ fromJSON(needs.discover.outputs.leap) }}
-    steps:
-      - name: Check out
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Set up Python
-        id: python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
-        with:
-          python-version: "3.14"
-
-      # uv resolves and installs this set an order of magnitude faster than pip,
-      # and owns the wheel cache setup-python's cache: pip used to hold.
-      - name: Set up uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-        with:
-          enable-cache: true
-          cache-dependency-glob: requirements*.txt
-
-      # The make targets activate .venv, so mirror the local layout. The venv is
-      # built against setup-python's interpreter, not a uv-managed download, so
-      # the python under test stays the one this job pinned.
-      - name: Install dev tooling
-        run: |
-          uv venv .venv --python '${{ steps.python.outputs.python-path }}'
-          uv pip install --python .venv/bin/python -r requirements-dev.txt
-
-      # Same incus setup as the default-image tier above; see its comments.
-      - name: Set up incus
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y incus
-          sudo incus admin init --auto --storage-backend=dir
-          sudo iptables -P FORWARD ACCEPT
-          sudo incus network set incusbr0 ipv6.address none
-          sudo usermod -aG incus-admin "$USER"
-
-      - name: Run the leap molecule scenario
-        env:
-          ROLE: ${{ matrix.role }}
-        run: sg incus-admin -c "make test-leap ROLE=$ROLE"
 
   hetzner:
     name: hetzner (${{ matrix.role }})
@@ -299,7 +244,7 @@ jobs:
   molecule-gate:
     name: molecule-gate
     if: always()
-    needs: [discover, incus, leap, hetzner]
+    needs: [discover, incus, hetzner]
     runs-on: ubuntu-latest
     steps:
       - name: Fail if any tier failed, was cancelled, or was skipped in scope
@@ -307,7 +252,6 @@ jobs:
           contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
           || (needs.discover.result == 'success'
               && ((needs.discover.outputs.incus != '[]' && needs.incus.result == 'skipped')
-                  || (needs.discover.outputs.leap != '[]' && needs.leap.result == 'skipped')
                   || (needs.discover.outputs.hetzner != '[]' && needs.hetzner.result == 'skipped')))
         run: |
           echo "A molecule tier failed, was cancelled, or was skipped while in scope."

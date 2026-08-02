@@ -63,16 +63,15 @@ reports green without running one:
 
 - A changed role runs whichever tiers it ships — the matrix includes a role
   only when it carries that tier's scenario directory (`molecule/default` for
-  incus, `molecule/leap`, `molecule/hetzner`).
-- Shared infra is exercised through the `motd` harness, which carries all three
+  incus, `molecule/hetzner` for hetzner).
+- Shared infra is exercised through the `motd` harness, which carries both CI
   tiers.
 - A `requirements-dev.txt`- or `Makefile`-only change stays on the free incus
-  tiers and skips the billable hetzner VM.
+  tier and skips the billable hetzner VM.
 - `workflow_dispatch` ignores the diff and tests every role.
 
-Molecule tests only the scenarios a role ships; that the required ones *exist* —
-and that the `LEAP_ROLES` subset carries a `leap` scenario — is enforced
-separately by `check-role-test-coverage.sh` in the lint gate.
+Molecule tests only the scenarios a role ships; that the required ones *exist*
+is enforced separately by `check-role-test-coverage.sh` in the lint gate.
 
 ### Tiers
 
@@ -81,13 +80,12 @@ Every tier job has a 20-minute timeout.
 | Job | Scenario | Make target | Runner |
 | --- | --- | --- | --- |
 | `incus` | `default` (Tumbleweed) | `make test` | free, on the runner |
-| `leap` | `leap` (Leap 16) | `make test-leap` | free, on the runner |
 | `hetzner` | `hetzner` | `make test-hetzner` | a real, billable Hetzner VM |
 
 The libvirt tier is local-only; CI realises it as `hetzner`, since Hetzner
-Cloud cannot nest KVM. The incus jobs install and init incus on the runner (dir
+Cloud cannot nest KVM. The incus job installs and inits incus on the runner (dir
 storage; `FORWARD ACCEPT` and IPv6 off to clear the runner's Docker/network
-defaults) and run molecule under the `incus-admin` group. The `hetzner` job passes
+defaults) and runs molecule under the `incus-admin` group. The `hetzner` job passes
 `HCLOUD_TOKEN` from the `MOLECULE_HCLOUD_TOKEN` secret — a token scoped to a
 throwaway Hetzner project with no production server — so it never decrypts the
 vault (the one PR-triggered path that otherwise would). It sets `MOLECULE_RUN_ID`
@@ -96,7 +94,7 @@ per run so concurrent VM and SSH-key names never collide, and carries an
 
 ### molecule-gate
 
-A fixed-name summary job (`if: always()`, `needs:` `discover` plus the three
+A fixed-name summary job (`if: always()`, `needs:` `discover` plus both CI
 tiers) that fails if `discover` or any tier failed or was cancelled, and passes
 when tiers skip. The per-role matrix job names vary per PR and can't be named
 as required checks, and a required check that never reports blocks the merge —

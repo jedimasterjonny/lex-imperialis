@@ -66,10 +66,9 @@
   become: true
 
 # Declare the SELinux mode fleet-wide instead of leaning on the OS default, so it
-# is config-as-code: a no-op on the Tumbleweed hosts (already enforcing) that
-# flips the Leap host, which defaults permissive. permissive->enforcing is a live
-# transition (no reboot). Gated on a manageable SELinux so the SELinux-less
-# molecule containers skip it.
+# is config-as-code: every host already enforces, so this holds the mode rather
+# than setting it. Gated on a manageable SELinux so the SELinux-less molecule
+# containers skip it.
 #
 # After the install above, which carries the python binding this module imports —
 # except on a transactional host, where that install lands in the next snapshot

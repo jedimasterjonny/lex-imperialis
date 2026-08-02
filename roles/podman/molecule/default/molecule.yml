@@ -9,11 +9,3 @@ platforms:
     config:
       security.nesting: "true"
       raw.lxc: lxc.apparmor.profile=unconfined
-provisioner:
-  inventory:
-    group_vars:
-      all:
-        # What this image must end up on. Stated, not derived: verify is shared
-        # with the leap scenario, and a re-derived expectation would only assert
-        # the role's own arithmetic back at itself.
-        podman_expected_runtime: crun

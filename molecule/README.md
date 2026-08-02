@@ -12,9 +12,9 @@ method). Molecule deep-merges it under a scenario's
 override it layers on top.
 
 A tier's config reaches molecule only through `-c`, so scenarios run through the
-Makefile, which derives the tier from `SCENARIO` (`default` and `leap` are both
-incus): `make converge|verify|destroy|test ROLE=<role> [SCENARIO=<scenario>]`,
-and `make test-leap|test-vm|test-hetzner ROLE=<role>`.
+Makefile, which derives the tier from `SCENARIO` (`default` is incus):
+`make converge|verify|destroy|test ROLE=<role> [SCENARIO=<scenario>]`, and
+`make test-vm|test-hetzner ROLE=<role>`.
 
 Bare molecule in a role directory gets no tier config, so `create` and
 `converge` would fail obscurely on an unreachable host and `destroy` would skip,
@@ -34,12 +34,11 @@ own.
 
 ## incus
 
-Container tier — the free default (`make test`, and `make test-leap` on the
-Leap image). `create.yml` launches each platform with `incus launch`, applying a
-platform's optional `config` map as `-c key=value`, waits for
-`network-online.target`, then primes the zypper metadata cache
-(retried) to ride out the flaky Tumbleweed mirror. `prepare.yml` removes the
-image's cloud user (`opensuse`/`sles`) so `common` can claim uid 1000 for the
+Container tier — the free default (`make test`). `create.yml` launches each
+platform with `incus launch`, applying a platform's optional `config` map as
+`-c key=value`, waits for `network-online.target`, then primes the zypper
+metadata cache (retried) to ride out the flaky Tumbleweed mirror. `prepare.yml`
+removes the image's `opensuse` cloud user so `common` can claim uid 1000 for the
 owner; `motd` symlinks it too — not for the uid, but so this shared file has a
 CI consumer, since every shared-infra change runs `motd`.
 
