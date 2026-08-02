@@ -8,19 +8,24 @@
       register: sshd_effective
       changed_when: false
 
+    # Matched case-folded: sshd -T printed every keyword lowercase until OpenSSH
+    # 10.4, which prints each in its canonical casing instead. Both spellings
+    # mean the same thing, so fold the case rather than pin either one.
     - name: Hardening settings are in effect
+      vars:
+        sshd_settings: "{{ sshd_effective.stdout_lines | map('lower') | list }}"
       ansible.builtin.assert:
         that:
-          - "'passwordauthentication no' in sshd_effective.stdout_lines"
-          - "'kbdinteractiveauthentication no' in sshd_effective.stdout_lines"
+          - "'passwordauthentication no' in sshd_settings"
+          - "'kbdinteractiveauthentication no' in sshd_settings"
           # sshd -T renders this value with either synonym depending on the
           # OpenSSH build: Tumbleweed prints prohibit-password, Leap 16 the
           # older without-password. Both mean key-only root login.
           - >-
-            'permitrootlogin prohibit-password' in sshd_effective.stdout_lines or
-            'permitrootlogin without-password' in sshd_effective.stdout_lines
-          - "'x11forwarding no' in sshd_effective.stdout_lines"
-          - "'loglevel VERBOSE' in sshd_effective.stdout_lines"
+            'permitrootlogin prohibit-password' in sshd_settings or
+            'permitrootlogin without-password' in sshd_settings
+          - "'x11forwarding no' in sshd_settings"
+          - "'loglevel verbose' in sshd_settings"
         fail_msg: "the hardening drop-in is not in effect"
         quiet: true
 
