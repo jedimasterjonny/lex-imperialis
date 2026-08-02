@@ -100,6 +100,14 @@ jobs:
           HUGO_ENV: production
         run: hugo --minify -d public
 
+      # firebase.json hash-pins the theme's inline script in the CSP script-src, so
+      # a theme bump that rewrites that script builds green and is then blocked by
+      # the browser on the live site. Compare the pins against what this build
+      # actually serves, from the gate build rather than the preview's (-E -F would
+      # add future-dated pages the live deploy omits).
+      - name: Check the CSP script-src hashes match the build
+        run: ../bin/check-csp-hashes.py public firebase.json
+
   preview:
     name: preview
     needs: build

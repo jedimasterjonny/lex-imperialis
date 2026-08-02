@@ -21,6 +21,7 @@ the Firebase verification TXT are all managed in `terraform/`.
 CSS/JS/images keep their long `immutable`/30d TTLs via the later, more specific
 blocks); the CSP `script-src` hash-pins the theme's one inline script, so a
 Blowfish bump that changes it must have the `sha256-` regenerated from a fresh
-`make hugo-build`. HSTS is intentionally bare `max-age` — `includeSubDomains`
+`make hugo-build`. `bin/check-csp-hashes.py` enforces that in the site gate and
+prints the hash to paste. HSTS is intentionally bare `max-age` — `includeSubDomains`
 (and thus `preload`) on the apex would bind the unmanaged dynamic-DNS subdomain
 to HTTPS.
