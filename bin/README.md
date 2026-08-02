@@ -21,6 +21,16 @@ fence, which bash's `${#array[@]}` supplies; `shellcheck-jinja.sh` rewrites
 resolves no variables and looks up no filters, so Ansible-only filters do not
 trip it. Needs the venv (jinja2, via ansible-core).
 
+## check-csp-hashes.py
+
+Compares the CSP `script-src` hashes in `jonnyoc-site/firebase.json` against the
+inline scripts a built site serves, failing either way round — a served script
+with no pin (the live breakage) or a pin nothing serves (its stale remnant).
+Takes the build directory and `firebase.json`; needs a fresh `make hugo-build`,
+so it runs in the site gate's build job, not a pre-commit hook. Counts only
+executable scripts: a non-JavaScript `type` is a data block that script-src never
+applies to, which is why the theme's `application/ld+json` is ignored.
+
 ## shellcheck-jinja.sh
 
 Shellchecks the shell-in-Jinja templates the plain `shellcheck` hook skips —
