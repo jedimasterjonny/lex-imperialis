@@ -174,3 +174,69 @@ tests:
       - eval_time: 3h55m
         alertname: AutoupdateFailed
         exp_alerts: []
+
+  # FilesystemReadOnly carves out the MicroOS root, which is read-only by design.
+  # The carve-out is the kind that silently over-reaches, so all three polarities
+  # are named: the state it must ignore, and the two neighbouring states it must
+  # still catch. Dropping the join keys to instance alone passes the first case
+  # and fails the third.
+  - interval: 1m
+    name: the MicroOS root being read-only does not alert
+    input_series:
+      - series: 'node_filesystem_readonly{job="node",instance="rogue-trader:9100",mountpoint="/",fstype="btrfs",device="/dev/sda3"}'
+        values: "1x20"
+      - series: 'node_os_info{job="node",instance="rogue-trader:9100",id="opensuse-microos",name="openSUSE MicroOS"}'
+        values: "1x20"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: FilesystemReadOnly
+        exp_alerts: []
+
+  # The exclusion keys on the OS, not on the mountpoint: a read-only / on a
+  # Tumbleweed host is still the I/O-error remount the rule is named for.
+  - interval: 1m
+    name: a read-only root on a non-MicroOS host still alerts
+    input_series:
+      - series: 'node_filesystem_readonly{job="node",instance="solar:9100",mountpoint="/",fstype="btrfs",device="/dev/sda2"}'
+        values: "1x20"
+      - series: 'node_os_info{job="node",instance="solar:9100",id="opensuse-tumbleweed",name="openSUSE Tumbleweed"}'
+        values: "1x20"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: FilesystemReadOnly
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: node
+              instance: solar:9100
+              mountpoint: /
+              fstype: btrfs
+              device: /dev/sda2
+            exp_annotations:
+              summary: "solar:9100:/ is mounted read-only"
+              description: "/ on solar:9100 is mounted read-only — writes fail silently. Likely a remount after an I/O error."
+
+  # And it keys on the mountpoint, not just the OS: /var is a writable subvolume
+  # on MicroOS, so it going read-only there is a real fault the carve-out must
+  # not swallow.
+  - interval: 1m
+    name: a read-only non-root filesystem on MicroOS still alerts
+    input_series:
+      - series: 'node_filesystem_readonly{job="node",instance="rogue-trader:9100",mountpoint="/var",fstype="btrfs",device="/dev/sda3"}'
+        values: "1x20"
+      - series: 'node_os_info{job="node",instance="rogue-trader:9100",id="opensuse-microos",name="openSUSE MicroOS"}'
+        values: "1x20"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: FilesystemReadOnly
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: node
+              instance: rogue-trader:9100
+              mountpoint: /var
+              fstype: btrfs
+              device: /dev/sda3
+            exp_annotations:
+              summary: "rogue-trader:9100:/var is mounted read-only"
+              description: "/var on rogue-trader:9100 is mounted read-only — writes fail silently. Likely a remount after an I/O error."

@@ -139,8 +139,20 @@ groups:
       # wire, so that one sees the NAS through the fleet's NFS mounts, whereas ro is
       # the client's own mount option — a read-only volume on administratum reads 0
       # here, and goes uncovered.
+      #
+      # MicroOS mounts / read-only by design — that is the whole transactional-update
+      # model, not a fault — so rogue-trader would otherwise hold this critical alert
+      # firing forever. The exclusion is joined on (instance, mountpoint) rather than
+      # instance alone, so it drops only the root of a MicroOS host: a genuine
+      # remount of /var there still alerts, as does a read-only / on Tumbleweed.
+      # node_os_info carries the id, and label_replace only supplies the mountpoint
+      # for the join. If node_os_info ever stops being exported the join matches
+      # nothing and the alert returns — it fails towards noise, not silence.
       - alert: FilesystemReadOnly
-        expr: node_filesystem_readonly{fstype!~"tmpfs|squashfs|overlay|ramfs"} == 1
+        expr: |
+          node_filesystem_readonly{fstype!~"tmpfs|squashfs|overlay|ramfs"} == 1
+            unless on(instance, mountpoint)
+          label_replace(node_os_info{id="opensuse-microos"}, "mountpoint", "/", "instance", ".*")
         for: 5m
         labels:
           severity: critical
