@@ -31,6 +31,10 @@ The role's host is the NAS, not a fleet openSUSE node, which shapes it:
 
 - `prometheus_project_dir` — where `compose.yaml` + `prometheus.yml` are written.
 - `prometheus_data_dir` — host path bind-mounted as the TSDB (`/prometheus`).
+- `prometheus_retention_time` — how long the TSDB keeps samples, rendered into
+  `prometheus.yml` rather than passed as `--storage.tsdb.retention.time`, which
+  the pinned Prometheus marks deprecated. Set past the 15d default because
+  `MicroOSBuildStale` reads a fortnight back.
 - `prometheus_run_user` — `uid:gid` the container runs as; owns the `0755` data
   dir. Defaults to the connecting user (root under molecule, the deploy user on the
   NAS).
@@ -125,7 +129,17 @@ has a `*Failed` rule with a richer description and the right severity, and `grou
 is on `alertname`, so without the exclusion one fault would raise two alerts); the
 `maintenance` group's `autoupdate` pair
 `AutoupdateFailed` / `AutoupdateOverdue` (an unattended `zypper` run that failed or
-has not completed in over 9 days) plus the WordPress-update rules
+has not completed in over 9 days) and its transactional counterpart
+`MicroOSBuildStale` (a MicroOS host whose `node_os_version` build datestamp has not
+advanced in a fortnight — two update cycles that changed nothing, most likely a
+health-checker rollback to the previous snapshot after a failed boot, held 3h to
+outlast the update timer's own jitter. Nothing else
+sees that: `transactional-update` exits 0 and the metric is written before the
+reboot, onto `@/var`, which no rollback reverts, so the pair above stays satisfied
+by a run that was undone, while the old snapshot keeps every probe and unit green.
+Staleness rather than the obvious regression because a rollback returns the host to
+the build it was already running, and the failed boot is gone well before the
+exporter is scraped) plus the WordPress-update rules
 `WordpressUpdateAvailable` (an update awaiting a hand — a major, or anything not
 opted into auto-update) and the update-check pair `WordpressUpdateCheckFailed` /
 `WordpressUpdateCheckOverdue` (a six-hourly update check that errored or has not

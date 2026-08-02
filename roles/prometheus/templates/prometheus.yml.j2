@@ -1,6 +1,13 @@
 # Managed by Ansible (prometheus role).
 global:
   scrape_interval: 15s
+
+# Here rather than as --storage.tsdb.retention.time, which the pinned Prometheus
+# marks [DEPRECATED] in its own --help and redirects to this field.
+storage:
+  tsdb:
+    retention:
+      time: {{ prometheus_retention_time }}
 {% if prometheus_alertmanager_targets %}
 
 alerting:
