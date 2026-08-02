@@ -7,5 +7,5 @@ fstab entry. Options are pinned for the NAS link — v4.1 (the NAS rejects 4.2),
 errors, `noatime`, `_netdev`.
 
 CI coverage: the billable full-VM tier (`hetzner`) runs on openSUSE Leap 16, but
-the fleet runs this on Tumbleweed; validate Tumbleweed-side behaviour locally
-with `make test-vm` (the libvirt tier's Tumbleweed VM).
+the fleet runs this on Tumbleweed and MicroOS; validate Tumbleweed-side
+behaviour locally with `make test-vm` (the libvirt tier's Tumbleweed VM).

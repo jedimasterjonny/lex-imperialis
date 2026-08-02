@@ -4,8 +4,7 @@ WordPress as rootful podman quadlets — the `wordpress` (Apache/PHP) container,
 its `wordpress-db` mariadb database, and a `wordpress-redis` object cache —
 served at its own `wordpress_domains` via a caddy public site block. Core
 and uploads persist in the `wordpress-html` volume, the database in
-`wordpress-db`; each container self-heals via a healthcheck. Targets openSUSE
-Leap 16.
+`wordpress-db`; each container self-heals via a healthcheck.
 
 ## Database
 
@@ -150,9 +149,9 @@ attacker `.htaccess` `AddType` would slip a `.png` webshell past any edge rule.
 
 ## Deploy
 
-Wire it after `podman` and `caddy` on a Leap host. Set `wordpress_domains` to
-the public names, the DB passwords in the vault, and — for TLS (`wordpress_tls`,
-the default) — caddy's `caddy_cloudflare_api_token` scoped to that zone; set
+Wire it after `podman` and `caddy`. Set `wordpress_domains` to the public names,
+the DB passwords in the vault, and — for TLS (`wordpress_tls`, the default) —
+caddy's `caddy_cloudflare_api_token` scoped to that zone; set
 `wordpress_tls: false` for plain HTTP instead.
 
 ```yaml

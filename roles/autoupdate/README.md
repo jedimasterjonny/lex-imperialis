@@ -31,7 +31,7 @@ scrapes that file (its `node_exporter_textfile_directory` must match), and the
 `prometheus` role's `AutoupdateFailed` / `AutoupdateOverdue` rules surface a
 failed or overdue update.
 
-No fleet host runs MicroOS yet — the branch goes live with the `packer/` rebuild
-— and no molecule tier boots it, so **the takeover is unproven until it runs on a
-real host**. No container ships `transactional-update.timer`, so no scenario can
-catch the stop-before-mask ordering being reversed; that rests on measurement.
+rogue-trader is where the transactional arm runs, and the only place it is
+proven: no molecule tier boots MicroOS, and no container ships
+`transactional-update.timer`, so no scenario can catch the stop-before-mask
+ordering being reversed. That rests on measurement.

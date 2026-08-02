@@ -12,10 +12,9 @@ Also sets each host's hostname from the required `common_hostname`.
 
 Sets the SELinux mode from `common_selinux_mode` (default `enforcing`) via
 `ansible.posix.selinux`, so the fleet's mode is config-as-code rather than the OS
-default: a no-op on the Tumbleweed hosts (already enforcing), it flips the Leap
-host that defaults permissive — a live `permissive`→`enforcing` transition, so no
-reboot. Gated on `ansible_selinux.status == 'enabled'`, so the SELinux-less
-molecule containers skip it.
+default. Every fleet host already enforces, so it holds the mode rather than
+setting it, and converges as a no-op. Gated on `ansible_selinux.status ==
+'enabled'`, so the SELinux-less molecule containers skip it.
 
 That module imports `python3-selinux`, which `common_packages` carries — so
 `Install base packages` must stay ahead of it. **On MicroOS that ordering is not
@@ -33,7 +32,7 @@ reporting `ok`.
 dropped, and it is the *drop* that arms
 `sdbootutil-update-predictions.service`** — snapper's `delete-snapshot-pre` hook
 calls `set_update_predictions_timer`, where `create-snapshot-post` returns before
-reaching it on a transactional system. Re-measure when rogue-trader migrates.
+reaching it on a transactional system.
 
 `zypper install` also upgrades, so those seven are eligible for upgrade on every
 merge-triggered apply, outside `autoupdate`'s weekly `zypper dup` — a correctness

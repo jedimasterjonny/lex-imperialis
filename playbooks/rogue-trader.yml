@@ -3,7 +3,9 @@
   hosts: rogue-trader
   vars:
     common_hostname: rogue-trader
-    # Leap 16's sles cloud user holds uid 1000, so the owner takes a free uid.
+    # Match jonny's uid on the NAS (administratum: 1026; gid 100/users already
+    # matches) so NFS ownership reconciles — the v4 mounts use numeric sec=sys,
+    # which carries raw uids and bypasses name-based idmapping.
     common_user_uid: 1026
     # Staggered autoupdate: the public VPS updates mid-week, after solar's canary
     # run, so one bad rolling snapshot can't brick the whole fleet in one night.
