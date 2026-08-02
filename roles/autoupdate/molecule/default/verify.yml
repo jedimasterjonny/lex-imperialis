@@ -112,9 +112,9 @@
         fail_msg: "the update outcome metric did not report a failed run"
         quiet: true
 
-    # No tier boots MicroOS. This pins the selector's third branch and nothing
-    # else — the defaults template lazily, so shadowing the one fact they read
-    # resolves them as a MicroOS host would. No role task runs here.
+    # No tier boots MicroOS. This pins the selector's transactional branch and
+    # nothing else — the defaults template lazily, so shadowing the one fact they
+    # read resolves them as a MicroOS host would. No role task runs here.
     - name: The defaults update transactionally on MicroOS
       ansible.builtin.assert:
         that:
