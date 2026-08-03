@@ -3,4 +3,8 @@ Description=Prune unused podman images
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/podman image prune --all --force
+# Type=oneshot has no start timeout — see restic_backup for the full rationale.
+# The consequence particular to a weekly timer: every later trigger merges into
+# the run already in flight, so a wedge stops the prune for good.
+TimeoutStartSec=15m
+ExecStart=/usr/local/sbin/podman-image-prune.sh

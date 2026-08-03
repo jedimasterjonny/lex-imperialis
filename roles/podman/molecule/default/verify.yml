@@ -109,8 +109,20 @@
       register: podman_probe_before
       changed_when: false
 
+    # Before the clean fire, not after: the fixture below is torn down only on
+    # the happy path, so a verify that failed mid-way strands a store that would
+    # fail this fire on every later attempt, with no way back but destroy.
+    - name: Discard any prior fixture user
+      ansible.builtin.user:
+        name: prunerootless
+        state: absent
+        remove: true
+        force: true
+      become: true
+
     # Starting a oneshot unit blocks until it exits, so success means the
-    # prune ran clean.
+    # prune ran clean — no rootless store on the host now, so this is the
+    # rootful path on its own.
     - name: Fire the prune service
       ansible.builtin.systemd_service:
         name: podman-image-prune.service
@@ -129,3 +141,81 @@
           - podman_probe_before.stdout_lines | length > 0
           - podman_probe_after.stdout_lines | length == 0
         quiet: true
+
+    # Enumeration is the half this tier can prove, and the half that could
+    # silently regress: a store created after converge must still be found. What
+    # happens next is deliberately not asserted — whether a container can run
+    # rootless podman at all varies by host, so the outcome is green on a runner
+    # that manages it and a reported skip on one denied newuidmap. Reclaim from a
+    # rootless store is proven on a real host instead.
+    - name: Create a user holding a rootless store
+      ansible.builtin.user:
+        name: prunerootless
+        home: /home/prunerootless
+      become: true
+
+    - name: Give the user a rootless store
+      ansible.builtin.file:
+        path: /home/prunerootless/.local/share/containers
+        state: directory
+        owner: prunerootless
+        group: prunerootless
+        mode: "0700"
+      become: true
+
+    # failed_when, because the outcome is the host-dependent half.
+    - name: Fire the prune service over the rootless store
+      ansible.builtin.systemd_service:
+        name: podman-image-prune.service
+        state: started
+      become: true
+      failed_when: false
+
+    # daemon_reload as the read trick, as with the timer above.
+    - name: Read the prune service's result
+      ansible.builtin.systemd_service:
+        name: podman-image-prune.service
+        daemon_reload: true
+      become: true
+      register: podman_prune_rootless
+
+    # Scoped to this invocation, not the unit's whole history: verify is
+    # re-runnable against a live instance, where an earlier run's line would
+    # otherwise satisfy the assertion on its own.
+    - name: Read what the prune service logged
+      ansible.builtin.command:
+        argv:
+          - journalctl
+          - _SYSTEMD_INVOCATION_ID={{ podman_prune_rootless.status.InvocationID }}
+          - --no-pager
+      become: true
+      register: podman_prune_log
+      changed_when: false
+
+    # The store was created after converge, so no static list could have named
+    # it: the run naming this user is proof the enumeration reached them.
+    - name: The rootless store was found by enumeration
+      ansible.builtin.assert:
+        that:
+          - "'podman-image-prune: prunerootless' in podman_prune_log.stdout"
+        fail_msg: "the prune did not reach the rootless store"
+        quiet: true
+
+    # force, because PAMName=login started a user manager for the fixture and
+    # logind holds it for UserStopDelaySec (10s) after the session ends — inside
+    # which userdel's busy check refuses the removal.
+    - name: Remove the rootless store
+      ansible.builtin.user:
+        name: prunerootless
+        state: absent
+        remove: true
+        force: true
+      become: true
+
+    # Leaves no failed unit behind, so the scenario does not end sitting on the
+    # state SystemdUnitFailed alerts on.
+    - name: The prune succeeds again once the store is gone
+      ansible.builtin.systemd_service:
+        name: podman-image-prune.service
+        state: started
+      become: true
