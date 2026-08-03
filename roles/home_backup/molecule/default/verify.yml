@@ -1,25 +1,12 @@
 ---
 # home_backup is a thin consumer of the restic_backup engine in generic (path)
 # mode, so this scenario proves only the consumer's own wiring — the engine's
-# default scenario already covers the restore round-trip, the outcome metric, and
-# the restic check gate for path mode.
+# default scenario already covers the installed scripts, the restore round-trip,
+# the outcome metric, and the restic check gate for path mode.
 - name: Verify
   hosts: all
   gather_facts: false
   tasks:
-    - name: Stat the backup script
-      ansible.builtin.stat:
-        path: /usr/local/sbin/home-backup.sh
-      register: home_backup_script_stat
-
-    - name: The home-backup script is installed and executable
-      ansible.builtin.assert:
-        that:
-          - home_backup_script_stat.stat.exists
-          - home_backup_script_stat.stat.executable
-        fail_msg: "/usr/local/sbin/home-backup.sh is missing or not executable"
-        quiet: true
-
     - name: Read the installed backup script
       ansible.builtin.slurp:
         src: /usr/local/sbin/home-backup.sh
