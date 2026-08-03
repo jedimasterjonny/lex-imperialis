@@ -5,6 +5,13 @@ prometheus_project_dir: /opt/prometheus
 # Host path bind-mounted as the TSDB data dir (/prometheus in the container).
 prometheus_data_dir: /var/lib/prometheus
 
+# How long the TSDB keeps samples. Pinned rather than left on Prometheus's 15d
+# default because MicroOSBuildStale needs a fortnight of history to read, and that
+# floor should not rest on a default nobody declared. Double the window, so a
+# fortnight is there with room. Roughly 2.5GB at the fleet's 17k series, against
+# 333GB free on the volume.
+prometheus_retention_time: 30d
+
 # The container runs as this uid:gid so the TSDB bind mount can be 0755 owned by
 # the deploy user instead of world-writable — the NAS has no sudo to chown the
 # mount to the image's default nobody (65534). Defaults to the connecting user

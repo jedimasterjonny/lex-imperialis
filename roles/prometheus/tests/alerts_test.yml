@@ -14,7 +14,15 @@
 rule_files:
   - ../files/rules/alerts.yml
 
-evaluation_interval: 1m
+# 5m, not the 1m these cases were first written at: MicroOSBuildStale turns on a
+# fortnight-wide window, and re-evaluating that every simulated minute costs the hook
+# five times its runtime for nothing. Every eval_time and every rule for: is a multiple
+# of 5m, so nothing below loses precision — but promtool floors an off-grid eval_time
+# silently rather than rejecting it, so a case written at 3h57m would assert at 3h55m
+# and quietly mean something other than it says. The 5m ceiling binds each test's own
+# series interval, not this: a series sampled sparser than the lookback reads as stale
+# between evaluations, and no for: could ever be satisfied.
+evaluation_interval: 5m
 
 tests:
   # ScheduledJobMetricMissing exists because a *Failed rule whose metric family
@@ -240,3 +248,82 @@ tests:
             exp_annotations:
               summary: "rogue-trader:9100:/var is mounted read-only"
               description: "/var on rogue-trader:9100 is mounted read-only — writes fail silently. Likely a remount after an I/O error."
+
+  # MicroOSBuildStale is the only rule that sees a rolled-back host, so a rule that
+  # parses but cannot fire would restore exactly the blind spot it was written for.
+  # These sample at 5m per the file-level note above, the window being a fortnight.
+  #
+  # The rollback is deliberately absent from the input: the series simply stops
+  # advancing, which is the shape the rule's own comment explains it has to read.
+  #
+  # Three hosts in one case rather than three cases, because each has to run past the
+  # rule's 14d offset guard before it proves anything, and that horizon is what the
+  # runtime is made of. The firing assertion names one host, so it pins the scope twice
+  # over: a fleet-wide floor would go quiet, and a dropped id selector would add a
+  # fourth alert.
+  - interval: 5m
+    name: one stale host alerts, while a host still advancing and a non-MicroOS host do not
+    input_series:
+      # Stale: a day on the old build, then an update lands and nothing moves after it.
+      # The hole at 26h50m-27h10m sits exactly a fortnight before the firing assertion
+      # below, so it lands under the offset: the guard's 1d range still spans it, where a
+      # bare instant selector there would come up empty and drop the alert.
+      - series: 'node_os_version{job="node",instance="rogue-trader:9100",id="opensuse-microos",name="openSUSE MicroOS"}'
+        values: "20260717x287 20260724x33 _ _ _ _ _ 20260724x4061"
+      # Healthy: keeps taking a new build, so a lower one is always inside its window.
+      - series: 'node_os_version{job="node",instance="solar:9100",id="opensuse-microos",name="openSUSE MicroOS"}'
+        values: "20260717x287 20260724x2015 20260731x2100"
+      # Not MicroOS, and just as stuck: only the id selector keeps it out.
+      - series: 'node_os_version{job="node",instance="scholam:9100",id="opensuse-tumbleweed",name="openSUSE Tumbleweed"}'
+        values: "20260724x4400"
+    alert_rule_test:
+      # 14 days in, past the offset guard so the rule is free to fire: the previous build
+      # is still inside the window, so every host has demonstrably updated within a
+      # fortnight and the rule must stay quiet. This is the ordinary healthy state, the
+      # one a badly written staleness rule pages about daily, and what pins the window —
+      # shorten it to a week and this case alerts.
+      - eval_time: 340h
+        alertname: MicroOSBuildStale
+        exp_alerts: []
+      # The last older sample leaves the window at 359h55m, so the rule goes active
+      # there and this is the last evaluation still inside its for:. Five minutes of
+      # slack either side, which pins the for: to the three hours it claims rather
+      # than to anything shorter.
+      - eval_time: 362h50m
+        alertname: MicroOSBuildStale
+        exp_alerts: []
+      # Past for:, and only the stale MicroOS host alerts.
+      - eval_time: 363h
+        alertname: MicroOSBuildStale
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: rogue-trader:9100
+              id: opensuse-microos
+              name: openSUSE MicroOS
+            exp_annotations:
+              summary: "MicroOS build stale on rogue-trader:9100"
+              description: >-
+                rogue-trader:9100 is still on build 20260724, the oldest it has run in a
+                fortnight — two update cycles have changed nothing, so it is unpatched and not
+                updating itself. A failed boot most likely rolled it back to the previous
+                snapshot: check `journalctl -u health-checker` and `snapper list`.
+
+  # The offset conjunct, which the rule's comment explains: without it a series younger
+  # than the window has a minimum that is trivially its own current value, and fires.
+  #
+  # Just under the offset's own length, not a token day or two, so the case pins how far
+  # back the guard reaches and not merely that it is there: any shortening leaves a rule
+  # as noisy as having no guard at all, and a series that stops short of the real offset
+  # would pass every one of them. Evaluated three hours past where a shortened guard
+  # would go active, since one that is merely pending still asserts nothing.
+  - interval: 5m
+    name: a host with less history than the window does not alert
+    input_series:
+      - series: 'node_os_version{job="node",instance="rogue-trader:9100",id="opensuse-microos",name="openSUSE MicroOS"}'
+        values: "20260724x3790"
+    alert_rule_test:
+      - eval_time: 315h
+        alertname: MicroOSBuildStale
+        exp_alerts: []

@@ -100,6 +100,7 @@
                                         'ServiceRestartStorm', 'SystemdUnitFailed',
                                         'WireguardTunnelDown', 'AlertmanagerNotificationsFailing',
                                         'AutoupdateFailed', 'AutoupdateOverdue',
+                                        'MicroOSBuildStale',
                                         'WordpressUpdateAvailable', 'WordpressUpdateCheckFailed',
                                         'WordpressUpdateCheckOverdue', 'WordpressCronFailed',
                                         'WordpressCronOverdue', 'GitopsReconcileFailed',
@@ -108,11 +109,43 @@
                                         'PrometheusRuleEvaluationFailing',
                                         'PrometheusConfigReloadFailed',
                                         'ScheduledJobMetricMissing', 'Watchdog'])
-            | list | length == 34
+            | list | length == 35
           - >-
             prometheus_loaded_rules.json.data.groups
-            | map(attribute='rules') | flatten | list | length == 34
+            | map(attribute='rules') | flatten | list | length == 35
         fail_msg: the loaded alert rules don't match those shipped in alerts.yml
+
+    # MicroOSBuildStale reads a fortnight back, so its correctness rests on retention
+    # outlasting that window. Retention is set in prometheus.yml rather than as the
+    # deprecated CLI flag, so nothing in the container's argv proves it landed. Assert the
+    # resolved seconds rather than /status/runtimeinfo's duration string, which is
+    # canonicalised on the way out — any exact multiple of a week comes back as weeks, so
+    # a retention of 28d reads "4w" and a string equality would red this scenario on a
+    # perfectly good config. Seconds also catch the setting being shortened past the
+    # window, which an equality against the variable never would.
+    #
+    # Above 15d rather than the rule's 14d, because 15d is Prometheus's own default: at
+    # 14d this would pass with the storage block gone entirely, which is the one thing it
+    # is here to notice.
+    - name: Read the resolved TSDB retention
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9090/api/v1/query?query=prometheus_tsdb_retention_limit_seconds
+        return_content: true
+      register: prometheus_retention_seconds
+      until: prometheus_retention_seconds.json.data.result | length > 0
+      retries: 30
+      delay: 2
+
+    - name: Retention is configured, and outlasts the window MicroOSBuildStale reads
+      ansible.builtin.assert:
+        that:
+          - prometheus_retention_seconds.json.data.result[0].value[1] | float > 15 * 86400
+        fail_msg: >-
+          prometheus resolved a retention of
+          {{ prometheus_retention_seconds.json.data.result[0].value[1] | float / 86400 }}
+          days, so either the configured value never reached it or it no longer outlasts
+          the 14d window MicroOSBuildStale reads — the rule has no guarantee of the
+          history it needs
 
     # Whether a rule fires on its fault is promtool's job (roles/prometheus/tests).
     # This is the property promtool cannot see: two rules holding the same roster of

@@ -310,6 +310,75 @@ groups:
           summary: "unattended update overdue on {{ $labels.instance }}"
           description: "{{ $labels.instance }} has not completed an unattended update in over 9 days."
 
+      # The transactional counterpart to the pair above, and the only rule that sees a
+      # MicroOS host which has silently stopped updating. autoupdate.service runs
+      # `transactional-update dup` there, which exits 0 and writes autoupdate_success 1
+      # *before* the reboot it then triggers — so when the new snapshot fails a
+      # health-checker plugin at boot, health-checker rolls back to the previous one and
+      # the host returns working, unpatched, with the pair above still satisfied by a run
+      # that was undone: the textfile metric lives on @/var, which no rollback touches.
+      # Nothing else notices either — an old snapshot is a working system, so probes
+      # answer and no unit is failed, and the reboot pair falls inside the 15m uptime
+      # gate ServiceRestartStorm and WireguardTunnelDown share. Left alone it repeats
+      # every week, forever. A boot that never reaches userspace is the covered case, not
+      # this one: health-checker never runs, the host stays down, InstanceDown has it in 5m.
+      #
+      # node_os_version is node_exporter's parse of VERSION_ID, which on a rolling
+      # openSUSE is the build datestamp — already a number, and one that only moves
+      # forward. Do NOT rewrite this as a regression (`< max_over_time`): a rollback
+      # returns the host to the build it was already running, so there is no higher value
+      # to fall from unless the doomed boot was itself scraped — and it will not be. The
+      # first scrape lands 31s after boot here, behind wg0 and the exporter container,
+      # where health-checker decides at default.target and waits for neither; the boots
+      # it rolls back are precisely the ones that keep the exporter down. Staleness reads
+      # only builds the host actually ran, so it never depends on catching that boot. The
+      # `<=` is equality in practice — the range includes the instant sample, so the
+      # minimum can never exceed it — and is written as a comparison because the property
+      # is directional: the build has not risen off its own floor.
+      #
+      # 14d is two weekly update cycles, so a false positive needs openSUSE to publish no
+      # MicroOS snapshot for a fortnight — rarer than a public VPS going quietly
+      # unpatched is costly. The cost is latency: it fires about a week after the failed
+      # update, one cycle later than a regression would, which is the price of not needing
+      # that boot observed. The window needs a fortnight of history, which is what
+      # prometheus_retention_time is pinned for. A host re-imaged from an older artefact
+      # trips it at once, correctly — the build really did go backwards.
+      #
+      # The offset conjunct keeps it honest on a series younger than the window: with
+      # under a fortnight of samples — a rebuilt host, a restored TSDB, a second MicroOS
+      # host joining — the minimum is trivially the current build, and the rule would page
+      # about a fortnight it cannot see. It offsets by the same 14d the window spans, so
+      # the two agree on what a fortnight is; a shorter offset would quietly become the
+      # thing that times the alert on a host whose build has never once advanced. It
+      # cannot mute the rule for long either, since retention outruns it by a fortnight.
+      # present_over_time, not a bare instant selector, because one missed scrape is
+      # enough to empty the latter: the host reboots weekly, and 14 days later that hole
+      # would land under the offset, resolve a firing alert and re-fire it an hour later.
+      #
+      # for: 3h outlasts autoupdate.timer's RandomizedDelaySec=2h, the same coupling
+      # AutoupdateFailed's for: has to the retry burst. At 1h the margin was thinner than
+      # the jitter, so a week with no published snapshot could fire this an hour before
+      # the next dup landed and cleared it.
+      #
+      # This does overlap AutoupdateOverdue when the timer itself has stopped: that fires
+      # at 9d, this at 14d. Left alone deliberately — the `unless` that would suppress the
+      # duplicate also suppresses a real rollback whenever an update is independently
+      # failing, and a second notification is the cheaper error than a silence.
+      - alert: MicroOSBuildStale
+        expr: |
+          node_os_version{id="opensuse-microos"} <= min_over_time(node_os_version{id="opensuse-microos"}[14d])
+            and present_over_time(node_os_version{id="opensuse-microos"}[1d] offset 14d)
+        for: 3h
+        labels:
+          severity: warning
+        annotations:
+          summary: "MicroOS build stale on {{ $labels.instance }}"
+          description: >-
+            {{ $labels.instance }} is still on build {{ printf "%.0f" $value }}, the oldest it
+            has run in a fortnight — two update cycles have changed nothing, so it is
+            unpatched and not updating itself. A failed boot most likely rolled it back to
+            the previous snapshot: check `journalctl -u health-checker` and `snapper list`.
+
       # WordPress auto-applies minor core releases (and any plugins or themes the
       # operator opted into) on its own twice-daily cadence; the 24h for: plus the
       # six-hourly check keeps the gauge fresh enough that those clear first, so
