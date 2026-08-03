@@ -12,8 +12,18 @@ home_backup_paths:
   - /home
 
 # Re-acquirable churn to keep out of the repo: package/tool caches, virtualenvs,
-# the VS Code remote server, node_modules. Basename patterns, matched at any depth
-# under /home. restic ships no restore of these, but they rebuild on demand.
+# the VS Code remote server, node_modules, and rootless podman's store. A pattern
+# without a slash matches that basename at any depth; one with a slash matches a
+# path suffix, so `.local/share/containers` catches every user's store without
+# touching some unrelated directory of that name. restic ships no restore of
+# these, but they rebuild on demand.
+#
+# The podman store is excluded whole, rootless volumes included. Every managed
+# workload is a rootful quadlet whose volumes `podman_backup` already covers, so
+# what accumulates here is ad-hoc operator testing — 2 GB of image layers on
+# scholam by the time it was noticed, re-fetched on demand. A rootless volume
+# holding anything worth keeping would go unbacked-up; none exists on the fleet.
+#
 # `.vault_pass` is excluded for the opposite reason — it is not re-acquirable, it
 # is the master secret. The repos are encrypted now, but it still must not enter
 # one: the repo key itself comes from the vault, so a snapshot holding the vault
@@ -24,6 +34,7 @@ home_backup_excludes:
   - .vscode-server
   - .venv
   - node_modules
+  - .local/share/containers
   - .vault_pass
 
 # Weekly, on a slot no other scheduled job uses — a day after the podman backup
