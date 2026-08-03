@@ -1,24 +1,23 @@
 ---
+# podman_backup is a thin consumer of the restic_backup engine in podman-volumes
+# mode, so this scenario proves only what that mode adds — the quiesce, the
+# restore script, and the volumes' round-trip through it. The engine's own
+# scenario covers the shared contract for both modes: restic itself, the
+# installed scripts, the outcome metric on a successful and a failed run, and the
+# restic check gate against a repo whose packs are gone.
 - name: Verify
   hosts: all
   gather_facts: false
   vars:
     # Matches restic_backup_root in converge.yml.
     podman_backup_repo_root: /var/tmp/backup
-    # Paths the engine derives from name=podman, asserted against here.
-    podman_backup_script: /usr/local/sbin/podman-backup.sh
+    # The restore script, which the engine installs in this mode only.
     podman_backup_restore_script: /usr/local/sbin/podman-restore.sh
-    podman_backup_metric_script: /usr/local/sbin/podman-backup-metric.sh
     # The engine's default textfile dir (podman_backup inherits it); the outcome
     # metric lands here.
     podman_backup_textfile_dir: /var/lib/node_exporter/textfile_collector
     podman_backup_probe_content: "lex-imperialis podman backup probe\n"
   tasks:
-    - name: Confirm restic is installed and runnable
-      ansible.builtin.command: restic version
-      register: podman_backup_restic
-      changed_when: false
-
     # side_effect ran podman-restore.sh, which quiesced (stopped) the probe unit
     # and must have restarted it via its EXIT trap. If the trap were broken the
     # unit would still be down here, before verify fires anything.
@@ -33,19 +32,6 @@
         that:
           - podman_backup_probe_after_restore.status.ActiveState == 'active'
         fail_msg: "the restore did not restart the quiesced probe unit"
-        quiet: true
-
-    - name: Stat the backup script
-      ansible.builtin.stat:
-        path: "{{ podman_backup_script }}"
-      register: podman_backup_script_stat
-
-    - name: The backup script is installed and executable
-      ansible.builtin.assert:
-        that:
-          - podman_backup_script_stat.stat.exists
-          - podman_backup_script_stat.stat.executable
-        fail_msg: "{{ podman_backup_script }} is missing or not executable"
         quiet: true
 
     - name: Stat the restore script
@@ -147,62 +133,6 @@
         fail_msg: "the backup did not restart the quiesced probe unit"
         quiet: true
 
-    - name: Restore the latest snapshot to a scratch directory
-      ansible.builtin.command: "restic --password-file /etc/restic/password --repo {{ podman_backup_repo }} restore latest --target /var/tmp/restore"
-      changed_when: false
-      become: true
-
-    - name: Read the probe file back from the restore
-      ansible.builtin.slurp:
-        src: /var/tmp/restore/var/lib/containers/storage/volumes/lex-probe/_data/probe.txt
-      register: podman_backup_restored
-      become: true
-
-    - name: The probe data round-trips through restic
-      ansible.builtin.assert:
-        that:
-          - (podman_backup_restored.content | b64decode) == podman_backup_probe_content
-        fail_msg: "the probe data did not round-trip through the backup"
-        quiet: true
-
-    # The successful run above triggered ExecStopPost, which should have recorded
-    # the outcome metric node_exporter scrapes.
-    - name: Read the outcome metric after the successful run
-      ansible.builtin.slurp:
-        src: "{{ podman_backup_textfile_dir }}/podman-backup.prom"
-      register: podman_backup_metric_ok
-      become: true
-
-    - name: A successful run records podman_backup_success 1
-      ansible.builtin.assert:
-        that:
-          - "'podman_backup_success 1' in (podman_backup_metric_ok.content | b64decode)"
-          - "'podman_backup_last_run_timestamp_seconds ' in (podman_backup_metric_ok.content | b64decode)"
-        fail_msg: "the outcome metric did not report a successful run"
-        quiet: true
-
-    # Drive the writer the way systemd would on a failed run; ExecStart failure
-    # can't be forced in a container, so invoke the hook with SERVICE_RESULT set.
-    - name: Simulate a failed run's ExecStopPost
-      ansible.builtin.command: "{{ podman_backup_metric_script }}"
-      environment:
-        SERVICE_RESULT: exit-code
-      changed_when: false
-      become: true
-
-    - name: Read the outcome metric after the simulated failure
-      ansible.builtin.slurp:
-        src: "{{ podman_backup_textfile_dir }}/podman-backup.prom"
-      register: podman_backup_metric_fail
-      become: true
-
-    - name: A failed run records podman_backup_success 0
-      ansible.builtin.assert:
-        that:
-          - "'podman_backup_success 0' in (podman_backup_metric_fail.content | b64decode)"
-        fail_msg: "the outcome metric did not report a failed run"
-        quiet: true
-
     # side_effect ran podman-restore.sh after tampering with the live volume; the
     # probe should be back to its original content in the volume itself, not just
     # a scratch restore.
@@ -232,64 +162,16 @@
         fail_msg: "the restore left a stray file the snapshot did not contain"
         quiet: true
 
-    # The green backup run above ended in restic check, so the service already
-    # exercises the check on a sound repo. Assert it is wired into the installed
-    # script, then that the role's invocation is a real gate, not a no-op: the
-    # same check must reject a repo whose data is gone. Corrupt a copy, not the
-    # live repo, so a standalone `make verify` re-run still starts sound.
-    - name: Read the installed backup script
-      ansible.builtin.slurp:
-        src: "{{ podman_backup_script }}"
-      register: podman_backup_script_content
-      become: true
-
-    - name: The backup script runs a restic check with a read-data slice
-      ansible.builtin.assert:
-        that:
-          - "'restic check' in (podman_backup_script_content.content | b64decode)"
-          - "'--read-data-subset' in (podman_backup_script_content.content | b64decode)"
-        fail_msg: "the backup script does not run restic check with a read-data slice"
-        quiet: true
-
-    - name: Discard any prior corrupt copy
-      ansible.builtin.file:
-        path: "{{ podman_backup_repo }}-corrupt"
-        state: absent
-      become: true
-
-    - name: Copy the scratch repo to corrupt in isolation
-      ansible.builtin.command: "cp -a {{ podman_backup_repo }} {{ podman_backup_repo }}-corrupt"
-      changed_when: true
-      become: true
-
-    - name: Remove the copy's data to corrupt it
-      ansible.builtin.file:
-        path: "{{ podman_backup_repo }}-corrupt/data"
-        state: absent
-      become: true
-
-    - name: Run the integrity check against the corrupt copy
-      ansible.builtin.command: "restic --password-file /etc/restic/password --repo {{ podman_backup_repo }}-corrupt check"
-      register: podman_backup_corrupt_check
-      changed_when: false
-      failed_when: false
-      become: true
-
-    - name: A corrupt repo fails the integrity check
-      ansible.builtin.assert:
-        that:
-          - podman_backup_corrupt_check.rc != 0
-        fail_msg: "restic check passed a repo with its data removed"
-        quiet: true
-
-    # The check above deletes whole packs, which a metadata check already catches
-    # — so it does not prove the newly-defaulted read-data slice earns its keep.
-    # Bit-rot is a flipped byte *inside* an otherwise-intact pack. A plain check
-    # reads and MAC-verifies tree packs but not data packs, so the corruption must
-    # land in a data pack: pick the largest, which the incompressible payload
-    # seeded in converge makes unambiguously a data pack. Then assert the
-    # distinction — a plain check passes, a --read-data check fails (full, not the
-    # rotating subset, so the tampered pack is always read whatever week it is).
+    # The engine's scenario proves the installed script runs a restic check with a
+    # read-data slice, and that the check rejects a repo whose packs are gone —
+    # but a deleted pack is one a metadata check already catches, so neither
+    # proves the read-data slice earns its keep. Bit-rot is a flipped byte
+    # *inside* an otherwise-intact pack. A plain check reads and MAC-verifies tree
+    # packs but not data packs, so the corruption must land in a data pack: pick
+    # the largest, which the incompressible payload seeded in converge makes
+    # unambiguously a data pack. Then assert the distinction — a plain check
+    # passes, a --read-data check fails (full, not the rotating subset, so the
+    # tampered pack is always read whatever week it is).
     - name: Discard any prior bit-rot copy
       ansible.builtin.file:
         path: "{{ podman_backup_repo }}-bitrot"
@@ -349,6 +231,9 @@
     # volume live and un-quiesced — a torn MariaDB — while reporting success.
     # Take the probe quadlet out of the glob's reach and confirm it refuses.
     # No daemon-reload either side, so the running unit is left undisturbed.
+    # The metric assertion binds only because the last run to write the file was
+    # the successful one above: it reads success 1 until this failed run rewrites
+    # it, so nothing between the two may fire the service.
     - name: Stage the probe quadlet outside the quadlet directory
       ansible.builtin.copy:
         src: /etc/containers/systemd/lex-probe.container
