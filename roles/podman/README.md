@@ -48,5 +48,27 @@ NetworkManager is told to leave podman's bridges (`podman*`) unmanaged via
 event that unmounts the `_netdev` NFS shares — which otherwise breaks the
 `podman_backup` run and the arr-stack restart. Skipped where NM is absent.
 
-A weekly timer (Saturday 06:00, persistent) prunes unused images, so
-superseded quadlet image pulls don't accumulate.
+A weekly timer (Saturday 06:00, persistent) runs
+`/usr/local/sbin/podman-image-prune.sh`, so superseded quadlet image pulls don't
+accumulate. The script prunes root's store, then every passwd user holding a
+store under `~/.local/share/containers` — an operator's ad-hoc `podman run`
+otherwise accumulates images nothing reclaims. Users are enumerated at run time,
+so one who takes up rootless podman between converges is covered.
+
+Every prune goes through `systemd-run`, a rootless one adding `--uid` and
+`PAMName=login`. The PAM session is not optional: podman pins a store to the
+`/run/user/$uid` runroot recorded when it was created and refuses to open it
+under any other, and that directory exists only while its user holds a session
+or lingers. `--collect` is likewise required rather than tidy — without it a
+failed transient unit stays loaded and trips `SystemdUnitFailed` under an opaque
+`run-uNNNN` name.
+
+A store its owner has left unusable never stops the others being pruned: the run
+logs it, carries on, and exits non-zero at the end. `SystemdUnitFailed` does not
+exclude this unit, so that raises a warning without a bespoke metric or rule.
+
+Molecule proves the rootful prune and that enumeration finds a store created
+after converge. It asserts nothing about the rootless prune's outcome: whether a
+container can run rootless podman at all varies by host, so that is green on one
+runner and a reported skip on another. Reclaim from a rootless store is proven
+against a real host instead.

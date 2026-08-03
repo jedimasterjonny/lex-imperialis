@@ -57,6 +57,15 @@
     mode: "0644"
   become: true
 
+- name: Install the prune script
+  ansible.builtin.copy:
+    src: podman-image-prune.sh
+    dest: /usr/local/sbin/podman-image-prune.sh
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
 - name: Install the prune service and timer
   ansible.builtin.copy:
     src: "{{ item }}"
