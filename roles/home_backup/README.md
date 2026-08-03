@@ -32,8 +32,10 @@ overwritten wholesale. The full recovery context is in
 ## Variables
 
 `home_backup_paths` sets what to snapshot, `home_backup_excludes` the
-re-acquirable churn to skip (caches, virtualenvs, `node_modules`) plus
-`.vault_pass`, which must never enter an unencrypted repo, and
+re-acquirable churn to skip (caches, virtualenvs, `node_modules`, and rootless
+podman's store — volumes included, since managed container state is rootful and
+`podman_backup`'s) plus `.vault_pass`, which must never enter an unencrypted
+repo, and
 `home_backup_oncalendar` the timer; retention, the check cadence, the astropath
 root, and the textfile dir inherit the engine defaults. The `home_backup_success` /
 `home_backup_last_run_timestamp_seconds` metrics feed the `prometheus` role's
