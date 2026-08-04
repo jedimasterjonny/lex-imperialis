@@ -10,17 +10,33 @@ set -euo pipefail
 
 PACKER=${PACKER:-packer}
 TEMPLATE=packer/microos.pkr.hcl
+WORKFLOW=.github/workflows/lint.yml
 
-# </dev/null matters: cracklib-packer reads stdin to EOF before printing, and
-# grep -q cannot short-circuit on a non-match, so from a terminal the guard would
-# deadlock on precisely the binary it exists to reject.
-"$PACKER" version </dev/null 2>/dev/null | grep -q '^Packer v' || {
+# </dev/null matters: cracklib-packer reads stdin to EOF before printing anything,
+# so from a terminal the guard would deadlock on precisely the binary it exists to
+# reject -- head cannot short-circuit a command that has yet to produce a line.
+packer_version=$("$PACKER" version </dev/null 2>/dev/null | head -1 || true)
+case "$packer_version" in
+"Packer v"*) ;;
+*)
     echo "$PACKER is not HashiCorp Packer (openSUSE's cracklib owns /usr/sbin/packer)." >&2
     echo "Install it and re-run, or set PACKER=/path/to/packer." >&2
     exit 1
-}
+    ;;
+esac
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+# The lint gate's renovate-tracked pin is the one statement of which packer the
+# gates run, so read it rather than restate it. Read unconditionally though only
+# `build` compares: an empty read means the renovate comment moved and this guard
+# is dead -- a repo defect, so it must fail on the PR that causes it (CI runs the
+# gate verbs on every one) rather than hide until the next image, twice a year.
+packer_pin=$(grep -A1 'depName=hashicorp/packer$' "$WORKFLOW" | sed -n 's/.*version: "\(.*\)"/\1/p' || true)
+[ -n "$packer_pin" ] || {
+    echo "packer.sh: no renovate-pinned packer version found in $WORKFLOW" >&2
+    exit 1
+}
 
 # The ansible provisioner, and validate's preparation of it, need
 # ansible-playbook, which lives only in the venv. Activated here rather than
@@ -69,6 +85,16 @@ validate)
         "$PACKER" validate "$TEMPLATE"
     ;;
 build)
+    # Only `build` compares: it is the verb CI never re-runs at the pin, and the
+    # one that bills servers, so nothing else records which packer built the image
+    # rogue-trader boots. The gate verbs are backstopped by CI and back pre-commit
+    # hooks that `make pre-commit` fires --all-files, so asserting there would
+    # red-line every local gate from a renovate automerge until a hand reinstall.
+    [ "$packer_version" = "Packer v$packer_pin" ] || {
+        echo "$PACKER is $packer_version, but $WORKFLOW pins v$packer_pin." >&2
+        echo "Install v$packer_pin and re-run, or set PACKER=/path/to/packer." >&2
+        exit 1
+    }
     activate_venv
     "$PACKER" init "$TEMPLATE" >/dev/null
     generate_keypair

@@ -38,6 +38,25 @@
         force: false
       become: true
 
+    # Seed a shadow so the role's promtool removal is actually exercised — the
+    # role's own task says why /usr/local/bin wins. Gated on the packaged binary's
+    # absence rather than a marker: that is true only before the first converge,
+    # so the idempotence pass re-seeds nothing and the removal stays a no-op.
+    - name: Stat the packaged promtool
+      ansible.builtin.stat:
+        path: /usr/bin/promtool
+      register: dev_packaged_promtool
+
+    - name: Seed a superseded hand-installed promtool for the role to remove
+      ansible.builtin.copy:
+        dest: /usr/local/bin/promtool
+        content: |
+          #!/bin/sh
+          echo molecule-shadow
+        mode: "0755"
+      become: true
+      when: not dev_packaged_promtool.stat.exists
+
     - name: Apply the dev role
       ansible.builtin.include_role:
         name: dev

@@ -7,6 +7,9 @@ dev_packages:
   - gh
   - git
   - go
+  # Provides /usr/bin/promtool for the alert-rule pre-commit hooks; the whole
+  # prometheus server rides along, as it is one package. See README.
+  - golang-github-prometheus-prometheus
   - hugo
   - make
   - neovim

@@ -77,7 +77,9 @@ of the seven, and no play overrides a package list.
 
 - **`packer` on this workstation is not HashiCorp Packer** — openSUSE's cracklib
   owns `/usr/sbin/packer`. Install the real one earlier on `PATH` or set
-  `PACKER`; `bin/packer.sh` guards it and says why.
+  `PACKER`; `bin/packer.sh` guards it and says why. `build` additionally requires
+  the version `.github/workflows/lint.yml` pins, so a renovate bump means
+  replacing the binary before the next build.
 - **Why the build needs a keypair at all:** the image has no cloud-init, which is
   what performs Hetzner's `ssh_keys` injection, so the key reaches the box only
   through the Ignition config packer passes as `user_data`. `bin/packer.sh`

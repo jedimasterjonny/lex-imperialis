@@ -5,6 +5,46 @@
     state: present
   become: true
 
+# The package puts promtool at /usr/bin, but /usr/local/bin outranks that on PATH
+# and the pre-commit hooks resolve it bare, so a copy hand-installed before this
+# role provisioned promtool would silently keep winning and the provisioning would
+# be a no-op. Removed like the superseded sudoers drop-in below: a no-op on a host
+# that never carried one.
+- name: Remove the superseded hand-installed promtool
+  ansible.builtin.file:
+    path: /usr/local/bin/promtool
+    state: absent
+  become: true
+
+# promtool ships only inside the whole prometheus package, so installing it also
+# drops a prometheus.service. openSUSE's `disable *` preset default leaves that
+# dormant, but dormant-by-upstream-default is not the same as dormant by this
+# role's doing: mask it, so neither a stray enable nor a preset that someday ships
+# enabled can stand a server up on the host holding .vault_pass and fleet-wide
+# root. Two tasks in this order, as autoupdate does: the module masks before it
+# stops, so one combined task strands a running unit at ActiveState=failed. The
+# stat gates on the unit existing, which also keeps a first --check run -- taken
+# before the package is installed -- from fatalling on the absent unit.
+- name: Stat the prometheus server unit bundled with promtool
+  ansible.builtin.stat:
+    path: /usr/lib/systemd/system/prometheus.service
+  register: dev_prometheus_unit
+  become: true
+
+- name: Neutralise the prometheus server bundled with promtool
+  when: dev_prometheus_unit.stat.exists
+  become: true
+  block:
+    - name: Stop the bundled prometheus server
+      ansible.builtin.systemd_service:
+        name: prometheus.service
+        state: stopped
+
+    - name: Mask the bundled prometheus server
+      ansible.builtin.systemd_service:
+        name: prometheus.service
+        masked: true
+
 - name: Install npm
   community.general.zypper:
     name: npm
