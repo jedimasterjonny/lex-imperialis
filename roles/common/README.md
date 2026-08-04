@@ -46,6 +46,37 @@ every snapper snapshot and its `ExecStartPre` fails without that directory, whic
 only a TPM2 LUKS enrolment would otherwise create — so an unenrolled TPM2 host
 raises `SystemdUnitFailed` on its next zypper transaction.
 
+`common_disabled_repos` holds zypper repositories disabled — the NON-OSS and
+Cisco openh264 repos, which every openSUSE host enables and none installs from.
+No role otherwise adds or edits a stock repository, so what was an observation is
+now held: every listed alias a host carries is disabled on each converge, and one
+it does not carry is a no-op rather than a new repository. Disabled, not removed —
+the definition stays on disk. Dropping an alias stops holding it disabled but does
+not re-enable it, the opposite of `common_blacklisted_modules` below, which
+reclaims a module when emptied.
+
+The NON-OSS alias tracks how a host was installed rather than its distro —
+`download.opensuse.org-non-oss` on the fleet's Tumbleweed installs,
+`repo-non-oss` on images shipping the stock `repo-*` set, as the MicroOS and
+molecule images both do — so both spellings are listed.
+`community.general.zypper_repository` cannot locate a definition by its `[alias]`
+section: it requires the URL, creates the repository when the alias is absent, and
+matches on alias *or* URL — and each repo's baseurl is identical fleet-wide, so it
+would find rogue-trader's `repo-non-oss` by URL and rename it. So the role locates
+the file itself and edits it in place with `community.general.ini_file`.
+
+The role refuses to disable a repository whose current contents match an installed
+package — see the assert's message. rpm records no provenance, and the match is
+version-exact, so a package installed from a repo that has since bumped it is not
+caught; `zypper packages --installed-only --repo <alias>` matches by name and is
+the check to run by hand. That guard is what makes the hand re-enable safe: a repo
+re-enabled by hand is re-disabled by the next apply that reaches it, and since the
+reconciler skips a run when `main` has not advanced, that is the next commit
+rather than the next timer tick. Unless something has been installed from it —
+then the assert halts `common`, the first role of each openSUSE play, so that host
+converges no further, `site.yml` stops there, and `GitopsReconcileFailed` goes
+critical.
+
 `common_blacklisted_modules` bars kernel modules via
 `/etc/modprobe.d/common-blacklist.conf` — `blacklist` plus `install
 <module> /bin/false` — and unloads any already live rather than leaving

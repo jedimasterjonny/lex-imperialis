@@ -5,6 +5,11 @@
   vars:
     # Mirror converge: the molecule instance name is the container's hostname.
     common_hostname: "{{ inventory_hostname }}"
+    # The aliases from common_disabled_repos this image actually carries — a
+    # test-only fixture, so the role has no var for it.
+    common_present_repos:
+      - repo-non-oss
+      - repo-openh264
   vars_files:
     - ../../defaults/main.yml
   tasks:
@@ -93,6 +98,81 @@
           - "'install lex_absent_module /bin/false' in (common_blacklist_content.content | b64decode)"
         fail_msg: "the modprobe drop-in does not bar lex_absent_module from loading"
         quiet: true
+
+    # The cloud image carries the stock repo-* aliases, so the container exercises
+    # repo-non-oss and leaves download.opensuse.org-non-oss unmatched — both
+    # branches at once.
+    - name: Read the non-OSS repository definitions
+      ansible.builtin.slurp:
+        src: "/etc/zypp/repos.d/{{ item }}.repo"
+      loop: "{{ common_present_repos }}"
+      register: common_nonoss_repo_defs
+      become: true
+
+    # The slurp itself is the not-removed half: it fails outright on a missing file.
+    - name: The non-OSS repositories are disabled on disk, not removed
+      ansible.builtin.assert:
+        that:
+          - "'enabled=0' in (item.content | b64decode)"
+          - "'enabled=1' not in (item.content | b64decode)"
+        fail_msg: "{{ item.item }} is not disabled"
+        quiet: true
+      loop: "{{ common_nonoss_repo_defs.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Query zypper for the non-OSS repositories
+      ansible.builtin.command:
+        argv:
+          - zypper
+          - --non-interactive
+          - --no-refresh
+          - search
+          - --installed-only
+          - --repo
+          - "{{ item }}"
+      loop: "{{ common_present_repos }}"
+      register: common_nonoss_repo_query
+      changed_when: false
+      failed_when: false
+      become: true
+
+    # rc 3 covers "disabled" and "unknown" alike; the slurp above already proved
+    # the definition is still on disk, so here it can only mean disabled.
+    - name: Zypper treats the non-OSS repositories as disabled
+      ansible.builtin.assert:
+        that:
+          - item.rc == 3
+        fail_msg: "zypper does not treat {{ item.item }} as disabled"
+        quiet: true
+      loop: "{{ common_nonoss_repo_query.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Stat the NON-OSS alias this image does not carry
+      ansible.builtin.stat:
+        path: /etc/zypp/repos.d/download.opensuse.org-non-oss.repo
+      register: common_absent_repo
+
+    - name: An unmatched alias is skipped rather than created
+      ansible.builtin.assert:
+        that:
+          - not common_absent_repo.stat.exists
+        fail_msg: "the role created a repository definition the host does not carry"
+
+    - name: Read the OSS repository definition
+      ansible.builtin.slurp:
+        src: /etc/zypp/repos.d/repo-oss.repo
+      register: common_oss_repo_def
+      become: true
+
+    # The role must touch only the aliases it names; nothing else proves it left
+    # a repository outside that list alone.
+    - name: A repository outside the list is left enabled
+      ansible.builtin.assert:
+        that:
+          - "'enabled=1' in (common_oss_repo_def.content | b64decode)"
+        fail_msg: "the role disabled repo-oss, which is not in its scope"
 
     - name: Stat sdbootutil's TPM prediction directory
       ansible.builtin.stat:
