@@ -34,7 +34,8 @@ versions can differ. Accepted rather than pinned in both cases: a zypper package
 cannot be held to a version under a rolling distro. Butane's `--strict` promotes
 warnings to errors, so a `*.bu` can pass locally and fail CI; promtool's drift is
 quieter, parting the local linter from the prometheus that evaluates the rules.
-Neither version is asserted: CI's verdict is the one that counts.
+Neither version is asserted, unlike packer's `build` (`bin/packer.sh`) — CI's
+verdict is the one that counts.
 
 promtool ships only as part of the whole prometheus package — 187 MiB and a
 `prometheus` system user for one linter binary. Accepted as the cost of not
@@ -47,8 +48,8 @@ preset anyway, but this makes it the role's guarantee on the host holding
 The `packer` gates need HashiCorp packer, which has no zypper package and which
 this role does not install. The tflint pattern would work — `/usr/local/bin`
 outranks the cracklib `packer` openSUSE ships — but packer is needed only when
-`packer/` changes, roughly twice a year, so it stays a hand install.
-`bin/packer.sh` guards which binary it finds.
+`packer/` changes, roughly twice a year, so it stays a hand install; see
+`packer/README.md`.
 
 ## Google Cloud CLI
 

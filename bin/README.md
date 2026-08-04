@@ -51,7 +51,8 @@ Everything that runs HashiCorp packer, behind one binary guard: `fmt` (writes)
 and `fmt-check` (the `packer-fmt` hook), `validate` (the `packer-validate` hook),
 and `build` (`make image`). The guard is there because openSUSE's cracklib owns
 `/usr/sbin/packer` and that binary hangs rather than failing; set `PACKER` to
-point at the real one.
+point at the real one. `build` also requires the version
+`.github/workflows/lint.yml` pins — the one verb CI never re-runs at it.
 
 `validate` and `build` activate the venv, since packer's ansible provisioner
 needs `ansible-playbook`, and generate a throwaway ed25519 pair — packer parses
