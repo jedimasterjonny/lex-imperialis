@@ -25,6 +25,13 @@ common_selinux_mode: enforcing
 # before the module it holds.
 common_blacklisted_modules: []
 
+# zypper repositories held disabled, by alias. Both NON-OSS spellings are listed
+# because the alias tracks how a host was installed, not its distro — see README.
+common_disabled_repos:
+  - download.opensuse.org-non-oss
+  - repo-non-oss
+  - repo-openh264
+
 # Base tools, plus python3-selinux — the binding ansible.posix.selinux imports.
 common_packages:
   - vim

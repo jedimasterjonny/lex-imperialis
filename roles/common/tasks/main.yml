@@ -44,6 +44,76 @@
     - not ansible_check_mode
   become: true
 
+# Keep this ahead of the package install below, and so ahead of every later
+# role's, to resolve packages against the declared repository set.
+#
+# rc 104 is "no matching items" and rc 3 "repository disabled, or unknown" — the
+# steady state here, and the answer for a NON-OSS alias the host does not carry.
+# The match is version-exact and rpm records no provenance, so 104 means nothing
+# installed matches what the repository currently offers, which is the closest a
+# converge gets to "nothing came from here".
+#
+# --no-refresh spares that steady state a metadata fetch, but a repository still
+# enabled and uncached is fetched anyway: the one converge that does real work is
+# also the one that can fail on the network.
+- name: Search for packages installed from the repositories to keep disabled
+  ansible.builtin.command:
+    argv:
+      - zypper
+      - --non-interactive
+      - --no-refresh
+      - search
+      - --installed-only
+      - --repo
+      - "{{ item }}"
+  loop: "{{ common_disabled_repos }}"
+  register: common_disabled_repo_search
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  become: true
+
+- name: Assert no package is installed from a repository to keep disabled
+  ansible.builtin.assert:
+    that:
+      - item.rc in [3, 104]
+    fail_msg: >-
+      zypper exited {{ item.rc }} searching {{ item.item }}. rc 0 means installed
+      packages match what it offers, and disabling it would orphan them from
+      autoupdate's weekly `dup` — uninstall them, or drop the alias from
+      common_disabled_repos. Any other exit means the search itself failed,
+      most often fetching metadata for a repository still enabled.
+    quiet: true
+  loop: "{{ common_disabled_repo_search.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+# Located by section header rather than filename: the section is the alias zypper
+# reads, whatever the file is called. See the README for why zypper_repository
+# cannot do this job.
+- name: Locate the repository definitions to keep disabled
+  ansible.builtin.find:
+    paths: /etc/zypp/repos.d
+    patterns: "*.repo"
+    contains: '^\[{{ item | regex_escape }}\]$'
+  loop: "{{ common_disabled_repos }}"
+  register: common_disabled_repo_files
+  become: true
+
+- name: Keep the repositories disabled
+  community.general.ini_file:
+    path: "{{ item.files[0].path }}"
+    section: "{{ item.item }}"
+    option: enabled
+    value: "0"
+    no_extra_spaces: true
+    create: false
+  loop: "{{ common_disabled_repo_files.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.matched > 0
+  become: true
+
 # sdbootutil-update-predictions.service runs after every snapper snapshot, and its
 # ExecStartPre unconditionally backs up /var/lib/pcrlock.d — a directory only a TPM2
 # LUKS enrolment creates. Unenrolled, the prediction itself is a no-op returning 0,
