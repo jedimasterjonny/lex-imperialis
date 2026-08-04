@@ -71,7 +71,7 @@
     },
     {
       "customType": "regex",
-      "description": "OpenTofu for both workflows' setup-opentofu; no zypper package. One depName, so both bump together; terraform.yml's destructive-plan gate guards the apply a bump fires, so minor/patch automerge.",
+      "description": "OpenTofu for both workflows' setup-opentofu; the workstation takes the zypper package instead. One depName, so both bump together; terraform.yml's destructive-plan gate guards the apply a bump fires, so minor/patch automerge.",
       "managerFilePatterns": ["/^\\.github/workflows/(lint|terraform)\\.yml$/"],
       "matchStrings": ["tofu_version:\\s*\"(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "opentofu/opentofu",
@@ -80,7 +80,7 @@
     },
     {
       "customType": "regex",
-      "description": "Hugo for peaceiris/actions-hugo in the Firebase and go.sum autofix workflows; no zypper/pip package.",
+      "description": "Hugo for peaceiris/actions-hugo in the Firebase and go.sum autofix workflows; the workstation takes the zypper package instead.",
       "managerFilePatterns": ["/^\\.github/workflows/(firebase-hosting-(merge|pull-request)|hugo-gosum-autofix)\\.yml$/"],
       "matchStrings": ["hugo-version:\\s*\"(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "gohugoio/hugo",
