@@ -70,7 +70,7 @@ jobs:
           tflint_version: "v0.64.0"
           github_token: ${{ github.token }}
 
-      # promtool has no zypper package; the pre-commit promtool hook needs it on
+      # The runner ships no promtool and the pre-commit promtool hook needs it on
       # PATH. Derive the version from the prometheus role's pinned image — the same
       # prometheus that evaluates these rules at runtime, so the linter never drifts
       # from the evaluator and renovate's image manager stays the one pin (as the

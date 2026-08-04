@@ -23,21 +23,32 @@ pin matches the CI gate (`.github/workflows/lint.yml`), kept in sync by one reno
 custom manager that bumps both. Unlike Claude Code, tflint does not self-update,
 so a version check drives the install, not `creates:`.
 
-## Butane and packer gate tools
+## Butane, promtool and packer gate tools
 
-The `butane` pre-commit hook compiles every `*.bu`, so the workstation gets
-`butane` from zypper (in `dev_packages`). That package is rolling, while CI takes
-the binary from a digest-pinned image, so the two versions can differ — and
-`--strict` promotes warnings to errors, so a config can in principle pass locally
-and fail CI. Accepted rather than pinned: the zypper package cannot be held to a
-version under a rolling distro.
+The `butane` hook compiles every `*.bu` and the `promtool` hooks check and test
+the alert rules, so the workstation takes both from zypper (`butane` and
+`golang-github-prometheus-prometheus`, which provides `/usr/bin/promtool`).
+Both are rolling while CI pins — butane from a digest-pinned image, promtool
+from the prometheus release matching `roles/prometheus`'s image pin — so the
+versions can differ. Accepted rather than pinned in both cases: a zypper package
+cannot be held to a version under a rolling distro. Butane's `--strict` promotes
+warnings to errors, so a `*.bu` can pass locally and fail CI; promtool's drift is
+quieter, parting the local linter from the prometheus that evaluates the rules.
+Neither version is asserted: CI's verdict is the one that counts.
 
-The `packer` gates need HashiCorp packer, which this role does not install. The
-tflint pattern would work — an upstream install to `/usr/local/bin`, which
-outranks the `/usr/sbin/packer` that openSUSE's cracklib owns — but packer is
-needed only when `packer/` changes, roughly twice a year, so it follows
-`promtool`: installed by hand, not provisioned. `bin/packer.sh` guards which
-binary it finds.
+promtool ships only as part of the whole prometheus package — 187 MiB and a
+`prometheus` system user for one linter binary. Accepted as the cost of not
+hand-managing it. Two consequences the role handles: it removes any
+`/usr/local/bin/promtool`, which would shadow the package's `/usr/bin` copy on
+PATH, and it masks the bundled `prometheus.service` — dormant by openSUSE's
+preset anyway, but this makes it the role's guarantee on the host holding
+`.vault_pass` and fleet-wide root.
+
+The `packer` gates need HashiCorp packer, which has no zypper package and which
+this role does not install. The tflint pattern would work — `/usr/local/bin`
+outranks the cracklib `packer` openSUSE ships — but packer is needed only when
+`packer/` changes, roughly twice a year, so it stays a hand install.
+`bin/packer.sh` guards which binary it finds.
 
 ## Google Cloud CLI
 

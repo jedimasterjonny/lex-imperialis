@@ -31,6 +31,49 @@
       ansible.builtin.command: butane --version
       changed_when: false
 
+    # No version assertion, unlike tflint below — the pin is deliberately not
+    # enforced for promtool (README).
+    - name: Promtool is usable
+      ansible.builtin.command: promtool --version
+      changed_when: false
+
+    # converge seeds a shadow at /usr/local/bin, which outranks the package's
+    # /usr/bin — so the task above would happily have run that instead. Its
+    # absence is what makes the pair meaningful, and it is the same stat/assert
+    # shape as the superseded sudoers drop-in below.
+    - name: Stat the superseded hand-installed promtool
+      ansible.builtin.stat:
+        path: /usr/local/bin/promtool
+      register: dev_shadow_promtool
+      become: true
+
+    - name: The superseded hand-installed promtool is gone
+      ansible.builtin.assert:
+        that:
+          - not dev_shadow_promtool.stat.exists
+        fail_msg: "/usr/local/bin/promtool survives and shadows the packaged binary"
+        quiet: true
+
+    # The role masks the prometheus.service that rides along with promtool, so
+    # this asserts role-enforced state, not upstream's preset default.
+    - name: Read the bundled prometheus server unit state
+      ansible.builtin.systemd_service:
+        name: prometheus.service
+      register: dev_prometheus_unit
+      become: true
+
+    - name: The bundled prometheus server is masked and not running
+      ansible.builtin.assert:
+        that:
+          - dev_prometheus_unit.status.UnitFileState | default('absent') == 'masked'
+          - dev_prometheus_unit.status.ActiveState | default('absent') == 'inactive'
+        fail_msg: >-
+          prometheus.service is
+          {{ dev_prometheus_unit.status.UnitFileState | default('absent') }} /
+          {{ dev_prometheus_unit.status.ActiveState | default('absent') }},
+          not masked / inactive
+        quiet: true
+
     - name: The Google Cloud CLI is usable
       ansible.builtin.command: gcloud version
       changed_when: false
