@@ -1,0 +1,11 @@
+---
+# Cadence of the btrfsmaintenance scrub and balance timers. Both are written to
+# /etc/sysconfig/btrfsmaintenance, from which the package's own generator
+# materialises the systemd timer drop-ins. Valid values: daily, weekly, monthly,
+# none.
+#
+# These are the package's stock values and what the fleet already runs. The
+# package's own timer units both default to monthly, so the balance value is a
+# real override and the scrub value only restates the default.
+btrfsmaintenance_scrub_period: monthly
+btrfsmaintenance_balance_period: weekly

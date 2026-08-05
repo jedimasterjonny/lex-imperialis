@@ -1,0 +1,7 @@
+---
+# No vars: the role's defaults are the contract here — they must reproduce the
+# schedule the fleet already runs, which is what verify asserts.
+- name: Converge
+  hosts: all
+  roles:
+    - btrfsmaintenance

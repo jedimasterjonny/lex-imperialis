@@ -1,0 +1,101 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  become: true
+  vars:
+    btrfsmaintenance_expected:
+      scrub: monthly
+      balance: weekly
+  tasks:
+    - name: Read the generated timer schedules
+      ansible.builtin.slurp:
+        src: "/etc/systemd/system/btrfs-{{ item.key }}.timer.d/schedule.conf"
+      loop: "{{ btrfsmaintenance_expected | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+      register: btrfsmaintenance_schedules
+
+    - name: Stat the generated timer schedules
+      ansible.builtin.stat:
+        path: "/etc/systemd/system/btrfs-{{ item.key }}.timer.d/schedule.conf"
+      loop: "{{ btrfsmaintenance_expected | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+      register: btrfsmaintenance_stats
+
+    # The whole point of the role: what the generator writes must be exactly the
+    # drop-in the fleet already carries, so applying it is a no-op there.
+    - name: The generated schedules are byte-identical to the fleet's
+      ansible.builtin.assert:
+        that:
+          - 'item.content | b64decode == "[Timer]\nOnCalendar=\nOnCalendar=" ~ item.item.value ~ "\n"'
+        fail_msg: >-
+          btrfs-{{ item.item.key }}.timer schedule is
+          {{ item.content | b64decode | to_json }}, not the
+          {{ item.item.value }} drop-in the fleet runs
+      loop: "{{ btrfsmaintenance_schedules.results }}"
+      loop_control:
+        label: "{{ item.item.key }}"
+
+    - name: The generated schedules carry the package's own permissions
+      ansible.builtin.assert:
+        that:
+          - item.stat.mode == "0644"
+          - item.stat.pw_name == "root"
+          - item.stat.gr_name == "root"
+        fail_msg: >-
+          btrfs-{{ item.item.key }}.timer schedule is
+          {{ item.stat.mode }} {{ item.stat.pw_name }}:{{ item.stat.gr_name }},
+          not 0644 root:root
+      loop: "{{ btrfsmaintenance_stats.results }}"
+      loop_control:
+        label: "{{ item.item.key }}"
+
+    - name: Read the maintenance sysconfig
+      ansible.builtin.slurp:
+        src: /etc/sysconfig/btrfsmaintenance
+      register: btrfsmaintenance_sysconfig
+
+    # Guards the lineinfile regexps: a mismatched anchor would append a second
+    # declaration rather than replace the first, and the last one set wins.
+    - name: Each period is declared exactly once in the sysconfig
+      ansible.builtin.assert:
+        that:
+          - btrfsmaintenance_lines | select('match', 'BTRFS_SCRUB_PERIOD=') | list == ['BTRFS_SCRUB_PERIOD="monthly"']
+          - btrfsmaintenance_lines | select('match', 'BTRFS_BALANCE_PERIOD=') | list == ['BTRFS_BALANCE_PERIOD="weekly"']
+        fail_msg: the sysconfig does not declare each period exactly once
+      vars:
+        btrfsmaintenance_lines: "{{ (btrfsmaintenance_sysconfig.content | b64decode).splitlines() }}"
+
+    - name: Read the unit enablement
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - is-enabled
+          - btrfs-scrub.timer
+          - btrfs-balance.timer
+          - btrfsmaintenance-refresh.path
+      changed_when: false
+      failed_when: false
+      register: btrfsmaintenance_unit_enabled
+
+    - name: Read the timer activation
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - is-active
+          - btrfs-scrub.timer
+          - btrfs-balance.timer
+      changed_when: false
+      failed_when: false
+      register: btrfsmaintenance_timer_active
+
+    - name: The timers and the schedule generator are enabled and armed
+      ansible.builtin.assert:
+        that:
+          - btrfsmaintenance_unit_enabled.stdout_lines == ["enabled", "enabled", "enabled"]
+          - btrfsmaintenance_timer_active.stdout_lines == ["active", "active"]
+        fail_msg: >-
+          enablement {{ btrfsmaintenance_unit_enabled.stdout_lines }},
+          activation {{ btrfsmaintenance_timer_active.stdout_lines }}
