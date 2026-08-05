@@ -91,13 +91,36 @@
 
 - name: Install the cache container unit
   ansible.builtin.template:
-    src: redis.container.j2
-    dest: /etc/containers/systemd/wordpress-redis.container
+    src: valkey.container.j2
+    dest: /etc/containers/systemd/wordpress-valkey.container
     owner: root
     group: root
     mode: "0644"
   become: true
   notify: Restart the wordpress cache
+
+# The cache was renamed when it moved from redis to valkey. Stop the superseded
+# container while its generated unit still exists — stopping removes the
+# container too — then drop the quadlet.
+- name: Check for the superseded redis cache unit
+  ansible.builtin.stat:
+    path: /etc/containers/systemd/wordpress-redis.container
+  register: wordpress_redis_unit
+  become: true
+
+- name: Stop the superseded redis cache
+  ansible.builtin.systemd_service:
+    name: wordpress-redis
+    state: stopped
+  when: wordpress_redis_unit.stat.exists
+  become: true
+
+- name: Remove the superseded redis cache unit
+  ansible.builtin.file:
+    path: /etc/containers/systemd/wordpress-redis.container
+    state: absent
+  become: true
+  notify: Reload systemd for wordpress
 
 - name: Install the wordpress container unit
   ansible.builtin.template:
@@ -209,7 +232,7 @@
     name: "{{ item }}"
     state: started
   loop:
-    - wordpress-redis
+    - wordpress-valkey
     - wordpress-db
     - wordpress
   become: true

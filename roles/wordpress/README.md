@@ -1,7 +1,7 @@
 # wordpress
 
 WordPress as rootful podman quadlets — the `wordpress` (Apache/PHP) container,
-its `wordpress-db` mariadb database, and a `wordpress-redis` object cache —
+its `wordpress-db` mariadb database, and a `wordpress-valkey` object cache —
 served at its own `wordpress_domains` via a caddy public site block. Core
 and uploads persist in the `wordpress-html` volume, the database in
 `wordpress-db`; each container self-heals via a healthcheck.
@@ -74,13 +74,18 @@ volume.
 
 ## Object cache
 
-`wordpress-redis` runs redis as a pure object cache — memory capped at
-`wordpress_redis_maxmemory` with LRU eviction, no volume, no persistence. The
-role pre-wires `WP_REDIS_HOST`/`WP_REDIS_PORT` into wp-config, so the only manual
-step is installing and enabling the Redis Object Cache plugin (via `wp`, below,
-or wp-admin); it reads the constants and connects with no further config.
-wordpress only `Wants` the cache — if it is down the plugin's drop-in degrades to
-WordPress's default in-process cache.
+`wordpress-valkey` runs valkey as a pure object cache — memory capped at
+`wordpress_valkey_maxmemory` with LRU eviction, no volume, no persistence. The
+role pre-wires `WP_REDIS_HOST`/`WP_REDIS_PORT`/`WP_REDIS_GRACEFUL` into wp-config,
+so on a fresh install the only manual step is installing and enabling the Redis
+Object Cache plugin (via `wp`, below, or wp-admin). Without graceful the drop-in
+`wp_die()`s on an unreachable cache; with it wordpress only `Wants` the cache and
+an outage costs speed, not the site.
+
+Those constants only land on a fresh, role-generated config — a migrated install
+keeps its own and the role never rewrites it. Set `WP_REDIS_GRACEFUL` there
+(`wp config set WP_REDIS_GRACEFUL true --raw`) before repointing `WP_REDIS_HOST`.
+`wp redis status` shows the connection; nothing alerts on a silent fallback.
 
 ## Scheduled tasks
 
@@ -138,8 +143,8 @@ Each container runs `NoNewPrivileges` and drops every capability, adding back
 only what its image needs: `wordpress-db` keeps `CHOWN`/`DAC_OVERRIDE` (datadir
 ownership) and `SETUID`/`SETGID` (the entrypoint's drop to the mysql user);
 `wordpress` also keeps `FOWNER` (unpacking core) and `NET_BIND_SERVICE` (apache
-on `:80`); `wordpress-redis` keeps none. A renovate image bump that needs a new
-capability surfaces as a failed healthcheck.
+on `:80`); `wordpress-valkey` starts as the `valkey` user and keeps none. A
+renovate image bump that needs a new capability surfaces as a failed healthcheck.
 
 An apache drop-in (`files/uploads-no-exec.conf`, mounted into `conf-enabled/`)
 sets `php_admin_flag engine off` and `AllowOverride None` on `wp-content/uploads`,

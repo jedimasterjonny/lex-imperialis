@@ -3,10 +3,11 @@ Description=WordPress
 {# The database unit starts first; wordpress reconnects until it answers. #}
 Requires=wordpress-db.service
 After=wordpress-db.service
-{# The cache is optional — the drop-in degrades gracefully if it is down — so #}
-{# only order after it, never require it. #}
-Wants=wordpress-redis.service
-After=wordpress-redis.service
+{# The cache is optional — WP_REDIS_GRACEFUL makes the drop-in fall back to the #}
+{# in-process cache instead of killing the request — so only order after it, #}
+{# never require it. #}
+Wants=wordpress-valkey.service
+After=wordpress-valkey.service
 
 [Container]
 ContainerName=wordpress

@@ -12,9 +12,9 @@ wordpress_tls: true
 
 wordpress_timezone: Etc/UTC
 
-# Memory ceiling for the redis object cache; it evicts LRU keys past this and
+# Memory ceiling for the valkey object cache; it evicts LRU keys past this and
 # keeps nothing on disk.
-wordpress_redis_maxmemory: 256mb
+wordpress_valkey_maxmemory: 256mb
 
 # Database the wordpress container connects to; mariadb creates the database and
 # user on first init. Not secret — the passwords are.

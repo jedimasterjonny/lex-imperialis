@@ -16,7 +16,7 @@
 
 - name: Restart the wordpress cache
   ansible.builtin.systemd_service:
-    name: wordpress-redis
+    name: wordpress-valkey
     state: restarted
     daemon_reload: true
   become: true
@@ -32,4 +32,10 @@
   ansible.builtin.systemd_service:
     name: caddy
     state: restarted
+  become: true
+
+# Retiring a quadlet leaves no unit to restart, so the reload stands alone.
+- name: Reload systemd for wordpress
+  ansible.builtin.systemd_service:
+    daemon_reload: true
   become: true
