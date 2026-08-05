@@ -40,6 +40,17 @@
     append: true
   become: true
 
+# libvirt-daemon-common owns this dir and restores its packaged 0711 root:root
+# on upgrade.
+- name: Own the image store's permissions
+  ansible.builtin.file:
+    path: "{{ libvirt_image_dir }}"
+    state: directory
+    owner: root
+    group: libvirt
+    mode: "2771"
+  become: true
+
 - name: Install the Tumbleweed image refresh script
   ansible.builtin.template:
     src: tumbleweed-image-refresh.sh.j2
