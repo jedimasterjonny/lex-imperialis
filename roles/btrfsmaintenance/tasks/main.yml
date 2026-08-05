@@ -1,0 +1,66 @@
+---
+- name: Install btrfsmaintenance
+  community.general.zypper:
+    name: btrfsmaintenance
+    state: present
+  become: true
+
+# Surgical rather than templated: the file is fillup-generated, and a package
+# upgrade adds new variables to it that owning the whole file would delete.
+- name: Set the scrub and balance periods
+  ansible.builtin.lineinfile:
+    path: /etc/sysconfig/btrfsmaintenance
+    regexp: "^{{ item.key }}="
+    line: '{{ item.key }}="{{ item.value }}"'
+    create: false
+  loop:
+    - key: BTRFS_SCRUB_PERIOD
+      value: "{{ btrfsmaintenance_scrub_period }}"
+    - key: BTRFS_BALANCE_PERIOD
+      value: "{{ btrfsmaintenance_balance_period }}"
+  loop_control:
+    label: "{{ item.key }}"
+  register: btrfsmaintenance_periods
+  become: true
+
+- name: Check whether the timer schedules have been generated
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/btrfs-{{ item }}.timer.d/schedule.conf"
+  loop:
+    - scrub
+    - balance
+  register: btrfsmaintenance_schedules
+  become: true
+
+# btrfsmaintenance-refresh.path regenerates the drop-ins on its own, but
+# asynchronously, so it cannot be ordered against the timer tasks below. Running
+# the generator here makes the schedule land before the timers are armed. The
+# absent-drop-in arm covers a host whose periods are already correct but whose
+# schedule was never materialised.
+- name: Generate the timer schedules
+  ansible.builtin.command: /usr/share/btrfsmaintenance/btrfsmaintenance-refresh-cron.sh systemd-timer
+  when: >-
+    btrfsmaintenance_periods is changed
+    or btrfsmaintenance_schedules.results | rejectattr('stat.exists') | list | length > 0
+  changed_when: true
+  become: true
+
+- name: Enable the schedule generator
+  ansible.builtin.systemd_service:
+    name: btrfsmaintenance-refresh.path
+    enabled: true
+    state: started
+  become: true
+
+# daemon_reload picks up a freshly generated drop-in; it does not itself report
+# changed, so the task stays idempotent.
+- name: Enable the maintenance timers
+  ansible.builtin.systemd_service:
+    name: "btrfs-{{ item }}.timer"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop:
+    - scrub
+    - balance
+  become: true
