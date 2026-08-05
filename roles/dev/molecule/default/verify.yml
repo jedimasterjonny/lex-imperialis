@@ -6,9 +6,9 @@
     - ../../defaults/main.yml
     - ../../vars/main.yml
   tasks:
-    # python3/python3-pip are a Provides of a versioned rpm (python313-*), which
-    # is the name package_facts records — so resolve through rpm instead. One
-    # call takes the whole list; its non-zero exit is the assertion.
+    # The python3-* entries are a Provides of a versioned rpm (python313-*),
+    # which is the name package_facts records — so resolve through rpm instead.
+    # One call takes the whole list; its non-zero exit is the assertion.
     - name: Every developer package resolves to an installed provider
       ansible.builtin.command:
         argv: "{{ ['rpm', '--query', '--whatprovides'] + dev_packages }}"

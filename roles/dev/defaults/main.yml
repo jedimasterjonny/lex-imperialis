@@ -6,6 +6,7 @@ dev_packages:
   - direnv
   - gh
   - git
+  - git-filter-repo
   - go
   # Provides /usr/bin/promtool for the alert-rule pre-commit hooks; the whole
   # prometheus server rides along, as it is one package. See README.
@@ -16,6 +17,7 @@ dev_packages:
   - opentofu
   - python3
   - python3-pip
+  - python3-uv
 
 # npm ships with the role; disable on hosts that do no Node work.
 dev_npm: true
