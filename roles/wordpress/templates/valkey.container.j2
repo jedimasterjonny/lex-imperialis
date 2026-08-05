@@ -1,0 +1,28 @@
+[Unit]
+Description=WordPress Valkey cache
+
+[Container]
+ContainerName=wordpress-valkey
+Image={{ wordpress_valkey_image }}
+Network=caddy.network
+{# The entrypoint setpriv's from root down to valkey, which needs CAP_SETUID; #}
+{# start as valkey so it skips that drop and the server needs no capability. #}
+User=valkey
+NoNewPrivileges=true
+DropCapability=all
+{# Pure object cache: cap memory with LRU eviction and disable RDB/AOF, so it #}
+{# needs no volume and never persists to disk. #}
+Exec=valkey-server --maxmemory {{ wordpress_valkey_maxmemory }} --maxmemory-policy allkeys-lru --save ""
+HealthCmd=valkey-cli ping
+HealthInterval=30s
+HealthTimeout=5s
+HealthRetries=3
+HealthStartPeriod=30s
+HealthOnFailure=kill
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target
