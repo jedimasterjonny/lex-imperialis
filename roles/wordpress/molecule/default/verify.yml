@@ -215,12 +215,13 @@
 
     # wp-config.php eval's WORDPRESS_CONFIG_EXTRA at runtime, so the constants it
     # carries point the operator-enabled plugin at the cache with no manual step.
-    - name: The redis host is wired into the config
+    - name: The cache host is wired into the config
       ansible.builtin.assert:
         that:
           - "'WP_REDIS_HOST' in wordpress_extra_config.stdout"
           - "'wordpress-redis' in wordpress_extra_config.stdout"
-        fail_msg: "the redis host is not wired into WORDPRESS_CONFIG_EXTRA"
+          - "'WP_REDIS_GRACEFUL' in wordpress_extra_config.stdout"
+        fail_msg: "the cache host or graceful fallback is not wired into WORDPRESS_CONFIG_EXTRA"
         quiet: true
 
     - name: WP-cron is disabled in the generated config

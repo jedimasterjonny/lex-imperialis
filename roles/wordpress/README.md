@@ -76,11 +76,16 @@ volume.
 
 `wordpress-redis` runs redis as a pure object cache — memory capped at
 `wordpress_redis_maxmemory` with LRU eviction, no volume, no persistence. The
-role pre-wires `WP_REDIS_HOST`/`WP_REDIS_PORT` into wp-config, so the only manual
-step is installing and enabling the Redis Object Cache plugin (via `wp`, below,
-or wp-admin); it reads the constants and connects with no further config.
-wordpress only `Wants` the cache — if it is down the plugin's drop-in degrades to
-WordPress's default in-process cache.
+role pre-wires `WP_REDIS_HOST`/`WP_REDIS_PORT`/`WP_REDIS_GRACEFUL` into wp-config,
+so on a fresh install the only manual step is installing and enabling the Redis
+Object Cache plugin (via `wp`, below, or wp-admin). Without graceful the drop-in
+`wp_die()`s on an unreachable cache; with it wordpress only `Wants` the cache and
+an outage costs speed, not the site.
+
+Those constants only land on a fresh, role-generated config — a migrated install
+keeps its own and the role never rewrites it. Set `WP_REDIS_GRACEFUL` there
+(`wp config set WP_REDIS_GRACEFUL true --raw`) before repointing `WP_REDIS_HOST`.
+`wp redis status` shows the connection; nothing alerts on a silent fallback.
 
 ## Scheduled tasks
 
