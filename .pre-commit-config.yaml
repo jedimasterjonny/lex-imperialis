@@ -28,7 +28,7 @@ repos:
   # off in .editorconfig-checker.json — it fights the intentional Jinja-expression
   # alignment in the YAML, markdown prose, and the vendored LICENSE.
   - repo: https://github.com/editorconfig-checker/editorconfig-checker.python
-    rev: 3.6.1
+    rev: 3.8.0
     hooks:
       - id: editorconfig-checker
   # gitleaks backstops detect-private-key, catching tokens, passwords, and
