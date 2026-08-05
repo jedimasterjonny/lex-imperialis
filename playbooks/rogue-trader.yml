@@ -87,6 +87,12 @@
     - wireguard_client
     - podman
     - autoupdate
+    # Materialises the schedule this host has always declared but never
+    # generated. The drop-ins are written by the package's path unit when the
+    # sysconfig changes, which never happens during a packer image build, so the
+    # balance timer has been running the package default of monthly against a
+    # sysconfig asking for weekly.
+    - btrfsmaintenance
     - nfs
     - caddy
     - wordpress
