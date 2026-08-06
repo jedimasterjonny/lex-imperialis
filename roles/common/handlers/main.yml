@@ -1,0 +1,20 @@
+---
+# chronyd disciplines the kernel clock, so it needs CAP_SYS_TIME and dies on
+# adjtimex without it — no container has that capability, since the clock it
+# would set is the host's. Hence a restart of only what is already running: true
+# of every fleet host, never of the molecule container. The query rides the same
+# notify rather than sitting in tasks/, so it costs nothing on the converges that
+# change nothing; handlers run in definition order, so it still lands first.
+- name: Query the chronyd unit for common
+  ansible.builtin.systemd_service:
+    name: chronyd
+  register: common_chronyd
+  become: true
+
+# chrony has no reload — sources are read at start.
+- name: Restart chronyd for common
+  ansible.builtin.systemd_service:
+    name: chronyd
+    state: restarted
+  when: common_chronyd.status.ActiveState | default('') == 'active'
+  become: true

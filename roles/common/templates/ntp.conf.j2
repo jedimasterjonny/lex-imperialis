@@ -1,0 +1,4 @@
+# {{ ansible_managed }}
+{% for source in common_ntp_sources %}
+pool {{ source }} iburst
+{% endfor %}

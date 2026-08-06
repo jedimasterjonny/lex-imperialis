@@ -197,6 +197,57 @@
         argv: "{{ ['rpm', '--query', '--whatprovides'] + common_packages }}"
       changed_when: false
 
+    - name: Stat the NTP drop-in
+      ansible.builtin.stat:
+        path: /etc/chrony.d/common-ntp.conf
+      register: common_ntp_dropin
+
+    - name: NTP drop-in is installed and root-owned
+      ansible.builtin.assert:
+        that:
+          - common_ntp_dropin.stat.exists
+          - common_ntp_dropin.stat.mode == '0644'
+          - common_ntp_dropin.stat.pw_name == 'root'
+          - common_ntp_dropin.stat.gr_name == 'root'
+        fail_msg: "/etc/chrony.d/common-ntp.conf is missing or not owned root:root mode 0644"
+
+    # chronyd defaults to /etc/chrony.conf; the newer package ships the vendor
+    # copy under /usr/etc instead, as this image already does. Follow whichever
+    # exists rather than pin the layout of the day.
+    - name: Stat chrony's own configuration
+      ansible.builtin.stat:
+        path: /etc/chrony.conf
+      register: common_chrony_conf
+
+    # -p expands the whole config chain and exits, so it proves chrony reads the
+    # drop-in and parses it — which the file's own content cannot.
+    - name: Expand chrony's configuration
+      ansible.builtin.command:
+        argv:
+          - /usr/sbin/chronyd
+          - -p
+          - -f
+          - "{{ '/etc/chrony.conf' if common_chrony_conf.stat.exists else '/usr/etc/chrony.conf' }}"
+      register: common_chrony_config
+      changed_when: false
+      become: true
+
+    # Both fixture sources are spelled out rather than looped from the role's
+    # defaults: vars_files outranks vars, so a converge override would be
+    # invisible here and the second entry would go unasserted.
+    - name: Chrony carries every configured NTP source
+      ansible.builtin.assert:
+        that:
+          - "'pool time.cloudflare.com iburst' in common_chrony_config.stdout"
+          - "'pool lex-absent-ntp.invalid iburst' in common_chrony_config.stdout"
+        fail_msg: "chrony does not carry both configured sources"
+
+    - name: The distro's own source survives alongside
+      ansible.builtin.assert:
+        that:
+          - "'opensuse.pool.ntp.org' in common_chrony_config.stdout"
+        fail_msg: "the drop-in displaced the packaged openSUSE source"
+
     - name: Stat the stowed bashrc
       ansible.builtin.stat:
         path: "{{ common_user_home }}/.bashrc"
