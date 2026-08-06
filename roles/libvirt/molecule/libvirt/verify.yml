@@ -59,6 +59,22 @@
         fail_msg: "{{ libvirt_user }} is not in the libvirt group"
         quiet: true
 
+    - name: Stat the image store
+      ansible.builtin.stat:
+        path: "{{ libvirt_image_dir }}"
+      register: libvirt_image_store
+
+    - name: The image store is 2771 root:libvirt
+      ansible.builtin.assert:
+        that:
+          - libvirt_image_store.stat.exists
+          - libvirt_image_store.stat.isdir
+          - libvirt_image_store.stat.mode == '2771'
+          - libvirt_image_store.stat.pw_name == 'root'
+          - libvirt_image_store.stat.gr_name == 'libvirt'
+        fail_msg: "{{ libvirt_image_dir }} is not 2771 root:libvirt"
+        quiet: true
+
     - name: Stat the image refresh script
       ansible.builtin.stat:
         path: "{{ libvirt_image_refresh_script }}"

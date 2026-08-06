@@ -12,8 +12,8 @@
     mol_ssh_key: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/ssh_key"
     # The libvirt image store, not a private cache: a run reuses the warm
     # Tumbleweed qcow2 the libvirt role's refresh timer keeps here rather than
-    # re-downloading, and populates it on a miss. The dir is setgid root:libvirt,
-    # so the operator (in the libvirt group) writes base images beside the disks.
+    # re-downloading, and populates it on a miss. Writing here unprivileged
+    # relies on the libvirt role holding the dir 2771 root:libvirt.
     mol_image_cache: /var/lib/libvirt/images
   tasks:
     - name: Generate an ephemeral SSH key
