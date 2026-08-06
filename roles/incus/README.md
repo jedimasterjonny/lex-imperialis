@@ -9,6 +9,10 @@ role before molecule can run — the one host it cannot set up for itself.
   initialised host.
 - **Network** — the preseed creates a NAT bridge (IPv4 only) that firewalld
   permanently trusts, so instances reach the host's DHCP and DNS.
+- **Instance veths** — `conf.d/incus.conf` leaves `veth*` unmanaged by
+  NetworkManager. A stopped instance returns its interface to the host netns
+  renamed `vethXXXXXXXX`, and NM claiming that orphan strands it in the
+  default firewalld zone, one per instance destroyed, until a reboot.
 - **Storage** — btrfs pool on the fleet; molecule's non-btrfs VMs override
   to a `dir` pool, so the btrfs default is not molecule-tested.
 - **Image cache** — a weekly timer caches the Tumbleweed cloud image in

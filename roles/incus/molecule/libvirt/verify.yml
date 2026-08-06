@@ -107,3 +107,21 @@
       ansible.builtin.command: "incus image delete {{ incus_refresh_test_alias }}"
       changed_when: true
       become: true
+
+    # Deliberately not mirroring the role's NetworkManager guard: a test that
+    # skips on the same probe the task skips on can never catch the guard
+    # opening. Both tiers carry NM, so a skip here would be the regression.
+    #
+    # --print-config expands the merged conf.d, proving NetworkManager reads the
+    # drop-in — which the file's own content cannot.
+    - name: Expand NetworkManager's configuration
+      ansible.builtin.command: NetworkManager --print-config
+      register: incus_nm_config
+      changed_when: false
+      become: true
+
+    - name: NetworkManager leaves instance veths unmanaged
+      ansible.builtin.assert:
+        that: "'interface-name:veth*' in incus_nm_config.stdout"
+        fail_msg: "NetworkManager does not hold instance veths unmanaged"
+        quiet: true

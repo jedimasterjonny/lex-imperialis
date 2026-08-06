@@ -1,0 +1,6 @@
+# {{ ansible_managed }}
+# incus owns the instance veths; NetworkManager must not manage them. Matched by
+# name, not `type:veth` — NM reports these as type `ethernet`, so a type match
+# would silently catch nothing.
+[keyfile]
+unmanaged-devices+=interface-name:veth*

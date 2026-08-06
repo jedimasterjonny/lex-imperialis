@@ -16,6 +16,27 @@
     state: enabled
   become: true
 
+# An instance's interface returns to the host netns when it stops, renamed to
+# vethXXXXXXXX. NetworkManager races to claim the orphan and activates a default
+# wired connection on it; that activation binds it to the default firewalld zone,
+# and the device then vanishes mid-activation, leaving the binding behind. One
+# per instance destroyed, cleared only by a reboot.
+- name: Detect NetworkManager
+  ansible.builtin.stat:
+    path: /etc/NetworkManager/conf.d
+  register: incus_nm_confd
+
+- name: Leave incus instance veths unmanaged by NetworkManager
+  ansible.builtin.template:
+    src: networkmanager-incus.conf.j2
+    dest: /etc/NetworkManager/conf.d/incus.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  when: incus_nm_confd.stat.exists
+  notify: Reload NetworkManager for incus
+
 # Both units: the socket for boot activation, the service so the daemon is up
 # now rather than on the first client connection.
 - name: Enable and start incus

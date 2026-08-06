@@ -1,0 +1,6 @@
+---
+- name: Reload NetworkManager for incus
+  ansible.builtin.systemd_service:
+    name: NetworkManager
+    state: reloaded
+  become: true
