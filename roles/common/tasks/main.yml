@@ -150,6 +150,24 @@
   become: true
   when: ansible_selinux.status == 'enabled'
 
+# Dropped beside the packaged pool.conf, never over it. Both chrony layouts read
+# /etc/chrony.d — as an include glob, where taking that name would overwrite the
+# vendor file, and as the first confdir, where it would shadow it — so either way
+# the distro's own source goes with it. Rendered unconditionally, so emptying the
+# list drops back to that source alone, and kept behind the package install
+# above, which owns /etc/chrony.d.
+- name: Add the fleet's NTP sources
+  ansible.builtin.template:
+    src: ntp.conf.j2
+    dest: /etc/chrony.d/common-ntp.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify:
+    - Query the chronyd unit for common
+    - Restart chronyd for common
+
 - name: Ensure the owner's supplementary groups exist
   ansible.builtin.group:
     name: "{{ item }}"

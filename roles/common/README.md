@@ -77,6 +77,32 @@ then the assert halts `common`, the first role of each openSUSE play, so that ho
 converges no further, `site.yml` stops there, and `GitopsReconcileFailed` goes
 critical.
 
+`common_ntp_sources` adds NTP sources through
+`/etc/chrony.d/common-ntp.conf`, one `pool` line each, alongside whatever the
+install left in the packaged `pool.conf` — `time.cloudflare.com` by default.
+
+It buys availability, not an independent second opinion: chrony votes each
+address behind that name separately, but they are one operator's anycast and can
+be wrong together. A second, unrelated operator in the list is what would add
+one.
+
+The drop-in must not take the packaged file's name: under an `include
+/etc/chrony.d/*.conf` Ansible would overwrite the vendor file, and under a
+`confdir /etc/chrony.d /usr/etc/chrony.d` it would shadow it — either way the
+distro's own source vanishes silently, so molecule asserts it survives. Which
+layout a host has follows its chrony package rather than its distro, and the
+fleet currently spans both. The render is unconditional, so emptying the list
+falls back to that source rather than leaving a stale file.
+
+`common_packages` carries `chrony`: its rpm owns `/etc/chrony.d`, and the handler
+restarts `chronyd`, which reads its sources only at start.
+
+That restart is the half no container can exercise, so the handler restarts only
+a `chronyd` already running and molecule proves the drop-in through `chronyd -p`
+instead — see the comments on each. The gap that leaves is a host whose `chronyd`
+is stopped: it takes the file but not the source, until the next start.
+`ClockNotSynchronised` catches that host, in hours rather than minutes.
+
 `common_blacklisted_modules` bars kernel modules via
 `/etc/modprobe.d/common-blacklist.conf` — `blacklist` plus `install
 <module> /bin/false` — and unloads any already live rather than leaving

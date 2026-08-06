@@ -32,7 +32,13 @@ common_disabled_repos:
   - repo-non-oss
   - repo-openh264
 
-# Base tools, plus python3-selinux — the binding ansible.posix.selinux imports.
+# NTP sources added as chrony pool lines alongside whichever the distro
+# installed. See the README for what a second source does and does not buy.
+common_ntp_sources:
+  - time.cloudflare.com
+
+# Base tools, plus python3-selinux — the binding ansible.posix.selinux imports —
+# and chrony, whose sources the role configures.
 common_packages:
   - vim
   - tmux
@@ -40,3 +46,4 @@ common_packages:
   - sudo
   - git
   - python3-selinux
+  - chrony

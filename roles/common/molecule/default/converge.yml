@@ -10,6 +10,12 @@
     # leaves nothing to unload, so this proves the drop-in alone.
     common_blacklisted_modules:
       - lex_absent_module
+    # Two entries, so the template's loop is exercised rather than assumed. The
+    # second never resolves, which costs nothing: chronyd -p expands the config
+    # without contacting a source.
+    common_ntp_sources:
+      - time.cloudflare.com
+      - lex-absent-ntp.invalid
   tasks:
     - name: Apply the common role
       ansible.builtin.include_role:
