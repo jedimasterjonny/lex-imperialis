@@ -2,3 +2,8 @@
 # Pinned to the CI lint gate (.github/workflows/lint.yml); the leading v matches
 # the shared renovate manager's pattern. See roles/dev/README.md.
 dev_tflint_version: "v0.64.0"
+
+# Pinned to the version the Firebase deploy workflows npx
+# (.github/workflows/firebase-hosting-*.yml), kept in sync by one renovate custom
+# manager. See roles/dev/README.md.
+dev_firebase_tools_version: "15.25.1"
