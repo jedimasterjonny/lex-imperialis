@@ -45,12 +45,48 @@
         name: prometheus.service
         masked: true
 
-- name: Install npm
-  community.general.zypper:
-    name: npm
-    state: present
-  become: true
+- name: Provision the owner's npm toolchain
   when: dev_npm | bool
+  become: true
+  block:
+    - name: Install npm
+      community.general.zypper:
+        name: npm
+        state: present
+
+    # no_log because lineinfile returns the whole file as its diff, and `npm login`
+    # stores a registry token here. See README.
+    - name: Set the owner's npm global prefix
+      ansible.builtin.lineinfile:
+        path: "{{ dev_npmrc }}"
+        regexp: ^prefix=
+        line: "prefix={{ dev_npm_prefix }}"
+        create: true
+        owner: "{{ dev_user }}"
+        group: users
+        mode: "0600"
+      no_log: true
+
+    # No zypper package and no self-update, so the pin drives the install as
+    # tflint's does; the version is what gives it teeth, since `state: present`
+    # alone is satisfied by any installed copy. HOME is what points npm at the
+    # npmrc above, so that prefix is where this lands. See README.
+    #
+    # Skipped in check mode: the module resolves npm as it loads, before it consults
+    # check mode, so a dry run taken before the install above lands would abort the
+    # play. Costs this package's drift reporting on a --check, which the Makefile
+    # already calls best-effort.
+    - name: Install firebase-tools at the pinned version
+      community.general.npm:
+        name: firebase-tools
+        version: "{{ dev_firebase_tools_version }}"
+        global: true
+        state: present
+      become: true
+      become_user: "{{ dev_user }}"
+      environment:
+        HOME: "{{ dev_user_home }}"
+      when: not ansible_check_mode
 
 - name: Ensure curl is present for the Claude Code installer
   community.general.zypper:

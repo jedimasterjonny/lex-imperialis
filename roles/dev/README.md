@@ -51,6 +51,38 @@ outranks the cracklib `packer` openSUSE ships — but packer is needed only when
 `packer/` changes, roughly twice a year, so it stays a hand install; see
 `packer/README.md`.
 
+## firebase-tools
+
+`firebase-tools` installs as an npm global into the owner's `~/.local` at
+`dev_firebase_tools_version`, behind the same `dev_npm` gate as npm itself. There
+is no zypper package and the CLI does not self-update, so the pin drives the
+install, as tflint's does; it matches the version the deploy workflows `npx`, and
+one renovate custom manager bumps both. The pin covers the operator's hand-run
+`firebase` only — the workflows `npx` their own copy on `ubuntu-latest`, so the
+site's release path never reaches the workstation.
+
+It installs as the owner because the tree it writes is the owner's. `HOME` is what
+points npm at the managed prefix, so a root-run install would resolve the same
+path and leave root-owned directories under `~/.local` and `~/.npm`, breaking the
+owner's own later `npm install -g`. Credentials are per-user too —
+`~/.config/configstore/firebase-tools.json`, untouched by the role, so the
+one-time `firebase login` stays manual.
+
+## npm global prefix
+
+npm reads its global prefix from the owner's `~/.npmrc`, so that file is what
+decides where `firebase` — or any other global — lands. It is a precondition, not
+a preference: no system npmrc exists on the fleet, and npm's built-in default is
+`/usr`, which the owner cannot write. The role owns the `prefix=` line, set to
+`dev_npm_prefix` (default `~/.local`), so the operator's own `npm install -g`
+lands where the role's does.
+
+The line is set with `lineinfile` on `dev_npmrc` (default `~/.npmrc`) rather than
+a rendered file, because npmrc is app-managed — `npm login` and `npm config set`
+write to it — so owning the whole file would revert npm's own writes and delete
+any auth token added later. That is the posture the role already takes with
+`~/.claude.json`, `no_log` included.
+
 ## Google Cloud CLI
 
 `gcloud` has no openSUSE package, so the role imports Google's package-signing

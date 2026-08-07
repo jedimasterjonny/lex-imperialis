@@ -18,10 +18,77 @@
       ansible.builtin.command: python3 -m pip --version
       changed_when: false
 
-    - name: Gated npm is usable when enabled
-      ansible.builtin.command: npm --version
-      changed_when: false
+    # Every check here runs as the owner with their HOME: npm's prefix, the npmrc
+    # and the PATH that resolves firebase are all per-user.
+    - name: Verify the owner's npm toolchain
       when: dev_npm | bool
+      become: true
+      become_user: "{{ dev_user }}"
+      environment:
+        HOME: "{{ dev_user_home }}"
+      block:
+        - name: Gated npm is usable when enabled
+          ansible.builtin.command: npm --version
+          changed_when: false
+
+        # npm's effective config is what the operator's own `npm install -g` uses.
+        - name: Query the owner's effective npm prefix
+          ansible.builtin.command: npm config get prefix
+          register: dev_npm_prefix_verify
+          changed_when: false
+
+        - name: The owner's npm prefix is the managed one
+          ansible.builtin.assert:
+            that:
+              - dev_npm_prefix_verify.stdout | trim == dev_npm_prefix
+            fail_msg: "npm prefix is {{ dev_npm_prefix_verify.stdout | trim }}, not {{ dev_npm_prefix }}"
+            quiet: true
+
+        - name: Read the owner's npmrc
+          ansible.builtin.slurp:
+            src: "{{ dev_npmrc }}"
+          register: dev_npmrc_verify
+
+        # converge seeds a stale prefix beside fund=false, so this catches both ways
+        # the rewrite can go wrong: an anchor that appends a second prefix line
+        # rather than replacing, and a rendered file that would drop whatever else
+        # the owner keeps here -- an auth token among it.
+        - name: The prefix is declared once and unrelated settings survive
+          ansible.builtin.assert:
+            that:
+              - dev_npmrc_lines | select('match', '^prefix=') | list | length == 1
+              - "'fund=false' in dev_npmrc_lines"
+            fail_msg: "npmrc reads {{ dev_npmrc_lines }}"
+            quiet: true
+          vars:
+            dev_npmrc_lines: "{{ (dev_npmrc_verify.content | b64decode).splitlines() }}"
+
+        # Through a login shell because ~/.local/bin reaches PATH only via
+        # /etc/profile, which a command task does not source -- so a bare `firebase`
+        # would prove nothing. Taking `command -v` alongside the version pins down
+        # which copy answered, so an install that landed in /usr as root cannot
+        # satisfy this.
+        - name: Query the firebase-tools the owner's shell resolves
+          ansible.builtin.command:
+            argv:
+              - bash
+              - -lc
+              - command -v firebase && firebase --version
+          register: dev_firebase_verify
+          changed_when: false
+          failed_when: false
+
+        - name: The owner's firebase is the pinned one under the managed prefix
+          ansible.builtin.assert:
+            that:
+              - dev_firebase_verify.rc == 0
+              - dev_firebase_verify.stdout_lines | first == dev_npm_prefix ~ '/bin/firebase'
+              - dev_firebase_tools_version in dev_firebase_verify.stdout_lines
+            fail_msg: >-
+              firebase resolves to
+              {{ dev_firebase_verify.stdout_lines | first | default('nothing') }},
+              not the pinned {{ dev_firebase_tools_version }} under {{ dev_npm_prefix }}
+            quiet: true
 
     - name: OpenTofu is usable
       ansible.builtin.command: tofu version

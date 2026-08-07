@@ -38,6 +38,22 @@
         force: false
       become: true
 
+    # Seed a stale prefix beside an unrelated setting, so the role's npmrc line is
+    # exercised as a rewrite rather than a create, and the unrelated line proves the
+    # rewrite leaves the rest of the owner's npmrc alone. Seeded once, like the
+    # Claude config above.
+    - name: Seed a stale npm prefix for the role to correct
+      ansible.builtin.copy:
+        dest: "{{ dev_npmrc }}"
+        content: |
+          prefix=/opt/molecule-stale-prefix
+          fund=false
+        owner: "{{ dev_user }}"
+        group: users
+        mode: "0600"
+        force: false
+      become: true
+
     # Seed a shadow so the role's promtool removal is actually exercised — the
     # role's own task says why /usr/local/bin wins. Gated on the packaged binary's
     # absence rather than a marker: that is true only before the first converge,

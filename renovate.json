@@ -89,9 +89,9 @@
     },
     {
       "customType": "regex",
-      "description": "firebase-tools runs the keyless deploy in the Firebase workflows.",
-      "managerFilePatterns": ["/^\\.github/workflows/firebase-hosting-(merge|pull-request)\\.yml$/"],
-      "matchStrings": ["firebase-tools@(?<currentValue>\\S+)"],
+      "description": "firebase-tools for the Firebase deploy workflows and the workstation; no zypper package. One depName, so the workflows and dev_firebase_tools_version bump together.",
+      "managerFilePatterns": ["/^\\.github/workflows/firebase-hosting-(merge|pull-request)\\.yml$/", "/^roles/dev/vars/main\\.yml$/"],
+      "matchStrings": ["firebase-tools@(?<currentValue>\\S+)", "dev_firebase_tools_version:\\s*\"(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "firebase-tools",
       "datasourceTemplate": "npm"
     },
