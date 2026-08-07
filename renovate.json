@@ -10,12 +10,17 @@
   ],
   "description": [
     "minimumReleaseAge holds a version bump for 3 days. Automerge reaches root-equivalent containers and gitops_reconcile applies a merge within ~15 min, so an unheld bump could be live in one cycle with nobody in the loop.",
-    "internalChecksFilter is strict, so a too-young version opens no PR at all. vulnerabilityAlerts clears minimumReleaseAge with prCreation immediate, so an OSV fix still lands at once. Digest updates and container images are exempt — see the rules below."
+    "internalChecksFilter is strict, so a too-young version opens no PR at all. vulnerabilityAlerts clears minimumReleaseAge with prCreation immediate, so an OSV fix still lands at once. Digest updates and container images are exempt — see the rules below.",
+    "automergeSchedule constrains merging, not PR creation: bumps still open and run CI when ready, they just cannot land mid-session and move main out from under an operator branch. Each collision costs a rebase and a full CI re-run, hetzner tier included. vulnerabilityAlerts clears the window as well as the age hold."
   ],
   "semanticCommits": "enabled",
   "timezone": "Europe/London",
   "osvVulnerabilityAlerts": true,
   "minimumReleaseAge": "3 days",
+  "automergeSchedule": ["after 1am and before 5am"],
+  "vulnerabilityAlerts": {
+    "automergeSchedule": null
+  },
   "customManagers": [
     {
       "customType": "regex",
@@ -166,9 +171,20 @@
       "allowedVersions": "<8"
     },
     {
-      "description": "Merging a plex bump restarts the container and kills active streams.",
-      "matchPackageNames": ["lscr.io/linuxserver/plex"],
-      "automergeSchedule": ["after 1am and before 5am"]
+      "description": "Every container here restarts on merge with something in flight to lose — plex mid-stream, transmission mid-torrent, sonarr/radarr mid-import. The plex-only window this replaces was the same rule scoped to one of the ten. Grouped, they restart in one window instead of scattered. Matched by file: the role's vars hold nothing else renovate manages, so a new container joins without a rule change.",
+      "matchFileNames": ["roles/arr/vars/main.yml"],
+      "groupName": "arr containers"
+    },
+    {
+      "description": "google and google-beta release in lockstep, so two PRs are the same bump twice. matchDatasources keeps this off google-github-actions/auth.",
+      "matchDatasources": ["terraform-provider"],
+      "matchPackageNames": ["hashicorp/google", "hashicorp/google-beta"],
+      "groupName": "google terraform providers"
+    },
+    {
+      "description": "Follows renovate's own release cadence, several a day — a fifth of all renovate traffic here for a lint-gate pin with no reach onto the fleet. schedule constrains creation, where automergeSchedule constrains landing.",
+      "matchPackageNames": ["renovatebot/pre-commit-hooks"],
+      "schedule": ["before 5am on monday"]
     },
     {
       "description": "Hard dep of hetzner.hcloud's vendored SDK, which imports dateutil.parser.isoparse. Stable, not abandoned — just release-inactive.",
