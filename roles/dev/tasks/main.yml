@@ -45,12 +45,27 @@
         name: prometheus.service
         masked: true
 
-- name: Install npm
-  community.general.zypper:
-    name: npm
-    state: present
-  become: true
+- name: Provision the owner's npm toolchain
   when: dev_npm | bool
+  become: true
+  block:
+    - name: Install npm
+      community.general.zypper:
+        name: npm
+        state: present
+
+    # no_log because lineinfile returns the whole file as its diff, and `npm login`
+    # stores a registry token here. See README.
+    - name: Set the owner's npm global prefix
+      ansible.builtin.lineinfile:
+        path: "{{ dev_npmrc }}"
+        regexp: ^prefix=
+        line: "prefix={{ dev_npm_prefix }}"
+        create: true
+        owner: "{{ dev_user }}"
+        group: users
+        mode: "0600"
+      no_log: true
 
 - name: Ensure curl is present for the Claude Code installer
   community.general.zypper:
