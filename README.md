@@ -27,7 +27,7 @@ This has a side effect I never considered before I began: having an IaC repo tha
 
 Tumbleweed on the Beelinks, MicroOS on the VPS, DSM on the NAS. Workloads are rootful podman quadlets, bar the NAS, where Docker Compose is what DSM offers.
 
-Backends publish no host port at all: they sit on caddy's network and drop a snippet into `/etc/caddy/sites/`, and a DNS-01 wildcard issues their certs, so an internal service gets TLS without ever facing the internet. plex is the exception — host-networked, and reached directly. Container state is a named volume, never a host bind mount, so `podman_backup` can restic every volume to the NAS weekly and `restic check` the repository afterwards.
+Backends publish no host port at all: they sit on caddy's network and drop a snippet into `/etc/caddy/sites/`, and a DNS-01 wildcard issues their certs, so an internal service gets TLS without ever facing the internet. plex is the exception — host-networked, and reached directly. Container state is a named volume, never a host bind mount, so `podman_backup` can restic every volume to the NAS weekly.
 
 `solar` runs the media stack — prowlarr, sonarr, radarr, lidarr, beets, recyclarr, plex, transmission — with media over NFSv4 from the NAS. Everything that talks to a tracker is netns-confined to the wireguard container: the tunnel drops, their network drops with it.
 
@@ -43,7 +43,7 @@ Updates run unattended and staggered: `solar` Monday as the canary, the VPS midw
 - `playbooks/` — one play per host, and the play is that host's spec: its `roles:` and `vars:` are the whole story. `site.yml` is the fleet in one run.
 - `terraform/` — OpenTofu for the cloud edge: Cloudflare zones, the Hetzner firewall, the GCP projects behind the site and keyless CI. Remote state in a GCS bucket, applied on merge.
 - `jonnyoc-site/` — Hugo source for the personal site, built and deployed to Firebase Hosting by CI.
-- `packer/` — a two-stage build for an openSUSE MicroOS image for the VPS, since Hetzner ships none. Run by hand, not by CI. `bootstrap/rogue-trader.yml` provisions from its snapshot.
+- `packer/` — a two-stage build for an openSUSE MicroOS image for the VPS, since Hetzner ships none. Run by hand, not by CI.
 
 ## Running plays
 
