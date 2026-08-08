@@ -109,7 +109,7 @@ repos:
         files: '(\.sh\.j2$|/(wp|wp-db-dump)\.j2$)'
       # A Jinja syntax error is invisible until Ansible templates the file, so it
       # costs a converge — a full container build in CI — to find, and
-      # gitops_reconcile applies as root within ~15 min of a merge. Parse every
+      # arbites applies as root within ~15 min of a merge. Parse every
       # template here instead. Complements shellcheck-jinja, which rewrites
       # {% %} and {{ }} but not comment tags, so it cannot see an unclosed one.
       # Butane sources are covered too: bootstrap/rogue-trader.bu is rendered

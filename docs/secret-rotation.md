@@ -96,9 +96,9 @@ pass:
 1. `ansible-vault rekey inventory/group_vars/all/vault.yml` (old → new); commit the re-encrypted vault.
 2. Overwrite the local `.vault_pass`.
 3. `gh secret set VAULT_PASSWORD` — the sole CI secret.
-4. Re-seed scholam's `/etc/gitops-reconcile/vault_pass` (0600 root), or the next reconcile cannot decrypt.
+4. Re-seed scholam's `/etc/arbites/vault_pass` (0600 root), or the next reconcile cannot decrypt.
 5. Update the password manager.
-6. Confirm a CI run, a `make check`, and a gitops reconcile all still decrypt.
+6. Confirm a CI run, a `make check`, and an arbites reconcile all still decrypt.
 
 ## Keyless CI — no rotation
 
@@ -112,5 +112,5 @@ in `terraform/infra-shared.tf` and apply.
 
 Two secrets are not in the vault:
 
-- **`/etc/gitops-reconcile/ssh/id_ed25519`** — a copy of the operator's fleet SSH key the reconcile timer connects with (it cannot be vaulted: the reconciler needs it to reach the fleet). Rotation is fleet-wide — add the new public key to every host's connection-user `authorized_keys`, re-seed the file via the gitops_reconcile bootstrap, confirm a reconcile, then remove the old key. See the role's README.
+- **`/etc/arbites/ssh/id_ed25519`** — a copy of the operator's fleet SSH key the reconcile timer connects with (it cannot be vaulted: the reconciler needs it to reach the fleet). Rotation is fleet-wide — add the new public key to every host's connection-user `authorized_keys`, re-seed the file via the arbites bootstrap, confirm a reconcile, then remove the old key. See the role's README.
 - **dev workstation claude.ai OAuth token** (`~/.claude.json`) — the `dev` role reads and rewrites it under `no_log` for `claude-remote-control`. Rotate by re-running `claude` and `/login` as the dev user; it is a session token, not a vault secret.

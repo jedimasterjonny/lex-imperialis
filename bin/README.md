@@ -14,7 +14,7 @@ non-zero listing every gap; runs on every commit, ignoring filenames.
 
 Parses every `*.j2` handed to it, failing on a Jinja syntax error that would
 otherwise surface only when Ansible templates the file — a converge, or a
-`gitops_reconcile` apply. The usual cause is a bare `{#` outside a `{% raw %}`
+`arbites` apply. The usual cause is a bare `{#` outside a `{% raw %}`
 fence, which bash's `${#array[@]}` supplies; `shellcheck-jinja.sh` rewrites
 `{% … %}` and `{{ … }}` but not comment tags, so it cannot catch one. Parsing
 resolves no variables and looks up no filters, so Ansible-only filters do not

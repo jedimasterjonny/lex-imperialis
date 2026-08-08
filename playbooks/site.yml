@@ -1,5 +1,5 @@
 ---
-# The whole fleet in one run: the gitops_reconcile timer's entry point, and a
+# The whole fleet in one run: the arbites timer's entry point, and a
 # hand-runnable apply-everything (make apply PLAY=site). scholam (self) is
 # imported last so a reconcile run never restarts its own timer mid-apply.
 - name: Configure solar

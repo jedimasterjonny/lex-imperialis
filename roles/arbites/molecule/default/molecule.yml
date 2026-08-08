@@ -1,0 +1,4 @@
+---
+platforms:
+  - name: "lex-arbites-incus-${MOLECULE_RUN_ID:-local}"
+    image: images:opensuse/tumbleweed/cloud

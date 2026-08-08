@@ -145,15 +145,15 @@ opted into auto-update) and the update-check pair `WordpressUpdateCheckFailed` /
 `WordpressUpdateCheckOverdue` (a six-hourly update check that errored or has not
 completed in over a day) and the cron pair `WordpressCronFailed` /
 `WordpressCronOverdue` (the 5-minute wp-cron run that hard-failed or has not run
-in over an hour); the `gitops` group's `GitopsReconcileFailed` /
-`GitopsReconcileStale` (an unattended fleet reconcile that failed or has not completed
+in over an hour); the `arbites` group's `ArbitesFailed` /
+`ArbitesStale` (an unattended fleet reconcile that failed or has not completed
 in over 2 hours); the `music` group's `BeetsPipelineLidarrRejected`
 (an album beets matched but lidarr refused) and `BeetsPipelineQuarantineBacklog` (a
 standing pile of no-match albums awaiting hand-processing); the `monitoring` group's
 `PrometheusRuleEvaluationFailing` (a rule group erroring at evaluation, so its rules
 have silently stopped producing series) and `PrometheusConfigReloadFailed` (a config
 or rule file Prometheus rejected at reload, leaving it on the previous config) — the
-two ways an unattended `gitops_reconcile` deploy of these very files fails silently,
+two ways an unattended `arbites` deploy of these very files fails silently,
 both read off the `prometheus` self-scrape job — and `ScheduledJobMetricMissing`
 (a host running one of the seven oneshots `SystemdUnitFailed` excludes while
 publishing no matching `*_success` metric. That exclusion is only sound while the
