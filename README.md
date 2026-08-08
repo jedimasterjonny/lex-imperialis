@@ -33,7 +33,7 @@ Backends publish no host port at all: they sit on caddy's network and drop a sni
 
 `rogue-trader` serves the public WordPress site behind the same caddy role and joins the fleet over WireGuard, which carries both its scrape and its backup. Its root is read-only: what it needs is baked into the MicroOS image `packer/` builds, not installed by its play.
 
-Monitoring sits off the hosts it watches — Prometheus and blackbox_exporter on the NAS, Alertmanager and Grafana on `solar`, node_exporter on the openSUSE hosts, cadvisor on `solar` and `rogue-trader`. Liveness is a blackbox probe over the network; a container's own healthcheck exists only to restart it when stuck, and anything that must not be killed mid-flight — a plex transcode, a beets import — carries none at all.
+Monitoring sits off the hosts it watches — Prometheus and blackbox_exporter on the NAS, Alertmanager and Grafana on `solar`, node_exporter on the openSUSE hosts, cadvisor on `solar` and `rogue-trader`. Liveness is a blackbox probe over the network; a container's own healthcheck exists only to restart it when stuck, and anything that must not be killed mid-flight — a plex transcode, a beets import — carries none at all. An hourly drift check on `solar` and `rogue-trader` closes the other half: `arbites` proves `main` reached the fleet, and the `inquisition` proves the containers still match what `main` declares.
 
 Updates run unattended and staggered: `solar` Monday as the canary, the VPS midweek, `scholam` last, so one bad rolling snapshot cannot brick the fleet in a single night. Every host rolls — `zypper dup` on the Beelinks, its transactional form on the VPS, which reboots into the new snapshot.
 

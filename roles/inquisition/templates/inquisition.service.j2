@@ -1,0 +1,15 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Compare containers against the quadlet declarations
+
+[Service]
+Type=oneshot
+# Type=oneshot does not inherit DefaultTimeoutStartSec, so without this a podman
+# call blocking on the storage lock parks the unit in activating forever: the
+# timer cannot start another run, ExecStopPost never fires, and the stale payload
+# keeps being republished as though it were fresh. The check takes seconds.
+TimeoutStartSec=5min
+ExecStart={{ inquisition_script }}
+# Runs whether ExecStart succeeded or failed, reading $SERVICE_RESULT to record
+# the outcome as a node_exporter metric.
+ExecStopPost={{ inquisition_metric_script }}
