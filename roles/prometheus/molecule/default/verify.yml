@@ -82,42 +82,29 @@
       register: prometheus_loaded_rules
 
     # The rule_files glob and its mounted rule both have to take effect for these
-    # rules to appear.
+    # rules to appear. The shipped file is the roster: parsed on the controller
+    # and compared as a set against what Prometheus loaded, so a new alert needs
+    # no edit here and one that fails to load has nowhere to hide. The two length
+    # assertions are not redundant with the set compare — set equality alone
+    # passes a duplicated name masking a missing one, and two empty lists are
+    # trivially equal, which is the shape this whole assertion exists to refuse.
     - name: The shipped alert rules are loaded
+      vars:
+        prometheus_shipped_alerts: >-
+          {{ (lookup('file', playbook_dir | dirname | dirname ~ '/files/rules/alerts.yml')
+              | from_yaml).groups | map(attribute='rules') | flatten
+             | selectattr('alert', 'defined') | map(attribute='alert') | list }}
+        prometheus_loaded_alerts: >-
+          {{ prometheus_loaded_rules.json.data.groups | map(attribute='rules') | flatten
+             | selectattr('type', 'eq', 'alerting') | map(attribute='name') | list }}
       ansible.builtin.assert:
         that:
-          - >-
-            prometheus_loaded_rules.json.data.groups
-            | map(attribute='rules') | flatten
-            | selectattr('name', 'in', ['InstanceDown', 'BlackboxExporterDown', 'ProbeDown',
-                                        'ProbeSSLCertExpiringSoon',
-                                        'PodmanBackupFailed', 'PodmanBackupOverdue',
-                                        'HomeBackupFailed', 'HomeBackupOverdue',
-                                        'WordpressDbDumpFailed', 'WordpressDbDumpOverdue',
-                                        'FilesystemSpaceLow', 'FilesystemReadOnly',
-                                        'MemoryLow',
-                                        'HostCpuTemperatureHigh', 'ClockNotSynchronised',
-                                        'ServiceRestartStorm', 'SystemdUnitFailed',
-                                        'WireguardTunnelDown', 'AlertmanagerNotificationsFailing',
-                                        'AutoupdateFailed', 'AutoupdateOverdue',
-                                        'MicroOSBuildStale',
-                                        'WordpressUpdateAvailable', 'WordpressUpdateCheckFailed',
-                                        'WordpressUpdateCheckOverdue', 'WordpressCronFailed',
-                                        'WordpressCronOverdue', 'ArbitesFailed',
-                                        'ArbitesStale', 'ContainerDigestDrift',
-                                        'UnmanagedContainerRunning', 'QuadletNotRunning',
-                                        'QuadletUnpinned', 'QuadletsDisappeared',
-                                        'InquisitionFailed',
-                                        'InquisitionOverdue', 'BeetsPipelineLidarrRejected',
-                                        'BeetsPipelineQuarantineBacklog',
-                                        'PrometheusRuleEvaluationFailing',
-                                        'PrometheusConfigReloadFailed',
-                                        'ScheduledJobMetricMissing', 'Watchdog'])
-            | list | length == 42
-          - >-
-            prometheus_loaded_rules.json.data.groups
-            | map(attribute='rules') | flatten | list | length == 42
-        fail_msg: the loaded alert rules don't match those shipped in alerts.yml
+          - prometheus_shipped_alerts | length > 0
+          - prometheus_loaded_alerts | length == prometheus_shipped_alerts | length
+          - prometheus_loaded_alerts | sort == prometheus_shipped_alerts | sort
+        fail_msg: >-
+          the loaded alert rules don't match those shipped in alerts.yml — loaded
+          {{ prometheus_loaded_alerts | sort }}, shipped {{ prometheus_shipped_alerts | sort }}
 
     # MicroOSBuildStale reads a fortnight back, so its correctness rests on retention
     # outlasting that window. Retention is set in prometheus.yml rather than as the
