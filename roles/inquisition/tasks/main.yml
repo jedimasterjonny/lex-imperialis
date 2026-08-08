@@ -1,0 +1,37 @@
+---
+- name: Install the drift check and metric scripts
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - src: inquisition.sh.j2
+      dest: "{{ inquisition_script }}"
+    - src: inquisition-metric.sh.j2
+      dest: "{{ inquisition_metric_script }}"
+  become: true
+
+- name: Install the drift check service and timer
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - inquisition.service
+    - inquisition.timer
+  become: true
+
+# daemon_reload picks up unit changes before enabling; it does not itself report
+# changed, so the task stays idempotent. No restart handler: a oneshot timer has
+# nothing to restart, and the next tick reads the new script anyway.
+- name: Enable and start the drift check timer
+  ansible.builtin.systemd_service:
+    name: inquisition.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true

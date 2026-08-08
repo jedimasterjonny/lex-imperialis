@@ -1,0 +1,90 @@
+---
+- name: Converge
+  hosts: all
+  vars:
+    # openSUSE's registry: no docker.io pull limits in CI, and tiny. The digest
+    # is resolved from the pull rather than pinned — the scenario asserts that
+    # running-digest equals declared-digest, not which image either is, so there
+    # is nothing for renovate to track and nothing to go stale.
+    inquisition_probe_image: registry.opensuse.org/opensuse/busybox:latest
+  tasks:
+    # The role, not a bare zypper podman: the role's drop-in selects crun, and
+    # runc cannot mount /proc in the CI runner's nested container (EPERM) — a
+    # failure the workstation's incus does not reproduce, so only CI sees it.
+    - name: Apply the podman role
+      ansible.builtin.include_role:
+        name: podman
+
+    - name: Apply the inquisition role
+      ansible.builtin.include_role:
+        name: inquisition
+
+    - name: Pull the probe image
+      ansible.builtin.command:
+        cmd: podman pull -q {{ inquisition_probe_image }}
+      changed_when: false
+      become: true
+
+    # Resolve the pin the way the check measures it — from a container's
+    # ImageDigest — not from image inspect's .Digest, which can name a different
+    # manifest for the same pull. The throwaway is created, read, and removed;
+    # no state survives, so the three tasks are honest changed_when: false.
+    - name: Create a throwaway container to read the digest from
+      ansible.builtin.command:
+        cmd: podman create --name inquisition-resolve {{ inquisition_probe_image }} true
+      changed_when: false
+      become: true
+
+    - name: Resolve the probe image's digest as a container reports it
+      ansible.builtin.command:
+        cmd: podman inspect --format '{% raw %}{{.ImageDigest}}{% endraw %}' inquisition-resolve
+      register: inquisition_probe_digest
+      changed_when: false
+      become: true
+
+    - name: Remove the throwaway container
+      ansible.builtin.command:
+        cmd: podman rm inquisition-resolve
+      changed_when: false
+      become: true
+
+    # A quadlet shaped exactly as the fleet's: explicit ContainerName, image
+    # pinned name:tag@digest. Network=host (a fleet-used shape — plex) since the
+    # checks never touch the network. busybox sleep takes integer seconds only.
+    - name: Install the probe quadlet
+      ansible.builtin.copy:
+        content: |
+          [Unit]
+          Description=Inquisition probe container
+          [Container]
+          ContainerName=probe
+          Image={{ inquisition_probe_image }}@{{ inquisition_probe_digest.stdout }}
+          Exec=sleep 86400
+          Network=host
+        dest: /etc/containers/systemd/probe.container
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    # The rescue trades a blind "control process exited" for the journal — a
+    # molecule failure in CI is otherwise unshellable.
+    - name: Start the probe container
+      block:
+        - name: Start the probe container
+          ansible.builtin.systemd_service:
+            name: probe.service
+            state: started
+            daemon_reload: true
+          become: true
+      rescue:
+        - name: Read the probe service journal
+          ansible.builtin.command:
+            cmd: journalctl -u probe.service --no-pager -n 50
+          register: inquisition_probe_journal
+          changed_when: false
+          become: true
+
+        - name: Surface the probe failure
+          ansible.builtin.fail:
+            msg: "{{ inquisition_probe_journal.stdout }}"

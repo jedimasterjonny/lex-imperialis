@@ -1,0 +1,23 @@
+---
+# Where the quadlet declarations live; the podman role owns the directory and
+# must run first in the play.
+inquisition_quadlet_dir: /etc/containers/systemd
+
+# node_exporter textfile-collector directory the metrics are written to
+# (inquisition.prom for the drift payload, inquisition-run.prom for the run
+# outcome). Must match the node_exporter role's node_exporter_textfile_directory
+# so Prometheus scrapes what this writes.
+inquisition_textfile_dir: /var/lib/node_exporter/textfile_collector
+
+# Containers the unmanaged check ignores. An escape hatch, empty by design — the
+# 2026-08-08 fleet sweep found zero strays on either podman host.
+inquisition_ignore_containers: []
+
+# Check cadence. Hourly: the checks are seconds of read-only work, and every
+# drift alert's for: is sized to need at least two consecutive bad runs, so a
+# sparser cadence would slow detection without saving anything.
+inquisition_oncalendar: "*-*-* *:37:00"
+
+# Installed scripts. /usr/local/sbin: root-only, like the other oneshots.
+inquisition_script: /usr/local/sbin/inquisition.sh
+inquisition_metric_script: /usr/local/sbin/inquisition-metric.sh

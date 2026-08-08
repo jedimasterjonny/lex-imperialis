@@ -1,0 +1,12 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Hourly container drift check
+
+[Timer]
+OnCalendar={{ inquisition_oncalendar }}
+# No Persistent (unlike arbites): a missed check has a fresh one within the
+# hour, and a boot-time catch-up would fire while containers are still starting,
+# minting false inactive offenders.
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,328 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - ../../defaults/main.yml
+  vars:
+    inquisition_probe_image: registry.opensuse.org/opensuse/busybox:latest
+    inquisition_prom: "{{ inquisition_textfile_dir }}/inquisition.prom"
+    inquisition_run_prom: "{{ inquisition_textfile_dir }}/inquisition-run.prom"
+  tasks:
+    - name: Stat the drift check and metric scripts
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ inquisition_script }}"
+        - "{{ inquisition_metric_script }}"
+      register: inquisition_scripts
+      become: true
+
+    - name: The scripts are installed and executable
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.executable
+        fail_msg: "{{ item.item }} is missing or not executable"
+        quiet: true
+      loop: "{{ inquisition_scripts.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    # daemon_reload is a no-op read here: it makes the module gather and return
+    # the unit's systemctl-show properties to assert against.
+    - name: Read the drift check timer's state
+      ansible.builtin.systemd_service:
+        name: inquisition.timer
+        daemon_reload: true
+      register: inquisition_timer
+      become: true
+
+    - name: The timer is enabled and fires hourly
+      ansible.builtin.assert:
+        that:
+          - inquisition_timer.status.ActiveState == 'active'
+          - inquisition_timer.status.UnitFileState == 'enabled'
+          - "'*:37' in inquisition_timer.status.TimersCalendar"
+        fail_msg: "the drift check timer is not enabled on the hourly cadence"
+        quiet: true
+
+    - name: Read the drift check service's definition
+      ansible.builtin.systemd_service:
+        name: inquisition.service
+        daemon_reload: true
+      register: inquisition_service
+      become: true
+
+    - name: The service runs the check and the metric hook
+      ansible.builtin.assert:
+        that:
+          - "'inquisition.sh' in inquisition_service.status.ExecStart"
+          - "'inquisition-metric.sh' in inquisition_service.status.ExecStopPost"
+        fail_msg: "the service is not wired to the check script and metric hook"
+        quiet: true
+
+    # ── Healthy arm: one declared, pinned, running container — every class 0.
+    - name: Run the drift check against the healthy state
+      ansible.builtin.command: "{{ inquisition_script }}"
+      changed_when: false
+      become: true
+
+    - name: Read the drift metrics after the healthy run
+      ansible.builtin.slurp:
+        src: "{{ inquisition_prom }}"
+      register: inquisition_healthy
+      become: true
+
+    - name: A healthy host records zero offenders in every class
+      vars:
+        prom: "{{ inquisition_healthy.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'inquisition_offenders{class=\"digest\"} 0' in prom"
+          - "'inquisition_offenders{class=\"unmanaged\"} 0' in prom"
+          - "'inquisition_offenders{class=\"inactive\"} 0' in prom"
+          - "'inquisition_offenders{class=\"unpinned\"} 0' in prom"
+          - "'inquisition_containers_checked 1' in prom"
+        fail_msg: "the healthy state did not record clean"
+        quiet: true
+
+    # ── Unmanaged arm: a container no quadlet declares must be named, and must
+    # clear once removed — the check reads live state, it keeps no ratchet.
+    - name: Start an undeclared container
+      ansible.builtin.command:
+        cmd: podman run -d --network host --name interloper {{ inquisition_probe_image }} sleep 86400
+      changed_when: true
+      become: true
+
+    - name: Run the drift check against the interloper
+      ansible.builtin.command: "{{ inquisition_script }}"
+      changed_when: false
+      become: true
+
+    - name: Read the drift metrics after the interloper run
+      ansible.builtin.slurp:
+        src: "{{ inquisition_prom }}"
+      register: inquisition_unmanaged
+      become: true
+
+    - name: The interloper is named as an unmanaged offender
+      vars:
+        prom: "{{ inquisition_unmanaged.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'inquisition_offender{class=\"unmanaged\",container=\"interloper\"} 1' in prom"
+          - "'inquisition_offenders{class=\"unmanaged\"} 1' in prom"
+        fail_msg: "an undeclared container was not flagged unmanaged"
+        quiet: true
+
+    - name: Remove the interloper
+      ansible.builtin.command:
+        cmd: podman rm -f interloper
+      changed_when: true
+      become: true
+
+    # ── Digest arm: rewrite the quadlet's pin without touching the container —
+    # the handler-that-never-fired shape. No daemon-reload: the check compares
+    # the file against the runtime, systemd's view of the unit is irrelevant.
+    - name: Read the probe quadlet
+      ansible.builtin.slurp:
+        src: /etc/containers/systemd/probe.container
+      register: inquisition_probe_quadlet
+      become: true
+
+    - name: Rewrite the probe's pin to a digest it is not running
+      ansible.builtin.replace:
+        path: /etc/containers/systemd/probe.container
+        regexp: '@sha256:[0-9a-f]+'
+        replace: "@sha256:{{ '0' * 64 }}"
+      become: true
+
+    - name: Run the drift check against the rewritten pin
+      ansible.builtin.command: "{{ inquisition_script }}"
+      changed_when: false
+      become: true
+
+    - name: Read the drift metrics after the digest run
+      ansible.builtin.slurp:
+        src: "{{ inquisition_prom }}"
+      register: inquisition_digest
+      become: true
+
+    - name: The probe is named as a digest offender
+      vars:
+        prom: "{{ inquisition_digest.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'inquisition_offender{class=\"digest\",container=\"probe\"} 1' in prom"
+          - "'inquisition_offenders{class=\"digest\"} 1' in prom"
+        fail_msg: "a running container off its pinned digest was not flagged"
+        quiet: true
+
+    - name: Restore the probe quadlet
+      ansible.builtin.copy:
+        content: "{{ inquisition_probe_quadlet.content | b64decode }}"
+        dest: /etc/containers/systemd/probe.container
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    # ── Inactive arm: declared on disk, never started. No daemon-reload needed —
+    # systemctl show reports ActiveState=inactive for a unit it has never loaded.
+    - name: Declare a quadlet that is not running
+      ansible.builtin.copy:
+        content: |
+          [Unit]
+          Description=Inquisition idle probe
+          [Container]
+          ContainerName=idle
+          Image={{ inquisition_probe_image }}@sha256:{{ '0' * 64 }}
+          Exec=sleep 86400
+        dest: /etc/containers/systemd/idle.container
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Run the drift check against the idle quadlet
+      ansible.builtin.command: "{{ inquisition_script }}"
+      changed_when: false
+      become: true
+
+    - name: Read the drift metrics after the inactive run
+      ansible.builtin.slurp:
+        src: "{{ inquisition_prom }}"
+      register: inquisition_inactive
+      become: true
+
+    - name: The idle quadlet is named as an inactive offender
+      vars:
+        prom: "{{ inquisition_inactive.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'inquisition_offender{class=\"inactive\",container=\"idle\"} 1' in prom"
+          - "'inquisition_offenders{class=\"inactive\"} 1' in prom"
+          - "'inquisition_containers_checked 2' in prom"
+        fail_msg: "a declared-but-not-running quadlet was not flagged"
+        quiet: true
+
+    # ── Unpinned arm: a tag-only Image=. Also inactive (never started) — an
+    # unpinned, stopped quadlet is two findings, and both must say so.
+    - name: Declare a quadlet pinned by tag alone
+      ansible.builtin.copy:
+        content: |
+          [Unit]
+          Description=Inquisition unpinned probe
+          [Container]
+          ContainerName=floater
+          Image={{ inquisition_probe_image }}
+          Exec=sleep 86400
+        dest: /etc/containers/systemd/floater.container
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Run the drift check against the unpinned quadlet
+      ansible.builtin.command: "{{ inquisition_script }}"
+      changed_when: false
+      become: true
+
+    - name: Read the drift metrics after the unpinned run
+      ansible.builtin.slurp:
+        src: "{{ inquisition_prom }}"
+      register: inquisition_unpinned
+      become: true
+
+    - name: The tag-only quadlet is named as an unpinned offender
+      vars:
+        prom: "{{ inquisition_unpinned.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'inquisition_offender{class=\"unpinned\",container=\"floater\"} 1' in prom"
+          - "'inquisition_offenders{class=\"unpinned\"} 1' in prom"
+          - "'inquisition_offender{class=\"inactive\",container=\"floater\"} 1' in prom"
+        fail_msg: "a tag-only quadlet was not flagged unpinned"
+        quiet: true
+
+    - name: Remove the fault-injection quadlets
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/containers/systemd/idle.container
+        - /etc/containers/systemd/floater.container
+      become: true
+
+    - name: Run the drift check against the restored state
+      ansible.builtin.command: "{{ inquisition_script }}"
+      changed_when: false
+      become: true
+
+    - name: Read the drift metrics after the restore
+      ansible.builtin.slurp:
+        src: "{{ inquisition_prom }}"
+      register: inquisition_restored
+      become: true
+
+    - name: The restored state records clean again
+      vars:
+        prom: "{{ inquisition_restored.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'inquisition_offenders{class=\"digest\"} 0' in prom"
+          - "'inquisition_offenders{class=\"unmanaged\"} 0' in prom"
+          - "'inquisition_offenders{class=\"inactive\"} 0' in prom"
+          - "'inquisition_offenders{class=\"unpinned\"} 0' in prom"
+          - "'inquisition_containers_checked 1' in prom"
+        fail_msg: "the restored state did not record clean"
+        quiet: true
+
+    # ── Outcome arms: drive the hook the way systemd would on each result.
+    - name: Run the metric hook as a successful run would
+      ansible.builtin.command: "{{ inquisition_metric_script }}"
+      environment:
+        SERVICE_RESULT: success
+      changed_when: false
+      become: true
+
+    - name: Read the outcome metric after the successful run
+      ansible.builtin.slurp:
+        src: "{{ inquisition_run_prom }}"
+      register: inquisition_run_ok
+      become: true
+
+    - name: A successful run records inquisition_success 1
+      vars:
+        prom: "{{ inquisition_run_ok.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'inquisition_success 1' in prom"
+          - "'inquisition_last_run_timestamp_seconds ' in prom"
+        fail_msg: "the outcome metric did not report a successful run"
+        quiet: true
+
+    - name: Run the metric hook as a failed run would
+      ansible.builtin.command: "{{ inquisition_metric_script }}"
+      environment:
+        SERVICE_RESULT: exit-code
+      changed_when: false
+      become: true
+
+    - name: Read the outcome metric after the simulated failure
+      ansible.builtin.slurp:
+        src: "{{ inquisition_run_prom }}"
+      register: inquisition_run_fail
+      become: true
+
+    - name: A failed run records inquisition_success 0 and leaves the payload alone
+      vars:
+        prom: "{{ inquisition_run_fail.content | b64decode }}"
+        payload: "{{ inquisition_restored.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'inquisition_success 0' in prom"
+          - "'inquisition_offenders' not in prom"
+        fail_msg: "the outcome metric did not report a failed run, or leaked payload"
+        quiet: true
