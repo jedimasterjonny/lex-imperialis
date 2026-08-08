@@ -122,11 +122,11 @@ throwaway, never on this server.** So step 7 is mandatory, not optional, and ste
    half-restored box:
 
    ```bash
-   sudo touch /var/lib/gitops-reconcile/pause
+   sudo touch /var/lib/arbites/pause
    ```
 
    A paused run still fires and exits as a clean success, so neither
-   `GitopsReconcileFailed` nor `GitopsReconcileStale` sounds while the host is
+   `ArbitesFailed` nor `ArbitesStale` sounds while the host is
    down. Step 9 resumes it.
 2. On a **planned** rebuild — the OS move, not recovery from a loss — take the
    state with you first. `podman_backup` runs weekly (Wed 01:00), so step 7
@@ -183,8 +183,8 @@ throwaway, never on this server.** So step 7 is mandatory, not optional, and ste
    sudo firewall-cmd --reload
    sudo firewall-cmd --list-services  # http https — the reload makes runtime match
    # on scholam
-   sudo ssh-keygen -f /etc/gitops-reconcile/ssh/known_hosts -R 192.168.3.4
-   sudo sh -c 'ssh-keyscan -H 192.168.3.4 >>/etc/gitops-reconcile/ssh/known_hosts'
+   sudo ssh-keygen -f /etc/arbites/ssh/known_hosts -R 192.168.3.4
+   sudo sh -c 'ssh-keyscan -H 192.168.3.4 >>/etc/arbites/ssh/known_hosts'
    ```
 
    The reconciler pins each host against that file and never re-seeds it, so
@@ -225,9 +225,9 @@ throwaway, never on this server.** So step 7 is mandatory, not optional, and ste
    sudo systemctl start wordpress
    ```
 
-9. Resume the reconciler on scholam: `sudo rm /var/lib/gitops-reconcile/pause`.
+9. Resume the reconciler on scholam: `sudo rm /var/lib/arbites/pause`.
    Confirm the next fire applies rather than assuming it did —
-   `/var/lib/gitops-reconcile/last-applied-sha` should reach `main`'s HEAD.
+   `/var/lib/arbites/last-applied-sha` should reach `main`'s HEAD.
 10. `rogue-trader` also carries a `rogue-trader-home-backup` repo (its `/home` is
    minimal — service-account skeletons only); restore it by hand as in
    [scholam](#scholam-control-host) step 5 if wanted.
@@ -243,7 +243,7 @@ play, run locally, then the home restore.
 2. As root: `bootstrap/host.sh`.
 3. Restore the control-host workspace: clone the repo, drop `.vault_pass` back in
    from the password manager, build the venv (see Prerequisites), then
-   `make hooks`. Replace `gitops_reconcile`'s two secrets too (see its README) —
+   `make hooks`. Replace `arbites`'s two secrets too (see its README) —
    its guard fails the apply below without them.
 4. Apply its play locally (it targets `this_host` at loopback):
 

@@ -187,7 +187,7 @@ SDR-no-WEBDL on UHD, DV/HDR10+ boosts); `secrets.yml` renders the `!secret` API
 keys from `arr_api_keys`, 0600 and owned by the recyclarr uid so the container
 user reads it over the bind. A `secrets.yml` change restarts recyclarr (a
 single-file bind, so the recreate picks up the new inode); the config edits ride
-the directory bind and apply on the next scheduled sync. gitops re-renders it,
+the directory bind and apply on the next scheduled sync. arbites re-renders it,
 so the repo owns recyclarr's config, not the volume.
 
 ## Apps behind WireGuard

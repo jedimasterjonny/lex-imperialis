@@ -21,11 +21,11 @@
     group: root
     mode: "{{ item.mode }}"
   loop:
-    - path: "{{ gitops_reconcile_state_dir }}"
+    - path: "{{ arbites_state_dir }}"
       mode: "0755"
-    - path: "{{ gitops_reconcile_config_dir }}"
+    - path: "{{ arbites_config_dir }}"
       mode: "0700"
-    - path: "{{ gitops_reconcile_config_dir }}/ssh"
+    - path: "{{ arbites_config_dir }}/ssh"
       mode: "0700"
   become: true
 
@@ -36,9 +36,9 @@
   ansible.builtin.stat:
     path: "{{ item }}"
   loop:
-    - "{{ gitops_reconcile_vault_pass_file }}"
-    - "{{ gitops_reconcile_ssh_key_file }}"
-  register: gitops_reconcile_secrets
+    - "{{ arbites_vault_pass_file }}"
+    - "{{ arbites_ssh_key_file }}"
+  register: arbites_secrets
   become: true
 
 # mode[-2:] == '00' is owner-only: 0600 and a stricter 0400 both pass, a
@@ -50,7 +50,7 @@
       - item.stat.mode[-2:] == '00'
     fail_msg: "{{ item.item }} is missing or readable beyond its owner — place it 0600 (README)"
     quiet: true
-  loop: "{{ gitops_reconcile_secrets.results }}"
+  loop: "{{ arbites_secrets.results }}"
   loop_control:
     label: "{{ item.item }}"
 
@@ -60,33 +60,33 @@
 # presence and non-emptiness are checked, not the mode.
 - name: Stat the operator-placed known_hosts
   ansible.builtin.stat:
-    path: "{{ gitops_reconcile_known_hosts_file }}"
-  register: gitops_reconcile_known_hosts
+    path: "{{ arbites_known_hosts_file }}"
+  register: arbites_known_hosts
   become: true
-  when: gitops_reconcile_host_key_checking | bool
+  when: arbites_host_key_checking | bool
 
 - name: The known_hosts is present and non-empty when host-key checking is on
   ansible.builtin.assert:
     that:
-      - gitops_reconcile_known_hosts.stat.exists
-      - gitops_reconcile_known_hosts.stat.size > 0
+      - arbites_known_hosts.stat.exists
+      - arbites_known_hosts.stat.size > 0
     fail_msg: >-
-      {{ gitops_reconcile_known_hosts_file }} is missing or empty — seed it from the
+      {{ arbites_known_hosts_file }} is missing or empty — seed it from the
       fleet before enabling host-key checking (README)
     quiet: true
-  when: gitops_reconcile_host_key_checking | bool
+  when: arbites_host_key_checking | bool
 
 - name: Clone the repository the reconciler applies from
   ansible.builtin.git:
-    repo: "{{ gitops_reconcile_clone_url }}"
-    dest: "{{ gitops_reconcile_repo_dir }}"
-    version: "{{ gitops_reconcile_branch }}"
+    repo: "{{ arbites_clone_url }}"
+    dest: "{{ arbites_repo_dir }}"
+    version: "{{ arbites_branch }}"
   become: true
 
 - name: Build the ansible runtime venv from the repo's requirements
   ansible.builtin.pip:
-    requirements: "{{ gitops_reconcile_repo_dir }}/requirements.txt"
-    virtualenv: "{{ gitops_reconcile_venv_dir }}"
+    requirements: "{{ arbites_repo_dir }}/requirements.txt"
+    virtualenv: "{{ arbites_venv_dir }}"
     virtualenv_command: python3 -m venv
   become: true
 
@@ -98,10 +98,10 @@
     group: root
     mode: "0755"
   loop:
-    - src: gitops-reconcile.sh.j2
-      dest: "{{ gitops_reconcile_script }}"
-    - src: gitops-reconcile-metric.sh.j2
-      dest: "{{ gitops_reconcile_metric_script }}"
+    - src: arbites.sh.j2
+      dest: "{{ arbites_script }}"
+    - src: arbites-metric.sh.j2
+      dest: "{{ arbites_metric_script }}"
   become: true
 
 - name: Install the reconcile service and timer
@@ -112,8 +112,8 @@
     group: root
     mode: "0644"
   loop:
-    - gitops-reconcile.service
-    - gitops-reconcile.timer
+    - arbites.service
+    - arbites.timer
   become: true
 
 # daemon_reload picks up unit changes before enabling; it does not itself report
@@ -121,7 +121,7 @@
 # nothing to restart, and this way a self-apply never tears down its own run.
 - name: Enable and start the reconcile timer
   ansible.builtin.systemd_service:
-    name: gitops-reconcile.timer
+    name: arbites.timer
     enabled: true
     state: started
     daemon_reload: true

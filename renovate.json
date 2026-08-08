@@ -9,7 +9,7 @@
     ":semanticCommitTypeAll(build)"
   ],
   "description": [
-    "minimumReleaseAge holds a version bump for 3 days. Automerge reaches root-equivalent containers and gitops_reconcile applies a merge within ~15 min, so an unheld bump could be live in one cycle with nobody in the loop.",
+    "minimumReleaseAge holds a version bump for 3 days. Automerge reaches root-equivalent containers and arbites applies a merge within ~15 min, so an unheld bump could be live in one cycle with nobody in the loop.",
     "internalChecksFilter is strict, so a too-young version opens no PR at all. vulnerabilityAlerts clears minimumReleaseAge with prCreation immediate, so an OSV fix still lands at once. Digest updates and container images are exempt — see the rules below.",
     "automergeSchedule constrains merging, not PR creation: bumps still open and run CI when ready, they just cannot land mid-session and move main out from under an operator branch. Each collision costs a rebase and a full CI re-run, hetzner tier included. vulnerabilityAlerts clears the window as well as the age hold."
   ],
@@ -156,7 +156,7 @@
       "automerge": false
     },
     {
-      "description": "gitops_reconcile installs this ansible and applies the fleet as root, so an unattended bump is unread root code on every host. Hashing the pin would not help: pip's hash mode is per-invocation, so it would force a hashed closure onto requirements-dev.txt too.",
+      "description": "arbites installs this ansible and applies the fleet as root, so an unattended bump is unread root code on every host. Hashing the pin would not help: pip's hash mode is per-invocation, so it would force a hashed closure onto requirements-dev.txt too.",
       "matchPackageNames": ["ansible"],
       "automerge": false
     },

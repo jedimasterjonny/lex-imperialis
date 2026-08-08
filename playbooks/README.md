@@ -6,7 +6,7 @@ operator applies with `make apply PLAY=<host>`. Names are 40K-themed, not
 descriptive:
 
 - **scholam** (`this_host`) — the control host, molecule runner, and
-  workstation; runs the `gitops_reconcile` timer.
+  workstation; runs the `arbites` timer.
 - **solar** — the main homelab server: NFS client, the arr media stack behind
   caddy, plus grafana, homepage, monitoring agents, and backups.
 - **administratum** — the Synology NAS, the one non-openSUSE host: runs
@@ -16,6 +16,6 @@ descriptive:
 
 ## site.yml
 
-The whole fleet in one run — the `gitops_reconcile` timer's entry point and
+The whole fleet in one run — the `arbites` timer's entry point and
 `make apply PLAY=site`. Imports the host plays with `scholam` last, so a
 reconcile run never restarts its own timer mid-apply.

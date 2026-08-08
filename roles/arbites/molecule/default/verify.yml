@@ -9,9 +9,9 @@
       ansible.builtin.stat:
         path: "{{ item }}"
       loop:
-        - "{{ gitops_reconcile_script }}"
-        - "{{ gitops_reconcile_metric_script }}"
-      register: gitops_reconcile_scripts
+        - "{{ arbites_script }}"
+        - "{{ arbites_metric_script }}"
+      register: arbites_scripts
       become: true
 
     - name: The scripts are installed and executable
@@ -21,14 +21,14 @@
           - item.stat.executable
         fail_msg: "{{ item.item }} is missing or not executable"
         quiet: true
-      loop: "{{ gitops_reconcile_scripts.results }}"
+      loop: "{{ arbites_scripts.results }}"
       loop_control:
         label: "{{ item.item }}"
 
     - name: Read the installed reconcile script
       ansible.builtin.slurp:
-        src: "{{ gitops_reconcile_script }}"
-      register: gitops_reconcile_script_content
+        src: "{{ arbites_script }}"
+      register: arbites_script_content
       become: true
 
     # Host-key checking is on by default; the script must both export it and point
@@ -36,8 +36,8 @@
     # keys and harvest each host's rendered secrets.
     - name: The reconcile script enforces host-key checking against the seeded known_hosts
       vars:
-        script: "{{ gitops_reconcile_script_content.content | b64decode }}"
-        expected_known_hosts_opt: "UserKnownHostsFile={{ gitops_reconcile_known_hosts_file }}"
+        script: "{{ arbites_script_content.content | b64decode }}"
+        expected_known_hosts_opt: "UserKnownHostsFile={{ arbites_known_hosts_file }}"
       ansible.builtin.assert:
         that:
           - "'ANSIBLE_HOST_KEY_CHECKING=true' in script"
@@ -46,7 +46,7 @@
         quiet: true
 
     - name: The runtime venv runs ansible-playbook
-      ansible.builtin.command: "{{ gitops_reconcile_venv_dir }}/bin/ansible-playbook --version"
+      ansible.builtin.command: "{{ arbites_venv_dir }}/bin/ansible-playbook --version"
       changed_when: false
       become: true
 
@@ -54,37 +54,37 @@
     # timer's systemctl-show properties to assert against; it reads, not mutates.
     - name: Read the reconcile timer's state
       ansible.builtin.systemd_service:
-        name: gitops-reconcile.timer
+        name: arbites.timer
         daemon_reload: true
-      register: gitops_reconcile_timer
+      register: arbites_timer
       become: true
 
     - name: The timer is enabled and fires on a 15-minute cadence
       ansible.builtin.assert:
         that:
-          - gitops_reconcile_timer.status.ActiveState == 'active'
-          - gitops_reconcile_timer.status.UnitFileState == 'enabled'
-          - "'/15' in gitops_reconcile_timer.status.TimersCalendar"
+          - arbites_timer.status.ActiveState == 'active'
+          - arbites_timer.status.UnitFileState == 'enabled'
+          - "'/15' in arbites_timer.status.TimersCalendar"
         fail_msg: "the reconcile timer is not enabled for a 15-minute cadence"
         quiet: true
 
     - name: Read the reconcile service's definition
       ansible.builtin.systemd_service:
-        name: gitops-reconcile.service
+        name: arbites.service
         daemon_reload: true
-      register: gitops_reconcile_service
+      register: arbites_service
       become: true
 
     - name: The service runs the reconcile script and the metric hook
       ansible.builtin.assert:
         that:
-          - "'gitops-reconcile.sh' in gitops_reconcile_service.status.ExecStart"
-          - "'gitops-reconcile-metric.sh' in gitops_reconcile_service.status.ExecStopPost"
+          - "'arbites.sh' in arbites_service.status.ExecStart"
+          - "'arbites-metric.sh' in arbites_service.status.ExecStopPost"
         fail_msg: "the service is not wired to the reconcile script and metric hook"
         quiet: true
 
     - name: Run the metric hook as a successful run would
-      ansible.builtin.command: "{{ gitops_reconcile_metric_script }}"
+      ansible.builtin.command: "{{ arbites_metric_script }}"
       environment:
         SERVICE_RESULT: success
       changed_when: false
@@ -92,23 +92,23 @@
 
     - name: Read the outcome metric after the successful run
       ansible.builtin.slurp:
-        src: "{{ gitops_reconcile_textfile_dir }}/gitops-reconcile.prom"
-      register: gitops_reconcile_metric_ok
+        src: "{{ arbites_textfile_dir }}/arbites.prom"
+      register: arbites_metric_ok
       become: true
 
-    - name: A successful run records gitops_reconcile_success 1
+    - name: A successful run records arbites_success 1
       ansible.builtin.assert:
         that:
-          - "'gitops_reconcile_success 1' in (gitops_reconcile_metric_ok.content | b64decode)"
-          - "'gitops_reconcile_last_run_timestamp_seconds ' in (gitops_reconcile_metric_ok.content | b64decode)"
-          - "'gitops_reconcile_applied_commit{' in (gitops_reconcile_metric_ok.content | b64decode)"
+          - "'arbites_success 1' in (arbites_metric_ok.content | b64decode)"
+          - "'arbites_last_run_timestamp_seconds ' in (arbites_metric_ok.content | b64decode)"
+          - "'arbites_applied_commit{' in (arbites_metric_ok.content | b64decode)"
         fail_msg: "the outcome metric did not report a successful run"
         quiet: true
 
     # Drive the writer the way systemd would on a failed run; an ExecStart failure
     # can't be forced in a container, so invoke the hook with SERVICE_RESULT set.
     - name: Run the metric hook as a failed run would
-      ansible.builtin.command: "{{ gitops_reconcile_metric_script }}"
+      ansible.builtin.command: "{{ arbites_metric_script }}"
       environment:
         SERVICE_RESULT: exit-code
       changed_when: false
@@ -116,14 +116,14 @@
 
     - name: Read the outcome metric after the simulated failure
       ansible.builtin.slurp:
-        src: "{{ gitops_reconcile_textfile_dir }}/gitops-reconcile.prom"
-      register: gitops_reconcile_metric_fail
+        src: "{{ arbites_textfile_dir }}/arbites.prom"
+      register: arbites_metric_fail
       become: true
 
-    - name: A failed run records gitops_reconcile_success 0
+    - name: A failed run records arbites_success 0
       ansible.builtin.assert:
         that:
-          - "'gitops_reconcile_success 0' in (gitops_reconcile_metric_fail.content | b64decode)"
+          - "'arbites_success 0' in (arbites_metric_fail.content | b64decode)"
         fail_msg: "the outcome metric did not report a failed run"
         quiet: true
 
@@ -132,16 +132,16 @@
     # the script short-circuits after the fetch instead of applying.
     - name: Resolve the clone's origin HEAD
       ansible.builtin.git:
-        repo: "{{ gitops_reconcile_clone_url }}"
-        dest: "{{ gitops_reconcile_repo_dir }}"
-        version: "{{ gitops_reconcile_branch }}"
-      register: gitops_reconcile_head
+        repo: "{{ arbites_clone_url }}"
+        dest: "{{ arbites_repo_dir }}"
+        version: "{{ arbites_branch }}"
+      register: arbites_head
       become: true
 
     - name: Seed the last-applied SHA to the current HEAD
       ansible.builtin.copy:
-        content: "{{ gitops_reconcile_head.after }}\n"
-        dest: "{{ gitops_reconcile_last_applied_file }}"
+        content: "{{ arbites_head.after }}\n"
+        dest: "{{ arbites_last_applied_file }}"
         owner: root
         group: root
         mode: "0644"
@@ -154,7 +154,7 @@
     - name: Plant untracked files in the clone
       ansible.builtin.copy:
         content: "planted\n"
-        dest: "{{ gitops_reconcile_repo_dir }}/{{ item }}"
+        dest: "{{ arbites_repo_dir }}/{{ item }}"
         owner: root
         group: root
         mode: "0644"
@@ -164,23 +164,23 @@
       become: true
 
     - name: Run the reconcile script with HEAD unchanged
-      ansible.builtin.command: "{{ gitops_reconcile_script }}"
-      register: gitops_reconcile_unchanged
+      ansible.builtin.command: "{{ arbites_script }}"
+      register: arbites_unchanged
       changed_when: false
       become: true
 
     - name: The unchanged-HEAD short-circuit fetches but skips the apply
       ansible.builtin.assert:
         that:
-          - gitops_reconcile_unchanged.rc == 0
-          - "'nothing to apply' in gitops_reconcile_unchanged.stdout"
+          - arbites_unchanged.rc == 0
+          - "'nothing to apply' in arbites_unchanged.stdout"
         fail_msg: "the unchanged-HEAD short-circuit did not skip the apply"
         quiet: true
 
     - name: Stat the planted files after the reconcile
       ansible.builtin.stat:
-        path: "{{ gitops_reconcile_repo_dir }}/{{ item }}"
-      register: gitops_reconcile_planted
+        path: "{{ arbites_repo_dir }}/{{ item }}"
+      register: arbites_planted
       loop:
         - inventory/zz_planted.yml
         - .vault_pass
@@ -194,7 +194,7 @@
           - not item.stat.exists
         fail_msg: "{{ item.item }} survived the reconcile — untracked files persist across a revert"
         quiet: true
-      loop: "{{ gitops_reconcile_planted.results }}"
+      loop: "{{ arbites_planted.results }}"
       loop_control:
         label: "{{ item.item }}"
 
@@ -202,7 +202,7 @@
     # part of the reconcile script safe to run in a container with no fleet.
     - name: Set the pause flag
       ansible.builtin.file:
-        path: "{{ gitops_reconcile_pause_flag }}"
+        path: "{{ arbites_pause_flag }}"
         state: touch
         owner: root
         group: root
@@ -210,15 +210,15 @@
       become: true
 
     - name: Run the reconcile script while paused
-      ansible.builtin.command: "{{ gitops_reconcile_script }}"
-      register: gitops_reconcile_paused
+      ansible.builtin.command: "{{ arbites_script }}"
+      register: arbites_paused
       changed_when: false
       become: true
 
     - name: The pause flag short-circuits the reconcile to a clean no-op
       ansible.builtin.assert:
         that:
-          - gitops_reconcile_paused.rc == 0
-          - "'paused' in gitops_reconcile_paused.stdout"
+          - arbites_paused.rc == 0
+          - "'paused' in arbites_paused.stdout"
         fail_msg: "the pause flag did not short-circuit the reconcile"
         quiet: true

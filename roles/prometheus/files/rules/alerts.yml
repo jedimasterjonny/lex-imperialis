@@ -276,7 +276,7 @@ groups:
       - alert: SystemdUnitFailed
         expr: >-
           node_systemd_unit_state{state="failed",
-          name!~"(gitops-reconcile|podman-backup|home-backup|autoupdate|wordpress-cron|wordpress-db-dump|wordpress-update-check)[.]service"} == 1
+          name!~"(arbites|podman-backup|home-backup|autoupdate|wordpress-cron|wordpress-db-dump|wordpress-update-check)[.]service"} == 1
         for: 15m
         labels:
           severity: warning
@@ -444,10 +444,10 @@ groups:
           summary: "WordPress cron overdue on {{ $labels.instance }}"
           description: "{{ $labels.instance }} has not run WordPress cron in over an hour — scheduled posts and tasks have stalled."
 
-  - name: gitops
+  - name: arbites
     rules:
-      - alert: GitopsReconcileFailed
-        expr: gitops_reconcile_success == 0
+      - alert: ArbitesFailed
+        expr: arbites_success == 0
         for: 15m
         labels:
           severity: critical
@@ -457,8 +457,8 @@ groups:
       # The 15-minute timer caps a healthy run at well under an hour old; 2 hours
       # gives ample grace over a reboot or brief outage before flagging a timer
       # that has stopped firing (a hard-stopped reconciler).
-      - alert: GitopsReconcileStale
-        expr: time() - gitops_reconcile_last_run_timestamp_seconds > 2 * 3600
+      - alert: ArbitesStale
+        expr: time() - arbites_last_run_timestamp_seconds > 2 * 3600
         for: 1h
         labels:
           severity: warning
@@ -495,7 +495,7 @@ groups:
   - name: monitoring
     rules:
       # Prometheus's rules and scrape config are rendered by Ansible and applied
-      # unattended by gitops_reconcile, so a bad deploy has no operator watching it
+      # unattended by arbites, so a bad deploy has no operator watching it
       # land. These two cover the two ways that fails, and are complementary rather
       # than overlapping: config or rules that do not parse are rejected at reload
       # (PrometheusConfigReloadFailed), while rules that parse but error at
@@ -527,7 +527,7 @@ groups:
           summary: "prometheus config reload failed on {{ $labels.instance }}"
           description: >-
             Prometheus on {{ $labels.instance }} rejected its last config reload and is
-            running the previous config — a gitops-applied change has not taken effect.
+            running the previous config — an arbites-applied change has not taken effect.
       # The seven oneshots SystemdUnitFailed excludes are excluded *because* each
       # writes a *_success metric with a bespoke *Failed rule. That trade only holds
       # while the metric is actually published: every one of those rules is `== 0` or
@@ -538,7 +538,7 @@ groups:
       #
       # The write is one `mkdir -p` away from silent: the textfile path is an
       # independent literal in five role defaults (restic_backup, arr, autoupdate,
-      # wordpress, gitops_reconcile), tied to node_exporter_textfile_directory by a
+      # wordpress, arbites), tied to node_exporter_textfile_directory by a
       # comment and nothing else. A one-character divergence lands the .prom outside
       # the collector's glob and the family vanishes with every run still green.
       #
@@ -549,7 +549,7 @@ groups:
       # deployed there — exact ground truth, per host, carrying no topology. Measured
       # against the live fleet: the unit set and the metric set match family for
       # family (home 3/3, podman 2/2, autoupdate 3/3, the wordpress trio and
-      # gitops-reconcile 1/1). Both sides ride the same node_exporter scrape, so a
+      # arbites 1/1). Both sides ride the same node_exporter scrape, so a
       # down host drops out of both and raises nothing here.
       #
       # The left group by (instance, name) is load-bearing twice over: it keeps `name`
@@ -574,7 +574,7 @@ groups:
           or (group by (instance, name) (node_systemd_unit_state{name="wordpress-cron.service"}) unless on (instance) wordpress_cron_success)
           or (group by (instance, name) (node_systemd_unit_state{name="wordpress-update-check.service"}) unless on (instance) wordpress_update_check_success)
           or (group by (instance, name) (node_systemd_unit_state{name="autoupdate.service"}) unless on (instance) autoupdate_success)
-          or (group by (instance, name) (node_systemd_unit_state{name="gitops-reconcile.service"}) unless on (instance) gitops_reconcile_success)
+          or (group by (instance, name) (node_systemd_unit_state{name="arbites.service"}) unless on (instance) arbites_success)
         for: 1h
         labels:
           severity: warning

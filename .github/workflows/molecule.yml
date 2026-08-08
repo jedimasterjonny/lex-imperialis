@@ -67,7 +67,7 @@ jobs:
             roles=$(printf '%s\n' "$changed" | sed -n 's#^roles/\([^/]*\)/.*#\1#p')
             # Non-role paths that still warrant molecule, in two groups: the fleet
             # code an apply executes (plays, inventory, bootstrap, ansible.cfg),
-            # which gitops_reconcile runs as root within ~15 min of a merge and
+            # which arbites runs as root within ~15 min of a merge and
             # which no role matrix covers; and the harness and toolchain the tiers
             # themselves run on. Everything else (terraform/, jonnyoc-site/, docs)
             # yields no tiers, so molecule-gate reports green on those PRs instead

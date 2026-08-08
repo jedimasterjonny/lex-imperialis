@@ -1,25 +1,25 @@
 #!/usr/bin/env bash
 # {{ ansible_managed }}
-# Reconcile the fleet to origin/{{ gitops_reconcile_branch }}: fetch the branch
+# Reconcile the fleet to origin/{{ arbites_branch }}: fetch the branch
 # into the service-owned clone and, when it has advanced, apply every host play
-# from that tree. Runs unattended on gitops-reconcile.timer; the ExecStopPost
+# from that tree. Runs unattended on arbites.timer; the ExecStopPost
 # hook records the outcome. This is the operator's standing unattended-apply path
 # — pause it by touching the pause flag or disabling the timer.
 set -euo pipefail
 
-repo="{{ gitops_reconcile_repo_dir }}"
-venv="{{ gitops_reconcile_venv_dir }}"
-branch="{{ gitops_reconcile_branch }}"
-playbook="{{ gitops_reconcile_playbook }}"
-vault_pass="{{ gitops_reconcile_vault_pass_file }}"
-ssh_key="{{ gitops_reconcile_ssh_key_file }}"
-pause_flag="{{ gitops_reconcile_pause_flag }}"
-last_applied="{{ gitops_reconcile_last_applied_file }}"
+repo="{{ arbites_repo_dir }}"
+venv="{{ arbites_venv_dir }}"
+branch="{{ arbites_branch }}"
+playbook="{{ arbites_playbook }}"
+vault_pass="{{ arbites_vault_pass_file }}"
+ssh_key="{{ arbites_ssh_key_file }}"
+pause_flag="{{ arbites_pause_flag }}"
+last_applied="{{ arbites_last_applied_file }}"
 
 # Pin each fleet host against the operator-seeded known_hosts when on, so a MITM
 # presenting a wrong key aborts the connect (the --ssh-extra-args below makes that
 # known_hosts authoritative) rather than receiving the host's rendered secrets.
-export ANSIBLE_HOST_KEY_CHECKING={{ gitops_reconcile_host_key_checking | string | lower }}
+export ANSIBLE_HOST_KEY_CHECKING={{ arbites_host_key_checking | string | lower }}
 
 # Soft pause: a deliberate hold exits success so it never trips the failure
 # alert. The timer keeps firing as a no-op until the flag is removed.
@@ -57,8 +57,8 @@ cd "$repo" || exit 1
 # UserKnownHostsFile makes the seeded known_hosts authoritative; CheckHostIP=no pins
 # on the connection name/address alone, so keyscanning each host as ansible reaches
 # it (including scholam's own loopback) suffices; empty array when off.
-{% if gitops_reconcile_host_key_checking | bool %}
-ssh_extra_args=(--ssh-extra-args "-o UserKnownHostsFile={{ gitops_reconcile_known_hosts_file }} -o GlobalKnownHostsFile=/dev/null -o CheckHostIP=no")
+{% if arbites_host_key_checking | bool %}
+ssh_extra_args=(--ssh-extra-args "-o UserKnownHostsFile={{ arbites_known_hosts_file }} -o GlobalKnownHostsFile=/dev/null -o CheckHostIP=no")
 {% else %}
 ssh_extra_args=()
 {% endif %}

@@ -6,7 +6,7 @@ The failure this catches is cheap to make and expensive to find: a bare `{#`
 outside a `{% raw %}` fence opens a Jinja comment that never closes, and bash's
 `${#array[@]}` is the usual source. Ansible then aborts while templating, so the
 error surfaces only when a play or a molecule converge reaches that task — a full
-container build in CI — and `gitops_reconcile` applies as root within ~15 min of a
+container build in CI — and `arbites` applies as root within ~15 min of a
 merge. shellcheck-jinja cannot see it: it rewrites `{% %}` and `{{ }}` but not
 comment tags.
 

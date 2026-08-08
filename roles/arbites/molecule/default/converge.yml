@@ -7,7 +7,7 @@
     # reconcile script is never run unpaused in the container, so they are inert.
     - name: Create the secret directory
       ansible.builtin.file:
-        path: /etc/gitops-reconcile/ssh
+        path: /etc/arbites/ssh
         state: directory
         owner: root
         group: root
@@ -22,8 +22,8 @@
         group: root
         mode: "0600"
       loop:
-        - /etc/gitops-reconcile/vault_pass
-        - /etc/gitops-reconcile/ssh/id_ed25519
+        - /etc/arbites/vault_pass
+        - /etc/arbites/ssh/id_ed25519
       become: true
 
     # Host-key checking defaults on, so the role also asserts an operator-seeded
@@ -32,10 +32,10 @@
     - name: Stage a stand-in known_hosts
       ansible.builtin.copy:
         content: "molecule stand-in\n"
-        dest: /etc/gitops-reconcile/ssh/known_hosts
+        dest: /etc/arbites/ssh/known_hosts
         owner: root
         group: root
         mode: "0644"
       become: true
   roles:
-    - role: gitops_reconcile
+    - role: arbites
