@@ -266,7 +266,7 @@ groups:
       # about, so a service with no bespoke alert fails silently. This keys on the
       # terminal failed state, where ServiceRestartStorm and WireguardTunnelDown key
       # on the restart counter (flapping but still alive) — a unit is in one state or
-      # the other, so they never double-report one fault. The seven exclusions do have
+      # the other, so they never double-report one fault. The eight exclusions do have
       # a bespoke alert: each writes a *_success metric whose *Failed rule carries a
       # richer description and the right severity (a failed backup or reconcile is
       # critical, this is a warning). group_by is on alertname, so without the
@@ -276,7 +276,7 @@ groups:
       - alert: SystemdUnitFailed
         expr: >-
           node_systemd_unit_state{state="failed",
-          name!~"(arbites|podman-backup|home-backup|autoupdate|wordpress-cron|wordpress-db-dump|wordpress-update-check)[.]service"} == 1
+          name!~"(arbites|inquisition|podman-backup|home-backup|autoupdate|wordpress-cron|wordpress-db-dump|wordpress-update-check)[.]service"} == 1
         for: 15m
         labels:
           severity: warning
@@ -466,6 +466,81 @@ groups:
           summary: "fleet reconcile stale on {{ $labels.instance }}"
           description: "{{ $labels.instance }} has not completed a fleet reconcile in over 2 hours."
 
+  - name: drift
+    rules:
+      # arbites proves main was applied; the inquisition proves the host still
+      # matches it. Hourly runs publish per-container offenders, so every for:
+      # here spans at least two runs — one bad sample poisons a whole hour of
+      # scrapes, and a single-run for: would fire on a transient mid-update
+      # wobble the next run clears.
+      #
+      # 6h, not 2h: a correct apply clears digest drift within minutes of the
+      # handler restart, so anything standing is the handler-that-never-fired
+      # class — real, permanent, and not urgent. The longer window also rides
+      # rogue-trader's transactional reboot.
+      - alert: ContainerDigestDrift
+        expr: inquisition_offender{class="digest"} == 1
+        for: 6h
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.container }} on {{ $labels.instance }} runs an image its quadlet does not pin"
+          description: >-
+            {{ $labels.container }} on {{ $labels.instance }} has run for over 6 hours on
+            a digest other than its quadlet's pin — a restart that never fired, or a pin
+            applied without one.
+      - alert: UnmanagedContainerRunning
+        expr: inquisition_offender{class="unmanaged"} == 1
+        for: 2h
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.container }} on {{ $labels.instance }} is declared by no quadlet"
+          description: >-
+            {{ $labels.container }} exists on {{ $labels.instance }} outside the repo's
+            declarations — unmanaged state the fleet's config does not describe.
+      - alert: QuadletNotRunning
+        expr: inquisition_offender{class="inactive"} == 1
+        for: 2h
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.container }} on {{ $labels.instance }} is declared but not running"
+          description: >-
+            The quadlet for {{ $labels.container }} on {{ $labels.instance }} is on disk
+            but its service is not active — never started, or stopped by hand.
+            SystemdUnitFailed only sees the failed state.
+      - alert: QuadletUnpinned
+        expr: inquisition_offender{class="unpinned"} == 1
+        for: 2h
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.container }} on {{ $labels.instance }} is not pinned by digest"
+          description: >-
+            The quadlet for {{ $labels.container }} on {{ $labels.instance }} carries a
+            tag-only Image= — outside the renovate pin discipline, so what it runs after
+            a pull is unrecorded.
+      # 90m, not 15m: a recreate mid-check can fail one run, and on the hourly
+      # cadence its failure metric stands until the next run — 90m demands two
+      # consecutive failures before paging.
+      - alert: InquisitionFailed
+        expr: inquisition_success == 0
+        for: 90m
+        labels:
+          severity: warning
+        annotations:
+          summary: "drift check failed on {{ $labels.instance }}"
+          description: "The last two drift check runs on {{ $labels.instance }} failed — the host's containers are unwatched."
+      - alert: InquisitionOverdue
+        expr: time() - inquisition_last_run_timestamp_seconds > 3 * 3600
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "drift check overdue on {{ $labels.instance }}"
+          description: "{{ $labels.instance }} has not completed a drift check in over 3 hours — the hourly timer has stopped firing."
+
   - name: music
     rules:
       # lidarr-rejected only fills after the ~1h poke cap of a matched album lidarr
@@ -537,8 +612,8 @@ groups:
       # rule anywhere has a series to fire on.
       #
       # The write is one `mkdir -p` away from silent: the textfile path is an
-      # independent literal in five role defaults (restic_backup, arr, autoupdate,
-      # wordpress, arbites), tied to node_exporter_textfile_directory by a
+      # independent literal in six role defaults (restic_backup, arr, autoupdate,
+      # wordpress, arbites, inquisition), tied to node_exporter_textfile_directory by a
       # comment and nothing else. A one-character divergence lands the .prom outside
       # the collector's glob and the family vanishes with every run still green.
       #
@@ -575,6 +650,7 @@ groups:
           or (group by (instance, name) (node_systemd_unit_state{name="wordpress-update-check.service"}) unless on (instance) wordpress_update_check_success)
           or (group by (instance, name) (node_systemd_unit_state{name="autoupdate.service"}) unless on (instance) autoupdate_success)
           or (group by (instance, name) (node_systemd_unit_state{name="arbites.service"}) unless on (instance) arbites_success)
+          or (group by (instance, name) (node_systemd_unit_state{name="inquisition.service"}) unless on (instance) inquisition_success)
         for: 1h
         labels:
           severity: warning

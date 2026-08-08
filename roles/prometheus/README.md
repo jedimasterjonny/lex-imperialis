@@ -124,7 +124,7 @@ is itself routed to Discord, so a total outage surfaces it only on recovery) and
 `SystemdUnitFailed` (the catch-all: any unit in the `failed` state for 15m, off
 `node_systemd_unit_state`. It keys on the terminal failed state where the two rules
 above key on the restart counter — flapping but alive — so they never double-report
-one fault. The seven oneshots that emit a `*_success` metric are excluded: each already
+one fault. The eight oneshots that emit a `*_success` metric are excluded: each already
 has a `*Failed` rule with a richer description and the right severity, and `group_by`
 is on `alertname`, so without the exclusion one fault would raise two alerts); the
 `maintenance` group's `autoupdate` pair
@@ -147,7 +147,12 @@ completed in over a day) and the cron pair `WordpressCronFailed` /
 `WordpressCronOverdue` (the 5-minute wp-cron run that hard-failed or has not run
 in over an hour); the `arbites` group's `ArbitesFailed` /
 `ArbitesStale` (an unattended fleet reconcile that failed or has not completed
-in over 2 hours); the `music` group's `BeetsPipelineLidarrRejected`
+in over 2 hours); the `drift` group's `ContainerDigestDrift` /
+`UnmanagedContainerRunning` / `QuadletNotRunning` / `QuadletUnpinned` (the
+inquisition's four classes — a running container off its quadlet's pin, a
+container no quadlet declares, a quadlet declared but not running, a quadlet
+pinned by tag alone) with its `InquisitionFailed` / `InquisitionOverdue` pair
+(every `for:` spans at least two of the hourly runs); the `music` group's `BeetsPipelineLidarrRejected`
 (an album beets matched but lidarr refused) and `BeetsPipelineQuarantineBacklog` (a
 standing pile of no-match albums awaiting hand-processing); the `monitoring` group's
 `PrometheusRuleEvaluationFailing` (a rule group erroring at evaluation, so its rules
@@ -155,7 +160,7 @@ have silently stopped producing series) and `PrometheusConfigReloadFailed` (a co
 or rule file Prometheus rejected at reload, leaving it on the previous config) — the
 two ways an unattended `arbites` deploy of these very files fails silently,
 both read off the `prometheus` self-scrape job — and `ScheduledJobMetricMissing`
-(a host running one of the seven oneshots `SystemdUnitFailed` excludes while
+(a host running one of the eight oneshots `SystemdUnitFailed` excludes while
 publishing no matching `*_success` metric. That exclusion is only sound while the
 metric exists: `== 0` and `time() - <gauge> > N` both match nothing on an empty
 vector, so a family that stops being written disables its own `*Failed` and
@@ -163,7 +168,7 @@ vector, so a family that stops being written disables its own `*Failed` and
 `node_systemd_unit_state` rather than `absent()`, so it fires per host — the unit's
 presence is exact ground truth for which hosts owe the metric, and carries no
 topology — and it reports which family broke. Its roster and `SystemdUnitFailed`'s
-exclusion regex are the same seven units held in two syntaxes, so the scenario
+exclusion regex are the same eight units held in two syntaxes, so the scenario
 asserts the two sets are equal); and the `watchdog`
 group's always-firing `Watchdog` (`vector(1)`, no `for:`), whose silence at the
 deadman receiver signals a broken Prometheus -> Alertmanager -> heartbeat
