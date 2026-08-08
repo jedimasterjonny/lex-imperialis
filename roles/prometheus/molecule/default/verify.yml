@@ -104,15 +104,19 @@
                                         'WordpressUpdateAvailable', 'WordpressUpdateCheckFailed',
                                         'WordpressUpdateCheckOverdue', 'WordpressCronFailed',
                                         'WordpressCronOverdue', 'ArbitesFailed',
-                                        'ArbitesStale', 'BeetsPipelineLidarrRejected',
+                                        'ArbitesStale', 'ContainerDigestDrift',
+                                        'UnmanagedContainerRunning', 'QuadletNotRunning',
+                                        'QuadletUnpinned', 'QuadletsDisappeared',
+                                        'InquisitionFailed',
+                                        'InquisitionOverdue', 'BeetsPipelineLidarrRejected',
                                         'BeetsPipelineQuarantineBacklog',
                                         'PrometheusRuleEvaluationFailing',
                                         'PrometheusConfigReloadFailed',
                                         'ScheduledJobMetricMissing', 'Watchdog'])
-            | list | length == 35
+            | list | length == 42
           - >-
             prometheus_loaded_rules.json.data.groups
-            | map(attribute='rules') | flatten | list | length == 35
+            | map(attribute='rules') | flatten | list | length == 42
         fail_msg: the loaded alert rules don't match those shipped in alerts.yml
 
     # MicroOSBuildStale reads a fortnight back, so its correctness rests on retention
@@ -151,7 +155,7 @@
     # This is the property promtool cannot see: two rules holding the same roster of
     # units in two syntaxes, 200 lines apart. SystemdUnitFailed excludes those units
     # by regex on the grounds that each has a bespoke *Failed rule, and
-    # ScheduledJobMetricMissing is what makes that grounds true. Exclude an eighth
+    # ScheduledJobMetricMissing is what makes that grounds true. Exclude a ninth
     # oneshot there and forget it here and the unit is covered by neither — silently,
     # which is the exact failure this pair exists to prevent. Compare the sets rather
     # than trusting a comment; both queries are already in the register above.
@@ -172,7 +176,7 @@
              | regex_findall('name="([a-z-]+)[.]service"') | sort }}
       ansible.builtin.assert:
         that:
-          - prometheus_excluded_units | length == 7
+          - prometheus_excluded_units | length == 8
           - prometheus_excluded_units == prometheus_covered_units
         fail_msg: >-
           SystemdUnitFailed excludes {{ prometheus_excluded_units }} but
