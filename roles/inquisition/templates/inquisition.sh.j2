@@ -57,11 +57,21 @@ for name in "${!declared_unit[@]}"; do
     fi
     pin="${declared_digest[$name]:-}"
     [ -n "$pin" ] || continue
-    # ImageDigest is the digest the image was pulled by — byte-identical to the
-    # renovate pin, measured on the live fleet. A container the runtime cannot
-    # inspect mid-recreate reads as drift for one cycle; the alert's for: rides it.
-    running="$(podman inspect --format '{{.ImageDigest}}' "$name" 2>/dev/null || echo absent)"
-    [ "$running" = "$pin" ] || digest+=("$name")
+    # Two fields, because neither alone is the pin. ImageDigest is the digest of
+    # the manifest podman resolved the pull to, which for a multi-arch image is
+    # the per-arch one, not the manifest list renovate pins — measured on the
+    # fleet, where it diverges for 1 of 21 containers. ImageName carries the
+    # reference the container was created from, which does hold the pinned
+    # digest for all 21. Match either: a container running a genuinely different
+    # image matches neither, so accepting both costs no detection. One inspect,
+    # since both come from the same call. A container the runtime cannot inspect
+    # mid-recreate reads as drift for one cycle; the alert's for: rides it.
+    info="$(podman inspect --format '{{.ImageDigest}} {{.ImageName}}' "$name" 2>/dev/null || echo "absent absent")"
+    running_digest="${info%% *}"
+    running_ref="${info##* }"
+    if [ "$running_digest" != "$pin" ] && [ "sha256:${running_ref##*@sha256:}" != "$pin" ]; then
+        digest+=("$name")
+    fi
 done
 
 mkdir -p "$dir"

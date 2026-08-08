@@ -17,26 +17,23 @@
         name: inquisition
         public: true
 
-    # Resolve the pin the way the check measures it — from a container's
-    # ImageDigest — not from image inspect's .Digest, which can name a different
-    # manifest for the same pull. create pulls the image, and the throwaway is
-    # read and removed, so no state survives these three tasks.
-    - name: Create a throwaway container to read the digest from
+    # Pin from the image's own registry digest — the manifest list, which is
+    # what renovate writes into a quadlet. Deriving it instead from the field
+    # the check reads made this circular, and hid the divergence that flagged
+    # wordpress on rogue-trader as drift on the first production run: podman
+    # resolves a multi-arch pull to the per-arch manifest, so ImageDigest is not
+    # the pinned digest. This scenario cannot force that divergence on demand —
+    # it depends on the image — but it no longer asserts the bug into being true.
+    - name: Pull the probe image
       ansible.builtin.command:
-        cmd: podman create --name inquisition-resolve {{ inquisition_probe_image }} true
+        cmd: podman pull -q {{ inquisition_probe_image }}
       changed_when: false
       become: true
 
-    - name: Resolve the probe image's digest as a container reports it
+    - name: Resolve the probe image's registry digest
       ansible.builtin.command:
-        cmd: podman inspect --format '{% raw %}{{.ImageDigest}}{% endraw %}' inquisition-resolve
+        cmd: podman image inspect --format '{% raw %}{{.Digest}}{% endraw %}' {{ inquisition_probe_image }}
       register: inquisition_probe_digest
-      changed_when: false
-      become: true
-
-    - name: Remove the throwaway container
-      ansible.builtin.command:
-        cmd: podman rm inquisition-resolve
       changed_when: false
       become: true
 

@@ -10,8 +10,11 @@ check is answerable on-host with no fleet-side list to keep in step. Hourly
 
 - **digest** — a running container whose image digest differs from its quadlet's
   `@sha256:` pin: the restart-that-never-fired class, invisible to any render
-  gate because it renders no bytes. `podman inspect --format '{{.ImageDigest}}'`
-  is byte-identical to the renovate pin, manifest lists included.
+  gate because it renders no bytes. The pin is matched against both
+  `.ImageDigest` and the digest in `.ImageName`, either of which satisfies it:
+  podman resolves a multi-arch pull to the per-arch manifest, so `.ImageDigest`
+  is not the manifest-list digest renovate pins — it diverges for 1 of the
+  fleet's 21 containers, while `.ImageName` holds the pinned digest for all 21.
 - **unmanaged** — a container, running or stopped, that no quadlet declares.
   Automates the hand-run unmanaged audit.
 - **inactive** — a declared quadlet whose service is not `active`: the
