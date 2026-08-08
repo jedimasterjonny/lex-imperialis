@@ -1,0 +1,19 @@
+---
+platforms:
+  - name: "lex-inquisition-incus-${MOLECULE_RUN_ID:-local}"
+    image: images:opensuse/tumbleweed/cloud
+    # podman mounts overlays for its storage, which incus only permits in a
+    # nested-container-capable instance. The CI runner's AppArmor denies nested
+    # runtime's sysctl fd-reopen, so drop the profile — the instance is throwaway.
+    config:
+      security.nesting: "true"
+      raw.lxc: lxc.apparmor.profile=unconfined
+# One source for the probe image, read by converge as the input and by verify as
+# the expectation. openSUSE's registry: no docker.io pull limits in CI, and tiny.
+# Unpinned deliberately — the scenario asserts that the running digest equals the
+# declared one, not which image either is, so there is nothing to keep current.
+provisioner:
+  inventory:
+    group_vars:
+      all:
+        inquisition_probe_image: registry.opensuse.org/opensuse/busybox:latest

@@ -1,0 +1,85 @@
+---
+- name: Converge
+  hosts: all
+  tasks:
+    # The role's drop-in selects crun; runc cannot mount /proc in the CI
+    # runner's nested container, a failure the workstation's incus does not
+    # reproduce. It also creates the quadlet directory this scenario needs.
+    - name: Apply the podman role
+      ansible.builtin.include_role:
+        name: podman
+
+    # public: the probe tasks below write into the role's own quadlet dir, so
+    # they read its default rather than restating the path — a wrong default
+    # then fails the scenario instead of shipping green past it.
+    - name: Apply the inquisition role
+      ansible.builtin.include_role:
+        name: inquisition
+        public: true
+
+    # Resolve the pin the way the check measures it — from a container's
+    # ImageDigest — not from image inspect's .Digest, which can name a different
+    # manifest for the same pull. create pulls the image, and the throwaway is
+    # read and removed, so no state survives these three tasks.
+    - name: Create a throwaway container to read the digest from
+      ansible.builtin.command:
+        cmd: podman create --name inquisition-resolve {{ inquisition_probe_image }} true
+      changed_when: false
+      become: true
+
+    - name: Resolve the probe image's digest as a container reports it
+      ansible.builtin.command:
+        cmd: podman inspect --format '{% raw %}{{.ImageDigest}}{% endraw %}' inquisition-resolve
+      register: inquisition_probe_digest
+      changed_when: false
+      become: true
+
+    - name: Remove the throwaway container
+      ansible.builtin.command:
+        cmd: podman rm inquisition-resolve
+      changed_when: false
+      become: true
+
+    # A quadlet shaped exactly as the fleet's: explicit ContainerName, image
+    # pinned name:tag@digest. Network=host (a fleet-used shape — plex) since the
+    # checks never touch the network. busybox sleep takes integer seconds only.
+    # The file stem deliberately differs from ContainerName: the unit is named
+    # for the file and the container for the field, and a check that conflated
+    # them would still pass against the fleet, where they happen to match.
+    - name: Install the probe quadlet
+      ansible.builtin.copy:
+        content: |
+          [Unit]
+          Description=Inquisition probe container
+          [Container]
+          ContainerName=probe
+          Image={{ inquisition_probe_image }}@{{ inquisition_probe_digest.stdout }}
+          Exec=sleep 86400
+          Network=host
+        dest: "{{ inquisition_quadlet_dir }}/probe-unit.container"
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    # The rescue trades a blind "control process exited" for the journal — a
+    # molecule failure in CI is otherwise unshellable.
+    - name: Start the probe container
+      block:
+        - name: Start the probe container
+          ansible.builtin.systemd_service:
+            name: probe-unit.service
+            state: started
+            daemon_reload: true
+          become: true
+      rescue:
+        - name: Read the probe service journal
+          ansible.builtin.command:
+            cmd: journalctl -u probe-unit.service --no-pager -n 50
+          register: inquisition_probe_journal
+          changed_when: false
+          become: true
+
+        - name: Surface the probe failure
+          ansible.builtin.fail:
+            msg: "{{ inquisition_probe_journal.stdout }}"

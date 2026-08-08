@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Compare the host's containers against its quadlet declarations and publish the
+# drift as node_exporter textfile metrics. The quadlet files ARE the declaration,
+# so every check is answerable on-host with no fleet-side list to keep in step.
+# Runs unattended on inquisition.timer; the ExecStopPost hook records the outcome.
+set -euo pipefail
+
+quadlet_dir="{{ inquisition_quadlet_dir }}"
+dir="{{ inquisition_textfile_dir }}"
+
+{% raw %}
+# Assigned empty, not merely declared: `declare -A x` leaves x unset, so
+# ${#x[@]} on a host with no quadlets dies under set -u — the exact vacuum
+# QuadletsDisappeared exists to report, which a dead script cannot publish.
+declare -A declared_digest=() declared_unit=()
+digest=() unmanaged=() inactive=() unpinned=()
+
+# Flat glob, first key wins nothing: systemd strips leading whitespace and takes
+# the LAST assignment of a non-list key, so the seds below do the same. Only
+# top-level .container files are read — quadlet also honours drop-in dirs
+# (<name>.container.d/) and recurses into subdirectories, neither of which the
+# fleet uses; a container declared either way would read as unmanaged.
+shopt -s nullglob
+for f in "$quadlet_dir"/*.container; do
+    stem="$(basename "$f" .container)"
+    name="$(sed -n 's/^[[:space:]]*ContainerName=//p' "$f" | tail -n1)"
+    # Every current template sets ContainerName=; systemd-<stem> is quadlet's
+    # documented default, kept as the fallback. The unit is named for the file,
+    # the container for this field, and the two need not match.
+    [ -n "$name" ] || name="systemd-$stem"
+    declared_unit[$name]="$stem"
+    image="$(sed -n 's/^[[:space:]]*Image=//p' "$f" | tail -n1)"
+    case "$image" in
+        *@sha256:*) declared_digest[$name]="sha256:${image##*@sha256:}" ;;
+        *) unpinned+=("$name") ;;
+    esac
+done
+
+# Every container podman knows that no quadlet declares, running or not — a
+# stopped stray is still unmanaged state. Captured into a variable rather than
+# read from a process substitution, whose exit status set -e cannot see: a
+# podman that errors would otherwise publish an empty, successful, clean run.
+running_names="$(podman ps -a --format '{{.Names}}')"
+while IFS= read -r c; do
+    [ -n "$c" ] || continue
+    [ -n "${declared_unit[$c]+x}" ] && continue
+    unmanaged+=("$c")
+done <<< "$running_names"
+
+for name in "${!declared_unit[@]}"; do
+    # show, not is-active: exits 0 for a unit systemd has never loaded.
+    state="$(systemctl show -p ActiveState --value "${declared_unit[$name]}.service")"
+    if [ "$state" != "active" ]; then
+        inactive+=("$name")
+        continue
+    fi
+    pin="${declared_digest[$name]:-}"
+    [ -n "$pin" ] || continue
+    # ImageDigest is the digest the image was pulled by — byte-identical to the
+    # renovate pin, measured on the live fleet. A container the runtime cannot
+    # inspect mid-recreate reads as drift for one cycle; the alert's for: rides it.
+    running="$(podman inspect --format '{{.ImageDigest}}' "$name" 2>/dev/null || echo absent)"
+    [ "$running" = "$pin" ] || digest+=("$name")
+done
+
+mkdir -p "$dir"
+# Publish atomically: write a temp file the exporter's *.prom glob ignores, then
+# rename it over the target so no scrape reads a half-written file. 0644 so the
+# exporter's unprivileged user can read it. The offender families are absent on a
+# clean host, so the denominator carries the "was anything inspected at all"
+# signal that tells clean apart from vacuum — QuadletsDisappeared reads it.
+tmp="$(mktemp "$dir/.inquisition.prom.XXXXXX")"
+{
+    echo '# HELP inquisition_offender A container drifting from its quadlet declaration, by class.'
+    echo '# TYPE inquisition_offender gauge'
+    for class in digest unmanaged inactive unpinned; do
+        declare -n members="$class"
+        for c in "${members[@]}"; do
+            # Escaped per the text format: a name a human typed into a quadlet
+            # can carry " or \, and node_exporter drops every metric in a file
+            # it cannot parse — which would take the payload rules dark while
+            # the outcome file kept reporting success.
+            esc="${c//\\/\\\\}"
+            esc="${esc//\"/\\\"}"
+            echo "inquisition_offender{class=\"$class\",container=\"$esc\"} 1"
+        done
+    done
+    echo '# HELP inquisition_containers_checked Quadlet-declared containers this run compared.'
+    echo '# TYPE inquisition_containers_checked gauge'
+    echo "inquisition_containers_checked ${#declared_unit[@]}"
+} > "$tmp"
+chmod 0644 "$tmp"
+mv "$tmp" "$dir/inquisition.prom"
+{% endraw %}
