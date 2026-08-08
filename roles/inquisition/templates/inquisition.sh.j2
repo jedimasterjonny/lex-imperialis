@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Compare the host's containers against its quadlet declarations and publish the
+# drift as node_exporter textfile metrics. The quadlet files ARE the declaration,
+# so every check is answerable on-host with no fleet-side list to keep in step.
+# Four classes: a running container whose image digest is not the one its quadlet
+# pins (a restart that never fired), a container no quadlet declares, a declared
+# quadlet whose service is not running, and a quadlet pinned by tag alone.
+# Runs unattended on inquisition.timer; the ExecStopPost hook records the outcome.
+set -euo pipefail
+
+quadlet_dir="{{ inquisition_quadlet_dir }}"
+dir="{{ inquisition_textfile_dir }}"
+ignore=({% for c in inquisition_ignore_containers %}"{{ c }}" {% endfor %})
+
+{% raw %}
+declare -A declared_digest declared_unit
+unpinned=() drift=() unmanaged=() inactive=()
+
+shopt -s nullglob
+for f in "$quadlet_dir"/*.container; do
+    stem="$(basename "$f" .container)"
+    name="$(sed -n 's/^ContainerName=//p' "$f" | head -n1)"
+    # Every current template sets ContainerName=; systemd-<stem> is quadlet's
+    # documented default, kept as the fallback.
+    [ -n "$name" ] || name="systemd-$stem"
+    declared_unit[$name]="$stem"
+    image="$(sed -n 's/^Image=//p' "$f" | head -n1)"
+    case "$image" in
+        *@sha256:*) declared_digest[$name]="sha256:${image##*@sha256:}" ;;
+        *)
+            declared_digest[$name]=""
+            unpinned+=("$name")
+            ;;
+    esac
+done
+
+is_ignored() {
+    local c
+    for c in ${ignore[@]+"${ignore[@]}"}; do
+        [ "$c" = "$1" ] && return 0
+    done
+    return 1
+}
+
+# Every container podman knows that no quadlet declares, running or not — a
+# stopped stray is still unmanaged state.
+while IFS= read -r c; do
+    [ -n "$c" ] || continue
+    [ -n "${declared_unit[$c]+x}" ] && continue
+    is_ignored "$c" && continue
+    unmanaged+=("$c")
+done < <(podman ps -a --format '{{.Names}}')
+
+for name in "${!declared_unit[@]}"; do
+    # show, not is-active: exits 0 for a unit systemd has never loaded.
+    state="$(systemctl show -p ActiveState --value "${declared_unit[$name]}.service")"
+    if [ "$state" != "active" ]; then
+        inactive+=("$name")
+        continue
+    fi
+    pin="${declared_digest[$name]}"
+    [ -n "$pin" ] || continue
+    # ImageDigest is the digest the image was pulled by — byte-identical to the
+    # renovate pin, measured on the live fleet. A container the runtime cannot
+    # inspect mid-recreate reads as drift for one cycle; the alert's for: rides it.
+    running="$(podman inspect --format '{{.ImageDigest}}' "$name" 2>/dev/null || echo absent)"
+    [ "$running" = "$pin" ] || drift+=("$name")
+done
+
+mkdir -p "$dir"
+# Publish atomically: write a temp file the exporter's *.prom glob ignores, then
+# rename it over the target so no scrape reads a half-written file. 0644 so the
+# exporter's unprivileged user can read it. Per-class counts are always present
+# — 0 is the healthy state — so "clean" and "not checked" stay distinguishable.
+tmp="$(mktemp "$dir/.inquisition.prom.XXXXXX")"
+{
+    echo '# HELP inquisition_offender A container drifting from its quadlet declaration, by class.'
+    echo '# TYPE inquisition_offender gauge'
+    for c in ${drift[@]+"${drift[@]}"}; do
+        echo "inquisition_offender{class=\"digest\",container=\"$c\"} 1"
+    done
+    for c in ${unmanaged[@]+"${unmanaged[@]}"}; do
+        echo "inquisition_offender{class=\"unmanaged\",container=\"$c\"} 1"
+    done
+    for c in ${inactive[@]+"${inactive[@]}"}; do
+        echo "inquisition_offender{class=\"inactive\",container=\"$c\"} 1"
+    done
+    for c in ${unpinned[@]+"${unpinned[@]}"}; do
+        echo "inquisition_offender{class=\"unpinned\",container=\"$c\"} 1"
+    done
+    echo '# HELP inquisition_offenders Count of drifting containers per class.'
+    echo '# TYPE inquisition_offenders gauge'
+    echo "inquisition_offenders{class=\"digest\"} ${#drift[@]}"
+    echo "inquisition_offenders{class=\"unmanaged\"} ${#unmanaged[@]}"
+    echo "inquisition_offenders{class=\"inactive\"} ${#inactive[@]}"
+    echo "inquisition_offenders{class=\"unpinned\"} ${#unpinned[@]}"
+    echo '# HELP inquisition_containers_checked Quadlet-declared containers this run compared.'
+    echo '# TYPE inquisition_containers_checked gauge'
+    echo "inquisition_containers_checked ${#declared_unit[@]}"
+} > "$tmp"
+chmod 0644 "$tmp"
+mv "$tmp" "$dir/inquisition.prom"
+{% endraw %}

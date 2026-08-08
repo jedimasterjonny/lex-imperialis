@@ -327,3 +327,171 @@ tests:
       - eval_time: 315h
         alertname: MicroOSBuildStale
         exp_alerts: []
+
+  # The drift rules' for: windows are sized to the inquisition's hourly cadence:
+  # one bad run poisons a whole hour of scrapes, so every window spans at least
+  # two runs and a single-run wobble never fires. Each class gets its firing
+  # case; digest also gets the not-yet case that pins the wait, and Failed the
+  # one-bad-run case that pins the two-run demand.
+  - interval: 5m
+    name: a container off its pinned digest for over 6h alerts
+    input_series:
+      - series: 'inquisition_offender{job="node",instance="solar:9100",class="digest",container="sonarr"}'
+        values: "1x80"
+    alert_rule_test:
+      - eval_time: 6h5m
+        alertname: ContainerDigestDrift
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: solar:9100
+              class: digest
+              container: sonarr
+            exp_annotations:
+              summary: "sonarr on solar:9100 runs an image its quadlet does not pin"
+              description: >-
+                sonarr on solar:9100 has run for over 6 hours on a digest other than its
+                quadlet's pin — a restart that never fired, or a pin applied without one.
+
+  - interval: 5m
+    name: digest drift younger than its window does not alert
+    input_series:
+      - series: 'inquisition_offender{job="node",instance="solar:9100",class="digest",container="sonarr"}'
+        values: "1x80"
+    alert_rule_test:
+      - eval_time: 5h55m
+        alertname: ContainerDigestDrift
+        exp_alerts: []
+
+  - interval: 5m
+    name: an undeclared container standing 2h alerts
+    input_series:
+      - series: 'inquisition_offender{job="node",instance="solar:9100",class="unmanaged",container="interloper"}'
+        values: "1x30"
+    alert_rule_test:
+      - eval_time: 2h5m
+        alertname: UnmanagedContainerRunning
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: solar:9100
+              class: unmanaged
+              container: interloper
+            exp_annotations:
+              summary: "interloper on solar:9100 is declared by no quadlet"
+              description: >-
+                interloper exists on solar:9100 outside the repo's declarations — unmanaged
+                state the fleet's config does not describe.
+
+  - interval: 5m
+    name: a declared quadlet not running for 2h alerts
+    input_series:
+      - series: 'inquisition_offender{job="node",instance="solar:9100",class="inactive",container="idle"}'
+        values: "1x30"
+    alert_rule_test:
+      - eval_time: 2h5m
+        alertname: QuadletNotRunning
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: solar:9100
+              class: inactive
+              container: idle
+            exp_annotations:
+              summary: "idle on solar:9100 is declared but not running"
+              description: >-
+                The quadlet for idle on solar:9100 is on disk but its service is not active —
+                never started, or stopped by hand. SystemdUnitFailed only sees the failed state.
+
+  - interval: 5m
+    name: a tag-only quadlet standing 2h alerts
+    input_series:
+      - series: 'inquisition_offender{job="node",instance="rogue-trader:9100",class="unpinned",container="floater"}'
+        values: "1x30"
+    alert_rule_test:
+      - eval_time: 2h5m
+        alertname: QuadletUnpinned
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: rogue-trader:9100
+              class: unpinned
+              container: floater
+            exp_annotations:
+              summary: "floater on rogue-trader:9100 is not pinned by digest"
+              description: >-
+                The quadlet for floater on rogue-trader:9100 carries a tag-only Image= —
+                outside the renovate pin discipline, so what it runs after a pull is
+                unrecorded.
+
+  - interval: 5m
+    name: two consecutive failed drift checks alert
+    input_series:
+      - series: 'inquisition_success{job="node",instance="solar:9100"}'
+        values: "0x30"
+    alert_rule_test:
+      - eval_time: 95m
+        alertname: InquisitionFailed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: solar:9100
+            exp_annotations:
+              summary: "drift check failed on solar:9100"
+              description: >-
+                The last two drift check runs on solar:9100 failed — the host's containers
+                are unwatched.
+
+  - interval: 5m
+    name: a single failed drift check the next run clears does not alert
+    input_series:
+      - series: 'inquisition_success{job="node",instance="solar:9100"}'
+        values: "0x12 1x30"
+    alert_rule_test:
+      - eval_time: 95m
+        alertname: InquisitionFailed
+        exp_alerts: []
+
+  - interval: 5m
+    name: a drift check silent for over 3h alerts
+    input_series:
+      - series: 'inquisition_last_run_timestamp_seconds{job="node",instance="solar:9100"}'
+        values: "0x60"
+    alert_rule_test:
+      - eval_time: 4h5m
+        alertname: InquisitionOverdue
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: solar:9100
+            exp_annotations:
+              summary: "drift check overdue on solar:9100"
+              description: >-
+                solar:9100 has not completed a drift check in over 3 hours — the hourly
+                timer has stopped firing.
+
+  - interval: 5m
+    name: a clean healthy inquisition fires nothing
+    input_series:
+      - series: 'inquisition_offenders{job="node",instance="solar:9100",class="digest"}'
+        values: "0x90"
+      - series: 'inquisition_success{job="node",instance="solar:9100"}'
+        values: "1x90"
+      - series: 'inquisition_last_run_timestamp_seconds{job="node",instance="solar:9100"}'
+        values: "0+300x90"
+    alert_rule_test:
+      - eval_time: 7h
+        alertname: ContainerDigestDrift
+        exp_alerts: []
+      - eval_time: 7h
+        alertname: InquisitionFailed
+        exp_alerts: []
+      - eval_time: 7h
+        alertname: InquisitionOverdue
+        exp_alerts: []
