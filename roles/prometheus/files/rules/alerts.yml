@@ -182,17 +182,40 @@ groups:
       # summer ambient lifts it further, so 90 would fire on routine load. 95 errs late
       # deliberately: throttling at 105C costs clock, not hardware, whereas a weekly false
       # positive costs the alert its credibility. No second, higher-threshold rule — it
-      # would double-alert one fault, as ServiceRestartStorm's exclusion explains. Scoped
-      # to platform_coretemp_0, which only the two N150 boxes export, so one global
-      # threshold can key to their 105C Tjmax.
+      # would double-alert one fault, as ServiceRestartStorm's exclusion explains.
+      #
+      # Two thresholds, one rule, because the fleet has two thermal classes and no single
+      # number serves both: the N150s' Tjmax is 105C, where a Pi 5 soft-throttles at 80C
+      # and hard-throttles at 85C. Splitting this into a rule each is what it looks like
+      # it wants to be, and promtool's lint refuses it — duplicate rules key on name plus
+      # labels, not expression — which is the same conclusion the comment above reaches
+      # for its own reason: one fault pages once.
+      #
+      # The chip labels scope each side to its class, and no host exports both, so the
+      # union can never double-count an instance. platform_coretemp_0 comes from the two
+      # N150 boxes; thermal_thermal_zone0 from auspex, read off the box rather than
+      # inferred — node_exporter names the chip from the hwmon `device` symlink, which
+      # there resolves to /sys/devices/virtual/thermal/thermal_zone0. It falls back to the
+      # hwmon `name` file only when that symlink is absent, so the `cpu_thermal_0` the Pi
+      # reports there is not the label and would match nothing.
+      #
+      # 80C leaves the Pi 5C before its clocks are pulled outright, and one with working
+      # active cooling never sustains it: the board's own thermal zone declares fan trip
+      # points from 50C up, so a sustained 80C means the cooling is absent or failed, not
+      # that the host is busy.
       - alert: HostCpuTemperatureHigh
-        expr: max by (instance) (node_hwmon_temp_celsius{chip="platform_coretemp_0"}) > 95
+        expr: >-
+          max by (instance) (node_hwmon_temp_celsius{chip="platform_coretemp_0"}) > 95
+          or max by (instance) (node_hwmon_temp_celsius{chip="thermal_thermal_zone0"}) > 80
         for: 15m
         labels:
           severity: warning
         annotations:
-          summary: "CPU on {{ $labels.instance }} sustained above 95C"
-          description: "{{ $labels.instance }} has held its CPU at {{ $value }}C for 15 minutes. Throttling starts at 105C — check the heatsink and fan."
+          summary: "CPU on {{ $labels.instance }} sustained above its thermal limit"
+          description: >-
+            {{ $labels.instance }} has held its CPU at {{ $value }}C for 15 minutes — past
+            the limit for its class, 95C on the N150s and 80C on the Pi. Check the
+            heatsink and that the fan is spinning.
 
   - name: time
     rules:

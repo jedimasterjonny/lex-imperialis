@@ -96,9 +96,11 @@ not reach the NAS through the NFS exports); the `memory` group's `MemoryLow`
 (`MemAvailable` under 10% for 15m — `FilesystemSpaceLow`'s threshold and window, for
 the other exhaustible resource. `MemAvailable` has already netted off reclaimable
 cache, so crossing it is real pressure, not a full-looking cache); the `hardware` group's
-`HostCpuTemperatureHigh` (a CPU held above 95C for 15m, off
-`node_hwmon_temp_celsius` scoped to `platform_coretemp_0` — the
-chip only the two N150 boxes export, so the other two hosts raise nothing); the
+`HostCpuTemperatureHigh` (a CPU held past its class's limit for 15m, off
+`node_hwmon_temp_celsius` — one rule, two branches, because the fleet has two
+thermal classes: `platform_coretemp_0` above 95C for the N150 boxes against their
+105C Tjmax, and `thermal_thermal_zone0` above 80C for the Pi, which soft-throttles
+there. Hosts exporting neither chip raise nothing); the
 `time` group's `ClockNotSynchronised` (`node_timex_sync_status == 0` for 30m — a
 node_exporter host whose clock is no longer NTP-synced); the
 `services` group — `ServiceRestartStorm` (a systemd
