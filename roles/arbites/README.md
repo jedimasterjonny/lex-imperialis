@@ -58,7 +58,16 @@ ssh-keyscan -H 127.0.0.1 <each other host at its ansible_host or name> >/etc/arb
 
 Host-key checking is on by default (`arbites_host_key_checking`), so a
 missing, empty, or wrongly-keyed `known_hosts` fails the assert or a later connect —
-set the flag false to run without it. The SSH key is the operator's existing key —
+set the flag false to run without it.
+
+The assert only checks the file exists and is non-empty; nothing checks it covers
+the inventory. So **adding a host to `site.yml`, or re-imaging an existing one,
+breaks every reconcile until this file is re-seeded** — a new host's key is simply
+absent, a re-imaged host presents a different one, and `GlobalKnownHostsFile=/dev/null`
+makes this file the only authority. The connect fails, the run exits non-zero before
+`last_applied` is written, so the cheap no-op path never trips and the full fleet is
+re-applied every 15 minutes with `ArbitesFailed` standing throughout. Re-seed before
+the change merges, not after. The SSH key is the operator's existing key —
 the one the fleet already accepts
 for each host's connection user (`ansible`, and `jonny` on the NAS), so no fleet
 change is needed. Then wire the role into `playbooks/scholam.yml` and run
