@@ -14,8 +14,7 @@ a no-op after the first — nothing re-fires on reapply.
 
 ## Target: administratum (Synology)
 
-Shaped by the same host as the `prometheus`/`blackbox_exporter` stacks, and
-mirrors them:
+Shaped by the same host as the `prometheus` stack, and mirrors it:
 
 - **docker_compose_v2, not docker_container** — the NAS has the `docker compose`
   CLI but no Docker SDK for Python, so the module that shells out to the CLI is

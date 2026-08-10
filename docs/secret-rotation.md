@@ -22,6 +22,13 @@ Standard rotation for a host-rendered vault secret:
 `make check`/`--diff` will not leak the value — every secret-rendering task sets
 `no_log`. Don't strip it to "see the diff".
 
+**When a workload moves host, rotation follows the play, not the file.** The
+apply column names where the secret is rendered *now*; the old host keeps the
+0600 file it was last given, and no play touches it again. So rotating after a
+move leaves the superseded value live on the host the role left, indefinitely.
+Decommission the old host's copy at the same time the role moves — see the
+role-removal note in `CLAUDE.md`.
+
 ## Host-rendered vault secrets
 
 Each rotates by the standard procedure above; the table gives the issuer, the
@@ -31,8 +38,8 @@ apply target, and any wrinkle.
 | --- | --- | --- | --- |
 | `caddy_cloudflare_api_token` | Cloudflare token for the solar/home zone (`caddy_domain`; Zone:Read, DNS:Edit) | `PLAY=solar` | Gates the DNS-01 wildcard; homepage TLS depends on it too |
 | `emmasedit_cloudflare_api_token` | Cloudflare token for the emmasedit.com zone | `PLAY=rogue-trader` | caddy DNS-01 for emmasedit.com |
-| `alertmanager_discord_webhook_url` | Discord incoming webhook | `PLAY=solar` | Fire a test alert to confirm delivery |
-| `alertmanager_deadman_ping_url` | healthchecks.io check ping URL (5m period) | `PLAY=solar` | Confirm the new check goes green; keep period/grace at the Watchdog 5m |
+| `alertmanager_discord_webhook_url` | Discord incoming webhook | `PLAY=auspex` | Fire a test alert to confirm delivery |
+| `alertmanager_deadman_ping_url` | healthchecks.io check ping URL (5m period) | `PLAY=auspex` | Confirm the new check goes green; keep period/grace at the Watchdog 5m |
 | `grafana_admin_password` | self-chosen | `PLAY=solar` | **First-init only** — an already-provisioned Grafana also needs `grafana-cli admin reset-admin-password` in-container to match |
 | `arr_api_keys` | each Servarr app UI (Settings → General → API Key) | `PLAY=solar` | Dict replaced whole — re-supply all keys; then fix prowlarr's stored connections for any rotated app |
 | `arr_transmission_username` / `arr_transmission_password` | self-chosen RPC creds | `PLAY=solar` | Container re-applies auth on restart; verify RPC goes 401 → authed |
