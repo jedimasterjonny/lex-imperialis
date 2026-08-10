@@ -153,7 +153,14 @@ standing pile of no-match albums awaiting hand-processing); the `monitoring` gro
 have silently stopped producing series) and `PrometheusConfigReloadFailed` (a config
 or rule file Prometheus rejected at reload, leaving it on the previous config) — the
 two ways an unattended `arbites` deploy of these very files fails silently,
-both read off the `prometheus` self-scrape job — and `ScheduledJobMetricMissing`
+both read off the `prometheus` self-scrape job — plus the pair covering the writer
+this server now depends on: `PrometheusAgentAbsent` (critical: no
+`up{job="prometheus_agent"}` for 10m, so nothing is scraping the fleet and nearly
+every other rule here is matching an empty vector rather than firing) and
+`PrometheusRemoteWriteFailing` (the agent's failed-sample rate above zero for 15m —
+the partial case only, since under total failure the counter travels the same
+broken channel it describes and never arrives, which is what the `absent()` rule
+above catches instead) — and `ScheduledJobMetricMissing`
 (a host running one of the eight oneshots `SystemdUnitFailed` excludes while
 publishing no matching `*_success` metric. That exclusion is only sound while the
 metric exists: `== 0` and `time() - <gauge> > N` both match nothing on an empty
