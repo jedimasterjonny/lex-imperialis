@@ -604,3 +604,92 @@ tests:
       - eval_time: 7h
         alertname: InquisitionFailed
         exp_alerts: []
+
+  # PrometheusAgentAbsent is the rule that catches every OTHER rule going quiet,
+  # so a test that only proved it parsed would repeat the exact mistake it exists
+  # to prevent. Both polarities are named cases, and the pending case pins the
+  # for: — without it the firing case would also pass a rule with no wait at all.
+  - interval: 1m
+    name: samples no longer arriving from the agent alerts
+    input_series:
+      # Deliberately not the agent's own series: this input is another job
+      # entirely, so up{job="prometheus_agent"} is genuinely absent while the
+      # server is otherwise healthy. An empty input_series would also satisfy
+      # absent(), but would not distinguish "the agent stopped" from "nothing is
+      # running at all", which is the distinction the rule is making.
+      - series: 'up{job="prometheus",instance="administratum:9090"}'
+        values: "1x30"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: PrometheusAgentAbsent
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: prometheus_agent
+            exp_annotations:
+              summary: "no samples are arriving from the prometheus agent"
+              description: >-
+                No up{job="prometheus_agent"} series is arriving, so the agent that scrapes
+                the entire fleet is not writing. Every other rule is now evaluating an empty
+                vector and cannot fire — this alert is the only thing standing between a
+                stopped agent and silence. Expect roughly 15 minutes from the agent stopping
+                to this firing, not the 10m for: alone: up stays queryable for the 5m
+                lookback delta after its last sample, so absent() only turns true once that
+                has elapsed.
+      # Inside for:, so pending rather than firing.
+      - eval_time: 5m
+        alertname: PrometheusAgentAbsent
+        exp_alerts: []
+
+  # The negative control, and what makes the case above mean anything: an agent
+  # that is writing must leave the rule silent, even while it is failing to
+  # deliver — the two rules cover different faults and must not double-report.
+  - interval: 1m
+    name: an agent that is writing does not raise the absent alert
+    input_series:
+      - series: 'up{job="prometheus_agent",instance="127.0.0.1:9090"}'
+        values: "1x30"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: PrometheusAgentAbsent
+        exp_alerts: []
+
+  # The partial-failure case: the channel is up enough to carry its own bad news.
+  - interval: 1m
+    name: an agent failing to write samples alerts
+    input_series:
+      - series: 'prometheus_remote_storage_samples_failed_total{job="prometheus_agent",instance="127.0.0.1:9090",url="http://administratum:9090/api/v1/write"}'
+        values: "0+60x30"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: PrometheusRemoteWriteFailing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: prometheus_agent
+              instance: 127.0.0.1:9090
+              url: http://administratum:9090/api/v1/write
+            exp_annotations:
+              summary: "prometheus agent on 127.0.0.1:9090 is failing to write samples"
+              description: >-
+                The agent on 127.0.0.1:9090 has been failing to write samples to
+                http://administratum:9090/api/v1/write for 15 minutes. Its WAL buffers
+                against a receiver outage, but only to
+                --storage.agent.retention.max-time — past that the backlog is dropped, and
+                anything older than the receiver's out_of_order_time_window is refused even
+                once it reconnects.
+      - eval_time: 10m
+        alertname: PrometheusRemoteWriteFailing
+        exp_alerts: []
+
+  # A flat failure counter is a healthy agent: the rule keys on the rate, so a
+  # historical failure that stopped must not keep alerting forever.
+  - interval: 1m
+    name: a failure counter that has stopped rising does not alert
+    input_series:
+      - series: 'prometheus_remote_storage_samples_failed_total{job="prometheus_agent",instance="127.0.0.1:9090",url="http://administratum:9090/api/v1/write"}'
+        values: "500x30"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: PrometheusRemoteWriteFailing
+        exp_alerts: []
