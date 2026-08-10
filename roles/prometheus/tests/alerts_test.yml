@@ -693,3 +693,87 @@ tests:
       - eval_time: 20m
         alertname: PrometheusRemoteWriteFailing
         exp_alerts: []
+
+  # The Pi branch of HostCpuTemperatureHigh. The 15m eval fires and the 10m one does
+  # not, which pins the for: to the window it claims rather than to anything shorter.
+  - interval: 1m
+    name: a Pi held above its soft-throttle point alerts
+    input_series:
+      - series: 'node_hwmon_temp_celsius{chip="thermal_thermal_zone0",job="node",instance="auspex:9100",sensor="temp1"}'
+        values: "86x30"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: HostCpuTemperatureHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: auspex:9100
+            exp_annotations:
+              summary: "CPU on auspex:9100 sustained above its thermal limit"
+              description: >-
+                auspex:9100 has held its CPU at 86C for 15 minutes — past the limit
+                for its class, 95C on the N150s and 80C on the Pi. Check the heatsink
+                and that the fan is spinning.
+      - eval_time: 10m
+        alertname: HostCpuTemperatureHigh
+        exp_alerts: []
+
+  # The negative control, at a temperature a Pi under real load reaches: the threshold
+  # has to sit above working-warm or it reports the workload instead of the cooling.
+  - interval: 1m
+    name: a warm but unthrottled Pi stays silent
+    input_series:
+      - series: 'node_hwmon_temp_celsius{chip="thermal_thermal_zone0",job="node",instance="auspex:9100",sensor="temp1"}'
+        values: "72x30"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: HostCpuTemperatureHigh
+        exp_alerts: []
+
+  # 88C is the figure the rule's own comment cites for solar under its weekly zypper dup,
+  # so this is the false positive the 95 threshold was chosen to avoid, held as a test.
+  # It is also what stops the Pi's lower threshold leaking onto the N150s: collapse the
+  # two branches to one 80C comparison and this case pages every week.
+  - interval: 1m
+    name: an N150 at its weekly peak load stays silent
+    input_series:
+      - series: 'node_hwmon_temp_celsius{chip="platform_coretemp_0",job="node",instance="solar:9100",sensor="temp1"}'
+        values: "88x30"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: HostCpuTemperatureHigh
+        exp_alerts: []
+
+  # Both branches live at once, each raising exactly one alert for its own host. A branch
+  # dropped in a later edit shows up here as a missing alert rather than as a fault that
+  # goes unreported for months — which, being a thermal fault on a fanless board in a
+  # cupboard, is the failure this whole rule exists for.
+  - interval: 1m
+    name: a hot Pi and a hot N150 each raise one alert
+    input_series:
+      - series: 'node_hwmon_temp_celsius{chip="thermal_thermal_zone0",job="node",instance="auspex:9100",sensor="temp1"}'
+        values: "100x30"
+      - series: 'node_hwmon_temp_celsius{chip="platform_coretemp_0",job="node",instance="solar:9100",sensor="temp1"}'
+        values: "100x30"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: HostCpuTemperatureHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: auspex:9100
+            exp_annotations:
+              summary: "CPU on auspex:9100 sustained above its thermal limit"
+              description: >-
+                auspex:9100 has held its CPU at 100C for 15 minutes — past the limit
+                for its class, 95C on the N150s and 80C on the Pi. Check the heatsink
+                and that the fan is spinning.
+          - exp_labels:
+              severity: warning
+              instance: solar:9100
+            exp_annotations:
+              summary: "CPU on solar:9100 sustained above its thermal limit"
+              description: >-
+                solar:9100 has held its CPU at 100C for 15 minutes — past the limit
+                for its class, 95C on the N150s and 80C on the Pi. Check the heatsink
+                and that the fan is spinning.
