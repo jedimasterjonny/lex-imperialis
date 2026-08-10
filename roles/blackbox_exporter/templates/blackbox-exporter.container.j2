@@ -1,0 +1,32 @@
+[Unit]
+Description=Blackbox exporter
+
+[Container]
+ContainerName=blackbox-exporter
+Image={{ blackbox_exporter_image }}
+# Host network so the exporter resolves and routes to probe targets exactly as
+# the host does. It binds blackbox_exporter_listen_address below, which is
+# loopback, so only the co-located scraper reaches /probe — never the LAN.
+Network=host
+NoNewPrivileges=true
+DropCapability=all
+{# The HTTP prober opens ordinary sockets and needs no capability back. The ICMP
+   prober would want CAP_NET_RAW; it is not used. #}
+# The image's default command names a config path this role does not use, so it
+# is replaced wholesale.
+Exec=--config.file={{ blackbox_exporter_config_dir }}/blackbox.yml \
+  --web.listen-address={{ blackbox_exporter_listen_address }}
+# The directory, not the file: a single-file bind mount pins an inode, so
+# Ansible's atomic write leaves the container reading the old config until it is
+# recreated — the trap the compose deployment had to work around. Mounting the
+# directory means a restart is enough. :Z relabels it container_file_t on each
+# start, so it never depends on the host's ambient label surviving an SELinux
+# relabel (as /etc/caddy's did not).
+Volume={{ blackbox_exporter_config_dir }}:{{ blackbox_exporter_config_dir }}:ro,Z
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

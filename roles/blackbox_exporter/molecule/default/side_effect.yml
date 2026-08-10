@@ -1,7 +1,8 @@
 ---
-# Regression guard for the single-file bind-mount trap (mechanism in the role's
-# tasks): a config change on an already-running container must recreate it, or the
-# stale inode mount keeps the old config. verify asserts the new module took effect.
+# A config change on an already-running exporter must reach it. The quadlet mounts
+# the config DIRECTORY, so the single-file inode trap the compose deployment had
+# is gone — but the exporter still reads its config only at start, so the role's
+# restart handler is what applies it. verify asserts the new module took effect.
 - name: Change the blackbox config on the running exporter
   hosts: all
   tasks:
@@ -24,6 +25,3 @@
         blackbox_exporter_modules: >-
           {{ blackbox_exporter_real.blackbox_exporter_modules
              | combine({'http_2xx_sentinel': {'prober': 'http'}}) }}
-        # The nested incus container cannot load an AppArmor profile.
-        blackbox_exporter_security_opt_extra:
-          - apparmor=unconfined
