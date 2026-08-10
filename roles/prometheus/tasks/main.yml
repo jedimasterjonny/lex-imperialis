@@ -1,4 +1,23 @@
 ---
+# The other half of this pair lives in another role on another host, so nothing
+# else can catch it coming apart. A receiver with no out-of-order window is not a
+# broken receiver — it accepts live samples perfectly and silently refuses every
+# sample an agent replays from its WAL, because by then the head has compacted
+# past them. That is precisely the outage the WAL exists to cover, so the fault
+# surfaces only during an incident and only as a hole in the history afterwards.
+- name: A remote-write receiver has an out-of-order ingestion window
+  ansible.builtin.assert:
+    that:
+      - prometheus_out_of_order_time_window | length > 0
+    fail_msg: >-
+      prometheus_remote_write_receiver is on but prometheus_out_of_order_time_window
+      is empty, so any backlog an agent replays after an outage is rejected as out
+      of bounds and lost without an error. Set it to at least the writing agent's
+      prometheus_agent_retention_max_time — a value this assert cannot check for
+      you, since that half lives in another role on another host.
+    quiet: true
+  when: prometheus_remote_write_receiver
+
 - name: Create the project directory
   ansible.builtin.file:
     path: "{{ prometheus_project_dir }}"
