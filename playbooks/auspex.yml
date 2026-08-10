@@ -1,0 +1,114 @@
+---
+- name: Configure auspex
+  hosts: auspex
+  vars:
+    common_hostname: auspex
+    # Match jonny's uid on the NAS (administratum: 1026; gid 100/users already
+    # matches) so NFS ownership reconciles, as on every other host — held here
+    # even though auspex mounts no shares, so adding one later needs no uid
+    # migration on a host that already owns files.
+    common_user_uid: 1026
+    # Staggered autoupdate: after solar's Monday canary and before rogue-trader's
+    # Wednesday, so one bad update can't take the fleet in a night.
+    autoupdate_oncalendar: "Tue *-*-* 03:00:00"
+    # Bind the exporters to the LAN, like solar and scholam, even though the only
+    # scraper is the agent on this host. Loopback would keep them off the network
+    # entirely, but it also makes their instance label `localhost:9100`, which is
+    # what every alert about this host would then be titled — ambiguous on a
+    # five-host fleet at the moment it matters most. The exposure is the one the
+    # fleet already accepts on two other hosts.
+    node_exporter_listen_address: "{{ ansible_facts['default_ipv4']['address'] }}:9100"
+    cadvisor_listen_ip: "{{ ansible_facts['default_ipv4']['address'] }}"
+    # Openings beyond the ssh baseline the firewalld role already carries. 9093 for
+    # the alerts Prometheus on the NAS pushes to Alertmanager here; 9100 and 8080
+    # for the exporters above, which bind the LAN address and so need the port even
+    # though their scraper is local.
+    firewalld_ports:
+      - 9093/tcp
+      - 9100/tcp
+      - 8080/tcp
+    # Where the agent forwards everything it scrapes. The TSDB stays on the NAS:
+    # agent mode keeps no local storage, and the alert rules stay with the TSDB
+    # because agent mode rejects rule_files outright.
+    prometheus_agent_remote_write_url: http://administratum:9090/api/v1/write
+    # Set here rather than left on the role default so both halves of the pair are
+    # visible in the two plays that own them: administratum's
+    # prometheus_out_of_order_time_window must be at least this, or a backlog
+    # replayed after an outage is refused as out of bounds. Change one, change the
+    # other.
+    prometheus_agent_retention_max_time: 4h
+    # The fleet's exporters, moved here from administratum unchanged so the series
+    # keep their labels across the cutover. rogue-trader by its WireGuard address,
+    # as before: it is reachable over the tunnel, not by LAN name.
+    prometheus_agent_node_targets:
+      - solar:9100
+      - scholam:9100
+      - auspex:9100
+      - 192.168.3.4:9100
+    prometheus_agent_cadvisor_targets:
+      - solar:8080
+      - auspex:8080
+      - 192.168.3.4:8080
+    # Scraped, not routed to — an agent routes nothing. By hostname rather than
+    # loopback, for the reason the exporters bind the LAN above: this scrape is
+    # what yields up{job="alertmanager"} and the delivery counters
+    # AlertmanagerNotificationsFailing reads, and `localhost:9093` would title
+    # every one of those alerts with a name four other hosts could equally answer
+    # to. The old NAS-side scrape named `solar:9093`; this keeps that identity.
+    # 9093 is already open for the alerts the NAS pushes, so it costs no exposure.
+    prometheus_agent_alertmanager_targets:
+      - auspex:9093
+    # Blackbox-probe via the co-located exporter. Each entry pairs a prober module
+    # with the targets to run it against; the same module may appear more than once.
+    prometheus_agent_probe_targets:
+      # The public sites end-to-end: each a 2xx through the Cloudflare/Firebase edge
+      # (redirect zones answer 3xx first, which http_2xx follows), plus per-site TLS
+      # expiry.
+      - module: http_2xx
+        targets:
+          - https://jonnyoc.uk
+          - https://www.jonnyoc.uk
+          - https://emmasedit.com
+          - https://www.emmasedit.com
+          - https://jonnyoc.co.uk
+          - https://www.jonnyoc.co.uk
+      # solar's containerised services, over the LAN — the liveness alert for each,
+      # since their podman healthchecks only restart them. Reached through caddy,
+      # which is both the path they are actually used over and the only one they
+      # publish. Keep this list in step with solar's arr_enabled: an app enabled
+      # there but missing here has no alert, and one removed there but left here
+      # fires ProbeDown forever. alertmanager is absent because it is scraped
+      # above; flaresolverr because nothing off the host can reach it.
+      - module: http_2xx
+        targets:
+          - https://sonarr.{{ caddy_domain }}/ping
+          - https://radarr.{{ caddy_domain }}/ping
+          - https://lidarr.{{ caddy_domain }}/ping
+          - https://prowlarr.{{ caddy_domain }}/ping
+          - https://beets.{{ caddy_domain }}/
+          - https://grafana.{{ caddy_domain }}/api/health
+          # homepage serves the apex, so this probes caddy itself on the way through.
+          - https://{{ caddy_domain }}/api/healthcheck
+          # plex is host-networked and not proxied, so it is probed on its own port.
+          - http://solar:32400/identity
+      # transmission's RPC is auth-walled, so it answers 401, not 200 — which still
+      # proves the daemon is serving.
+      - module: http_2xx_or_401
+        targets:
+          - https://transmission.{{ caddy_domain }}/transmission/web/
+  roles:
+    - common
+    - sshd
+    - firewalld
+    - podman
+    - autoupdate
+    - btrfsmaintenance
+    - node_exporter
+    - cadvisor
+    # blackbox_exporter before prometheus_agent so the exporter is up when the
+    # blackbox job first scrapes it — the agent tolerates a briefly-down target,
+    # so this is ordering for tidiness, not a hard dependency.
+    - blackbox_exporter
+    - prometheus_agent
+    - alertmanager
+    - inquisition
