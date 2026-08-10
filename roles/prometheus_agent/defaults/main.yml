@@ -1,0 +1,52 @@
+---
+# Where the agent's config is rendered, and bind-mounted read-only into the
+# container.
+prometheus_agent_config_dir: /etc/prometheus-agent
+
+# Address the agent's own web endpoint binds. Loopback by default: the only
+# scraper of the agent is the agent, and nothing off the host has any business
+# reaching it. It serves no dashboard worth exposing — agent mode has no query
+# API — so there is no reason to widen this.
+prometheus_agent_listen_address: 127.0.0.1:9090
+
+# The remote-write endpoint samples are forwarded to, e.g.
+# http://<host>:9090/api/v1/write against a Prometheus started with
+# --web.enable-remote-write-receiver (the prometheus role's
+# prometheus_remote_write_receiver).
+#
+# No default, and asserted non-empty: agent mode refuses to start without at
+# least one remote_write, so an unset value is a crash-looping container rather
+# than a degraded one.
+prometheus_agent_remote_write_url: ""
+
+# How long the WAL buffers samples the receiver has not accepted
+# (--storage.agent.retention.max-time). Set explicitly rather than left on
+# Prometheus's compiled-in default, because it is one half of a pair: the
+# receiving server's storage.tsdb.out_of_order_time_window must be at least this,
+# or a backlog replayed after an outage is refused as out of bounds and dropped
+# without an error anyone sees. A renovate digest bump could move an unpinned
+# default out from under that agreement silently. Change this and change the
+# receiver's window with it.
+prometheus_agent_retention_max_time: 4h
+
+# node_exporter scrape targets, each "host:9100".
+prometheus_agent_node_targets: []
+
+# cadvisor scrape targets, each "host:8080", scraped at 30s to match cadvisor's
+# housekeeping interval.
+prometheus_agent_cadvisor_targets: []
+
+# Alertmanager targets to scrape, each "host:9093". Scraped only — an agent
+# routes no alerts, because agent mode rejects the alerting block outright. The
+# scrape is what gives up{job="alertmanager"} and the notification counters
+# AlertmanagerNotificationsFailing reads, evaluated wherever the rules live.
+prometheus_agent_alertmanager_targets: []
+
+# Blackbox probe targets: each entry pairs a prober module with the full URLs to
+# run it against, and the same module may appear in more than one entry.
+prometheus_agent_probe_targets: []
+
+# host:port of the blackbox_exporter the blackbox job scrapes. Must match the
+# blackbox_exporter role's blackbox_exporter_listen_address — two independent
+# defaults on co-located roles, agreeing at the exporter's loopback bind.
+prometheus_agent_blackbox_address: 127.0.0.1:9115

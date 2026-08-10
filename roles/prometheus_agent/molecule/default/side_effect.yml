@@ -1,0 +1,30 @@
+---
+# A config change on an already-running agent must reach it. The quadlet mounts the
+# config DIRECTORY, so the single-file inode trap the compose deployments carried
+# does not apply here — but the agent reads its config only at start, so the role's
+# restart handler is the only thing that applies one. That is the property which
+# fails silently: a handler that stops firing leaves the host scraping the entire
+# fleet from yesterday's target list indefinitely, while converge, the idempotence
+# check, and a verify against a freshly started container all still pass.
+- name: Change the scrape config on the running agent
+  hosts: all
+  tasks:
+    - name: Re-apply prometheus_agent with an added sentinel target
+      ansible.builtin.include_role:
+        name: prometheus_agent
+      # node_targets is the change under test; the rest mirror converge and must
+      # stay, because include_role vars replace rather than merge and the defaults
+      # would drop every job verify asserts.
+      vars:
+        prometheus_agent_remote_write_url: http://127.0.0.1:19291/api/v1/write
+        prometheus_agent_node_targets:
+          - localhost:9100
+          - sentinel-regression:9100
+        prometheus_agent_cadvisor_targets:
+          - localhost:8080
+        prometheus_agent_alertmanager_targets:
+          - localhost:9093
+        prometheus_agent_probe_targets:
+          - module: http_2xx
+            targets:
+              - https://example.com
