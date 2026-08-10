@@ -24,6 +24,11 @@ services:
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
+{% if prometheus_remote_write_receiver %}
+      # /api/v1/write 404s without this, which is how verify tells it apart from
+      # a server that merely claims the flag.
+      - --web.enable-remote-write-receiver
+{% endif %}
     volumes:
       - {{ prometheus_project_dir }}/prometheus.yml:/etc/prometheus/prometheus.yml:ro
 {% if prometheus_alertmanager_targets %}
