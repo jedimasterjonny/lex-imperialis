@@ -49,14 +49,15 @@
           {{ (blackbox_exporter_loaded_config.content | from_yaml).modules }}
 
     # side_effect added this module; finding it in the LOADED config proves the
-    # recreate applied the change — a stale single-file bind mount would not.
+    # restart handler applied the change. The exporter reads its config only at
+    # start, so a changed file with no restart leaves the old modules serving.
     - name: The side-effect config change reached the running exporter
       ansible.builtin.assert:
         that:
           - "'http_2xx_sentinel:' in blackbox_exporter_loaded_config.content"
         fail_msg: >-
           The running blackbox_exporter did not pick up the config change — the
-          container was not recreated (stale single-file bind mount).
+          restart handler did not fire.
 
     # Probe the exporter's own endpoint through the module: a self-contained 2xx
     # with no external dependency, exercising the http_2xx prober end to end.
@@ -75,24 +76,32 @@
     # The checks above prove the exporter works; they can't prove its capability
     # set is minimal. Assert the posture directly so a regression that widens the
     # caps or drops the restriction fails here, not silently in production.
-    - name: Read blackbox_exporter's security posture
-      ansible.builtin.command: docker inspect blackbox_exporter
+    - name: Read blackbox-exporter's security posture
+      ansible.builtin.command: podman inspect blackbox-exporter
+      become: true
       register: blackbox_exporter_inspect
       changed_when: false
 
-    # docker inspect exposes the request (HostConfig), not podman's EffectiveCaps/
-    # BoundingCaps: CapDrop == [ALL] with an empty CapAdd is the docker equivalent
-    # of "no capabilities" (either half missing widens them). Match no-new-privileges
-    # as a substring — docker's rendering of the :true suffix is not guaranteed.
+    # This image sets no USER, so the container runs as root — which is what makes
+    # EffectiveCaps meaningful here. A non-root container's effective set is empty
+    # whatever the drop says, so asserting on it would be a check that cannot fail;
+    # asserted alongside BoundingCaps, which reflects DropCapability=all directly.
     - name: Blackbox keeps no capabilities and bars privilege escalation
       vars:
         blackbox_exporter: "{{ blackbox_exporter_inspect.stdout | from_json | first }}"
       ansible.builtin.assert:
         that:
-          - "blackbox_exporter.HostConfig.CapDrop | default([], true) | sort == ['ALL']"
-          - "blackbox_exporter.HostConfig.CapAdd | default([], true) == []"
-          - >-
-            blackbox_exporter.HostConfig.SecurityOpt | default([], true)
-            | select('search', 'no-new-privileges') | list | length > 0
-        fail_msg: "blackbox_exporter's capability or no-new-privileges posture has regressed"
+          - "blackbox_exporter.BoundingCaps | default([], true) | sort == []"
+          - "blackbox_exporter.EffectiveCaps | default([], true) | sort == []"
+          - "'no-new-privileges' in (blackbox_exporter.HostConfig.SecurityOpt | default([], true))"
+        fail_msg: "blackbox-exporter's capability or no-new-privileges posture has regressed"
         quiet: true
+
+    # The inquisition's `unpinned` class reads exactly this, and a quadlet whose
+    # Image lost its digest is a container that silently drifts on the next pull.
+    - name: The quadlet pins its image by digest
+      ansible.builtin.command: grep -E '^Image=.*@sha256:[0-9a-f]{64}$' /etc/containers/systemd/blackbox-exporter.container
+      become: true
+      register: blackbox_exporter_pin
+      changed_when: false
+      failed_when: blackbox_exporter_pin.rc != 0

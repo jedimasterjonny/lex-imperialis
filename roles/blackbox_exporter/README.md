@@ -1,35 +1,28 @@
 # blackbox_exporter
 
 Prometheus [blackbox_exporter](https://github.com/prometheus/blackbox_exporter)
-as a single Docker container, deployed from a templated compose project with
-`community.docker.docker_compose_v2`. It probes targets on demand at `/probe`;
-Prometheus drives it (the `blackbox` job in the `prometheus` role) with one
-`target=` per probed URL — the public sites and the fleet's internal services — so
-a scrape yields `probe_success` for each, plus the TLS
+as a Podman quadlet on the host network. It probes targets on demand at `/probe`;
+the co-located scraper drives it (the `blackbox` job in `prometheus_agent`) with
+one `target=` per probed URL — the public sites and the fleet's internal services
+— so a scrape yields `probe_success` for each, plus the TLS
 `probe_ssl_earliest_cert_expiry` for the HTTPS targets. This role stands up the
-exporter only — the targets and the scrape job live in `prometheus`.
+exporter only — the targets and the scrape job live with the scraper.
 
-## Target: administratum (Synology)
+## Co-location is a requirement, not a convenience
 
-Co-located with Prometheus on the NAS, and shaped by the same host, so it mirrors
-the `prometheus` role:
+The exporter proxies to whatever `target=` it is handed, so exposing it would
+hand anyone on the network an HTTP client running on this host. It binds
+`127.0.0.1:9115` and is therefore only reachable by a scraper on the same
+machine: `prometheus_agent_blackbox_address` must match
+`blackbox_exporter_listen_address`, and the two roles must land on the same host.
 
-- **docker_compose_v2, not docker_container** — the NAS has the `docker compose`
-  CLI but no Docker SDK for Python, so the module that shells out to the CLI is
-  the one that works.
-- **No `become`** — sudo needs a password there; the deploy runs as the
-  `docker`-group user, with `/usr/local/bin` prepended to `PATH` for the DSM
-  `docker`.
-- **`network_mode: host`** — the exporter resolves and routes to probe targets
-  exactly as the host does. No LAN address need enter this public repo.
-- **Loopback listen address** — the exporter proxies to any `target=` it is
-  handed, so it must not be reachable off-host. It binds `127.0.0.1:9115`, where
-  only the co-located Prometheus scrapes it.
+`Network=host` so the exporter resolves and routes to probe targets exactly as
+the host does.
 
 ## Variables
 
-- `blackbox_exporter_project_dir` — where `compose.yaml` + `blackbox.yml` are
-  written.
+- `blackbox_exporter_config_dir` — where `blackbox.yml` is written, and the
+  directory bind-mounted read-only into the container.
 - `blackbox_exporter_listen_address` — address the exporter binds `/probe` and
   `/metrics` on; loopback by default so it is not exposed on the LAN.
 - `blackbox_exporter_modules` — prober modules rendered into `blackbox.yml`. Two by
@@ -37,18 +30,23 @@ the `prometheus` role:
   2xx) and probing over IPv4: `http_2xx`, and `http_2xx_or_401`, which additionally
   accepts a `401`. The latter is for an auth-walled endpoint, where the `401` is
   itself proof the daemon is up and serving — accepting it keeps that service's
-  credentials off the exporter. Prometheus picks the module per target group; see
-  the `prometheus` role's `prometheus_probe_targets`.
-- `blackbox_exporter_security_opt_extra` — extra compose `security_opt` entries,
-  appended to the `no-new-privileges` the template hardcodes (alongside
-  `cap_drop: ALL`); empty in production.
+  credentials off the exporter. The scraper picks the module per target group; see
+  `prometheus_agent`'s `prometheus_agent_probe_targets`.
 
 ## Contract
 
-- The exporter is stateless — no data volume; only the `ro` config bind mount.
-- `cap_drop: ALL` and `no-new-privileges`: the HTTP prober opens ordinary
+- The exporter is stateless — no data volume; only the `ro,Z` config bind mount.
+- `DropCapability=all` and `NoNewPrivileges`: the HTTP prober opens ordinary
   sockets and needs no capability. (The ICMP prober would need `CAP_NET_RAW`; it
-  is not used.)
-- A changed `blackbox.yml` recreates the container. The config is bind-mounted as
-  a single file; Ansible's atomic write gives it a new inode the pinned mount
-  never sees, so only a recreate re-resolves it.
+  is not used.) The image sets no `USER`, so the container runs as root — which is
+  why `verify` asserts `EffectiveCaps` as well as `BoundingCaps`, where a non-root
+  container's effective set is empty regardless of the drop and asserting on it
+  would be a check that cannot fail.
+- The config **directory** is mounted, not the file. A single-file bind mount pins
+  an inode, so Ansible's atomic write left the container reading the old config
+  until it was recreated — the trap the compose deployment worked around. With a
+  directory mount the restart handler suffices, and since the exporter reads its
+  config only at start, that restart is what applies a change.
+- No podman healthcheck. The co-located agent scrapes it and
+  `BlackboxExporterDown` alerts on that, so a network probe already monitors it —
+  an exec check would add a restart backstop and nothing else.
