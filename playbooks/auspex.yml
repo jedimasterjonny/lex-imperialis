@@ -9,7 +9,9 @@
     # migration on a host that already owns files.
     common_user_uid: 1026
     # Staggered autoupdate: after solar's Monday canary and before rogue-trader's
-    # Wednesday, so one bad update can't take the fleet in a night.
+    # Wednesday, so one bad update can't take the fleet in a night. This is the
+    # fleet's one Debian host, so autoupdate takes its apt arm and masks both of
+    # the distribution's own timers.
     autoupdate_oncalendar: "Tue *-*-* 03:00:00"
     # Bind the exporters to the LAN, like solar and scholam, even though the only
     # scraper is the agent on this host. Loopback would keep them off the network
@@ -102,7 +104,10 @@
     - firewalld
     - podman
     - autoupdate
-    - btrfsmaintenance
+    # No btrfsmaintenance: this host's root is ext4 on the SD card, Debian has no
+    # /etc/sysconfig for the role to write into, and e2scrub_all.timer is already
+    # doing the equivalent job. The role has never been applied here, so there is
+    # no orphan to decommission by hand.
     - node_exporter
     - cadvisor
     # blackbox_exporter before prometheus_agent so the exporter is up when the
