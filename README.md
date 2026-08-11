@@ -26,7 +26,7 @@ This has a side effect I never considered before I began: having an IaC repo tha
 
 ## The Stack
 
-Tumbleweed on the Beelinks, MicroOS on the VPS, Raspberry Pi OS on the Pi, DSM on the NAS. Workloads are rootful podman quadlets, bar the NAS, where Docker Compose is what DSM offers.
+Tumbleweed on the Beelinks, MicroOS on the VPS, Raspberry Pi OS on the Pi, DSM on the NAS. The Pi breaks the pattern because openSUSE's aarch64 kernel has no RP1 PWM driver: the fan never binds and the board overheats. Workloads are rootful podman quadlets, bar the NAS, where Docker Compose is what DSM offers.
 
 Backends publish no host port at all: they sit on caddy's network and drop a snippet into `/etc/caddy/sites/`, and a DNS-01 wildcard issues their certs, so an internal service gets TLS without ever facing the internet. plex is the exception — host-networked, and reached directly. Container state is a named volume, never a host bind mount, so `podman_backup` can restic every volume to the NAS weekly.
 
