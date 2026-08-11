@@ -64,6 +64,11 @@ reports green without running one:
 - A changed role runs whichever tiers it ships — the matrix includes a role
   only when it carries that tier's scenario directory (`molecule/default` for
   incus, `molecule/hetzner` for hetzner).
+- A changed role drags in the roles that consume it through `include_role`
+  (`bin/expand-role-consumers.sh`), transitively. An engine role is exercised by
+  its consumers' scenarios, not its own, so `restic_backup` also runs
+  `home_backup` and `podman_backup`, and `stow` also runs `common` and `dev`.
+  The graph is read out of the tree, not listed anywhere.
 - Shared infra is exercised through the `motd` harness, which carries both CI
   tiers.
 - A `requirements-dev.txt`- or `Makefile`-only change stays on the free incus
