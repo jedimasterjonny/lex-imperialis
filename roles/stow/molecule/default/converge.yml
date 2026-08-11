@@ -9,7 +9,7 @@
       become: true
 
     - name: Install git for the dotfiles clone
-      community.general.zypper:
+      ansible.builtin.package:
         name: git
         state: present
       become: true
