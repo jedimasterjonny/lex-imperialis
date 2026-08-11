@@ -1,4 +1,14 @@
 ---
+# Two platforms, one per distribution the role supports. Groups rather than
+# facts, so verify can gate on group_names without gathering — and so it can
+# spell out what each distribution should have rather than recompute the role's
+# own fact-derived defaults, which would assert nothing.
 platforms:
   - name: "lex-common-incus-${MOLECULE_RUN_ID:-local}"
     image: images:opensuse/tumbleweed/cloud
+    groups:
+      - opensuse
+  - name: "lex-common-debian-${MOLECULE_RUN_ID:-local}"
+    image: images:debian/13/cloud
+    groups:
+      - debian
