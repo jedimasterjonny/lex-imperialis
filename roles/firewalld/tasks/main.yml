@@ -1,6 +1,6 @@
 ---
 - name: Install firewalld and its python bindings
-  community.general.zypper:
+  ansible.builtin.package:
     name: "{{ firewalld_packages }}"
     state: present
   become: true
