@@ -777,3 +777,867 @@ tests:
                 solar:9100 has held its CPU at 100C for 15 minutes — past the limit
                 for its class, 95C on the N150s and 80C on the Pi. Check the heatsink
                 and that the fan is spinning.
+
+  # InstanceDown and BlackboxExporterDown split one failure mode, and the split is
+  # only correct as a pair. Every blackbox target is a probe URL scraped from the one
+  # co-located exporter, so an exporter outage takes all of them down at once: without
+  # InstanceDown's job exclusion that is one critical per probed URL, and without the
+  # max() it is one more on top. Both halves are asserted on the same input.
+  - interval: 1m
+    name: an unreachable blackbox exporter raises one alert, not one per probe target
+    input_series:
+      - series: 'up{job="blackbox",instance="https://jonnyoc.uk"}'
+        values: "0x20"
+      - series: 'up{job="blackbox",instance="https://sonarr.home.arpa/ping"}'
+        values: "0x20"
+      - series: 'up{job="blackbox",instance="https://transmission.home.arpa/transmission/web/"}'
+        values: "0x20"
+      # A healthy host alongside, so the silence below is the exclusion doing its work
+      # rather than the rule having nothing to match at all.
+      - series: 'up{job="node",instance="solar:9100"}'
+        values: "1x20"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: BlackboxExporterDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "the blackbox exporter is unreachable — all probing is blind"
+              description: "Prometheus cannot scrape the blackbox exporter, so nothing is being probed — not the public sites, not the containerised services."
+      - eval_time: 10m
+        alertname: InstanceDown
+        exp_alerts: []
+      # The first evaluation, where the exporter has just gone unreachable and the
+      # rule is pending. A 5m for: is exactly one step of this file's 5m evaluation
+      # interval, so no on-grid time can tell it from a shorter one — what this pins
+      # is that the wait exists at all, which is what rides out a missed scrape.
+      - eval_time: 0m
+        alertname: BlackboxExporterDown
+        exp_alerts: []
+
+  # The other side of that split. A host that stops answering is InstanceDown's to
+  # raise, and one blackbox target failing while its siblings answer is not an
+  # exporter outage at all — which is what the max() is for. Written as min(), or as
+  # a bare up{job="blackbox"} == 0, this case pages about the exporter every time a
+  # single probe scrape times out.
+  - interval: 1m
+    name: a downed host alerts while a single blackbox scrape blip does not
+    input_series:
+      - series: 'up{job="node",instance="rogue-trader:9100"}'
+        values: "0x20"
+      - series: 'up{job="blackbox",instance="https://jonnyoc.uk"}'
+        values: "0x20"
+      - series: 'up{job="blackbox",instance="https://emmasedit.com"}'
+        values: "1x20"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: InstanceDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: node
+              instance: rogue-trader:9100
+            exp_annotations:
+              summary: "rogue-trader:9100 (node) is down"
+              description: "rogue-trader:9100 has been unreachable for over 5 minutes."
+      - eval_time: 10m
+        alertname: BlackboxExporterDown
+        exp_alerts: []
+      # Pending at the first evaluation; a 5m for: is one evaluation step, so this
+      # pins that the wait exists, not its length.
+      - eval_time: 0m
+        alertname: InstanceDown
+        exp_alerts: []
+
+  # ProbeDown reads probe_success — the prober module's own verdict — rather than the
+  # status code, because targets legitimately answer other codes: transmission's RPC
+  # is auth-walled and answers 401 under http_2xx_or_401, and the redirect zones
+  # answer 3xx before the 2xx. Keyed on the code instead, this case pages about a
+  # target working exactly as designed.
+  - interval: 1m
+    name: an auth-walled target answering its module stays silent while a dead one alerts
+    input_series:
+      - series: 'probe_success{job="blackbox",instance="https://transmission.home.arpa/transmission/web/",module="http_2xx_or_401"}'
+        values: "1x20"
+      - series: 'probe_success{job="blackbox",instance="https://sonarr.home.arpa/ping",module="http_2xx"}'
+        values: "0x20"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ProbeDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: blackbox
+              instance: https://sonarr.home.arpa/ping
+              module: http_2xx
+            exp_annotations:
+              summary: "probe of https://sonarr.home.arpa/ping is failing"
+              description: "The blackbox probe of https://sonarr.home.arpa/ping has not answered with an accepted status for over 5 minutes."
+      # Pending at the first evaluation, which is what rides out a deploy; a 5m for:
+      # is one evaluation step, so this pins that the wait exists, not its length.
+      - eval_time: 0m
+        alertname: ProbeDown
+        exp_alerts: []
+
+  # The `> 0` conjunct is the whole rule. Blackbox exports a zero expiry both for a
+  # failed probe and for a successful non-TLS one, and plex is probed over plain
+  # HTTP — so `0 - time()` is hugely negative, satisfies the threshold, and without
+  # the guard this fires forever on a target that has no certificate to expire.
+  - interval: 5m
+    name: a stalled renewal alerts while a plain-HTTP target and a fresh cert do not
+    input_series:
+      # Ten days out: a renewal has silently stalled, with time to intervene by hand.
+      - series: 'probe_ssl_earliest_cert_expiry{job="blackbox",instance="https://jonnyoc.uk"}'
+        values: "864000x20"
+      # Thirty days out: the ordinary state of an auto-renewing cert.
+      - series: 'probe_ssl_earliest_cert_expiry{job="blackbox",instance="https://emmasedit.com"}'
+        values: "2592000x20"
+      # plex, probed over plain HTTP: no certificate, so blackbox reports zero.
+      - series: 'probe_ssl_earliest_cert_expiry{job="blackbox",instance="http://solar:32400/identity"}'
+        values: "0x20"
+    alert_rule_test:
+      - eval_time: 1h5m
+        alertname: ProbeSSLCertExpiringSoon
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: blackbox
+              instance: https://jonnyoc.uk
+            exp_annotations:
+              summary: "TLS certificate for https://jonnyoc.uk expiring soon"
+              description: "The TLS certificate served by https://jonnyoc.uk expires in under 14 days — auto-renewal may have stalled."
+      - eval_time: 55m
+        alertname: ProbeSSLCertExpiringSoon
+        exp_alerts: []
+
+  # The three backup *Failed rules share one shape and one risk: each reads a metric
+  # family written by a different role's script, so a rule naming a family nothing
+  # publishes is silent forever and indistinguishable from a healthy fleet — the trap
+  # ScheduledJobMetricMissing exists for, on the very rules it protects. One case
+  # reads all three, each failing on a host that actually runs it.
+  - interval: 5m
+    name: each backup family's failure raises its own alert and no other
+    input_series:
+      - series: 'podman_backup_success{job="node",instance="solar:9100"}'
+        values: "0x10"
+      - series: 'home_backup_success{job="node",instance="scholam:9100"}'
+        values: "0x10"
+      - series: 'wordpress_db_dump_success{job="node",instance="rogue-trader:9100"}'
+        values: "0x10"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: PodmanBackupFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: node
+              instance: solar:9100
+            exp_annotations:
+              summary: "podman backup failed on solar:9100"
+              description: "The last podman volume backup run on solar:9100 failed."
+      - eval_time: 20m
+        alertname: HomeBackupFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: node
+              instance: scholam:9100
+            exp_annotations:
+              summary: "home backup failed on scholam:9100"
+              description: "The last home directory backup run on scholam:9100 failed."
+      - eval_time: 20m
+        alertname: WordpressDbDumpFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: node
+              instance: rogue-trader:9100
+            exp_annotations:
+              summary: "WordPress database dump failed on rogue-trader:9100"
+              description: "The last WordPress database dump on rogue-trader:9100 failed — the DR fallback for a broken in-place upgrade is now stale."
+      # Inside for:, so all three are pending — one assertion pins the window they share.
+      - eval_time: 10m
+        alertname: PodmanBackupFailed
+        exp_alerts: []
+
+  # Every *Overdue rule is a threshold sitting a grace period above the cadence of the
+  # timer that writes its gauge, and that grace is the only thing between a useful
+  # alert and a weekly false positive. Here each gauge holds the age a healthy run
+  # leaves it at, so the case fails the moment a threshold is tightened onto the
+  # cadence itself.
+  #
+  # The gauges are negative because promtool's clock starts at zero: -604800 places
+  # the last successful run seven days before the test begins, which pins an eight-day
+  # threshold without simulating eight days of scrapes.
+  - interval: 5m
+    name: every scheduled job at its healthy cadence stays silent
+    input_series:
+      # Weekly timers, a day inside their thresholds.
+      - series: 'podman_backup_last_run_timestamp_seconds{job="node",instance="solar:9100"}'
+        values: "-604800x20"
+      - series: 'home_backup_last_run_timestamp_seconds{job="node",instance="solar:9100"}'
+        values: "-604800x20"
+      - series: 'autoupdate_last_run_timestamp_seconds{job="node",instance="solar:9100"}'
+        values: "-604800x20"
+      # Daily.
+      - series: 'wordpress_db_dump_last_run_timestamp_seconds{job="node",instance="rogue-trader:9100"}'
+        values: "-86400x20"
+      # Six-hourly.
+      - series: 'wordpress_update_check_last_run_timestamp_seconds{job="node",instance="rogue-trader:9100"}'
+        values: "-21600x20"
+      # Every fifteen minutes.
+      - series: 'arbites_last_run_timestamp_seconds{job="node",instance="scholam:9100"}'
+        values: "-900x20"
+    alert_rule_test:
+      - eval_time: 1h5m
+        alertname: PodmanBackupOverdue
+        exp_alerts: []
+      - eval_time: 1h5m
+        alertname: HomeBackupOverdue
+        exp_alerts: []
+      - eval_time: 1h5m
+        alertname: AutoupdateOverdue
+        exp_alerts: []
+      - eval_time: 1h5m
+        alertname: WordpressDbDumpOverdue
+        exp_alerts: []
+      - eval_time: 1h5m
+        alertname: WordpressUpdateCheckOverdue
+        exp_alerts: []
+      - eval_time: 1h5m
+        alertname: ArbitesStale
+        exp_alerts: []
+
+  # wordpress-cron's timer fires every five minutes and its threshold is an hour, both
+  # inside the window these tests run in — so unlike the weekly gauges above, a
+  # constant value would drift past the threshold on the clock alone and prove nothing.
+  # Modelled as it behaves: a gauge that advances with time is never overdue, however
+  # long the test runs.
+  - interval: 5m
+    name: a five-minutely job that keeps firing is never overdue
+    input_series:
+      - series: 'wordpress_cron_last_run_timestamp_seconds{job="node",instance="rogue-trader:9100"}'
+        values: "0+300x30"
+    alert_rule_test:
+      - eval_time: 2h5m
+        alertname: WordpressCronOverdue
+        exp_alerts: []
+
+  # The mirror of the healthy case: every gauge just past its own threshold, so each
+  # rule fires for the job that has genuinely stopped. All seven share a 1h for:,
+  # and each is asserted separately at 55m rather than once for the set — the shared
+  # window is seven independent copies of the same literal, so one of them shortened
+  # is exactly the edit a single assertion would wave through.
+  - interval: 5m
+    name: each scheduled job past its grace alerts
+    input_series:
+      - series: 'podman_backup_last_run_timestamp_seconds{job="node",instance="solar:9100"}'
+        values: "-694800x20"
+      - series: 'home_backup_last_run_timestamp_seconds{job="node",instance="solar:9100"}'
+        values: "-694800x20"
+      - series: 'autoupdate_last_run_timestamp_seconds{job="node",instance="solar:9100"}'
+        values: "-781200x20"
+      - series: 'wordpress_db_dump_last_run_timestamp_seconds{job="node",instance="rogue-trader:9100"}'
+        values: "-176400x20"
+      - series: 'wordpress_update_check_last_run_timestamp_seconds{job="node",instance="rogue-trader:9100"}'
+        values: "-90000x20"
+      - series: 'wordpress_cron_last_run_timestamp_seconds{job="node",instance="rogue-trader:9100"}'
+        values: "-7200x20"
+      - series: 'arbites_last_run_timestamp_seconds{job="node",instance="scholam:9100"}'
+        values: "-10800x20"
+    alert_rule_test:
+      - eval_time: 1h5m
+        alertname: PodmanBackupOverdue
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: solar:9100
+            exp_annotations:
+              summary: "podman backup overdue on solar:9100"
+              description: "solar:9100 has not run a podman volume backup in over 8 days."
+      - eval_time: 1h5m
+        alertname: HomeBackupOverdue
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: solar:9100
+            exp_annotations:
+              summary: "home backup overdue on solar:9100"
+              description: "solar:9100 has not run a home directory backup in over 8 days."
+      - eval_time: 1h5m
+        alertname: AutoupdateOverdue
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: solar:9100
+            exp_annotations:
+              summary: "unattended update overdue on solar:9100"
+              description: "solar:9100 has not completed an unattended update in over 9 days."
+      - eval_time: 1h5m
+        alertname: WordpressDbDumpOverdue
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: rogue-trader:9100
+            exp_annotations:
+              summary: "WordPress database dump overdue on rogue-trader:9100"
+              description: "rogue-trader:9100 has not produced a WordPress database dump in over 2 days."
+      - eval_time: 1h5m
+        alertname: WordpressUpdateCheckOverdue
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: rogue-trader:9100
+            exp_annotations:
+              summary: "WordPress update check overdue on rogue-trader:9100"
+              description: "rogue-trader:9100 has not completed a WordPress update check in over a day."
+      - eval_time: 1h5m
+        alertname: WordpressCronOverdue
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: rogue-trader:9100
+            exp_annotations:
+              summary: "WordPress cron overdue on rogue-trader:9100"
+              description: "rogue-trader:9100 has not run WordPress cron in over an hour — scheduled posts and tasks have stalled."
+      - eval_time: 1h5m
+        alertname: ArbitesStale
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: scholam:9100
+            exp_annotations:
+              summary: "fleet reconcile stale on scholam:9100"
+              description: "scholam:9100 has not completed a fleet reconcile in over 2 hours."
+      # Every gauge above is already past its threshold at the first evaluation, so
+      # these seven are the 1h for: and nothing else.
+      - eval_time: 55m
+        alertname: PodmanBackupOverdue
+        exp_alerts: []
+      - eval_time: 55m
+        alertname: HomeBackupOverdue
+        exp_alerts: []
+      - eval_time: 55m
+        alertname: AutoupdateOverdue
+        exp_alerts: []
+      - eval_time: 55m
+        alertname: WordpressDbDumpOverdue
+        exp_alerts: []
+      - eval_time: 55m
+        alertname: WordpressUpdateCheckOverdue
+        exp_alerts: []
+      - eval_time: 55m
+        alertname: WordpressCronOverdue
+        exp_alerts: []
+      - eval_time: 55m
+        alertname: ArbitesStale
+        exp_alerts: []
+
+  # arbites is the unattended path from main to the fleet: when it fails, every merged
+  # change stops arriving and nothing else says so — the fleet keeps serving the last
+  # good apply, indefinitely and quietly. 15m is one timer cycle, so this lands on the
+  # first run that does not recover.
+  - interval: 5m
+    name: a failed fleet reconcile alerts
+    input_series:
+      - series: 'arbites_success{job="node",instance="scholam:9100"}'
+        values: "0x10"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: ArbitesFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: node
+              instance: scholam:9100
+            exp_annotations:
+              summary: "fleet reconcile failed on scholam:9100"
+              description: "The last unattended fleet reconcile on scholam:9100 failed — main is no longer reaching the fleet."
+      - eval_time: 10m
+        alertname: ArbitesFailed
+        exp_alerts: []
+
+  # wp-cron rewrites its metric every five minutes, so a single failed cycle clears
+  # itself; the 15m for: is what tells that apart from a database that has actually
+  # gone away. Evaluated at 10m, while the third failing sample is still the latest —
+  # past 15m the series has recovered and `== 0` is an empty vector, which would hold
+  # for a rule with no for: at all.
+  - interval: 5m
+    name: one failed wp-cron cycle is still only pending when the next runs
+    input_series:
+      - series: 'wordpress_cron_success{job="node",instance="rogue-trader:9100"}'
+        values: "0x2 1x20"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: WordpressCronFailed
+        exp_alerts: []
+
+  - interval: 5m
+    name: three failed wp-cron cycles alert
+    input_series:
+      - series: 'wordpress_cron_success{job="node",instance="rogue-trader:9100"}'
+        values: "0x10"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: WordpressCronFailed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: rogue-trader:9100
+            exp_annotations:
+              summary: "WordPress cron failed on rogue-trader:9100"
+              description: "The last WordPress cron run on rogue-trader:9100 errored — the database is unreachable or wp-cli otherwise failed."
+
+  # The update check runs six-hourly and holds success=0 constant until its next run,
+  # so any for: shorter than that interval fires on a single wordpress.org blip. 12h
+  # spans two checks: the first failure is still only pending when the second lands.
+  - interval: 5m
+    name: one failed six-hourly update check is still pending when the next runs
+    input_series:
+      - series: 'wordpress_update_check_success{job="node",instance="rogue-trader:9100"}'
+        values: "0x72 1x80"
+    alert_rule_test:
+      - eval_time: 6h
+        alertname: WordpressUpdateCheckFailed
+        exp_alerts: []
+
+  - interval: 5m
+    name: an update check failing across two runs alerts
+    input_series:
+      - series: 'wordpress_update_check_success{job="node",instance="rogue-trader:9100"}'
+        values: "0x150"
+    alert_rule_test:
+      - eval_time: 12h5m
+        alertname: WordpressUpdateCheckFailed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: rogue-trader:9100
+            exp_annotations:
+              summary: "WordPress update check failed on rogue-trader:9100"
+              description: "The last WordPress update check on rogue-trader:9100 errored — pending core, plugin, theme, or translation updates may be missed."
+
+  # WordPress applies minor core releases on its own twice-daily cadence, so a pending
+  # count is the ordinary state for hours at a time. The 24h for: is what keeps this
+  # rule about the updates that need a hand — a major, or anything not opted into
+  # auto-update — rather than about WordPress's own backlog between runs.
+  - interval: 5m
+    name: an update WordPress applies itself does not alert
+    input_series:
+      - series: 'wordpress_updates_available{job="node",instance="rogue-trader:9100",type="plugin"}'
+        values: "1x240 0x20"
+    alert_rule_test:
+      - eval_time: 20h
+        alertname: WordpressUpdateAvailable
+        exp_alerts: []
+
+  - interval: 5m
+    name: an update standing past a day alerts
+    input_series:
+      - series: 'wordpress_updates_available{job="node",instance="rogue-trader:9100",type="core"}'
+        values: "2x300"
+    alert_rule_test:
+      - eval_time: 24h5m
+        alertname: WordpressUpdateAvailable
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: rogue-trader:9100
+              type: core
+            exp_annotations:
+              summary: "WordPress core update available on rogue-trader:9100"
+              description: "2 core update(s) are pending on rogue-trader:9100 — apply via wp-cli or wp-admin."
+      - eval_time: 23h55m
+        alertname: WordpressUpdateAvailable
+        exp_alerts: []
+
+  # The fstype exclusion is what keeps this rule about disks: a tmpfs at 99% is the
+  # ordinary state of /run and an overlay is a container's own layer, so without it
+  # every host pages daily and the one real alert is lost among them.
+  - interval: 5m
+    name: a filling disk alerts while a full tmpfs and a healthy disk do not
+    input_series:
+      - series: 'node_filesystem_avail_bytes{job="node",instance="solar:9100",mountpoint="/",fstype="btrfs",device="/dev/sda2"}'
+        values: "5x20"
+      - series: 'node_filesystem_size_bytes{job="node",instance="solar:9100",mountpoint="/",fstype="btrfs",device="/dev/sda2"}'
+        values: "100x20"
+      - series: 'node_filesystem_avail_bytes{job="node",instance="solar:9100",mountpoint="/home",fstype="btrfs",device="/dev/sda3"}'
+        values: "50x20"
+      - series: 'node_filesystem_size_bytes{job="node",instance="solar:9100",mountpoint="/home",fstype="btrfs",device="/dev/sda3"}'
+        values: "100x20"
+      - series: 'node_filesystem_avail_bytes{job="node",instance="solar:9100",mountpoint="/run",fstype="tmpfs",device="tmpfs"}'
+        values: "1x20"
+      - series: 'node_filesystem_size_bytes{job="node",instance="solar:9100",mountpoint="/run",fstype="tmpfs",device="tmpfs"}'
+        values: "100x20"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: FilesystemSpaceLow
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: solar:9100
+              mountpoint: /
+              fstype: btrfs
+              device: /dev/sda2
+            exp_annotations:
+              summary: "low disk space on solar:9100:/"
+              description: "/ on solar:9100 has under 10% free."
+      - eval_time: 10m
+        alertname: FilesystemSpaceLow
+        exp_alerts: []
+
+  # 15m is sized to the pressure spikes that are routine on these boxes — a build, the
+  # weekly zypper dup, a backup run — so a ten-minute dip must ride out while a host
+  # that stays under its headroom alerts. Both are here on one input: at 20m the
+  # spiking host has recovered and the sustained one fires, and at 10m neither has
+  # cleared the window yet.
+  - interval: 5m
+    name: a memory spike rides out while sustained pressure alerts
+    input_series:
+      - series: 'node_memory_MemAvailable_bytes{job="node",instance="solar:9100"}'
+        values: "5x2 50x20"
+      - series: 'node_memory_MemTotal_bytes{job="node",instance="solar:9100"}'
+        values: "100x30"
+      - series: 'node_memory_MemAvailable_bytes{job="node",instance="scholam:9100"}'
+        values: "5x30"
+      - series: 'node_memory_MemTotal_bytes{job="node",instance="scholam:9100"}'
+        values: "100x30"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: MemoryLow
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: scholam:9100
+            exp_annotations:
+              summary: "low memory on scholam:9100"
+              description: "scholam:9100 has under 10% memory available."
+      - eval_time: 10m
+        alertname: MemoryLow
+        exp_alerts: []
+
+  # 30m rides out a clock stepping after a reboot or a brief loss of the NTP server,
+  # so only a host that has genuinely stopped syncing alerts — a shorter window pages
+  # every time a host comes back up.
+  - interval: 5m
+    name: a brief resync rides out while a host that stops syncing alerts
+    input_series:
+      - series: 'node_timex_sync_status{job="node",instance="scholam:9100"}'
+        values: "0x5 1x20"
+      - series: 'node_timex_sync_status{job="node",instance="solar:9100"}'
+        values: "0x20"
+    alert_rule_test:
+      - eval_time: 35m
+        alertname: ClockNotSynchronised
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: solar:9100
+            exp_annotations:
+              summary: "clock not synchronised on solar:9100"
+              description: "solar:9100 has had no NTP time sync for 30 minutes — clock drift can break TLS validation and log correlation."
+      - eval_time: 25m
+        alertname: ClockNotSynchronised
+        exp_alerts: []
+
+  # Two rules on one counter, and three properties that only hold together.
+  # ServiceRestartStorm excludes wireguard.service so a dead tunnel raises one alert
+  # rather than two differently-named ones — group_by is on alertname, so the
+  # duplicate would page twice for one fault. WireguardTunnelDown names that fault
+  # instead of reporting "a unit". And both are gated on the host having been up for
+  # 15 minutes, because the counter zeroes at boot and dependency-ordered units
+  # restart a few times on the way up — without the gate every reboot pages.
+  #
+  # node_boot_time_seconds is zero, so the host booted exactly when the test started:
+  # the 10m evaluation is still inside that boot, and the 25m one is a host that has
+  # settled and is flapping anyway. Both counters are already well past their
+  # thresholds at 10m, so the gate is the only thing holding the alerts back there.
+  - interval: 1m
+    name: a flapping unit and a flapping tunnel each raise only their own alert
+    input_series:
+      - series: 'node_systemd_service_restart_total{job="node",instance="solar:9100",name="caddy.service"}'
+        values: "0+1x40"
+      - series: 'node_systemd_service_restart_total{job="node",instance="solar:9100",name="wireguard.service"}'
+        values: "0+1x40"
+      - series: 'node_boot_time_seconds{job="node",instance="solar:9100"}'
+        values: "0x40"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ServiceRestartStorm
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: WireguardTunnelDown
+        exp_alerts: []
+      - eval_time: 25m
+        alertname: ServiceRestartStorm
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: solar:9100
+              name: caddy.service
+            exp_annotations:
+              summary: "caddy.service is restarting repeatedly on solar:9100"
+              description: "caddy.service on solar:9100 auto-restarted more than 3 times in 15 minutes."
+      - eval_time: 25m
+        alertname: WireguardTunnelDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: node
+              instance: solar:9100
+              name: wireguard.service
+            exp_annotations:
+              summary: "the wireguard tunnel is down on solar:9100"
+              description: "wireguard auto-restarted more than once in 15 minutes — it cannot reach the internet through wg0, so the arr stack has no egress."
+
+  # The catch-all, whose whole risk is its exclusion roster: eight oneshots are
+  # excluded *because* each has a bespoke *Failed rule carrying a richer description
+  # and the right severity, and group_by is on alertname, so a name left in would
+  # page twice for one failed backup. All eight fail at once here alongside an
+  # ordinary unit, so a name dropped from the regex surfaces as a second alert in
+  # this case rather than as a duplicate page months later. No host runs all eight —
+  # the roster keys on the unit name and the instance is incidental, so one host
+  # keeps the "exactly one alert" assertion legible.
+  - interval: 5m
+    name: the eight oneshots with their own rules raise no catch-all alert
+    input_series:
+      - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="arbites.service",state="failed"}'
+        values: "1x10"
+      - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="inquisition.service",state="failed"}'
+        values: "1x10"
+      - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="podman-backup.service",state="failed"}'
+        values: "1x10"
+      - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="home-backup.service",state="failed"}'
+        values: "1x10"
+      - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="autoupdate.service",state="failed"}'
+        values: "1x10"
+      - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="wordpress-cron.service",state="failed"}'
+        values: "1x10"
+      - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="wordpress-db-dump.service",state="failed"}'
+        values: "1x10"
+      - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="wordpress-update-check.service",state="failed"}'
+        values: "1x10"
+      - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="caddy.service",state="failed"}'
+        values: "1x10"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: SystemdUnitFailed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: solar:9100
+              name: caddy.service
+              state: failed
+            exp_annotations:
+              summary: "caddy.service has failed on solar:9100"
+              description: "The systemd unit caddy.service on solar:9100 is in the failed state and has not recovered."
+      # Inside for:, which rides out a unit that fails and is restarted by its own
+      # Restart= policy.
+      - eval_time: 10m
+        alertname: SystemdUnitFailed
+        exp_alerts: []
+
+  # Discord is the only receiver that carries alerts, and the Watchdog cannot see it
+  # fail: the deadman routes to its own receiver, so delivery to Discord can be broken
+  # while the heartbeat stays green. The integration selector keeps this rule on that
+  # receiver rather than on the deadman's webhook, whose failure the deadman already
+  # reports by going silent.
+  - interval: 1m
+    name: failed discord deliveries alert while the deadman webhook's do not
+    input_series:
+      - series: 'alertmanager_notifications_failed_total{job="alertmanager",instance="auspex:9093",integration="discord",reason="clientError"}'
+        values: "0+1x40"
+      - series: 'alertmanager_notifications_failed_total{job="alertmanager",instance="auspex:9093",integration="webhook",reason="clientError"}'
+        values: "0+1x40"
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: AlertmanagerNotificationsFailing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: alertmanager
+              instance: auspex:9093
+              integration: discord
+              reason: clientError
+            exp_annotations:
+              summary: "alertmanager cannot deliver notifications to discord"
+              description: "Alertmanager on auspex:9093 failed to deliver to Discord (clientError) — alerts may not be reaching the operator."
+      # The counter has already risen by the first evaluation that can see two
+      # samples, so the rule is active here and pending. As with the probe rules
+      # above, a 5m for: is one step of this file's evaluation interval and no
+      # on-grid time separates it from a shorter one; this pins that the wait is
+      # there, which is what makes the alert latency rather than suppression.
+      - eval_time: 5m
+        alertname: AlertmanagerNotificationsFailing
+        exp_alerts: []
+
+  # A counter that has stopped rising is a delivery failure already healed: no nflog
+  # entry is written for a failed send, so the group is re-attempted at the next
+  # group_interval. Keyed on the raw total rather than the increase, this rule would
+  # never stop firing after the fleet's first transient blip.
+  - interval: 1m
+    name: a delivery failure that has stopped recurring does not alert
+    input_series:
+      - series: 'alertmanager_notifications_failed_total{job="alertmanager",instance="auspex:9093",integration="discord",reason="clientError"}'
+        values: "12x40"
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: AlertmanagerNotificationsFailing
+        exp_alerts: []
+
+  # The two ways an unattended Prometheus deploy fails, written to be complementary
+  # rather than overlapping: config or rules that do not parse are rejected at reload,
+  # while rules that parse but error at evaluation reload clean and simply stop
+  # producing series. Each case asserts the other rule stays silent — a rule that
+  # fired on both faults would say the wrong thing about half of them, and both are
+  # silent by nature, so nothing else would correct it.
+  - interval: 1m
+    name: rules that fail to evaluate alert without implicating the config reload
+    input_series:
+      - series: 'prometheus_rule_evaluation_failures_total{job="prometheus",instance="administratum:9090",rule_group="drift"}'
+        values: "0+1x40"
+      - series: 'prometheus_config_last_reload_successful{job="prometheus",instance="administratum:9090"}'
+        values: "1x40"
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: PrometheusRuleEvaluationFailing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: prometheus
+              instance: administratum:9090
+              rule_group: drift
+            exp_annotations:
+              summary: "prometheus rule group drift is failing to evaluate on administratum:9090"
+              description: >-
+                Prometheus on administratum:9090 has failed to evaluate rules in group drift
+                over the last 10 minutes — those rules have silently stopped producing series.
+      - eval_time: 25m
+        alertname: PrometheusConfigReloadFailed
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: PrometheusRuleEvaluationFailing
+        exp_alerts: []
+
+  - interval: 1m
+    name: a rejected config reload alerts without implicating rule evaluation
+    input_series:
+      - series: 'prometheus_config_last_reload_successful{job="prometheus",instance="administratum:9090"}'
+        values: "0x40"
+      # Flat, not absent: rules that were already failing before the reload was
+      # rejected must not make this case pass by accident.
+      - series: 'prometheus_rule_evaluation_failures_total{job="prometheus",instance="administratum:9090",rule_group="drift"}'
+        values: "7x40"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: PrometheusConfigReloadFailed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: prometheus
+              instance: administratum:9090
+            exp_annotations:
+              summary: "prometheus config reload failed on administratum:9090"
+              description: >-
+                Prometheus on administratum:9090 rejected its last config reload and is running
+                the previous config — an arbites-applied change has not taken effect.
+      - eval_time: 20m
+        alertname: PrometheusRuleEvaluationFailing
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: PrometheusConfigReloadFailed
+        exp_alerts: []
+
+  # A rejected album is already definitive when the metric shows it: the pipeline only
+  # counts one after exhausting its ~1h poke cap, so 15m here is the *Failed cadence
+  # rather than a grace period on top of a retry.
+  - interval: 5m
+    name: albums lidarr refused alert
+    input_series:
+      - series: 'beets_pipeline_lidarr_rejected_albums{job="node",instance="solar:9100"}'
+        values: "2x20"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: BeetsPipelineLidarrRejected
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: solar:9100
+            exp_annotations:
+              summary: "beets pipeline imports rejected by lidarr on solar:9100"
+              description: "Albums on solar:9100 matched but lidarr refused them; they sit in quarantine/lidarr-rejected and need a look."
+      - eval_time: 10m
+        alertname: BeetsPipelineLidarrRejected
+        exp_alerts: []
+
+  # Unmatched albums are normal — new releases and patchy AcoustID both land in
+  # quarantine — so the threshold is the working pile the operator clears by hand, not
+  # zero. Ten is tolerated and eleven is a backlog; written `> 0` this rule would page
+  # about the ordinary state of the pipeline.
+  - interval: 5m
+    name: a quarantine pile at the threshold does not alert
+    input_series:
+      - series: 'beets_pipeline_quarantine_albums{job="node",instance="solar:9100"}'
+        values: "10x90"
+    alert_rule_test:
+      - eval_time: 7h
+        alertname: BeetsPipelineQuarantineBacklog
+        exp_alerts: []
+
+  - interval: 5m
+    name: a quarantine backlog past the threshold alerts
+    input_series:
+      - series: 'beets_pipeline_quarantine_albums{job="node",instance="solar:9100"}'
+        values: "11x90"
+    alert_rule_test:
+      - eval_time: 6h5m
+        alertname: BeetsPipelineQuarantineBacklog
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: solar:9100
+            exp_annotations:
+              summary: "beets pipeline quarantine backlog on solar:9100"
+              description: "Unmatched albums on solar:9100 have been awaiting hand-processing for over 6 hours."
+      - eval_time: 5h55m
+        alertname: BeetsPipelineQuarantineBacklog
+        exp_alerts: []
+
+  # The deadman's beat, whose entire value is that it never stops. Two properties hold
+  # it, and the single evaluation at zero pins both: it fires on the very first one,
+  # where a for: of any length would open a window in which the pipeline looks dead to
+  # the receiver, and it carries severity none, which is what routes it away from the
+  # operator. The input series is unrelated on purpose — the rule reads nothing, so an
+  # expression rewritten to depend on any real metric loses its alert here.
+  - interval: 1m
+    name: the watchdog heartbeat fires from the first evaluation
+    input_series:
+      - series: 'up{job="node",instance="solar:9100"}'
+        values: "1x10"
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: Watchdog
+        exp_alerts:
+          - exp_labels:
+              severity: none
+            exp_annotations:
+              summary: "alerting pipeline heartbeat"
+              description: "This alert always fires; if it stops reaching the deadman receiver, the Prometheus -> Alertmanager -> heartbeat pipeline is broken."
