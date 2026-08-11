@@ -37,9 +37,22 @@
     # The Tumbleweed mirror CDN intermittently times out serving repo metadata
     # (curl 28), which a converge install reports as "No provider of <pkg> found".
     # Prime the cache here, retried, so the install reuses fresh metadata within
-    # zypper's refresh window instead of racing a flaky refresh of its own.
-    - name: Prime the zypper metadata cache
-      ansible.builtin.command: "incus exec {{ item.name }} -- zypper --non-interactive refresh"
+    # the package manager's refresh window instead of racing a flaky refresh of
+    # its own. Both arms are load-bearing, apt's more so: ansible.builtin.package
+    # cannot refresh a cache at all, so a Debian platform with this gated off
+    # would install against whatever /var/lib/apt/lists the cached image happens
+    # to carry. Dispatched on which binary the instance has rather than on the
+    # platform's image string, which is free-form and would rot silently.
+    - name: Prime the package manager's metadata cache
+      ansible.builtin.command:
+        argv:
+          - incus
+          - exec
+          - "{{ item.name }}"
+          - --
+          - sh
+          - -c
+          - "if command -v zypper >/dev/null 2>&1; then zypper --non-interactive refresh; else apt-get update; fi"
       loop: "{{ molecule_yml.platforms }}"
       loop_control:
         label: "{{ item.name }}"
