@@ -67,7 +67,7 @@ Every role ships a container or VM scenario — a VM scenario implies a Hetzner 
 GitHub Actions workflows:
 
 - `lint` — the pre-commit set (yamllint, ansible-lint, shellcheck, the tofu gates, file hygiene, test coverage) on every PR and every push to `main`, plus a gitleaks scan of the checked-out commit; the hook alone sees only the staged index, which is empty on a fresh checkout.
-- `molecule` — the role tests. A discover job diffs the PR: a changed role runs whichever tiers it ships, a change outside `roles/` is exercised through the `motd` harness, and a docs-only change runs nothing.
+- `molecule` — the role tests. A discover job diffs the PR: a changed role runs whichever tiers it ships along with any role that consumes it through `include_role`, a change outside `roles/` is exercised through the `motd` harness, and a docs-only change runs nothing.
 - `terraform` — `tofu plan` on a PR, applied to live cloud infrastructure on merge.
 - `firebase` — the Hugo site: a preview channel per PR, the live channel on merge.
 

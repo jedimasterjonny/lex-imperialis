@@ -86,6 +86,16 @@ jobs:
               || true)
           fi
 
+          # An engine role is exercised by its consumers' scenarios, not its own:
+          # restic_backup by home_backup and podman_backup, stow by common and dev.
+          # A PR touching only the engine otherwise runs the engine's scenario green
+          # while neither consumer is ever converged — renaming one of its variables
+          # is enough — and arbites applies main as root within ~15 min. The consumers
+          # are read out of the tree rather than listed here; the script says why, and
+          # aborts rather than narrowing the matrix if it cannot read the graph. A
+          # no-op for workflow_dispatch, which already selects every role.
+          roles=$(printf '%s\n' "$roles" | bin/expand-role-consumers.sh)
+
           incus_cand="$roles"
           hetzner_cand="$roles"
           if [ -n "$shared" ]; then
