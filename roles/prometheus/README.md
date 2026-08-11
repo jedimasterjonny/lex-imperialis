@@ -122,7 +122,7 @@ one fault. The eight oneshots that emit a `*_success` metric are excluded: each 
 has a `*Failed` rule with a richer description and the right severity, and `group_by`
 is on `alertname`, so without the exclusion one fault would raise two alerts); the
 `maintenance` group's `autoupdate` pair
-`AutoupdateFailed` / `AutoupdateOverdue` (an unattended `zypper` run that failed or
+`AutoupdateFailed` / `AutoupdateOverdue` (an unattended update run that failed or
 has not completed in over 9 days) and its transactional counterpart
 `MicroOSBuildStale` (a MicroOS host whose `node_os_version` build datestamp has not
 advanced in a fortnight — two update cycles that changed nothing, most likely a
