@@ -5,6 +5,14 @@ recommended by zypper, but required for containers on a podman network to
 resolve one another — and `/etc/containers/systemd`, where backend roles
 drop their units.
 
+Installs through `ansible.builtin.package`, so it serves `auspex` on Raspberry Pi
+OS as well as the openSUSE hosts; the three package names are the same under
+both. The role creates `/etc/containers/containers.conf.d` rather than assuming
+it: libcontainers-common supplies it on openSUSE, while neither Debian's `podman`
+nor its `golang-github-containers-common` ships or creates it.
+`/etc/containers/systemd`, `netavark-firewalld-reload.service` and quadlet itself
+are all present on Debian unchanged.
+
 ## OCI runtime
 
 `podman_runtime` is written to `/etc/containers/containers.conf.d/10-runtime.conf`
@@ -13,6 +21,8 @@ Tumbleweed and the Tumbleweed-based MicroOS both package it and crun is lighter
 than runc on the exec path — the path every container healthcheck takes. runc is
 never removed: podman hard-requires it. The `10-` prefix is load-bearing — it has
 to outrank libcontainers-common's `00-suse-containers.conf`, which pins runc.
+Belt and braces on Debian, whose `podman` `Depends: crun | runc` and so already
+reports `runtime=crun` before the drop-in lands.
 
 **On MicroOS the image must ship crun before this role first runs.** A package
 installs into a new snapshot, so a host whose image lacks crun stays on the old

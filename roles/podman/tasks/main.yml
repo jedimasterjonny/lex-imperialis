@@ -1,6 +1,6 @@
 ---
 - name: Install podman
-  community.general.zypper:
+  ansible.builtin.package:
     name: "{{ podman_packages }}"
     state: present
   become: true
@@ -43,11 +43,23 @@
     mode: "0755"
   become: true
 
+# Created rather than assumed: libcontainers-common supplies it on openSUSE, but
+# neither Debian's podman nor its golang-github-containers-common ships or creates
+# it — measured, the drop-in below failed outright on a live install.
+- name: Create the containers.conf drop-in directory
+  ansible.builtin.file:
+    path: /etc/containers/containers.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
 # Must outrank libcontainers-common's 00-suse-containers.conf, which pins
 # runtime = "runc": podman reads the directory in lexical order, last write wins.
-# Needs no missing-parent guard: libcontainers-common supplies the directory with
-# podman, and a root without podman has already failed the netavark task above —
-# in check mode too, since systemd_service fails on a missing unit either way.
+# Belt and braces on Debian, whose podman Depends: crun | runc and so reports
+# runtime=crun before this lands — but it is the same assertion the role makes
+# everywhere else, and verify pins it.
 - name: Set podman's OCI runtime
   ansible.builtin.template:
     src: containers-runtime.conf.j2
