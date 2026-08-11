@@ -320,7 +320,7 @@ groups:
           severity: warning
         annotations:
           summary: "unattended update failed on {{ $labels.instance }}"
-          description: "The last unattended zypper update on {{ $labels.instance }} failed — the host may be unpatched or did not reboot."
+          description: "The last unattended update on {{ $labels.instance }} failed — the host may be unpatched or did not reboot."
       # The weekly timer has no Persistent=, so a healthy run lands near 7 days
       # apart; 9 gives grace over the cadence and jitter before flagging a stalled
       # updater or a cycle the host slept through.
