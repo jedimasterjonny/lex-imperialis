@@ -37,7 +37,9 @@ Five hosts in `inventory/hosts.yml`, each configured by `playbooks/<host>.yml` w
 
 ## Two distributions
 
-The fleet is openSUSE bar `auspex`, which is Debian, so six roles carry both arms: `stow`, `common`, `podman`, `firewalld`, `autoupdate`, and `prometheus` (whose update alert must not name a package manager). Everything else is single-OS and should stay that way — this is a tax, not a direction.
+The fleet is openSUSE bar `auspex`, which is Debian. **That is a missing driver, not a preference:** openSUSE's aarch64 kernel carries no `CONFIG_PWM_RP1` — absent from the config entirely, not disabled — so a Pi 5's fan never binds and the board idles at its 85 °C hard-throttle point against 47.9 °C on Raspberry Pi OS. Nothing tunable closes that gap, so do not try to reconcile `auspex` back onto openSUSE without first checking whether that config has landed upstream.
+
+Six roles carry both arms: `stow`, `common`, `podman`, `firewalld`, `autoupdate`, and `prometheus` (whose update alert must not name a package manager). Everything else is single-OS and should stay that way — this is a tax, not a direction.
 
 - **Install with `ansible.builtin.package`, not `community.general.zypper`,** in a role auspex runs. On openSUSE it dispatches to the zypper module, whose `disable_recommends` already defaults true, so the swap is behaviour-preserving. It has no `update_cache`: `common` refreshes apt's lists ahead of its own install, and so ahead of every later role in the play.
 - **Branch in `defaults/main.yml`, derived from `ansible_facts`** — following `autoupdate_transactional`. Not per-OS task files, and not `vars/Debian.yml`, which would outrank a play's own vars. Prefer a default that makes the OS-specific tasks skip themselves (`common_disabled_repos` is `[]` on Debian, so the four zypper tasks loop over nothing) over a `when:` on each.
