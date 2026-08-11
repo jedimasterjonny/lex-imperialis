@@ -3,7 +3,8 @@
 One-shot, operator-run entry points that take a host to the point Ansible — or
 molecule — can manage it. `host.sh` and `incus.yml` are idempotent, and so is
 `rogue-trader.yml` except on its rebuild path, which re-images the disk every
-time it runs. `rogue-trader.bu` is a config, not an entry point.
+time it runs. `rogue-trader.bu` and `auspex-user-data.yaml` are configs, not
+entry points: each is delivered to a first boot rather than run by hand.
 
 ## host.sh
 
@@ -103,6 +104,56 @@ A spike also gets **no cloud firewall** — `firewall-rogue-trader.tf` attaches 
 rogue-trader by id — so it is a public box with everything open, running caddy
 and WordPress once converged. Delete it when done: `hcloud server delete
 rogue-trader-spike`.
+
+## auspex-user-data.yaml
+
+The cloud-init seed auspex first-boots from — a Raspberry Pi 5 on Raspberry Pi
+OS. The image ships `datasource_list: [NoCloud, None]` with
+`seedfrom: file:///boot/firmware`, so this goes on the card's FAT partition as
+`user-data`, beside the `meta-data` already there.
+
+Its scope is `host.sh`'s — the key-only, NOPASSWD-sudo `ansible` account and
+sshd — plus the owner account and `/etc/hostname`. The file itself argues the
+rest; read it rather than this.
+
+Hand-written rather than emitted by Raspberry Pi Imager's customisation pane,
+which writes the same kind of file but sets no `uid` and no `primary_group`: the
+owner lands on uid 1000 with a per-user group where the fleet pins 1026 and
+`users`, and changing either on a live account needs an offline root console.
+
+**Do not let Imager apply its own customisation on top.** Answering yes to
+"Would you like to apply OS customisation settings?" overwrites `user-data` —
+putting the uid back and restoring `manage_etc_hosts`, whose `127.0.1.1 auspex`
+entry makes the co-located Prometheus agent resolve its own scrape targets to
+loopback, where the exporters do not bind. `dd` and balenaEtcher never ask.
+
+Rewriting the seed on a card needs a fresh `instance-id` in `meta-data`, or
+cloud-init treats the boot as a resume and skips it; keep that file's
+`dsmode: local`, without which user-data waits for the network.
+
+`ansible` is deliberately not `system: true`. cloud-init appends `-m` only for
+non-system users and maps `homedir` to `--home`, which sets the path without
+creating it — so a system account gets no home for `ssh_authorized_keys` to land
+in. `host.sh` passes `--system --create-home` together, which cloud-init has no
+way to express.
+
+Both accounts are key-only, as `roles/common` manages no password. `jonny`
+therefore cannot `sudo` at all — `common`'s `wheel` drop-in grants own-password
+sudo — so `ansible@auspex` is the admin path. Set a password by hand if the
+console matters: `ssh ansible@auspex 'sudo passwd jonny'`.
+
+Provision-once in the way that bites: `cc_users_groups` creates accounts, it does
+not migrate them, so editing this file on a booted card achieves nothing. auspex
+is stateless by design and its recovery is a reflash — see
+[`docs/disaster-recovery.md`](../docs/disaster-recovery.md).
+
+First boot resizes the card and reboots once. Then:
+
+```bash
+ssh ansible@auspex
+id jonny                  # uid=1026(jonny) gid=100(users)
+getent hosts auspex       # the LAN address, not 127.0.1.1
+```
 
 ## rogue-trader.bu
 

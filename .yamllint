@@ -12,6 +12,12 @@ rules:
     max-spaces-inside: 1
   comments:
     min-spaces-from-content: 1
+    # cloud-init detects a seed's format by matching `#cloud-config` against the
+    # first line literally, so bootstrap/auspex-user-data.yaml cannot carry the
+    # space this rule wants. Scoped to the rule, not the file: indentation,
+    # duplicate keys and the rest still apply there, and a seed that silently
+    # loses an account is exactly what they catch.
+    ignore: bootstrap/auspex-user-data.yaml
   comments-indentation: false
   document-start: disable
   line-length:

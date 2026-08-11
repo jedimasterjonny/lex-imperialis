@@ -1,0 +1,94 @@
+#cloud-config
+# First-boot configuration for auspex — a Raspberry Pi 5 running Raspberry Pi OS
+# (Debian trixie) as the fleet's monitoring host. cloud-init reads this from the
+# FAT firmware partition via the NoCloud datasource that /etc/cloud/cloud.cfg.d/
+# 99_raspberry-pi.cfg points at (seedfrom: file:///boot/firmware).
+#
+# This replaces what Raspberry Pi Imager's customisation pane writes. The pane
+# emits the same kind of file but sets no uid and no primary group, so the owner
+# lands on uid 1000 with a per-user group — and the fleet pins 1026/users to match
+# the NAS. Everything else here follows from that one limitation.
+#
+# Flash an image with this file already on the boot partition; do NOT let Imager
+# apply its own customisation on top, which overwrites it.
+
+hostname: auspex
+
+# Do NOT let cloud-init write /etc/hosts. Its template maps the hostname to
+# 127.0.1.1, and nsswitch consults files before dns — so the Prometheus agent,
+# which runs in the host network namespace on this box, would resolve its own
+# scrape targets (auspex:9100, auspex:8080) to loopback, where nothing listens:
+# the exporters bind the LAN address. DHCP registers the name in DNS, which
+# answers correctly. false is cloud-init's own default; both true and localhost
+# add the 127.0.1.1 entry.
+manage_etc_hosts: false
+# NetworkManager owns resolv.conf on this fleet.
+manage_resolv_conf: false
+
+timezone: Europe/London
+keyboard:
+  model: pc105
+  layout: gb
+
+# The Pi has no battery-backed RTC, so a first boot before NTP can present apt
+# with metadata that looks future-dated. Kept from Imager's own config.
+apt:
+  preserve_sources_list: true
+  conf: |
+    Acquire {
+      Check-Date "false";
+    };
+
+# mDNS, so auspex.local answers on first boot before the DHCP lease registers in
+# DNS. Installed after the accounts below exist, so a failure here cannot lock
+# anyone out. Drop it if the fleet's DNS registration is trusted.
+packages:
+  - avahi-daemon
+
+# No "default" entry, so the image's own default user is never created.
+users:
+  # The owner. uid and primary_group are the entire reason this file is written
+  # by hand rather than by Imager: roles/common pins 1026 and the users group
+  # (gid 100) fleet-wide to match uid ownership on the NAS, and changing either
+  # on a live account needs an offline root console.
+  - name: jonny
+    uid: 1026
+    primary_group: users
+    no_user_group: true
+    # Deliberately minimal: only what is certain to exist in the image before any
+    # package installs. A useradd against a missing group fails, and on a headless
+    # first boot that means no account and no way in. roles/common adds wheel.
+    groups: [adm, sudo]
+    shell: /bin/bash
+    # Key-only, matching the fleet: roles/common manages no password, and
+    # ssh_pwauth is off below. This host is stateless by design and its documented
+    # recovery is a reflash, so there is no console password to lose.
+    lock_passwd: true
+    ssh_authorized_keys:
+      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBisd2MYLbDmcgdaIUEpGK90EV29GRj4MJmLCkSoPSEH"
+      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJOC/Z1aIrzRbU38qVF86ppQUEETHfd/w0ddjTnGjHUD"
+      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFHPaOryibzw1eOKUFlpbUhJroFn82wifNQhkQL8Lc+C"
+      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDHpcn9yrjN0+bAFrmfGo7X4qMdklxvJ3bqdSiyJf5ju"
+      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAf1/BtlFVoK4rcdhuUldFpQ8VwGp3rbLcAGAY6gSL+x"
+  # The account the plays connect as — what bootstrap/host.sh creates on a
+  # Tumbleweed host. Key-only with passwordless sudo so plays escalate unattended.
+  # Note: NOT system: true. cloud-init appends -m only for non-system users and
+  # maps homedir to --home without creating it, so a system user would have no
+  # home for authorized_keys to land in. Nothing in the repo pins this account's
+  # uid, so it is left to fall where useradd puts it.
+  - name: ansible
+    shell: /bin/bash
+    lock_passwd: true
+    sudo: "ALL=(ALL:ALL) NOPASSWD: ALL"
+    ssh_authorized_keys:
+      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBisd2MYLbDmcgdaIUEpGK90EV29GRj4MJmLCkSoPSEH"
+      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJOC/Z1aIrzRbU38qVF86ppQUEETHfd/w0ddjTnGjHUD"
+      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFHPaOryibzw1eOKUFlpbUhJroFn82wifNQhkQL8Lc+C"
+      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDHpcn9yrjN0+bAFrmfGo7X4qMdklxvJ3bqdSiyJf5ju"
+      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAf1/BtlFVoK4rcdhuUldFpQ8VwGp3rbLcAGAY6gSL+x"
+
+ssh_pwauth: false
+
+runcmd:
+  # Raspberry Pi OS ships sshd disabled until something enables it.
+  - [systemctl, enable, --now, ssh]

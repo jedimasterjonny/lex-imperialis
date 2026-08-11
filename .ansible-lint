@@ -6,6 +6,11 @@ profile: production
 # vault password by default or in CI.
 exclude_paths:
   - inventory/group_vars/all/vault.yml
+  # A cloud-init seed, not Ansible content. ansible-lint's bundled yamllint has
+  # no per-rule ignore, so it would fail on the `#cloud-config` first line the
+  # format detection requires; the standalone yamllint still lints the file under
+  # every other rule.
+  - bootstrap/auspex-user-data.yaml
 
 # A .yml under a molecule scenario is inferred as a playbook, so a scenario's
 # fixtures file fails syntax-check as "not a list of plays". Declare its kind.
