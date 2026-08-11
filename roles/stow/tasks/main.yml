@@ -1,6 +1,6 @@
 ---
 - name: Install stow
-  community.general.zypper:
+  ansible.builtin.package:
     name: "{{ stow_package }}"
     state: present
   become: true
