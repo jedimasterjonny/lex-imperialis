@@ -199,3 +199,14 @@ repos:
         language: system
         pass_filenames: false
         files: '^roles/prometheus/(files/rules|tests)/.*\.ya?ml$'
+      # The hook above runs the cases that exist; it is silent about a rule that has
+      # none, which is how coverage sat at 14 of 44 unnoticed. This one pairs the two
+      # files by name in both directions — an uncovered rule, and a case naming a rule
+      # that no longer exists, which promtool passes without comment whenever the case
+      # expects no alerts. Same file pattern as the hook above, for the same reason.
+      - id: alert-test-coverage
+        name: alert-test-coverage
+        entry: python3 bin/check-alert-test-coverage.py
+        language: system
+        pass_filenames: false
+        files: '^roles/prometheus/(files/rules|tests)/.*\.ya?ml$'
