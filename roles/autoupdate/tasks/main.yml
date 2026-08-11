@@ -1,22 +1,24 @@
 ---
-# MicroOS's own transactional-update.timer runs a daily update and reboot, so it
-# is stopped and masked before this role's timer is installed and the two are
-# never armed together. Two tasks, and in this order: masking a running unit
-# strands it at ActiveState=failed permanently, and the module masks before it
-# stops, so one combined task lands in exactly that state.
-- name: Take over the distribution's own update timer
-  when: autoupdate_transactional | bool
+# A distribution that ships its own update timer runs a daily update and reboot,
+# so those are stopped and masked before this role's timer is installed and the
+# two are never armed together. Two tasks, and in this order: masking a running
+# unit strands it at ActiveState=failed permanently, and the module masks before
+# it stops, so one combined task lands in exactly that state. A distribution that
+# competes with nothing has an empty list, and both tasks loop over nothing.
+- name: Take over the distribution's own update timers
   become: true
   block:
-    - name: Stop the distribution's own update timer
+    - name: Stop the distribution's own update timers
       ansible.builtin.systemd_service:
-        name: transactional-update.timer
+        name: "{{ item }}"
         state: stopped
+      loop: "{{ autoupdate_masked_timers }}"
 
-    - name: Mask the distribution's own update timer
+    - name: Mask the distribution's own update timers
       ansible.builtin.systemd_service:
-        name: transactional-update.timer
+        name: "{{ item }}"
         masked: true
+      loop: "{{ autoupdate_masked_timers }}"
 
 - name: Install the update timer
   ansible.builtin.template:
