@@ -16,8 +16,7 @@ descriptive:
   and only Debian host: the monitoring stack's scraping half. Prometheus in agent
   mode scrapes the fleet and remote-writes to `administratum`, blackbox_exporter
   probes the public sites and solar's services, and Alertmanager takes the NAS's
-  alerts and notifies. Deliberately absent from `site.yml` until its roles
-  support Debian — see below.
+  alerts and notifies.
 - **rogue-trader** — the Hetzner VPS serving the public WordPress site.
 
 ## site.yml
@@ -26,9 +25,10 @@ The whole fleet in one run — the `arbites` timer's entry point and
 `make apply PLAY=site`. Imports the host plays with `scholam` last, so a
 reconcile run never restarts its own timer mid-apply.
 
-`auspex` is held out. Ansible sums failed and unreachable hosts, so a play that
+Order is not cosmetic. Ansible sums failed and unreachable hosts, so a play that
 loses every host aborts the run: a host that cannot converge takes the plays
 imported after it with it, `arbites` never writes `last_applied`, and the fleet
 is re-applied in full every fifteen minutes while `scholam` quietly stops
-converging. A host joins this file only once its play converges green; until
-then it runs by hand, `make apply PLAY=auspex`.
+converging. So a host joins this file only once its play converges green — until
+then it runs by hand, `make apply PLAY=<host>` — and it must be in `arbites`'s
+`known_hosts` first, or the connect fails and produces that same stall.
