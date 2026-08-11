@@ -1,4 +1,12 @@
 ---
+# Two platforms, one per distribution the role supports. Groups rather than
+# facts, so verify can gate on group_names without gathering.
 platforms:
   - name: "lex-stow-incus-${MOLECULE_RUN_ID:-local}"
     image: images:opensuse/tumbleweed/cloud
+    groups:
+      - opensuse
+  - name: "lex-stow-debian-${MOLECULE_RUN_ID:-local}"
+    image: images:debian/13/cloud
+    groups:
+      - debian

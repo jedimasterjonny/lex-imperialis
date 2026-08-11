@@ -9,11 +9,21 @@ StartLimitBurst=4
 
 [Service]
 Type=oneshot
-ExecStart={{ autoupdate_update_command }}
+# One ExecStart= per element, which Type=oneshot runs in order and aborts on the
+# first failure: apt needs its metadata refreshed before the dist-upgrade, where
+# zypper refreshes its own.
+{% for command in autoupdate_update_command %}
+ExecStart={{ command }}
+{% endfor %}
+# A changed conffile otherwise prompts and hangs the unit until TimeoutStartSec,
+# on a host with nobody at the console. Inert under zypper, so it costs no
+# conditional.
+Environment=DEBIAN_FRONTEND=noninteractive
 # 102/103 are zypper's "reboot/restart recommended" infos on a successful run,
 # not failures: accept them so the reboot still fires. A real failure (a lower
 # exit code) skips ExecStartPost, leaving the system un-rebooted for inspection.
-# transactional-update absorbs both codes and exits 0, so this is inert there.
+# transactional-update absorbs both codes and exits 0, and apt uses 0/100, so
+# this is inert on either.
 SuccessExitStatus=102 103
 # A mirror serving repo metadata ahead of the RPMs it indexes aborts the whole
 # commit ("Some packages could not be provided"), which on a weekly timer with no

@@ -27,10 +27,30 @@ common_blacklisted_modules: []
 
 # zypper repositories held disabled, by alias. Both NON-OSS spellings are listed
 # because the alias tracks how a host was installed, not its distro — see README.
-common_disabled_repos:
-  - download.opensuse.org-non-oss
-  - repo-non-oss
-  - repo-openh264
+# Distro-derived rather than gated in tasks/: empty on Debian, which has no
+# zypper, and the four tasks that loop over it then skip on their own. The whole
+# repository half of the role needs no OS branch, only an empty list.
+common_disabled_repos: >-
+  {{ []
+     if ansible_facts['os_family'] == 'Debian'
+     else ['download.opensuse.org-non-oss', 'repo-non-oss', 'repo-openh264'] }}
+
+# Where chrony reads drop-ins from. Distro-derived: openSUSE's chrony.conf takes
+# /etc/chrony.d, Debian's carries `confdir /etc/chrony/conf.d`. The role's
+# contract — drop in beside the packaged pool, never over it — holds at either.
+common_chrony_conf_dir: >-
+  {{ '/etc/chrony/conf.d'
+     if ansible_facts['os_family'] == 'Debian'
+     else '/etc/chrony.d' }}
+
+# The dots package stowed for the owner's bash configuration. Distro-derived:
+# the dots repo ships one per distribution, and each shadows the skel .bashrc it
+# replaces, so the wrong one deploys green while losing that distribution's own
+# shell setup.
+common_bash_stow_package: >-
+  {{ 'bash-ubuntu'
+     if ansible_facts['os_family'] == 'Debian'
+     else 'bash-suse' }}
 
 # NTP sources added as chrony pool lines alongside whichever the distro
 # installed. See the README for what a second source does and does not buy.

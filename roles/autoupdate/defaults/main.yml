@@ -1,14 +1,34 @@
 ---
-# Distro-derived, not a tunable. See the README for what it switches.
+# Distro-derived, not tunables. See the README for what each switches.
 autoupdate_transactional: "{{ ansible_facts['distribution'] == 'openSUSE MicroOS' }}"
+autoupdate_debian: "{{ ansible_facts['os_family'] == 'Debian' }}"
 
-# The fleet is rolling either way, so both arms are a whole-system `dup`; what
-# differs is whether the root is read-only. The whole command line is the
-# variable, not just the subcommand, because the binary differs too.
+# The distribution's own unattended-update timers, stopped and masked so exactly
+# one thing updates a host. Debian ships two — apt-daily.timer prefetches
+# metadata and downloads, apt-daily-upgrade.timer installs — and both are masked
+# rather than only the second, so the contract is literally true rather than
+# nearly. The prefetch that costs is what common's `apt: update_cache` already
+# does on every converge. Empty where the distribution competes with nothing.
+autoupdate_masked_timers: >-
+  {{ ['transactional-update.timer'] if autoupdate_transactional | bool
+     else ['apt-daily.timer', 'apt-daily-upgrade.timer'] if autoupdate_debian | bool
+     else [] }}
+
+# The openSUSE arms are the same whole-system `dup` either way — the fleet is
+# rolling — and what differs is whether the root is read-only. The whole command
+# line is the variable, not just the subcommand, because the binary differs too.
+# A list, because Type=oneshot accepts repeated ExecStart= and apt needs its
+# metadata refreshed first: `zypper dup` refreshes its own, `apt-get
+# dist-upgrade` does not. The confold/confdef pair keeps a changed conffile from
+# turning into a prompt no one is there to answer.
 autoupdate_update_command: >-
-  {{ '/usr/sbin/transactional-update --non-interactive dup'
+  {{ ['/usr/sbin/transactional-update --non-interactive dup']
      if autoupdate_transactional | bool
-     else '/usr/bin/zypper --non-interactive dup --auto-agree-with-licenses' }}
+     else ['/usr/bin/apt-get update',
+           '/usr/bin/apt-get --yes -o Dpkg::Options::=--force-confold'
+           ' -o Dpkg::Options::=--force-confdef dist-upgrade']
+     if autoupdate_debian | bool
+     else ['/usr/bin/zypper --non-interactive dup --auto-agree-with-licenses'] }}
 
 # node_exporter textfile-collector directory the update outcome metric is written
 # to (autoupdate.prom). Must match the node_exporter role's

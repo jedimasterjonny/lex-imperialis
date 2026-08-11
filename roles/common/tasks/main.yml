@@ -4,6 +4,18 @@
     name: "{{ common_hostname }}"
   become: true
 
+# kmod owns /etc/modprobe.d and every fleet host has it, but a minimal Debian
+# image can ship without kmod entirely — and template does not create a parent,
+# so the drop-in below fails outright rather than landing somewhere inert.
+- name: Ensure the modprobe drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/modprobe.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
 # blacklist alone only stops the udev/modalias autoload, so pair it with an
 # install line that sends an explicit modprobe — or a load pulled in as another
 # module's dependency — to /bin/false. Rendered unconditionally: an empty list
@@ -129,8 +141,26 @@
     mode: "0755"
   become: true
 
+# ansible.builtin.package dispatches to apt on Debian but cannot refresh its
+# lists — it has no update_cache — and autoupdate masks apt-daily.timer, so
+# nothing else refreshes them either. Do it here, ahead of the install below and
+# so ahead of every later role's in the same play: an install against a
+# week-stale list 404s on a version the mirror has already rotated away, and per
+# playbooks/README.md a play that cannot converge stalls the whole reconcile.
+# cache_valid_time keeps a converge within the hour from refetching, so this
+# stays idempotent across a reapply.
+- name: Refresh the apt package lists
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  when: ansible_facts['os_family'] == 'Debian'
+  become: true
+
+# package, not zypper: it dispatches to the zypper module on openSUSE, whose
+# disable_recommends already defaults true, so this is behaviour-preserving there
+# and works on Debian besides. Every name in common_packages exists under both.
 - name: Install base packages
-  community.general.zypper:
+  ansible.builtin.package:
     name: "{{ common_packages }}"
     state: present
   become: true
@@ -150,16 +180,17 @@
   become: true
   when: ansible_selinux.status == 'enabled'
 
-# Dropped beside the packaged pool.conf, never over it. Both chrony layouts read
-# /etc/chrony.d — as an include glob, where taking that name would overwrite the
-# vendor file, and as the first confdir, where it would shadow it — so either way
-# the distro's own source goes with it. Rendered unconditionally, so emptying the
-# list drops back to that source alone, and kept behind the package install
-# above, which owns /etc/chrony.d.
+# Dropped beside the packaged pool.conf, never over it. Both openSUSE chrony
+# layouts read /etc/chrony.d — as an include glob, where taking that name would
+# overwrite the vendor file, and as the first confdir, where it would shadow it —
+# and Debian's chrony.conf carries `confdir /etc/chrony/conf.d` beside its own
+# pool line, so either way the distro's own source goes with it. Rendered
+# unconditionally, so emptying the list drops back to that source alone, and kept
+# behind the package install above, which owns the directory.
 - name: Add the fleet's NTP sources
   ansible.builtin.template:
     src: ntp.conf.j2
-    dest: /etc/chrony.d/common-ntp.conf
+    dest: "{{ common_chrony_conf_dir }}/common-ntp.conf"
     owner: root
     group: root
     mode: "0644"
@@ -209,4 +240,4 @@
     stow_user: "{{ common_user_name }}"
     stow_user_home: "{{ common_user_home }}"
     stow_packages:
-      - bash-suse
+      - "{{ common_bash_stow_package }}"

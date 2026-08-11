@@ -10,6 +10,13 @@
     common_present_repos:
       - repo-non-oss
       - repo-openh264
+    # What each distribution should end up with. Spelled out from the platform's
+    # group rather than read from the role's fact-derived defaults: this play
+    # gathers no facts, and an assertion that recomputes the expression it is
+    # checking asserts nothing.
+    common_expected_chrony_dir: "{{ '/etc/chrony/conf.d' if 'debian' in group_names else '/etc/chrony.d' }}"
+    common_expected_pool: "{{ 'debian.pool.ntp.org' if 'debian' in group_names else 'opensuse.pool.ntp.org' }}"
+    common_expected_bash_package: "{{ 'bash-ubuntu' if 'debian' in group_names else 'bash-suse' }}"
   vars_files:
     - ../../defaults/main.yml
   tasks:
@@ -99,80 +106,104 @@
         fail_msg: "the modprobe drop-in does not bar lex_absent_module from loading"
         quiet: true
 
-    # The cloud image carries the stock repo-* aliases, so the container exercises
-    # repo-non-oss and leaves download.opensuse.org-non-oss unmatched — both
-    # branches at once.
-    - name: Read the non-OSS repository definitions
-      ansible.builtin.slurp:
-        src: "/etc/zypp/repos.d/{{ item }}.repo"
-      loop: "{{ common_present_repos }}"
-      register: common_nonoss_repo_defs
-      become: true
+    # Debian has no zypper and common_disabled_repos is empty there, so the whole
+    # repository half of the role is a no-op — one block rather than a conditional
+    # on each of the eight tasks below.
+    - name: Verify the zypper repository handling
+      when: "'debian' not in group_names"
+      block:
+        # The cloud image carries the stock repo-* aliases, so the container
+        # exercises repo-non-oss and leaves download.opensuse.org-non-oss
+        # unmatched — both branches at once.
+        - name: Read the non-OSS repository definitions
+          ansible.builtin.slurp:
+            src: "/etc/zypp/repos.d/{{ item }}.repo"
+          loop: "{{ common_present_repos }}"
+          register: common_nonoss_repo_defs
+          become: true
 
-    # The slurp itself is the not-removed half: it fails outright on a missing file.
-    - name: The non-OSS repositories are disabled on disk, not removed
-      ansible.builtin.assert:
-        that:
-          - "'enabled=0' in (item.content | b64decode)"
-          - "'enabled=1' not in (item.content | b64decode)"
-        fail_msg: "{{ item.item }} is not disabled"
-        quiet: true
-      loop: "{{ common_nonoss_repo_defs.results }}"
-      loop_control:
-        label: "{{ item.item }}"
+        # The slurp itself is the not-removed half: it fails outright on a
+        # missing file.
+        - name: The non-OSS repositories are disabled on disk, not removed
+          ansible.builtin.assert:
+            that:
+              - "'enabled=0' in (item.content | b64decode)"
+              - "'enabled=1' not in (item.content | b64decode)"
+            fail_msg: "{{ item.item }} is not disabled"
+            quiet: true
+          loop: "{{ common_nonoss_repo_defs.results }}"
+          loop_control:
+            label: "{{ item.item }}"
 
-    - name: Query zypper for the non-OSS repositories
-      ansible.builtin.command:
-        argv:
-          - zypper
-          - --non-interactive
-          - --no-refresh
-          - search
-          - --installed-only
-          - --repo
-          - "{{ item }}"
-      loop: "{{ common_present_repos }}"
-      register: common_nonoss_repo_query
-      changed_when: false
-      failed_when: false
-      become: true
+        - name: Query zypper for the non-OSS repositories
+          ansible.builtin.command:
+            argv:
+              - zypper
+              - --non-interactive
+              - --no-refresh
+              - search
+              - --installed-only
+              - --repo
+              - "{{ item }}"
+          loop: "{{ common_present_repos }}"
+          register: common_nonoss_repo_query
+          changed_when: false
+          failed_when: false
+          become: true
 
-    # rc 3 covers "disabled" and "unknown" alike; the slurp above already proved
-    # the definition is still on disk, so here it can only mean disabled.
-    - name: Zypper treats the non-OSS repositories as disabled
-      ansible.builtin.assert:
-        that:
-          - item.rc == 3
-        fail_msg: "zypper does not treat {{ item.item }} as disabled"
-        quiet: true
-      loop: "{{ common_nonoss_repo_query.results }}"
-      loop_control:
-        label: "{{ item.item }}"
+        # rc 3 covers "disabled" and "unknown" alike; the slurp above already
+        # proved the definition is still on disk, so here it can only mean
+        # disabled.
+        - name: Zypper treats the non-OSS repositories as disabled
+          ansible.builtin.assert:
+            that:
+              - item.rc == 3
+            fail_msg: "zypper does not treat {{ item.item }} as disabled"
+            quiet: true
+          loop: "{{ common_nonoss_repo_query.results }}"
+          loop_control:
+            label: "{{ item.item }}"
 
-    - name: Stat the NON-OSS alias this image does not carry
+        - name: Stat the NON-OSS alias this image does not carry
+          ansible.builtin.stat:
+            path: /etc/zypp/repos.d/download.opensuse.org-non-oss.repo
+          register: common_absent_repo
+
+        - name: An unmatched alias is skipped rather than created
+          ansible.builtin.assert:
+            that:
+              - not common_absent_repo.stat.exists
+            fail_msg: "the role created a repository definition the host does not carry"
+
+        - name: Read the OSS repository definition
+          ansible.builtin.slurp:
+            src: /etc/zypp/repos.d/repo-oss.repo
+          register: common_oss_repo_def
+          become: true
+
+        # The role must touch only the aliases it names; nothing else proves it
+        # left a repository outside that list alone.
+        - name: A repository outside the list is left enabled
+          ansible.builtin.assert:
+            that:
+              - "'enabled=1' in (common_oss_repo_def.content | b64decode)"
+            fail_msg: "the role disabled repo-oss, which is not in its scope"
+
+    # The Debian half of the same property: the role must not have brought a
+    # package manager's repository state with it. /etc/zypp is the whole of
+    # zypper's configuration, so its absence is the assertion.
+    - name: Stat zypper's configuration directory
       ansible.builtin.stat:
-        path: /etc/zypp/repos.d/download.opensuse.org-non-oss.repo
-      register: common_absent_repo
+        path: /etc/zypp
+      register: common_zypp_dir
+      when: "'debian' in group_names"
 
-    - name: An unmatched alias is skipped rather than created
+    - name: No zypper state is created on a Debian host
       ansible.builtin.assert:
         that:
-          - not common_absent_repo.stat.exists
-        fail_msg: "the role created a repository definition the host does not carry"
-
-    - name: Read the OSS repository definition
-      ansible.builtin.slurp:
-        src: /etc/zypp/repos.d/repo-oss.repo
-      register: common_oss_repo_def
-      become: true
-
-    # The role must touch only the aliases it names; nothing else proves it left
-    # a repository outside that list alone.
-    - name: A repository outside the list is left enabled
-      ansible.builtin.assert:
-        that:
-          - "'enabled=1' in (common_oss_repo_def.content | b64decode)"
-        fail_msg: "the role disabled repo-oss, which is not in its scope"
+          - not common_zypp_dir.stat.exists
+        fail_msg: "the role created zypper configuration on a host that has no zypper"
+      when: "'debian' in group_names"
 
     - name: Stat sdbootutil's TPM prediction directory
       ansible.builtin.stat:
@@ -196,10 +227,30 @@
       ansible.builtin.command:
         argv: "{{ ['rpm', '--query', '--whatprovides'] + common_packages }}"
       changed_when: false
+      when: "'debian' not in group_names"
+
+    # No Provides indirection on Debian, so the names are the names — but
+    # dpkg-query -W succeeds for a package that is removed and not purged, so ask
+    # for the status too rather than lean on the exit code alone.
+    - name: Query dpkg for the base packages
+      ansible.builtin.command:
+        argv: "{{ ['dpkg-query', '--show', '--showformat=${Package} ${Status}\n'] + common_packages }}"
+      register: common_dpkg_query
+      changed_when: false
+      when: "'debian' in group_names"
+
+    - name: Every base package is installed
+      ansible.builtin.assert:
+        that:
+          - item.split(' ', 1)[1] == 'install ok installed'
+        fail_msg: "{{ item.split(' ', 1)[0] }} is not installed"
+        quiet: true
+      loop: "{{ common_dpkg_query.stdout_lines | default([]) }}"
+      when: "'debian' in group_names"
 
     - name: Stat the NTP drop-in
       ansible.builtin.stat:
-        path: /etc/chrony.d/common-ntp.conf
+        path: "{{ common_expected_chrony_dir }}/common-ntp.conf"
       register: common_ntp_dropin
 
     - name: NTP drop-in is installed and root-owned
@@ -209,14 +260,19 @@
           - common_ntp_dropin.stat.mode == '0644'
           - common_ntp_dropin.stat.pw_name == 'root'
           - common_ntp_dropin.stat.gr_name == 'root'
-        fail_msg: "/etc/chrony.d/common-ntp.conf is missing or not owned root:root mode 0644"
+        fail_msg: "{{ common_expected_chrony_dir }}/common-ntp.conf is missing or not owned root:root mode 0644"
 
-    # chronyd defaults to /etc/chrony.conf; the newer package ships the vendor
-    # copy under /usr/etc instead, as this image already does. Follow whichever
-    # exists rather than pin the layout of the day.
+    # chronyd defaults to /etc/chrony.conf; the newer openSUSE package ships the
+    # vendor copy under /usr/etc instead, as that image already does, and Debian
+    # puts the whole tree under /etc/chrony. Follow whichever exists rather than
+    # pin the layout of the day.
     - name: Stat chrony's own configuration
       ansible.builtin.stat:
-        path: /etc/chrony.conf
+        path: "{{ item }}"
+      loop:
+        - /etc/chrony.conf
+        - /etc/chrony/chrony.conf
+        - /usr/etc/chrony.conf
       register: common_chrony_conf
 
     # -p expands the whole config chain and exits, so it proves chrony reads the
@@ -227,7 +283,7 @@
           - /usr/sbin/chronyd
           - -p
           - -f
-          - "{{ '/etc/chrony.conf' if common_chrony_conf.stat.exists else '/usr/etc/chrony.conf' }}"
+          - "{{ (common_chrony_conf.results | selectattr('stat.exists') | first).stat.path }}"
       register: common_chrony_config
       changed_when: false
       become: true
@@ -245,20 +301,25 @@
     - name: The distro's own source survives alongside
       ansible.builtin.assert:
         that:
-          - "'opensuse.pool.ntp.org' in common_chrony_config.stdout"
-        fail_msg: "the drop-in displaced the packaged openSUSE source"
+          - common_expected_pool in common_chrony_config.stdout
+        fail_msg: "the drop-in displaced the packaged {{ common_expected_pool }} source"
 
     - name: Stat the stowed bashrc
       ansible.builtin.stat:
         path: "{{ common_user_home }}/.bashrc"
       register: common_bashrc
 
-    - name: Owner bashrc is a stow symlink
+    # The link's target, not merely that it is a link. The dots repo ships a
+    # bash package per distribution and each shadows the skel .bashrc it
+    # replaces, so stowing the wrong one converges green while the host loses its
+    # own shell setup — bash-completion, lesspipe and debian_chroot, on Debian.
+    - name: Owner bashrc is a stow symlink into this distribution's package
       ansible.builtin.assert:
         that:
           - common_bashrc.stat.exists
           - common_bashrc.stat.islnk
-        fail_msg: "bash-suse dotfiles are not stowed for the owner"
+          - "'/' ~ common_expected_bash_package ~ '/' in common_bashrc.stat.lnk_target"
+        fail_msg: "the owner's .bashrc is not stowed from {{ common_expected_bash_package }}"
 
     - name: Read the system hostname
       ansible.builtin.command: hostname

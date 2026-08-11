@@ -3,11 +3,21 @@
   hosts: all
   vars_files:
     - ../../defaults/main.yml
-  # What this image must end up running, stated here rather than derived from the
-  # role's ternary, which would only assert that ternary back at itself. Not a
-  # role default, so the vars_files above cannot outrank it.
+  # What each image must end up running, selected on the platform's group rather
+  # than derived from the role's ternary, which would only assert that ternary
+  # back at itself. Not role defaults, so the vars_files above cannot outrank
+  # them.
   vars:
-    autoupdate_expected_command: /usr/bin/zypper --non-interactive dup --auto-agree-with-licenses
+    autoupdate_expected_command: >-
+      {{ ['/usr/bin/apt-get update',
+          '/usr/bin/apt-get --yes -o Dpkg::Options::=--force-confold'
+          ' -o Dpkg::Options::=--force-confdef dist-upgrade']
+         if 'debian' in group_names
+         else ['/usr/bin/zypper --non-interactive dup --auto-agree-with-licenses'] }}
+    autoupdate_expected_masked_timers: >-
+      {{ ['apt-daily.timer', 'apt-daily-upgrade.timer']
+         if 'debian' in group_names
+         else [] }}
   tasks:
     # daemon_reload is a no-op that just makes the module gather and return the
     # timer's systemctl-show properties to assert against; it reads, not mutates.
@@ -35,13 +45,49 @@
       register: autoupdate_service
       become: true
 
-    - name: The service runs this distribution's update command then reboots
+    # Not autoupdate_service.status.ExecStart: systemd_service parses systemctl
+    # show into a flat map, so a property systemd repeats — one ExecStart= per
+    # update command here — keeps only its last line, and the first would go
+    # unasserted while reading as though it had been checked. Ask systemd for the
+    # property directly, which prints every entry.
+    - name: Read the update service's ExecStart lines
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - show
+          - autoupdate.service
+          - --property=ExecStart
+      register: autoupdate_execstart
+      changed_when: false
+      become: true
+
+    - name: The service runs each of this distribution's update commands
       ansible.builtin.assert:
         that:
           # The whole argv, not a substring of it: an appended argument — say
           # --download-only — would otherwise pass while the host quietly stopped
           # patching, exiting 0 and recording a success every week.
-          - "('argv[]=' ~ autoupdate_expected_command ~ ' ;') in autoupdate_service.status.ExecStart"
+          - "('argv[]=' ~ item ~ ' ;') in autoupdate_execstart.stdout"
+        fail_msg: "the service does not run `{{ item }}`"
+        quiet: true
+      loop: "{{ autoupdate_expected_command }}"
+
+    - name: The service runs those commands and nothing else
+      ansible.builtin.assert:
+        that:
+          # Counting them is the other half: matching each expected command
+          # leaves a smuggled extra ExecStart= — which oneshot would run too —
+          # entirely unasserted.
+          - autoupdate_execstart.stdout | regex_findall('argv\\[\\]=') | length == autoupdate_expected_command | length
+        fail_msg: "the service runs update commands beyond the expected ones"
+        quiet: true
+
+    - name: The service runs unattended and reboots
+      ansible.builtin.assert:
+        that:
+          # A changed conffile otherwise prompts and hangs the unit until
+          # TimeoutStartSec on a host with nobody at the console.
+          - "'DEBIAN_FRONTEND=noninteractive' in autoupdate_service.status.Environment"
           # The reboot only fires because 102/103 count as success; drop this and
           # a reboot-recommended run exits non-zero and ExecStartPost is skipped.
           - autoupdate_service.status.SuccessExitStatus == '102 103'
@@ -50,8 +96,31 @@
           # argues against — it exits 0 having never rebooted.
           - "'argv[]=/usr/bin/systemctl reboot ;' in autoupdate_service.status.ExecStartPost"
           - "'autoupdate-metric.sh' in autoupdate_service.status.ExecStopPost"
-        fail_msg: "the service does not run `{{ autoupdate_expected_command }}`, accept 102/103, reboot, then record the outcome"
+        fail_msg: "the service does not run non-interactively, accept 102/103, reboot, then record the outcome"
         quiet: true
+
+    # The Debian platform is the only tier that can prove the takeover: no tier
+    # boots MicroOS, and Tumbleweed ships no competing timer, so on that platform
+    # the list is empty and this loops over nothing.
+    - name: Read the distribution timers this role takes over
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+      loop: "{{ autoupdate_expected_masked_timers }}"
+      register: autoupdate_distro_timers
+      become: true
+
+    - name: The distribution's own update timers are stopped and masked
+      ansible.builtin.assert:
+        that:
+          - item.status.UnitFileState == 'masked'
+          # Not merely masked: masking a running unit leaves it running, and the
+          # two timers would then be armed together for the life of the boot.
+          - item.status.ActiveState == 'inactive'
+        fail_msg: "{{ item.item }} is not stopped and masked"
+        quiet: true
+      loop: "{{ autoupdate_distro_timers.results | default([]) }}"
+      loop_control:
+        label: "{{ item.item }}"
 
     # A mirror lag that aborts the commit must heal unattended rather than strand
     # the host for a week. The two intervals carry systemd's USec property names
@@ -113,14 +182,16 @@
         quiet: true
 
     # No tier boots MicroOS. This pins the selector's transactional branch and
-    # nothing else — the defaults template lazily, so shadowing the one fact they
+    # nothing else — the defaults template lazily, so shadowing the facts they
     # read resolves them as a MicroOS host would. No role task runs here.
     - name: The defaults update transactionally on MicroOS
       ansible.builtin.assert:
         that:
-          - autoupdate_update_command == '/usr/sbin/transactional-update --non-interactive dup'
+          - autoupdate_update_command == ['/usr/sbin/transactional-update --non-interactive dup']
+          - autoupdate_masked_timers == ['transactional-update.timer']
         fail_msg: "the defaults do not run transactional-update on MicroOS"
         quiet: true
       vars:
         ansible_facts:
           distribution: openSUSE MicroOS
+          os_family: Suse

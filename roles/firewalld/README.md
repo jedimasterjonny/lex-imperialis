@@ -3,6 +3,11 @@
 Enables firewalld and opens the ports each host serves. The default zone keeps
 its system default (`public`); the role only adds to it.
 
+Installs through `ansible.builtin.package`, so it serves `auspex` on Raspberry Pi
+OS as well as the openSUSE hosts. `firewalld_packages` needs no distro arm:
+`firewalld` and `python3-firewall` are already the Debian names, and firewalld's
+own service, port and rich-rule vocabulary is the same under both.
+
 `firewalld_services` and `firewalld_ports` are the openings; a host needing more
 than the `ssh` baseline sets its own list in the play (`playbooks/solar.yml` opens caddy's
 80/443 plus QUIC and the Plex port set). `firewalld_rich_rules` takes full

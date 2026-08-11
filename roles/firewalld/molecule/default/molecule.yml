@@ -1,9 +1,21 @@
 ---
+# Two platforms, one per distribution the role supports. Groups rather than
+# facts, so verify can gate on group_names without gathering — though nothing
+# here needs to: firewalld's own vocabulary is the same under both.
+#
+# firewalld writes nftables rules into the instance's net namespace; the CI
+# runner's AppArmor denies that under the default profile, so drop it — the
+# instances are throwaway.
 platforms:
   - name: "lex-firewalld-incus-${MOLECULE_RUN_ID:-local}"
     image: images:opensuse/tumbleweed/cloud
-    # firewalld writes nftables rules into the instance's net namespace; the CI
-    # runner's AppArmor denies that under the default profile, so drop it — the
-    # instance is throwaway.
+    groups:
+      - opensuse
+    config:
+      raw.lxc: lxc.apparmor.profile=unconfined
+  - name: "lex-firewalld-debian-${MOLECULE_RUN_ID:-local}"
+    image: images:debian/13/cloud
+    groups:
+      - debian
     config:
       raw.lxc: lxc.apparmor.profile=unconfined

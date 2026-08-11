@@ -1,14 +1,20 @@
 ---
-# Shared across roles: the Tumbleweed cloud image ships an `opensuse` user
-# holding uid 1000, which common pins for the owner. Scenarios that create the
-# owner symlink this in (common, dev); motd also carries it as the harness
-# exemplar, so a break here fails CI via the shared-infra proxy.
+# Shared across roles: each cloud image ships a user holding uid 1000, which
+# common pins for the owner — `opensuse` on Tumbleweed, `debian` on Debian. Both
+# are removed unconditionally rather than per image: state=absent on a name the
+# image does not carry is a no-op, so the loop stays idempotent either way.
+# Scenarios that create the owner symlink this in (common, dev); motd also
+# carries it as the harness exemplar, so a break here fails CI via the
+# shared-infra proxy.
 - name: Prepare
   hosts: all
   tasks:
     - name: Remove the image's cloud user
       ansible.builtin.user:
-        name: opensuse
+        name: "{{ item }}"
         state: absent
         remove: true
+      loop:
+        - opensuse
+        - debian
       become: true

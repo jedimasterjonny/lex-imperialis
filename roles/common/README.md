@@ -2,7 +2,21 @@
 
 Owner account and base tooling for every host: the account mirrors the
 local Tumbleweed install (uid 1000 by default, group `users`, wheel),
-no password managed, plus `bash-suse` dotfiles via the stow role.
+no password managed, plus the distribution's bash dotfiles via the stow role.
+
+The fleet is openSUSE bar `auspex`, which is Raspberry Pi OS, so three defaults
+are derived from `ansible_facts['os_family']` rather than branched in `tasks/`:
+`common_disabled_repos`, empty on Debian so the four zypper repository tasks loop
+over nothing and skip; `common_chrony_conf_dir`; and `common_bash_stow_package`.
+They are defaults, so a play still overrides any of them — which `vars/Debian.yml`
+would not.
+
+Packages install through `ansible.builtin.package`. On openSUSE it dispatches to
+the zypper module, whose `disable_recommends` already defaults true, so that is
+behaviour-preserving; on Debian it dispatches to apt, where it cannot refresh the
+package lists, so a Debian-gated `apt: update_cache` runs ahead of it. That
+refresh serves the whole play rather than this role: `common` runs first
+everywhere, and `autoupdate` masks `apt-daily.timer`, so nothing else would.
 
 Wheel sudo authenticates with the member's own password — the drop-in
 overrides SUSE's vendor-default `targetpw` — and is `visudo`-validated so
@@ -24,9 +38,9 @@ binding already. `packer/stage2-provision.yml` reads `common_packages` for that.
 Seven of the fleet's package names resolve through a `Provides` of a versioned
 rpm — `python3-selinux` here, `python3-firewall` in firewalld,
 `python3-libvirt-python` and `python3-lxml` in libvirt, `python3`, `python3-pip`
-and `npm` in dev — and `community.general.zypper` prefilters `name:` on package
-name, so none short-circuits: every converge runs a real `zypper install`,
-reporting `ok`.
+and `npm` in dev — and the zypper module `package` dispatches to prefilters
+`name:` on package name, so none short-circuits: every converge runs a real
+`zypper install`, reporting `ok`.
 
 **On MicroOS each becomes a `transactional-update` snapshot, created then
 dropped, and it is the *drop* that arms
@@ -78,8 +92,9 @@ converges no further, `site.yml` stops there, and `ArbitesFailed` goes
 critical.
 
 `common_ntp_sources` adds NTP sources through
-`/etc/chrony.d/common-ntp.conf`, one `pool` line each, alongside whatever the
-install left in the packaged `pool.conf` — `time.cloudflare.com` by default.
+`{{ common_chrony_conf_dir }}/common-ntp.conf`, one `pool` line each, alongside
+whatever the install left in the packaged `pool.conf` — `time.cloudflare.com` by
+default.
 
 It buys availability, not an independent second opinion: chrony votes each
 address behind that name separately, but they are one operator's anycast and can
@@ -91,11 +106,14 @@ The drop-in must not take the packaged file's name: under an `include
 `confdir /etc/chrony.d /usr/etc/chrony.d` it would shadow it — either way the
 distro's own source vanishes silently, so molecule asserts it survives. Which
 layout a host has follows its chrony package rather than its distro, and the
-fleet currently spans both. The render is unconditional, so emptying the list
-falls back to that source rather than leaving a stale file.
+fleet currently spans all three: those two, and Debian's
+`confdir /etc/chrony/conf.d` beside its own `pool 2.debian.pool.ntp.org`. The
+render is unconditional, so emptying the list falls back to that source rather
+than leaving a stale file.
 
-`common_packages` carries `chrony`: its rpm owns `/etc/chrony.d`, and the handler
-restarts `chronyd`, which reads its sources only at start.
+`common_packages` carries `chrony`: its package owns the drop-in directory, and
+the handler restarts `chronyd` — an alias of `chrony.service` on Debian — which
+reads its sources only at start.
 
 That restart is the half no container can exercise, so the handler restarts only
 a `chronyd` already running and molecule proves the drop-in through `chronyd -p`
@@ -109,7 +127,9 @@ is stopped: it takes the file but not the source, until the next start.
 them until the next boot. The drop-in renders unconditionally, so
 emptying the list reclaims the modules instead of leaving a stale file
 barring them. The list unloads in order: a holder must precede what it
-holds, `iwlmvm` before `iwlwifi`.
+holds, `iwlmvm` before `iwlwifi`. The role creates `/etc/modprobe.d` first:
+kmod owns it and every fleet host has it, but a minimal Debian image can ship
+without kmod, and `template` does not create a parent.
 
 The unload is the untested, unpreviewed half: it is skipped under
 `--check`, no molecule tier can exercise it (a container unloads

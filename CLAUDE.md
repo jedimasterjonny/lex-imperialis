@@ -35,6 +35,17 @@ Fleet playbooks live in `playbooks/`; the bootstrap and molecule playbooks stay 
 
 Five hosts in `inventory/hosts.yml`, each configured by `playbooks/<host>.yml` whose `roles:`/`vars:` are that host's spec (names are 40K-themed, not descriptive; `make` defaults `PLAY=scholam`). `scholam` (`this_host`) is the self-managing control host and molecule runner; `administratum` is the Synology NAS — the one host without podman (Prometheus via Docker Compose); `auspex` is a Raspberry Pi 5 on Raspberry Pi OS aarch64, the only non-x86_64 and only Debian host. The monitoring stack is split between the two: `auspex` scrapes and probes the fleet with Prometheus in agent mode and remote-writes to `administratum`, which holds the TSDB and evaluates every alert rule — agent mode rejects `rule_files` outright, and the rules need the retention. Keep host topology (addresses, ports, VPN) out of this file — see **Public repository**.
 
+## Two distributions
+
+The fleet is openSUSE bar `auspex`, which is Debian. **That is a missing driver, not a preference:** openSUSE's aarch64 kernel carries no `CONFIG_PWM_RP1` — absent from the config entirely, not disabled — so a Pi 5's fan never binds and the board idles at its 85 °C hard-throttle point against 47.9 °C on Raspberry Pi OS. Nothing tunable closes that gap, so do not try to reconcile `auspex` back onto openSUSE without first checking whether that config has landed upstream.
+
+Six roles carry both arms: `stow`, `common`, `podman`, `firewalld`, `autoupdate`, and `prometheus` (whose update alert must not name a package manager). Everything else is single-OS and should stay that way — this is a tax, not a direction.
+
+- **Install with `ansible.builtin.package`, not `community.general.zypper`,** in a role auspex runs. On openSUSE it dispatches to the zypper module, whose `disable_recommends` already defaults true, so the swap is behaviour-preserving. It has no `update_cache`: `common` refreshes apt's lists ahead of its own install, and so ahead of every later role in the play.
+- **Branch in `defaults/main.yml`, derived from `ansible_facts`** — following `autoupdate_transactional`. Not per-OS task files, and not `vars/Debian.yml`, which would outrank a play's own vars. Prefer a default that makes the OS-specific tasks skip themselves (`common_disabled_repos` is `[]` on Debian, so the four zypper tasks loop over nothing) over a `when:` on each.
+- **Test both arms in the role's existing `default` scenario**, as a second `platforms:` entry on `images:debian/13/cloud` with `groups: [debian]` — not a second scenario. Gate verify on `'debian' in group_names` rather than gathering facts, and spell out what each distribution should have: an assertion that recomputes the role's own derived expression asserts nothing.
+- **Assume nothing a minimal Debian image ships.** `/etc/containers/containers.conf.d` and `/etc/modprobe.d` both had to be created; `template` does not make a parent, so it fails outright rather than landing somewhere inert.
+
 ## Roles
 
 Each role under `roles/` ships a `README.md` documenting its variables and contracts — read it before changing or composing a role.

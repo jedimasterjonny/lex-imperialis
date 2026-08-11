@@ -175,7 +175,7 @@ tests:
             exp_annotations:
               summary: "unattended update failed on scholam:9100"
               description: >-
-                The last unattended zypper update on scholam:9100 failed — the host may be
+                The last unattended update on scholam:9100 failed — the host may be
                 unpatched or did not reboot.
       # Still pending: without this the case above would also pass a for: of 15m,
       # which is the value this change moved away from.

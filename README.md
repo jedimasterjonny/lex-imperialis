@@ -26,7 +26,7 @@ This has a side effect I never considered before I began: having an IaC repo tha
 
 ## The Stack
 
-Tumbleweed on the Beelinks, MicroOS on the VPS, Raspberry Pi OS on the Pi, DSM on the NAS. Workloads are rootful podman quadlets, bar the NAS, where Docker Compose is what DSM offers.
+Tumbleweed on the Beelinks, MicroOS on the VPS, Raspberry Pi OS on the Pi, DSM on the NAS. The Pi breaks the pattern because openSUSE's aarch64 kernel has no RP1 PWM driver: the fan never binds and the board overheats. Workloads are rootful podman quadlets, bar the NAS, where Docker Compose is what DSM offers.
 
 Backends publish no host port at all: they sit on caddy's network and drop a snippet into `/etc/caddy/sites/`, and a DNS-01 wildcard issues their certs, so an internal service gets TLS without ever facing the internet. plex is the exception — host-networked, and reached directly. Container state is a named volume, never a host bind mount, so `podman_backup` can restic every volume to the NAS weekly.
 
@@ -34,9 +34,9 @@ Backends publish no host port at all: they sit on caddy's network and drop a sni
 
 `rogue-trader` serves the public WordPress site behind the same caddy role and joins the fleet over WireGuard, which carries both its scrape and its backup. Its root is read-only: what it needs is baked into the MicroOS image `packer/` builds, not installed by its play.
 
-Monitoring sits off the hosts it watches, and is itself split across two of them. `auspex` does the looking: Prometheus in agent mode scrapes the fleet, blackbox_exporter probes the public sites, and Alertmanager sends what fires. The NAS keeps the TSDB the agent writes into and evaluates every alert rule against it — an agent can hold no rules, and rules that read a fortnight back need the retention. Grafana stays on `solar`, pointed at the NAS as before; node_exporter runs on the openSUSE hosts and cadvisor on the podman ones. Liveness is a blackbox probe over the network; a container's own healthcheck exists only to restart it when stuck, and anything that must not be killed mid-flight — a plex transcode, a beets import — carries none at all. An hourly drift check on the podman hosts closes the other half: `arbites` proves `main` reached the fleet, and the `inquisition` proves the containers still match what `main` declares.
+Monitoring sits off the hosts it watches, and is itself split across two of them. `auspex` does the looking: Prometheus in agent mode scrapes the fleet, blackbox_exporter probes the public sites, and Alertmanager sends what fires. The NAS keeps the TSDB the agent writes into and evaluates every alert rule against it — an agent can hold no rules, and rules that read a fortnight back need the retention. Grafana stays on `solar`, pointed at the NAS as before; node_exporter runs on every host but the NAS, and cadvisor on the podman ones. Liveness is a blackbox probe over the network; a container's own healthcheck exists only to restart it when stuck, and anything that must not be killed mid-flight — a plex transcode, a beets import — carries none at all. An hourly drift check on the podman hosts closes the other half: `arbites` proves `main` reached the fleet, and the `inquisition` proves the containers still match what `main` declares.
 
-Updates run unattended and staggered: `solar` Monday as the canary, `auspex` Tuesday, the VPS midweek, `scholam` last, so one bad update cannot brick the fleet in a single night. The openSUSE hosts roll — `zypper dup` on the Beelinks, its transactional form on the VPS, which reboots into the new snapshot.
+Updates run unattended and staggered: `solar` Monday as the canary, `auspex` Tuesday, the VPS midweek, `scholam` last, so one bad update cannot brick the fleet in a single night. The openSUSE hosts roll — `zypper dup` on the Beelinks, its transactional form on the VPS, which reboots into the new snapshot; the Pi takes `apt-get dist-upgrade`. One timer per host either way, with the distribution's own masked, and every run writes its outcome as a metric so a silent failure alerts.
 
 ## Layout
 
