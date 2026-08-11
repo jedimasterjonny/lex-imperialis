@@ -265,6 +265,47 @@ play, run locally, then the home restore.
 6. To make it the molecule runner again, locally on scholam:
    `ansible-playbook bootstrap/incus.yml --ask-become-pass`.
 
+## auspex (Raspberry Pi 5)
+
+Stateless by design, and so the shortest recovery here: no NFS mount, no backup
+role, nothing to restore. The only state it holds is Alertmanager's silences and
+notification log, and the agent's write-ahead log is a few hours of buffer by
+construction — everything else is rebuilt from the repo.
+
+1. Write Raspberry Pi OS Lite arm64 to a fresh card, then put
+   `bootstrap/auspex-user-data.yaml` on the card's FAT partition as `user-data`,
+   with a fresh `instance-id` in the `meta-data` beside it — `bootstrap/README.md`
+   has the procedure and the trap, which is that letting Raspberry Pi Imager apply
+   its own customisation silently overwrites the seed.
+2. Boot it. `ssh ansible@auspex` answering, with `id jonny` reporting uid 1026 and
+   gid 100, is the signal cloud-init consumed the seed rather than its own default.
+3. Apply its play:
+
+   ```bash
+   make apply PLAY=auspex
+   ```
+
+4. Re-seed the host key, or the reconcile stops fleet-wide. A re-image generates a
+   new one, and the entry in `arbites`'s `known_hosts` then MISMATCHES rather than
+   merely missing — which `arbites` treats as the machine-in-the-middle it exists to
+   refuse. On scholam as root:
+
+   ```bash
+   ssh-keygen -f /etc/arbites/ssh/known_hosts -R auspex
+   ssh-keyscan -H auspex >>/etc/arbites/ssh/known_hosts
+   ```
+
+Silences do not survive, so anything deliberately muted before the loss starts
+firing again after step 3. The scrape gap is a hole in the NAS's history rather
+than a fault to repair: the agent buffers only to
+`--storage.agent.retention.max-time`, and the NAS refuses samples older than its
+`out_of_order_time_window` even once the agent reconnects.
+
+While auspex is down the fleet is unmonitored rather than noisily broken — most
+rules match an empty vector instead of firing. `PrometheusAgentAbsent` on the NAS
+is what says so, and the `Watchdog` deadman covers the case where auspex takes
+Alertmanager with it.
+
 ## administratum (NAS)
 
 Out of this repo's recovery flow — it is the backup target, not a managed
@@ -273,8 +314,10 @@ emails the operator on any disk or array fault — the array-health signal, sinc
 the NAS runs no `node_exporter` by design — so degradation is caught before it
 becomes a recovery event. Recover the appliance with DSM (Hyper Backup / the
 RAID), which also returns Prometheus's TSDB (a local bind mount at
-`/volume2/astropath/prometheus/data`; blackbox_exporter is stateless). Then
-redeploy the compose projects:
+`/volume2/astropath/prometheus/data`). The TSDB is now the fleet's only copy of
+its own history and the only place the alert rules are evaluated, so a loss here
+is a monitoring outage as well as a data one — auspex keeps scraping throughout,
+but its buffer is hours, not days. Then redeploy the compose project:
 
 ```bash
 make apply PLAY=administratum

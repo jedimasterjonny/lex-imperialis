@@ -2,7 +2,10 @@
 
 [Alertmanager](https://github.com/prometheus/alertmanager) as a Podman quadlet on
 the host network, serving `:9093`. Prometheus on the NAS pushes alerts to it over
-the LAN; opening the port for that scraper is the playbook's job, not the role's.
+the LAN — it evaluates the rules but does not run Alertmanager — so the port has
+to be open to that host; opening it is the playbook's job, not the role's. The
+co-located prometheus_agent scrapes this Alertmanager over loopback, and the NAS
+deliberately does not, or one Alertmanager would carry two `instance` labels.
 
 ## Config
 
@@ -32,7 +35,7 @@ notification log) lives in the `alertmanager-data` named volume, handed to the
 image's `nobody` user (65534) with `:U`.
 
 The container's podman healthcheck against `/-/healthy` is the restart backstop, not
-the monitor (see `CLAUDE.md`). Alertmanager needs no blackbox probe: Prometheus
+the monitor (see `CLAUDE.md`). Alertmanager needs no blackbox probe: the agent
 already scrapes it, so `InstanceDown` covers it, and a total outage trips the
 Watchdog deadman — an alert routed through Alertmanager cannot report Alertmanager.
 That same scrape feeds `AlertmanagerNotificationsFailing` (prometheus role), which

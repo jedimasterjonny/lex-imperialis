@@ -17,7 +17,7 @@
     # Poll, not a one-shot read: verify runs right after side_effect recreates the
     # container, and /-/ready goes green before the scrape pools register their
     # targets.
-    - name: Wait for the prometheus, node, cadvisor, blackbox and alertmanager scrape jobs to register
+    - name: Wait for the self-scrape job to register
       ansible.builtin.uri:
         url: http://127.0.0.1:9090/api/v1/targets
         return_content: true
@@ -25,44 +25,19 @@
       until:
         # The self-scrape backs PrometheusRuleEvaluationFailing and
         # PrometheusConfigReloadFailed; dropping the job would silently strip both
-        # alerts of their metrics while every other check here stayed green.
+        # alerts of their metrics while every other check here stayed green. It is
+        # the only job this role renders — the fleet's targets belong to
+        # prometheus_agent, whose own scenario asserts them.
         - >-
           prometheus_targets.json.data.activeTargets
           | selectattr('labels.job', 'eq', 'prometheus') | list | length > 0
-        - >-
-          prometheus_targets.json.data.activeTargets
-          | selectattr('labels.job', 'eq', 'node') | list | length > 0
-        - >-
-          prometheus_targets.json.data.activeTargets
-          | selectattr('labels.job', 'eq', 'cadvisor') | list | length > 0
-        - >-
-          prometheus_targets.json.data.activeTargets
-          | selectattr('labels.job', 'eq', 'blackbox') | list | length > 0
-        - >-
-          prometheus_targets.json.data.activeTargets
-          | selectattr('labels.job', 'eq', 'alertmanager') | list | length > 0
       retries: 30
       delay: 2
 
-    # The group's module has to survive as __param_module into the URL Prometheus
-    # actually scrapes, or a target silently falls back to the exporter's default
-    # module. scrapeUrl is that constructed URL. Anchor the match on the parameter
-    # boundary: a bare 'module=http_2xx' is also satisfied by 'module=http_2xx_or_401'.
-    - name: The blackbox target is scraped with its group's prober module
-      ansible.builtin.assert:
-        that:
-          - blackbox_scrape_urls | select('search', 'module=http_2xx(&|$)') | list | length > 0
-        fail_msg: >-
-          the blackbox target's scrapeUrl did not carry its group's module=, so
-          __param_module is not reaching the scrape URL
-      vars:
-        blackbox_scrape_urls: >-
-          {{ prometheus_targets.json.data.activeTargets
-             | selectattr('labels.job', 'eq', 'blackbox')
-             | map(attribute='scrapeUrl') | list }}
-
-    # Polled like the scrape jobs: the static alertmanager target is discovered
-    # shortly after /-/ready, even though nothing is listening on 9093.
+    # This is the routing half of the role's boundary, asserted by the until: —
+    # the task fails after 30 retries if the alerting block never took, so it
+    # needs no separate assert. Polled like the scrape job: the static target is
+    # discovered shortly after /-/ready, even though nothing listens on 9093.
     - name: Wait for the alertmanager to register
       ansible.builtin.uri:
         url: http://127.0.0.1:9090/api/v1/alertmanagers
@@ -183,28 +158,64 @@
     - name: The side-effect config change reached the running container
       ansible.builtin.assert:
         that:
-          - "'sentinel-regression:9100' in prometheus_loaded_config.json.data.yaml"
+          - "'sentinel-regression:9093' in prometheus_loaded_config.json.data.yaml"
         fail_msg: >-
           The running prometheus did not pick up the config change — the container
           was not recreated (stale single-file bind mount).
 
-    # The Docker-monitoring dashboard groups by `container` and selects series with
-    # image!=""; the cadvisor job rebuilds both from the cgroup id, because cadvisor
-    # no longer mounts the root-equivalent podman socket that used to supply them.
-    # Assert both relabels reached the loaded config, so dropping either fails here
-    # rather than silently as empty panels. The id pattern is asserted too: without
-    # it a `target_label: container` line could be present but matching nothing.
-    - name: The cadvisor job rebuilds the container and image labels from the cgroup id
+    # The role's boundary, asserted rather than assumed: it routes to Alertmanager
+    # and scrapes nothing but itself. Both halves fail differently — an alerting
+    # block that lost its target delivers nothing, while a scrape job creeping back
+    # in duplicates what the agent already sends, so one Alertmanager arrives under
+    # two instance labels and InstanceDown fires on a blipping network path rather
+    # than on Alertmanager being down. The same reasoning holds for node, cadvisor
+    # and blackbox: re-add any of them here and every one of those series is
+    # ingested twice, once from each writer.
+    - name: Nothing but this server is scraped
       vars:
-        loaded: "{{ prometheus_loaded_config.json.data.yaml }}"
+        scraped_jobs: >-
+          {{ prometheus_targets.json.data.activeTargets
+             | map(attribute='labels.job') | unique | sort }}
       ansible.builtin.assert:
         that:
-          - "'target_label: container' in loaded"
-          - "'target_label: image' in loaded"
-          - "'libpod-payload-' in loaded"
+          - scraped_jobs == ["prometheus"]
         fail_msg: >-
-          the cadvisor metric_relabel_configs that rebuild container and image from
-          the cgroup id are missing from the loaded config
+          this server must scrape only itself, but it scraped {{ scraped_jobs }}.
+          A job creeping back gives those series two writers — the agent already
+          sends them — so every sample is ingested twice.
+
+    # Rendered from prometheus_out_of_order_time_window. Read back from the config
+    # Prometheus resolved rather than the file on disk: the point is that it
+    # reached the process, since without it an agent's replayed backlog is
+    # rejected as out of bounds and lost with no error anyone sees.
+    - name: The out-of-order ingestion window reached the running config
+      ansible.builtin.assert:
+        that:
+          - "'out_of_order_time_window: 4h' in prometheus_loaded_config.json.data.yaml"
+        fail_msg: >-
+          The resolved config carries no out_of_order_time_window, so a writing
+          agent's WAL buffer is notional — anything older than the last compacted
+          block is dropped on reconnect.
+
+    # A path, not a readable flag: without --web.enable-remote-write-receiver the
+    # endpoint 404s, and with it an empty body is a 400. So a non-404 is the only
+    # proof the flag reached the process — asserting on the rendered compose file
+    # would pass on a container that never took it.
+    - name: Probe the remote-write receiver
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9090/api/v1/write
+        method: POST
+        body: ""
+        status_code: [200, 204, 400, 404, 405, 415]
+      register: prometheus_remote_write_probe
+
+    - name: The remote-write receiver accepts pushes
+      ansible.builtin.assert:
+        that:
+          - prometheus_remote_write_probe.status != 404
+        fail_msg: >-
+          /api/v1/write returned 404, so --web.enable-remote-write-receiver never
+          reached the container and an agent writing here would be refused.
 
     # The checks above prove prometheus works; they can't prove its capability set
     # is minimal. Assert the posture directly so a regression that widens the caps

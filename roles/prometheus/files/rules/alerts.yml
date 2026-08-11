@@ -182,17 +182,40 @@ groups:
       # summer ambient lifts it further, so 90 would fire on routine load. 95 errs late
       # deliberately: throttling at 105C costs clock, not hardware, whereas a weekly false
       # positive costs the alert its credibility. No second, higher-threshold rule — it
-      # would double-alert one fault, as ServiceRestartStorm's exclusion explains. Scoped
-      # to platform_coretemp_0, which only the two N150 boxes export, so one global
-      # threshold can key to their 105C Tjmax.
+      # would double-alert one fault, as ServiceRestartStorm's exclusion explains.
+      #
+      # Two thresholds, one rule, because the fleet has two thermal classes and no single
+      # number serves both: the N150s' Tjmax is 105C, where a Pi 5 soft-throttles at 80C
+      # and hard-throttles at 85C. Splitting this into a rule each is what it looks like
+      # it wants to be, and promtool's lint refuses it — duplicate rules key on name plus
+      # labels, not expression — which is the same conclusion the comment above reaches
+      # for its own reason: one fault pages once.
+      #
+      # The chip labels scope each side to its class, and no host exports both, so the
+      # union can never double-count an instance. platform_coretemp_0 comes from the two
+      # N150 boxes; thermal_thermal_zone0 from auspex, read off the box rather than
+      # inferred — node_exporter names the chip from the hwmon `device` symlink, which
+      # there resolves to /sys/devices/virtual/thermal/thermal_zone0. It falls back to the
+      # hwmon `name` file only when that symlink is absent, so the `cpu_thermal_0` the Pi
+      # reports there is not the label and would match nothing.
+      #
+      # 80C leaves the Pi 5C before its clocks are pulled outright, and one with working
+      # active cooling never sustains it: the board's own thermal zone declares fan trip
+      # points from 50C up, so a sustained 80C means the cooling is absent or failed, not
+      # that the host is busy.
       - alert: HostCpuTemperatureHigh
-        expr: max by (instance) (node_hwmon_temp_celsius{chip="platform_coretemp_0"}) > 95
+        expr: >-
+          max by (instance) (node_hwmon_temp_celsius{chip="platform_coretemp_0"}) > 95
+          or max by (instance) (node_hwmon_temp_celsius{chip="thermal_thermal_zone0"}) > 80
         for: 15m
         labels:
           severity: warning
         annotations:
-          summary: "CPU on {{ $labels.instance }} sustained above 95C"
-          description: "{{ $labels.instance }} has held its CPU at {{ $value }}C for 15 minutes. Throttling starts at 105C — check the heatsink and fan."
+          summary: "CPU on {{ $labels.instance }} sustained above its thermal limit"
+          description: >-
+            {{ $labels.instance }} has held its CPU at {{ $value }}C for 15 minutes — past
+            the limit for its class, 95C on the N150s and 80C on the Pi. Check the
+            heatsink and that the fan is spinning.
 
   - name: time
     rules:
@@ -630,6 +653,55 @@ groups:
           description: >-
             Prometheus on {{ $labels.instance }} rejected its last config reload and is
             running the previous config — an arbites-applied change has not taken effect.
+      # The failure mode the agent architecture introduces, and the one nothing
+      # else can see. Every scrape target reaches this server through one agent, so
+      # if that agent stops, samples simply stop arriving — and almost every rule
+      # here then matches an EMPTY VECTOR rather than firing. `== 0` and
+      # `time() - <gauge> > N` both match nothing on an empty vector, which is the
+      # same trap ScheduledJobMetricMissing exists for further down. InstanceDown
+      # cannot help either: it keys on `up == 0`, and a target nobody scrapes
+      # publishes no `up` at all.
+      #
+      # Critical, not warning: while this fires the entire fleet is unmonitored.
+      # A wholly dead agent host is covered differently and adequately — Alertmanager
+      # dies with it, the Watchdog beat stops, and the deadman receiver pages — but a
+      # live host whose agent has stopped is invisible without this.
+      #
+      # absent() carries only the matcher's labels, so there is no instance to name.
+      - alert: PrometheusAgentAbsent
+        expr: absent(up{job="prometheus_agent"})
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "no samples are arriving from the prometheus agent"
+          description: >-
+            No up{job="prometheus_agent"} series is arriving, so the agent that scrapes
+            the entire fleet is not writing. Every other rule is now evaluating an empty
+            vector and cannot fire — this alert is the only thing standing between a
+            stopped agent and silence. Expect roughly 15 minutes from the agent stopping
+            to this firing, not the 10m for: alone: up stays queryable for the 5m
+            lookback delta after its last sample, so absent() only turns true once that
+            has elapsed.
+      # Ordered after the absent() rule deliberately, because it is the weaker of the
+      # two and only the pair is complete: the agent reports this counter over the same
+      # remote_write channel the counter describes, so under TOTAL failure it never
+      # arrives and this rule matches nothing. It catches the partial case — some
+      # samples rejected, a full queue, a receiver refusing writes it once accepted —
+      # where the channel is up enough to carry its own bad news.
+      - alert: PrometheusRemoteWriteFailing
+        expr: rate(prometheus_remote_storage_samples_failed_total{job="prometheus_agent"}[5m]) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "prometheus agent on {{ $labels.instance }} is failing to write samples"
+          description: >-
+            The agent on {{ $labels.instance }} has been failing to write samples to
+            {{ $labels.url }} for 15 minutes. Its WAL buffers against a receiver outage,
+            but only to --storage.agent.retention.max-time — past that the backlog is
+            dropped, and anything older than the receiver's out_of_order_time_window is
+            refused even once it reconnects.
       # The eight oneshots SystemdUnitFailed excludes are excluded *because* each
       # writes a *_success metric with a bespoke *Failed rule. That trade only holds
       # while the metric is actually published: every one of those rules is `== 0` or

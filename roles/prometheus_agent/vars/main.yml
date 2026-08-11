@@ -1,0 +1,6 @@
+---
+# The same image as roles/prometheus — agent mode is a flag, not a build. Pinned
+# separately because renovate's manager keys on a role's own vars/main.yml, and
+# the two roles deploy to different hosts and may bump on different days.
+# renovate's image manager bumps the tag.
+prometheus_agent_image: docker.io/prom/prometheus:v3.13.2@sha256:508729e0e2d18e11fd742a5a5ca70e557b940a93948c3c95fd0123a6fd538b69

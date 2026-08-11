@@ -1,10 +1,16 @@
 # prometheus
 
 Prometheus as a single Docker container, deployed from a templated compose
-project with `community.docker.docker_compose_v2`. It scrapes itself, the
-`node_exporter` targets in `prometheus_node_targets`, the `cadvisor` targets
-in `prometheus_cadvisor_targets`, and the `alertmanager` targets in
-`prometheus_alertmanager_targets` — to which it also routes alerts.
+project with `community.docker.docker_compose_v2`. The TSDB and the rule
+evaluator: it accepts the fleet's samples over remote-write, evaluates the
+shipped rules against them, and routes what fires to the Alertmanager targets in
+`prometheus_alertmanager_targets`.
+
+**It scrapes nothing but itself.** The fleet's `node`, `cadvisor`, `blackbox` and
+`alertmanager` jobs belong to the `prometheus_agent` role, which scrapes them
+beside the exporters and writes here. Adding any of them back gives every one of
+those series two writers, so each sample is ingested twice — the reason the
+molecule scenario asserts the job set is exactly `["prometheus"]`.
 
 ## Target: administratum (Synology)
 
@@ -38,46 +44,32 @@ The role's host is the NAS, not a fleet openSUSE node, which shapes it:
 - `prometheus_run_user` — `uid:gid` the container runs as; owns the `0755` data
   dir. Defaults to the connecting user (root under molecule, the deploy user on the
   NAS).
-- `prometheus_node_targets` — list of `host:9100` scrape targets.
-- `prometheus_cadvisor_targets` — list of `host:8080` scrape targets, scraped at
-  30s to match cadvisor's housekeeping interval. Container series get a `container`
-  label mirrored from cadvisor's `name` so the Docker-monitoring Grafana dashboard,
-  which groups by `container`, renders.
-- `prometheus_alertmanager_targets` — list of `host:9093` Alertmanager targets,
-  both scraped and sent alerts. Scraping gives `up{job="alertmanager"}`, so a
-  dead Alertmanager trips `InstanceDown` in Prometheus — but delivering that
-  alert needs a live Alertmanager, so the `Watchdog` deadman heartbeat is what
-  surfaces a wholly dead one. Empty configures no alerting and no scrape job;
-  non-empty adds the `alerting` block and loads the shipped rule files.
-- `prometheus_probe_targets` — blackbox probe targets: each entry is
-  `{module, targets}`, pairing a prober module with the full URLs to run it against
-  (the same module may appear in several entries). Each URL is handed to the
-  `blackbox_exporter` (the `blackbox_exporter` role) via `?target=` and relabelled
-  into the `instance` label, so the scrape hits the exporter, not the target; the
-  entry's `module` rides along as `__param_module`. Empty adds no `blackbox` job.
-- `prometheus_blackbox_address` — `host:port` of the `blackbox_exporter` the
-  `blackbox` job scrapes; the exporter's loopback listen address on this host.
+- `prometheus_alertmanager_targets` — list of `host:9093` Alertmanager targets
+  alerts are *routed* to. Routing only: the agent co-located with Alertmanager
+  scrapes it over loopback, and a scrape from here as well would give the one
+  Alertmanager two `instance` labels, so `InstanceDown` would fire on whichever
+  network path blipped rather than on Alertmanager being down. `up{job="alertmanager"}`
+  therefore arrives over remote-write like everything else — and since delivering
+  an alert about Alertmanager needs a live Alertmanager, the `Watchdog` deadman is
+  what surfaces a wholly dead one. Empty configures no alerting and loads no
+  rules; non-empty adds the `alerting` block and the shipped rule files.
+- `prometheus_remote_write_receiver` — accept remote-write pushes
+  (`--web.enable-remote-write-receiver`), so a Prometheus in agent mode elsewhere
+  writes into this TSDB. Off by default, and worth knowing before it is turned on:
+  the endpoint carries no authentication, so anything that can reach the port can
+  inject series.
+- `prometheus_out_of_order_time_window` — `storage.tsdb.out_of_order_time_window`.
+  Empty leaves Prometheus's default of no out-of-order ingestion, which quietly
+  makes a writing agent's WAL buffer notional: the agent holds samples while this
+  server is unreachable, but this server's own self-scrape keeps its head
+  advancing and compacting every 2h, so on reconnect anything older than the last
+  persisted block is rejected as out of bounds and dropped. Set it to the agent's
+  `prometheus_agent_retention_max_time`, which that role sets explicitly for this
+  reason rather than inheriting a compiled-in default a digest bump could move.
+  Change one and change the other.
 - `prometheus_security_opt_extra` — extra compose `security_opt` entries, appended
   to the `no-new-privileges` the template hardcodes (alongside `cap_drop: ALL`);
   empty in production.
-
-## Blackbox probing
-
-When `prometheus_probe_targets` is set, the role adds a `blackbox` job: for each
-URL it scrapes the `blackbox_exporter` at `prometheus_blackbox_address` with
-`?target=<url>&module=<the entry's module>` and `metrics_path: /probe`, so
-Prometheus records `probe_success` and `probe_ssl_earliest_cert_expiry` per target
-end-to-end. The exporter itself is the `blackbox_exporter` role, co-located on the
-NAS.
-
-The module is per target, not per job, because not every target answers `2xx`: an
-auth-walled endpoint answers `401`, which still proves the daemon is serving. It
-therefore goes in an entry naming a module whose `valid_status_codes` accept that,
-and the module reaches the constructed scrape URL as `__param_module`.
-
-A probe here is also how a *containerised* service is monitored on this fleet — the
-network probe is the liveness alert, the container's healthcheck only a restart
-backstop. See `CLAUDE.md`.
 
 ## Alerting
 
@@ -104,9 +96,11 @@ not reach the NAS through the NFS exports); the `memory` group's `MemoryLow`
 (`MemAvailable` under 10% for 15m — `FilesystemSpaceLow`'s threshold and window, for
 the other exhaustible resource. `MemAvailable` has already netted off reclaimable
 cache, so crossing it is real pressure, not a full-looking cache); the `hardware` group's
-`HostCpuTemperatureHigh` (a CPU held above 95C for 15m, off
-`node_hwmon_temp_celsius` scoped to `platform_coretemp_0` — the
-chip only the two N150 boxes export, so the other two hosts raise nothing); the
+`HostCpuTemperatureHigh` (a CPU held past its class's limit for 15m, off
+`node_hwmon_temp_celsius` — one rule, two branches, because the fleet has two
+thermal classes: `platform_coretemp_0` above 95C for the N150 boxes against their
+105C Tjmax, and `thermal_thermal_zone0` above 80C for the Pi, which soft-throttles
+there. Hosts exporting neither chip raise nothing); the
 `time` group's `ClockNotSynchronised` (`node_timex_sync_status == 0` for 30m — a
 node_exporter host whose clock is no longer NTP-synced); the
 `services` group — `ServiceRestartStorm` (a systemd
@@ -161,7 +155,14 @@ standing pile of no-match albums awaiting hand-processing); the `monitoring` gro
 have silently stopped producing series) and `PrometheusConfigReloadFailed` (a config
 or rule file Prometheus rejected at reload, leaving it on the previous config) — the
 two ways an unattended `arbites` deploy of these very files fails silently,
-both read off the `prometheus` self-scrape job — and `ScheduledJobMetricMissing`
+both read off the `prometheus` self-scrape job — plus the pair covering the writer
+this server now depends on: `PrometheusAgentAbsent` (critical: no
+`up{job="prometheus_agent"}` for 10m, so nothing is scraping the fleet and nearly
+every other rule here is matching an empty vector rather than firing) and
+`PrometheusRemoteWriteFailing` (the agent's failed-sample rate above zero for 15m —
+the partial case only, since under total failure the counter travels the same
+broken channel it describes and never arrives, which is what the `absent()` rule
+above catches instead) — and `ScheduledJobMetricMissing`
 (a host running one of the eight oneshots `SystemdUnitFailed` excludes while
 publishing no matching `*_success` metric. That exclusion is only sound while the
 metric exists: `== 0` and `time() - <gauge> > N` both match nothing on an empty

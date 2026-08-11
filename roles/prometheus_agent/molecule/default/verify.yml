@@ -1,0 +1,214 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Wait for the agent to be ready
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9090/-/ready
+        status_code: 200
+      register: prometheus_agent_ready
+      until: prometheus_agent_ready.status == 200
+      retries: 30
+      delay: 2
+
+    - name: Read the agent's own metrics
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9090/metrics
+        return_content: true
+      register: prometheus_agent_metrics
+
+    # The property the whole role exists for, and the one a rendered-file check
+    # cannot see: --agent reaching the process. Both halves are asserted, because
+    # either alone is satisfiable by accident — agent mode publishes the
+    # prometheus_agent_* family and keeps NO TSDB head, so a server-mode process
+    # that silently started instead (the failure when Exec= loses the flag) fails
+    # the second assertion even if the first were somehow met.
+    - name: The process is running in agent mode, not as a second server
+      # Both halves resolved once here, in double-quoted scalars where YAML turns
+      # \n into a real newline. A folded fail_msg cannot do that — escapes are not
+      # processed in block scalars — so computing the same test inline there would
+      # match a literal backslash-n, never fire, and report the opposite of what
+      # went wrong at the one moment the message is read.
+      vars:
+        metrics: "{{ prometheus_agent_metrics.content }}"
+        has_agent_series: "{{ 'prometheus_agent_active_series' in metrics }}"
+        has_tsdb_head: "{{ '\nprometheus_tsdb_head_series ' in metrics }}"
+      ansible.builtin.assert:
+        that:
+          - has_agent_series | bool
+          - not (has_tsdb_head | bool)
+        fail_msg: >-
+          The container is not in agent mode: prometheus_agent_* series
+          {{ 'present' if has_agent_series | bool else 'absent' }}
+          and a TSDB head is
+          {{ 'present' if has_tsdb_head | bool else 'absent' }}.
+          Without --agent it keeps a local TSDB and becomes a second, partial
+          Prometheus that nothing evaluates rules against.
+
+    - name: The remote-write machinery is running
+      ansible.builtin.assert:
+        that:
+          - "'prometheus_remote_storage_samples_total' in prometheus_agent_metrics.content"
+        fail_msg: >-
+          No prometheus_remote_storage_* series, so the agent has no remote-write
+          queue — everything it scrapes is discarded.
+
+    - name: Read the agent's runtime flags
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9090/api/v1/status/flags
+        return_content: true
+      register: prometheus_agent_flags
+
+    # Read off the process, not the unit file, and asserted because this value is
+    # half of a pair whose other half lives in a different role on a different
+    # host: the receiver's storage.tsdb.out_of_order_time_window must be at least
+    # this long or a replayed backlog is refused as out of bounds and dropped
+    # silently. Losing the flag does not fail anything visibly — the agent falls
+    # back to a compiled-in default that a digest bump can move, and the pair comes
+    # apart with no error.
+    - name: The WAL retention the receiver's window is sized against reached the process
+      vars:
+        retention: "{{ prometheus_agent_flags.json.data['storage.agent.retention.max-time'] }}"
+      ansible.builtin.assert:
+        that:
+          - retention == '4h'
+        fail_msg: >-
+          The agent's WAL retention is {{ retention }}, not the 4h the receiver's
+          out_of_order_time_window is sized against — an outage longer than the
+          shorter of the two loses everything buffered past it.
+
+    - name: Read the loaded config
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9090/api/v1/status/config
+        return_content: true
+      register: prometheus_agent_config
+
+    # Agent mode rejects both blocks by name at startup, so either reaching the
+    # rendered config does not degrade the agent — it stops it booting. The
+    # template says so; this is what holds it to that after an edit.
+    - name: The config carries neither of the blocks agent mode refuses
+      vars:
+        loaded: "{{ prometheus_agent_config.json.data.yaml }}"
+      ansible.builtin.assert:
+        that:
+          - "'rule_files:' not in loaded"
+          - "'alertmanagers:' not in loaded"
+        fail_msg: >-
+          The loaded config carries an alerting or rule_files block. Agent mode
+          refuses both ("field alerting is not allowed in agent mode"), so this
+          config would stop the agent starting at all.
+
+    - name: The remote-write endpoint reached the running config
+      ansible.builtin.assert:
+        that:
+          - "'19291/api/v1/write' in prometheus_agent_config.json.data.yaml"
+        fail_msg: The configured remote_write URL is not in the loaded config.
+
+    # side_effect added this target after the container was already up. Finding it
+    # in the config the PROCESS loaded — not the file on disk — is what proves the
+    # restart handler applied the change; without it the agent would go on scraping
+    # its previous target list with nothing reporting the divergence.
+    - name: The side-effect config change reached the running agent
+      ansible.builtin.assert:
+        that:
+          - "'sentinel-regression:9100' in prometheus_agent_config.json.data.yaml"
+        fail_msg: >-
+          The running agent did not pick up the config change, so the restart
+          handler did not fire and it is still scraping the previous targets.
+
+    - name: Wait for the agent, node, cadvisor, blackbox and alertmanager jobs to register
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9090/api/v1/targets
+        return_content: true
+      register: prometheus_agent_targets
+      until:
+        # The self-scrape must be job="prometheus_agent", not "prometheus": the
+        # receiving server self-scrapes under that name at the same
+        # localhost:9090, so sharing it merges two processes into one series.
+        - >-
+          prometheus_agent_targets.json.data.activeTargets
+          | selectattr('labels.job', 'eq', 'prometheus_agent') | list | length > 0
+        - >-
+          prometheus_agent_targets.json.data.activeTargets
+          | selectattr('labels.job', 'eq', 'node') | list | length > 0
+        - >-
+          prometheus_agent_targets.json.data.activeTargets
+          | selectattr('labels.job', 'eq', 'cadvisor') | list | length > 0
+        - >-
+          prometheus_agent_targets.json.data.activeTargets
+          | selectattr('labels.job', 'eq', 'blackbox') | list | length > 0
+        - >-
+          prometheus_agent_targets.json.data.activeTargets
+          | selectattr('labels.job', 'eq', 'alertmanager') | list | length > 0
+      retries: 30
+      delay: 2
+
+    # The group's module has to survive as __param_module into the URL the agent
+    # actually scrapes, or a target silently falls back to the exporter's default
+    # module. Anchor on the parameter boundary: a bare 'module=http_2xx' is also
+    # satisfied by 'module=http_2xx_or_401'.
+    - name: The blackbox target is scraped with its group's prober module
+      vars:
+        blackbox_scrape_urls: >-
+          {{ prometheus_agent_targets.json.data.activeTargets
+             | selectattr('labels.job', 'eq', 'blackbox')
+             | map(attribute='scrapeUrl') | list }}
+      ansible.builtin.assert:
+        that:
+          - blackbox_scrape_urls | select('search', 'module=http_2xx(&|$)') | list | length > 0
+          - blackbox_scrape_urls | select('search', 'target=https%3A%2F%2Fexample.com') | list | length > 0
+        fail_msg: >-
+          The blackbox scrape URLs {{ blackbox_scrape_urls }} do not carry the
+          entry's module and target, so the probe would run the exporter's default
+          module against the wrong thing.
+
+    # Both relabels are copied from the scraping Prometheus and the Grafana 15798
+    # dashboard depends on them; asserting they reached the loaded config means
+    # dropping either fails here rather than silently as empty panels.
+    - name: The cadvisor job rebuilds the container and image labels from the cgroup id
+      vars:
+        loaded: "{{ prometheus_agent_config.json.data.yaml }}"
+      ansible.builtin.assert:
+        that:
+          - "'target_label: container' in loaded"
+          - "'target_label: image' in loaded"
+          - "'libpod-payload-' in loaded"
+        fail_msg: >-
+          The cadvisor metric_relabel_configs did not reach the loaded config, so
+          container series lose the labels the dashboard groups by.
+
+    - name: Read the agent's security posture
+      ansible.builtin.command: podman inspect prometheus-agent
+      become: true
+      register: prometheus_agent_inspect
+      changed_when: false
+
+    # BoundingCaps, not EffectiveCaps: this image runs non-root, whose
+    # EffectiveCaps are empty whatever the drop says — asserting on those would be
+    # a check that cannot fail. Only the bounding set reflects DropCapability=all.
+    # The non-root user comes from the image rather than this role, so an upstream
+    # change could drop it silently; assert it explicitly.
+    - name: The agent keeps no capabilities, bars escalation and runs non-root
+      vars:
+        inspected: "{{ prometheus_agent_inspect.stdout | from_json | first }}"
+      ansible.builtin.assert:
+        that:
+          - inspected.BoundingCaps | default([], true) | sort == []
+          - "'no-new-privileges' in (inspected.HostConfig.SecurityOpt | default([], true))"
+          - inspected.Config.User == 'nobody'
+        fail_msg: >-
+          prometheus-agent's posture has regressed: bounding caps
+          {{ inspected.BoundingCaps | default([], true) }}, security-opt
+          {{ inspected.HostConfig.SecurityOpt | default([], true) }}, user
+          {{ inspected.Config.User }}.
+        quiet: true
+
+    # The inquisition's `unpinned` class reads exactly this, and a quadlet whose
+    # Image lost its digest is a container that silently drifts on the next pull.
+    - name: The quadlet pins its image by digest
+      ansible.builtin.command: grep -E '^Image=.*@sha256:[0-9a-f]{64}$' /etc/containers/systemd/prometheus-agent.container
+      become: true
+      register: prometheus_agent_pin
+      changed_when: false
+      failed_when: prometheus_agent_pin.rc != 0

@@ -18,30 +18,35 @@ prometheus_retention_time: 30d
 # (root under molecule, jonny on the NAS), which the data-dir task makes the owner.
 prometheus_run_user: "{{ ansible_facts['user_uid'] }}:{{ ansible_facts['user_gid'] }}"
 
-# node_exporter scrape targets, each "host:9100". Empty by default, so the node
-# job carries no targets until a host sets them.
-prometheus_node_targets: []
-
-# cadvisor scrape targets, each "host:8080". Empty by default, so the cadvisor
-# job carries no targets until a host sets them.
-prometheus_cadvisor_targets: []
-
-# Alertmanager targets alerts are routed to, each "host:9093". Empty by default,
+# Alertmanager targets alerts are ROUTED to, each "host:9093". Empty by default,
 # so no alerting block or rule files are configured until a host sets them.
+#
+# Routed to and not scraped: this role scrapes nothing but itself. The agent
+# co-located with Alertmanager scrapes it over loopback, and adding a scrape here
+# would give the one Alertmanager two instance labels, so InstanceDown would fire
+# on whichever network path blipped rather than on Alertmanager being down.
 prometheus_alertmanager_targets: []
 
-# Blackbox probe targets: each entry pairs a prober module (module) with the full
-# URLs to run it against (targets), and the same module may appear in more than one
-# entry. Pairing the module with the target is what lets an auth-walled endpoint be
-# probed by a module accepting the 401 it legitimately answers, alongside the plain
-# 2xx targets. Empty by default, so the blackbox job carries no targets until a host
-# sets them.
-prometheus_probe_targets: []
+# Accept remote-write pushes (--web.enable-remote-write-receiver), so a
+# Prometheus running in agent mode elsewhere can write into this TSDB. Off by
+# default: the endpoint carries no authentication, so anything that can reach the
+# port can inject series, and it is opened only where an agent actually writes.
+prometheus_remote_write_receiver: false
 
-# host:port of the blackbox_exporter the blackbox job scrapes. Must match the
-# blackbox_exporter role's blackbox_exporter_listen_address — two independent
-# defaults on the co-located roles, agreeing here at the exporter's loopback bind.
-prometheus_blackbox_address: 127.0.0.1:9115
+# How far behind the head a sample may be and still be ingested, as
+# storage.tsdb.out_of_order_time_window. Empty leaves Prometheus's default, which
+# is no out-of-order ingestion at all.
+#
+# It is what makes a writing agent's buffer real rather than notional. An agent
+# holds samples in its WAL while this server is unreachable and replays them on
+# reconnect — but this server's own self-scrape keeps its head advancing and
+# compacting to a block every 2h, so on reconnect anything older than the last
+# persisted block is rejected as out of bounds and silently dropped. Size this to
+# the agent's --storage.agent.retention.max-time — prometheus_agent_retention_max_time,
+# which that role sets explicitly rather than inheriting a compiled-in default, so
+# this pair cannot come apart under a digest bump — and the two together mean an
+# outage shorter than the buffer loses nothing.
+prometheus_out_of_order_time_window: ""
 
 # Extra compose security_opt entries, appended to the no-new-privileges the
 # template hardcodes (alongside cap_drop: ALL). Empty in production; the molecule

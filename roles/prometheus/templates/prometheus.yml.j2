@@ -8,6 +8,12 @@ storage:
   tsdb:
     retention:
       time: {{ prometheus_retention_time }}
+{% if prometheus_out_of_order_time_window %}
+    # Without this an agent's replayed backlog is rejected as out of bounds the
+    # moment it predates the last block this server compacted — see the default's
+    # comment.
+    out_of_order_time_window: {{ prometheus_out_of_order_time_window }}
+{% endif %}
 {% if prometheus_alertmanager_targets %}
 
 alerting:
@@ -20,72 +26,12 @@ rule_files:
 {% endif %}
 
 scrape_configs:
+  # The only job this server runs. Everything the fleet exports is scraped by the
+  # prometheus_agent role elsewhere and pushed in over remote_write, so this
+  # discovers no targets of its own — the alerting block above is how it reaches
+  # Alertmanager, not a scrape of it. The self-scrape stays because
+  # PrometheusRuleEvaluationFailing and PrometheusConfigReloadFailed read it, and
+  # nothing off this host reports on the rule evaluator's own health.
   - job_name: prometheus
     static_configs:
       - targets: ["localhost:9090"]
-
-  - job_name: node
-    static_configs:
-      - targets: {{ prometheus_node_targets | to_json }}
-
-  - job_name: cadvisor
-    # cadvisor polls every 30s (its housekeeping interval), so scrape at the same
-    # cadence rather than the global 15s and avoid storing each sample twice.
-    scrape_interval: 30s
-    static_configs:
-      - targets: {{ prometheus_cadvisor_targets | to_json }}
-    # The Docker-monitoring dashboard (grafana 15798) groups container series by a
-    # `container` label and selects them with image!="". Both labels used to come
-    # from cadvisor's podman factory, which needed the root-equivalent podman API
-    # socket; cadvisor no longer mounts it, so rebuild both from the cgroup id here.
-    # A quadlet container's leaf cgroup is
-    # /system.slice/<name>.service/libpod-payload-<id>, so the unit name is the
-    # container name, and matching that path at all is what marks a series as a real
-    # container — the parent .service and .service/runtime cgroups do not match, so
-    # exactly one series per container is labelled, as before.
-    # image is a constant, not a ref: the dashboard only ever tests it for
-    # emptiness and never displays it, and the image is not recoverable from a
-    # cgroup path. Anything keying on a real image ref must not use this label.
-    metric_relabel_configs:
-      - source_labels: [id]
-        regex: '/system\.slice/(.+)\.service/libpod-payload-[0-9a-f]+'
-        target_label: container
-        replacement: $1
-      - source_labels: [id]
-        regex: '/system\.slice/(.+)\.service/libpod-payload-[0-9a-f]+'
-        target_label: image
-        replacement: podman
-{% if prometheus_probe_targets %}
-
-  # Blackbox probes: each target is passed to the blackbox_exporter as ?target=, and
-  # the scrape hits the exporter, not the target. Each entry carries its prober module
-  # as __param_module, so the module is per target rather than per job. The
-  # relabelling moves the URL into the target param and the instance label, then
-  # rewrites __address__ to the exporter so the scrape lands there.
-  - job_name: blackbox
-    # Each scrape is a live probe (DNS + TLS + redirect-follow), so scrape at 60s,
-    # not the global 15s: the probe alerts key off minutes to hours (probe_success
-    # for 5m, cert expiry for 1h), so a faster cadence only hammers the targets for
-    # no gain.
-    scrape_interval: 60s
-    metrics_path: /probe
-    static_configs:
-{% for group in prometheus_probe_targets %}
-      - targets: {{ group.targets | to_json }}
-        labels:
-          __param_module: {{ group.module | to_json }}
-{% endfor %}
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: __param_target
-      - source_labels: [__param_target]
-        target_label: instance
-      - target_label: __address__
-        replacement: {{ prometheus_blackbox_address }}
-{% endif %}
-{% if prometheus_alertmanager_targets %}
-
-  - job_name: alertmanager
-    static_configs:
-      - targets: {{ prometheus_alertmanager_targets | to_json }}
-{% endif %}
