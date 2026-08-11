@@ -178,6 +178,25 @@
           The cadvisor metric_relabel_configs did not reach the loaded config, so
           container series lose the labels the dashboard groups by.
 
+    # Parsed and scoped to the job rather than substring-matched: every other job
+    # honours timestamps, and Prometheus renders that default explicitly into the
+    # loaded config, so a flat search for the string would pass on any of them.
+    # node is asserted alongside to prove the override did not land globally.
+    - name: Only the cadvisor job stamps at scrape time
+      vars:
+        loaded_jobs: "{{ (prometheus_agent_config.json.data.yaml | from_yaml).scrape_configs }}"
+        cadvisor_job: "{{ loaded_jobs | selectattr('job_name', 'eq', 'cadvisor') | first }}"
+        node_job: "{{ loaded_jobs | selectattr('job_name', 'eq', 'node') | first }}"
+      ansible.builtin.assert:
+        that:
+          - cadvisor_job.honor_timestamps is defined
+          - not cadvisor_job.honor_timestamps
+          - node_job.honor_timestamps
+        fail_msg: >-
+          The cadvisor job honours cadvisor's own timestamps, so every idle
+          container's repeated sample is dropped as out-of-order and the series
+          gains no point — or the override leaked to the other jobs.
+
     - name: Read the agent's security posture
       ansible.builtin.command: podman inspect prometheus-agent
       become: true

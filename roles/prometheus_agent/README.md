@@ -63,8 +63,18 @@ since under total failure the counter never arrives either.
   agreement silently. Change one, change the other.
 - `prometheus_agent_node_targets` — `host:9100` scrape targets.
 - `prometheus_agent_cadvisor_targets` — `host:8080` targets, scraped at 30s to
-  match cadvisor's housekeeping interval. Container series get `container` and
+  match cadvisor's housekeeping interval, and the one job with
+  `honor_timestamps: false`. Container series get `container` and
   `image` rebuilt from the cgroup id for the Grafana docker dashboard.
+
+  cadvisor exports an explicit timestamp per sample and advances it only for a
+  cgroup that saw activity, so an idle container re-serves the identical sample —
+  same value, same millisecond — every scrape. Honoured, those repeats are
+  rejected as out-of-order and the series gains no point: measured here at 37% of
+  cadvisor's timestamped series and ~130 samples/s across three targets, with
+  `prometheus_target_scrapes_sample_out_of_order_total` climbing steadily.
+  Stamping at scrape time drops that to zero. The cost is the sub-scrape-interval
+  precision of cadvisor's own clock, which nothing on this fleet reads.
 - `prometheus_agent_alertmanager_targets` — `host:9093` targets, **scraped only**.
   An agent routes nothing; the scrape is what yields `up{job="alertmanager"}` and
   the notification counters `AlertmanagerNotificationsFailing` reads.
