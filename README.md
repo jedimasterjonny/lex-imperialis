@@ -45,6 +45,33 @@ Backends publish no host port at all: they sit on caddy's network and drop a sni
 
 Updates run unattended and staggered: `solar` Monday as the canary, `auspex` Tuesday, the VPS midweek, `scholam` last, so one bad update cannot brick the fleet in a single night. One timer per host, with the distribution's own update timers masked, and every run writes its outcome as a metric so a silent failure alerts.
 
+## Network
+
+```mermaid
+flowchart TD
+  fttp[FTTP] ---|1G| gw[Cloud Gateway]
+  gw ---|10G SFP+| core[Core]
+  rogue[rogue-trader] ---|VPN| gw
+
+  core ---|2.5G| study[Study]
+  core ---|10G| apu[Upstairs AP]
+  core ---|2.5G| lounge[Lounge]
+  core ---|10G| apd[Downstairs AP]
+  core ---|2.5G| cupboard[Cupboard]
+
+  study ---|2.5G| scholam[scholam]
+  study ---|2.5G| laptop[Laptop]
+  study ---|1G| nas[administratum]
+  study ---|1G| solar[solar]
+
+  lounge ---|1G| ps5[PS5]
+  lounge ---|100M| tv[TV]
+
+  cupboard ---|1G| imac[iMac]
+  cupboard ---|1G| auspex[auspex]
+  cupboard ---|10M| tado[Tado Bridge]
+```
+
 ## Layout
 
 - `roles/` — where the work is. Each ships a README covering its variables and contracts.
