@@ -14,7 +14,7 @@ This repo is public: every commit is world-readable and permanent, including git
 
 - NEVER commit secrets in plaintext — no passwords, tokens, private keys, or certificates. Encrypt them with `ansible-vault`, and keep vault password files and host secrets out of tracked files.
 - Secrets live in one `ansible-vault`-encrypted file, encrypted whole — no inline `!vault` strings, one vault id.
-- Keep sensitive topology out of the repo — public IPs, exposed ports, VPN/internal-network layout, and anything else that maps the attack surface. Apex domains are the exception: they must live in terraform and caddy, so they are not treated as secret.
+- Keep sensitive topology out of the repo — public IPs, exposed ports, VPN/internal-network layout, and anything else that maps the attack surface. Two exceptions, both deliberate: apex domains, which must live in terraform and caddy, so they are not treated as secret; and `README.md`'s Network diagram as it stands — device names, link speeds, the switch fabric, and that `rogue-trader` joins over VPN. Neither is licence for more: never add addresses, VLANs, ports, firewall posture or VPN configuration, and never extend that diagram past what it already shows.
 - A secret that reaches a commit is compromised: rotate it, don't just delete it. Scrubbing history does not undo exposure.
 
 ## Secrets
@@ -135,5 +135,7 @@ The one standing exception is the `arbites` role: once the operator has bootstra
 READMEs must be terse and direct. The reader is a senior engineer who thoroughly understands the domain — skip background, drop illustrative parentheticals, and don't restate what they already know.
 
 The root `README.md` is the deliberate exception: its narrative intro is the repo's public front door and is kept as prose. Every other README and doc holds to the terse rule.
+
+`README.md` is also precious — hand-written, and the one document with a human audience rather than an operational one. Never change it as a side effect of another change. Any edit to it, down to a single word, must be flagged explicitly in the response that makes it, saying what changed and why, and must sit in its own commit rather than riding inside one about something else. Where the wording is a judgement call rather than a correction, propose it and let the operator choose instead of applying it.
 
 Comments follow the same rule: add one only where a particularly complex piece of code genuinely needs explaining, never to narrate the obvious. When you do, keep the language terse and direct.
