@@ -66,7 +66,8 @@ most often collide with reviewer feedback:
   will use.
 - No plaintext secrets; keep sensitive topology out of the repo.
 - Every task idempotent; every commit green and bisect-safe.
-- Live hosts get `--check`/`--diff` only — never apply.
+- Live hosts get `--check`/`--diff` only — never apply. This skill is tighter
+  than `CLAUDE.md` here, which permits an apply the operator has authorised.
 
 When a reviewer (design or code) suggests something that conflicts with a
 principle, reject it and record why. Never trade a principle for a finding.
