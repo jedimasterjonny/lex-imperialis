@@ -150,8 +150,8 @@ change to that target.
 Anything that fails the bar but still looks real goes in the report. Where the
 rejection is one a future hostile pass would re-derive — a closed decision, or
 something that looks redundant but is load-bearing — write it to project memory
-as well, *unless the repo already defends itself*: `CLAUDE.md` states the `motd`
-exemption outright, and copying the constitution into memory only gives it a
+as well, *unless the repo already defends itself*: `roles/CLAUDE.md` states the
+`motd` exemption outright, and copying the constitution into memory only gives it a
 second place to rot. The ledger records the outcome; memory records reasoning the
 repo does not.
 

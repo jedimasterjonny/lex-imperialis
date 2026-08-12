@@ -252,7 +252,7 @@ Work outward from the change, then check the project's standing docs:
    none and the change warrants it (the same bar below).
 3. **`CLAUDE.md`.** Does the change introduce or alter a convention it records —
    layout, gates, commit rules, a workflow, a tool? If so, update it; if not,
-   leave it.
+   leave it. A role convention belongs in `roles/CLAUDE.md`, not the root file.
 
 Create a README only when the change genuinely calls for one — a new role or
 component whose purpose or usage is not self-evident from the code. Hold that

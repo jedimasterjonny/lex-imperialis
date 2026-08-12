@@ -34,7 +34,7 @@ the container reads it as its own id (`homepage_uid`, PUID/PGID) over the `:ro`
 bind regardless of host owner.
 
 The container's podman healthcheck against `/api/healthcheck` is the restart backstop,
-not the monitor (see `CLAUDE.md`); monitoring is the blackbox probe of the same
+not the monitor (see `roles/CLAUDE.md`); monitoring is the blackbox probe of the same
 endpoint, which — homepage serving the apex — exercises caddy on the way through.
 
 ## Hardening
