@@ -39,3 +39,4 @@ crash.*.log
 /.claude/settings.local.json
 /.claude/scheduled_tasks.*
 /.claude/worktrees/
+/.claude/patrol-ledger.md
