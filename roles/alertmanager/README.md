@@ -36,7 +36,7 @@ notification log) lives in the `alertmanager-data` named volume, handed to the
 image's `nobody` user (65534) with `:U`.
 
 The container's podman healthcheck against `/-/healthy` is the restart backstop, not
-the monitor (see `CLAUDE.md`). Alertmanager needs no blackbox probe: the agent
+the monitor (see `roles/CLAUDE.md`). Alertmanager needs no blackbox probe: the agent
 already scrapes it, so `InstanceDown` covers it, and a total outage trips the
 Watchdog deadman — an alert routed through Alertmanager cannot report Alertmanager.
 That same scrape feeds `AlertmanagerNotificationsFailing` (prometheus role), which

@@ -40,11 +40,12 @@ on to a later phase on a broken earlier one.
 
 ## The apply reconciliation — read first
 
-`CLAUDE.md` and the Makefile both say a live `make apply` is "the operator's
-call, not part of any automated flow," and that authoring touches live hosts
-only via `--check`/`--diff`. This skill is the **deliberate exception the
-operator opts into by running it**: the operator invoking `unattended-author`
-*is* the call to apply, given once for the whole pipeline. That standing
+`CLAUDE.md` requires the operator's explicit authorisation for each live
+`make apply`, and the Makefile calls one "the operator's call, not part of any
+automated flow"; authoring otherwise touches live hosts only via
+`--check`/`--diff`. This skill is the **deliberate exception the operator opts
+into by running it**: the operator invoking `unattended-author` *is* that
+authorisation, given once for the whole pipeline. That standing
 authorisation is what makes the automated apply legitimate; nothing else here
 overrides the rule, and no other skill or play may apply unattended.
 
@@ -159,7 +160,10 @@ make apply PLAY=<play>
 ```
 
 This runs the branch's code (the validated tree) against the live host via
-`.vault_pass`. Read the `PLAY RECAP`: `failed=0` and `unreachable=0` on every
+`.vault_pass`. `.claude/settings.json` gates `make apply` behind a permission
+prompt, so each apply here — and each reapply in Phase 5 — stops for one; granting
+it is the operator honouring the authorisation they already gave by running this
+skill, not a fresh "may I continue?". Read the `PLAY RECAP`: `failed=0` and `unreachable=0` on every
 host line. Any failed or unreachable host is an apply failure — stop at that play
 and do **not** apply the remaining ones, do **not** merge, leave the PR open.
 There is no rollback, and any earlier play in the loop has already applied live:

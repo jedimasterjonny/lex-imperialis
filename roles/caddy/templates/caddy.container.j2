@@ -20,7 +20,7 @@ Volume=/etc/caddy:/etc/caddy:ro,Z
 Volume=caddy-data:/data
 Volume=caddy-config:/config
 # Restart backstop against caddy's own 204 health endpoint (the localhost site in
-# the Caddyfile), not the monitor — see the health convention in CLAUDE.md.
+# the Caddyfile), not the monitor — see the health convention in roles/CLAUDE.md.
 HealthCmd=curl -fsS http://localhost/
 HealthInterval=5m
 HealthTimeout=30s

@@ -28,7 +28,7 @@ Volume=homepage-config:/app/config
 # the volume so it stays config-as-code without shadowing the seeded data.
 Volume=/etc/homepage/settings.yaml:/app/config/settings.yaml:ro,Z
 # Restart backstop against homepage's own health endpoint (busybox wget ships in
-# the alpine image), not the monitor — see the health convention in CLAUDE.md.
+# the alpine image), not the monitor — see the health convention in roles/CLAUDE.md.
 HealthCmd=wget -q --tries=1 --spider http://127.0.0.1:3000/api/healthcheck
 HealthInterval=5m
 HealthTimeout=30s

@@ -85,7 +85,7 @@ Volume={{ arr_data_root }}/{{ data }}:/data/{{ data }}{{ arr_data_suffix }}
 {% endfor %}
 {% endif %}
 {% if item.value.healthcheck is defined %}
-{# A restart backstop, not the monitor — see the health convention in CLAUDE.md. #}
+{# A restart backstop, not the monitor — see the health convention in roles/CLAUDE.md. #}
 {# An app that must never be auto-killed carries no healthcheck at all, so a #}
 {# healthcheck here always kills; the timeout is generous because the exec #}
 {# itself costs seconds on this hardware. #}

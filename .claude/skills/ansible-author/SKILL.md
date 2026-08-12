@@ -47,7 +47,8 @@ restate its rules in the code; the ones that most shape authoring:
   attack surface.
 - **Every task idempotent**, and check-mode-safe — molecule's idempotence check
   enforces it.
-- **Live hosts get `--check`/`--diff` only**, never apply. Authoring never runs
+- **Live hosts get `--check`/`--diff` only**, never apply — this skill's own
+  scope, tighter than `CLAUDE.md`'s authorised-apply rule. Authoring never runs
   against the fleet.
 - **KISS / YAGNI / DRY, single operator** — no generality, configurability, or
   abstraction the homelab will not use.

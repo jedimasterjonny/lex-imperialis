@@ -66,7 +66,8 @@ most often collide with reviewer feedback:
   will use.
 - No plaintext secrets; keep sensitive topology out of the repo.
 - Every task idempotent; every commit green and bisect-safe.
-- Live hosts get `--check`/`--diff` only — never apply.
+- Live hosts get `--check`/`--diff` only — never apply. This skill is tighter
+  than `CLAUDE.md` here, which permits an apply the operator has authorised.
 
 When a reviewer (design or code) suggests something that conflicts with a
 principle, reject it and record why. Never trade a principle for a finding.
@@ -251,7 +252,7 @@ Work outward from the change, then check the project's standing docs:
    none and the change warrants it (the same bar below).
 3. **`CLAUDE.md`.** Does the change introduce or alter a convention it records —
    layout, gates, commit rules, a workflow, a tool? If so, update it; if not,
-   leave it.
+   leave it. A role convention belongs in `roles/CLAUDE.md`, not the root file.
 
 Create a README only when the change genuinely calls for one — a new role or
 component whose purpose or usage is not self-evident from the code. Hold that

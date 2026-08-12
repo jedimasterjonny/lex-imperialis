@@ -231,8 +231,8 @@ deluxe/iTunes, and DVD/bonus — any of which re-quarantine.
   MB-tagged; uncertain ones stay parked.
 - It does not commit or touch the repo's Ansible, and it runs no Ansible plays — it
   operates the live Lidarr/beets *services* on solar (API + `podman exec`), the operator's
-  standing intent when they ask for music, which is a sanctioned exception to the repo's
-  "live hosts get --check/--diff only" rule.
+  standing intent when they ask for music — one of the standing authorisations `CLAUDE.md`
+  names for changing a live host, and it runs no play.
 
 ## Final report
 

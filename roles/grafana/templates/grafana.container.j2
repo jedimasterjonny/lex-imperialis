@@ -16,7 +16,7 @@ Volume=/etc/grafana/dashboards:/etc/grafana/dashboards:ro
 # state dir; rootful podman would otherwise create it root-owned.
 Volume=grafana-data:/var/lib/grafana:U
 # Restart backstop against Grafana's health endpoint (reports DB status), not the
-# monitor — see the health convention in CLAUDE.md.
+# monitor — see the health convention in roles/CLAUDE.md.
 HealthCmd=curl -fsS http://localhost:3000/api/health
 HealthInterval=5m
 HealthTimeout=30s

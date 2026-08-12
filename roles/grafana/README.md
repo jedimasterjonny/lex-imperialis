@@ -28,7 +28,7 @@ State lives in the `grafana-data` named volume, handed to the image's `grafana`
 user (472) with `:U`.
 
 The container's podman healthcheck against `/api/health` is the restart backstop, not
-the monitor (see `CLAUDE.md`); monitoring is the blackbox probe of the same endpoint.
+the monitor (see `roles/CLAUDE.md`); monitoring is the blackbox probe of the same endpoint.
 
 ## Hardening
 

@@ -18,7 +18,7 @@ Volume=/etc/alertmanager:/etc/alertmanager:ro,Z
 # silences and notification log under /alertmanager; rootful podman would
 # otherwise create it root-owned.
 Volume=alertmanager-data:/alertmanager:U
-# Restart backstop, not the monitor — see the health convention in CLAUDE.md.
+# Restart backstop, not the monitor — see the health convention in roles/CLAUDE.md.
 HealthCmd=wget -q -O /dev/null http://localhost:9093/-/healthy
 HealthInterval=5m
 HealthTimeout=30s

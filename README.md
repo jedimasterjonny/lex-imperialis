@@ -128,7 +128,7 @@ Recovery walks the same path: re-bootstrap the host, run its play to rebuild eve
 
 ## Working with Claude
 
-`CLAUDE.md` is the house style: quadlets, named volumes, the caddy snippet contract, health probes, commit and branch conventions. It is what keeps a generated role indistinguishable from a hand-written one.
+`CLAUDE.md` and `roles/CLAUDE.md` are the house style: quadlets, named volumes, the caddy snippet contract, health probes, commit and branch conventions. Together they are what keeps a generated role indistinguishable from a hand-written one.
 
 Authoring runs through the skills in `.claude/skills/`, each handing to the next:
 
