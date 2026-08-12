@@ -91,7 +91,9 @@ pipeline and surface.
 ## Phase 2 — refine
 
 Invoke the **`refine`** skill. It runs the design loop, the simplify/code-review
-loop, molecule for each touched role, and the docs pass, leaving a clean, green,
+loop, molecule for the roles its Depth rule selects — changed code, expanded to
+any engine's consumers — and the docs pass, each at the depth its preconditions
+warrant, so expect it to skip phases and say which, leaving a clean, green,
 still-uncommitted tree. Let it run its loops; do not second-guess them. If it
 surfaces a guard — a reviewer conflict, a round cap, a molecule failure it can't
 resolve — that is a real stop: halt the pipeline and surface it. Refine's molecule

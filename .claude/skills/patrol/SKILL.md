@@ -183,8 +183,9 @@ Then stop. The operator reviews and merges.
 
 ## Gates
 
-`refine` runs `make pre-commit` and `make test ROLE=<role>`. Anything below that
-it does not run is this skill's job.
+`refine` always runs `make pre-commit`, and runs `make test ROLE=<role>` for the
+roles its own Depth rule selects. Anything below that it does not run is this
+skill's job.
 
 | Target | Gate |
 | --- | --- |

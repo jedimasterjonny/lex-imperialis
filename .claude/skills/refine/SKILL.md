@@ -6,8 +6,10 @@ description: >-
   simpler or different?), then a simplify + code-review loop that applies every
   finding which does not violate repo principles, iterating until fresh
   reviewers have nothing left to say, then verifies with lint and molecule and
-  updates the docs to match. Use this whenever you have just written or
-  changed code and want it polished and checked before committing — triggers
+  updates the docs to match — each phase at the depth its preconditions warrant,
+  so a docs-only diff gets no design loop and a README edit bills no VM. Use this
+  whenever you have just written or changed code and want it polished and
+  checked before committing — triggers
   include "refine this", "polish the code I just wrote", "check the code that's
   been written", "tidy up this change", "clean up and review my diff", even when
   the skill is not named explicitly.
@@ -18,7 +20,8 @@ description: >-
 Take freshly written code and drive it to a state where independent reviewers
 have nothing left to say. The flow, in order:
 
-1. **Establish scope and load repo principles.**
+1. **Establish scope and load repo principles.** Each phase then decides the
+   depth it warrants — see Depth.
 2. **Phase 1 — design review loop:** is the *whole approach* as simple as it
    should be? Repeat with a fresh reviewer until one is satisfied cold.
 3. **Phase 2 — simplify + code-review loop:** line-level quality and
@@ -67,6 +70,84 @@ most often collide with reviewer feedback:
 
 When a reviewer (design or code) suggests something that conflicts with a
 principle, reject it and record why. Never trade a principle for a finding.
+
+## Depth
+
+The flow above is the full-depth run, and it is not always proportionate: a
+docs-only diff has no design to review and no code to simplify, and putting one
+through every loop spends a dozen agents to establish that.
+
+Evaluate each precondition **as its phase begins**, and Phase 2's at the top of
+every cycle — earlier work edits the tree, so what a phase was excused from may
+have arrived since. That cuts both ways: if a Phase 2 finding lands new
+structure, Phase 1's skip no longer holds, so run a design round over that
+structure — and if it comes back unsatisfied, apply and re-round as Phase 1
+normally does rather than returning to Phase 2 with the design in dispute. The
+caps do not reset, and a second such re-entry means the change is still being
+designed inside the review loop: stop and surface it rather than cycling.
+
+- **Phase 1 — design review.** Run it when there is a design to review: new
+  structure, a new file or role, or a change in *how* something is done. Judge by
+  that test and not by the diff's size or file type — moving a var between
+  `vars/` and `defaults/` is a one-line config edit and entirely a design
+  decision. Skip a docs-only diff (a runbook is prose, however procedural — its
+  review is Phase 3's), or a change whose approach a caller already settled at a
+  stricter bar (`patrol`'s lens). A deletion earns no automatic exemption:
+  dropping a role, a quadlet, or a role from a play leaves the unit, its config
+  and its volume live on the host, and `inquisition` cannot see the orphan
+  because the quadlet file is still on disk. Whether the change leaves the fleet
+  consistent is a design question, and Phase 1 is the only phase that asks it.
+- **Phase 2 — simplify.** Run it when the diff changes code, deletions included:
+  removing something routinely leaves its remit behind — an orphaned default, a
+  `when:` that is now constant, an import with no consumer. Skip it only for
+  prose, which contains no code.
+- **Phase 2 — code-review.** Always, a docs-only diff included. Phase 3's loop is
+  a style pass, and `docs/` carries disaster-recovery commands where a factual
+  error costs most — the bug hunt is the cheapest of the three and the one a doc
+  can least afford to skip.
+- **Phase 3 — documentation.** Always.
+- **molecule.** `.github/workflows/molecule.yml` already derives exactly this:
+  changed paths minus `*.md`, roles expanded through
+  `bin/expand-role-consumers.sh` so an engine is tested by its consumers, plus
+  `motd` for the shared paths it enumerates, with a carve-out sparing the
+  billable hetzner leg for toolchain bumps. **Read it and select what it would
+  select** rather than restating its rules here — a second copy of that matrix is
+  precisely the thing that goes stale. Refine narrows it in one place only: a
+  comment-only edit needs no tier, except under `templates/` or `files/`, which
+  ship verbatim to the host and reach sshd's, systemd's or promtool's parser
+  exactly as code does.
+
+A skill under `.claude/skills/` is instructions that drive what an agent does,
+not prose: it has a design, so Phase 1 applies, and it gets code-reviewed. It
+contains no code, so simplify skips it — and Phase 3's doc loop leaves it alone,
+since CLAUDE.md's terse-README rule is written for READMEs, not for the
+instructions an agent executes.
+
+**Lint is never skipped.** `patrol` sizes its own gates around refine running
+`make pre-commit`, so run it before reporting even when nothing touched the tree.
+
+**The risk floor overrides every skip.** Run full depth when the change can
+reboot a host, lock the operator out, destroy data, or reach production
+unattended. The tells, not an exhaustive list:
+
+- lockout — `sshd`, `firewalld`, `wireguard_client` (rogue-trader is reached over
+  that tunnel and nothing else), `bootstrap/`, anything carrying `validate:`;
+- disruption the moment it applies — `autoupdate`, where a weekday change reboots
+  the host if applied on or after the new day, and `--check` does not show it;
+- anything that renders a secret;
+- the unattended apply itself (`roles/arbites`, which resets to `origin/main` and
+  runs the fleet as root) and the wiring it executes — `playbooks/`,
+  `inventory/`, `ansible.cfg` — plus `terraform/`, which a merge auto-applies to
+  live cloud infra.
+
+The floor keys on what the diff is, not on how it will be delivered. `arbites`
+applies every role to the fleet, so "reaches production unattended" read as a
+delivery route would mean the whole repo and the floor would swallow this
+section. A README fix under `roles/sshd/` is not floor either — it changes
+nothing that can lock anyone out. And where a caller has explicitly disabled a
+phase the caller wins: `patrol` turns off Phase 1 because its own lens already
+ran at a stricter bar, and a design reviewer is in any case the phase least able
+to catch a dangerous failure.
 
 ## Phase 1 — design review loop
 
@@ -134,13 +215,14 @@ you at the end is behaviour. Fix any lint failure at its root before the next
 round; never carry red forward.
 
 **Test, once the code converges.** When Phase 1 and Phase 2 have converged — but
-before Phase 3 docs — run `make test ROLE=<role>` for each role touched by the
-change (the role directories under `roles/` in the changed paths; add
-`SCENARIO=` or the `test-*` targets for a non-default tier — a scenario's
-provisioner config reaches molecule only through those targets). molecule is
-slow, so it runs once rather than per round, and its idempotence check confirms
-tasks stay idempotent. If the change touches no role, molecule has nothing to
-test — note that and move to Phase 3.
+before Phase 3 docs — run `make test ROLE=<role>` for each role **Depth's
+molecule rule selects**, not every role directory in the changed paths: that
+distinction is what stops a README line billing a hetzner VM (add `SCENARIO=` or
+the `test-*` targets for a non-default tier — a scenario's provisioner config
+reaches molecule only through those targets). molecule is slow, so it runs once
+rather than per round, and its idempotence check confirms tasks stay idempotent.
+If the rule selects no role, molecule has nothing to test — note that and move to
+Phase 3.
 
 **If molecule fails, re-vet the fix through Phase 2.** A test failure means the
 converged code is wrong, and the fix you make is new code that has not been
@@ -182,13 +264,15 @@ below. When a doc genuinely needs no change, say so and move on.
 Hold every doc edit to CLAUDE.md's documentation style — terse and direct for a
 senior reader.
 
-**Doc review loop.** If you edited any doc, run it through its own loop, the way
-Phase 2 treats code: run the `code-review` skill (no `--fix`) scoped to the doc
-files — pass it their paths so it does not re-open the already-settled code diff
-— act on every finding that respects the principles and the documentation style,
-lint, and repeat until a pass yields no acted-on edits. Cap at 5 cycles. If you
-edited no doc, there is nothing to review — note the docs were already accurate
-and move on.
+**Doc review loop.** Run it over every doc in the diff, whether this phase edited
+it or the change arrived carrying it. Phase 2's code-review is a bug hunt, not a
+style pass, so a doc it happened to see has still never been held to the
+documentation style. Treat it the way Phase 2 treats code: run the `code-review`
+skill (no `--fix`) scoped to the doc files — pass it their paths so it does not
+re-open the already-settled code diff — act on every finding that respects the
+principles and the documentation style, lint, and repeat until a pass yields no
+acted-on edits. Cap at 5 cycles. If no doc is in the diff, there is nothing to
+review — note the docs were already accurate and move on.
 
 ## What this skill does not do
 
@@ -200,7 +284,8 @@ and move on.
 
 ## Final report
 
-When the phases have converged, summarise: how many design rounds and cycles
-ran (code, and docs if any), the substantive changes made, which docs changed
-or why none needed to, any findings rejected and the principle each would have
-broken, and the result of the final gate run.
+When the phases have converged, summarise: which phases ran and which were
+skipped with the precondition that excused each, how many design rounds and
+cycles ran (code, and docs if any), the substantive changes made, which docs
+changed or why none needed to, any findings rejected and the principle each
+would have broken, and the result of the final gate run.
