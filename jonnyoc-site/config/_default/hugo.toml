@@ -15,19 +15,19 @@ enableEmoji = true
 [imaging]
   anchor = 'Center'
 
+# Must stay present and empty: deleting it restores Hugo's built-in tags and
+# categories, publishing two empty term-list pages.
 [taxonomies]
-  tag = "tags"
-  category = "categories"
-  author = "authors"
-  series = "series"
 
 [sitemap]
   changefreq = 'daily'
   filename = 'sitemap.xml'
   priority = 0.5
 
+# No content, so no feed: RSS here renders an empty index.xml and links it from
+# the home page's head.
 [outputs]
-  home = ["HTML", "RSS"]
+  home = ["HTML"]
 
 [related]
   threshold = 0
