@@ -24,6 +24,13 @@ This has a side effect I never considered before I began: a repo that describes 
 - `auspex` — Raspberry Pi 5 — Monitoring host
 - `rogue-trader` — Hetzner VPS — WordPress host
 
+### The Retinue
+
+- `arbites` — GitOps reconciliation agent
+- `inquisition` — Container state drift agent
+- `proclamator` — Discord alerting bot
+- `lexographer` — Renovate go.sum autofix bot
+
 ## The Stack
 
 Tumbleweed on the Beelinks, MicroOS on the VPS, DSM on the NAS, Raspberry Pi OS on the Pi — whose fan needs an RP1 PWM driver openSUSE's aarch64 kernel lacks. Workloads are rootful podman quadlets, bar the NAS, where Docker Compose is what DSM offers.

@@ -185,8 +185,8 @@ a complete, tidy `go.sum` (`hugo mod tidy` plus a build) and amends it into the
 Renovate commit, so each bump stays one clean commit rather than growing a
 checksum-fixup churn.
 
-The amend is force-pushed with a short-lived **GitHub App token** (`AUTOFIX_APP_ID`
-/ `AUTOFIX_APP_KEY`), not `GITHUB_TOKEN`: a `GITHUB_TOKEN` push wouldn't re-trigger
-the required `site-gate` check and would hang the PR. It can't loop — the push only
-happens when `go.sum` is incomplete, which the pushed fix clears. Fork PRs are
-skipped (read-only token, unpushable branch).
+The amend is force-pushed with a short-lived token from the `lexographer` **GitHub
+App** (`AUTOFIX_APP_ID` / `AUTOFIX_APP_KEY`), not `GITHUB_TOKEN`: a `GITHUB_TOKEN`
+push wouldn't re-trigger the required `site-gate` check and would hang the PR. It
+can't loop — the push only happens when `go.sum` is incomplete, which the pushed
+fix clears. Fork PRs are skipped (read-only token, unpushable branch).
