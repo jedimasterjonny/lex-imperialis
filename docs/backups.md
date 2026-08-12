@@ -69,12 +69,12 @@ mirrored off-site: the laptop itself is the second copy.
 
 ## Bit-rot scrub
 
-DSM runs a btrfs data scrub monthly across both arrays — `scriptorum` (24 TB SHR1)
-and `astropath` (380 GB RAID1 NVMe) — reading every block against its checksum and
-recovering any mismatch from the array's redundancy, so silent bit-rot in the
-media, the photo library, or the restic repos is corrected in place rather than
-mirrored outward. It complements restic's own data-pack re-read, which covers only
-the podman repos.
+DSM runs a btrfs data scrub monthly across both arrays — `scriptorum` and
+`astropath` — reading every block against its checksum and recovering any
+mismatch from the array's redundancy, so silent bit-rot in the media, the photo
+library, or the restic repos is corrected in place rather than mirrored outward.
+It complements restic's own data-pack re-read, which covers only the podman
+repos.
 
 ## Off-site mirror
 
@@ -93,7 +93,7 @@ copies so it never captures a mid-write repo:
   `rogue-trader`), Thursday 04:00, after the hosts' Thursday runs.
 - **`photos-backup`** — the `/scriptorum/photos` library, Tuesday 03:00.
 
-A failed run alerts by email. This is the only geographic redundancy: the 24 TB
-media library is not mirrored (it is re-acquirable), so a total NAS loss keeps the
+A failed run alerts by email. This is the only geographic redundancy: the media
+library is not mirrored (it is re-acquirable), so a total NAS loss keeps the
 container state, the home backups, and the photos, not the media or the laptop's
 Time Machine history (the laptop itself is unaffected).

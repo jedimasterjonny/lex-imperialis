@@ -15,9 +15,10 @@ the container reads it regardless of the host's ambient SELinux label. Every
 alert routes to the `default` receiver, except the always-firing `Watchdog`,
 which a dedicated route sends to the `deadman` receiver:
 
-- With `alertmanager_discord_webhook_url` set, the `default` receiver carries a
-  `discord_configs` entry whose `webhook_url_file` points at a 0600 file holding
-  the URL — the secret stays out of the world-readable config.
+- With `alertmanager_discord_webhook_url` set, the `default` receiver posts to the
+  `proclamator` webhook via a `discord_configs` entry whose `webhook_url_file`
+  points at a 0600 file holding the URL — the secret stays out of the
+  world-readable config.
 - With `alertmanager_deadman_ping_url` set, the `deadman` receiver carries a
   `webhook_configs` entry whose `url_file` points at a 0600 file holding the
   hc-ping URL; every beat POSTs to it (`send_resolved` off, or a resolved POST
