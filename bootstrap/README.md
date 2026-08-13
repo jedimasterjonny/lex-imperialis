@@ -124,8 +124,9 @@ owner lands on uid 1000 with a per-user group where the fleet pins 1026 and
 **Do not let Imager apply its own customisation on top.** Answering yes to
 "Would you like to apply OS customisation settings?" overwrites `user-data` —
 putting the uid back and restoring `manage_etc_hosts`, whose `127.0.1.1 auspex`
-entry makes the co-located Prometheus agent resolve its own scrape targets to
-loopback, where the exporters do not bind. `dd` and balenaEtcher never ask.
+entry makes the co-located Prometheus resolve its own scrape targets — the
+exporters and its own `auspex:9090` — to loopback, where none of them bind. `dd`
+and balenaEtcher never ask.
 
 Rewriting the seed on a card needs a fresh `instance-id` in `meta-data`, or
 cloud-init treats the boot as a resume and skips it; keep that file's

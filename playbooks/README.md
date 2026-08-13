@@ -9,14 +9,15 @@ descriptive:
   workstation; runs the `arbites` timer.
 - **solar** — the main homelab server: NFS client, the arr media stack behind
   caddy, plus grafana, homepage, monitoring agents, and backups.
-- **administratum** — the Synology NAS, the one host without podman: runs
-  Prometheus unprivileged via Docker Compose, now as the TSDB and the rule
-  evaluator only. It scrapes nothing but itself; `auspex` feeds it.
+- **administratum** — the Synology NAS, the one host without podman. The NFS
+  server and the backup target; the only thing this play still manages is the
+  weekly Docker image prune. Its Prometheus stack is stopped by hand and removed
+  separately — dropping a role from a play does not remove it from the host.
 - **auspex** — a Raspberry Pi 5 on Raspberry Pi OS aarch64, the only non-x86_64
-  and only Debian host: the monitoring stack's scraping half. Prometheus in agent
-  mode scrapes the fleet and remote-writes to `administratum`, blackbox_exporter
-  probes the public sites and solar's services, and Alertmanager takes the NAS's
-  alerts and notifies.
+  and only Debian host, and the whole of the monitoring stack: Prometheus scrapes
+  the fleet, holds the TSDB on its NVMe and evaluates every rule, blackbox_exporter
+  probes the public sites, solar's services and the NAS's NFS port, and
+  Alertmanager notifies.
 - **rogue-trader** — the Hetzner VPS serving the public WordPress site.
 
 ## site.yml

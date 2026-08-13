@@ -4,7 +4,7 @@ Description=Alertmanager
 [Container]
 ContainerName=alertmanager
 Image={{ alertmanager_image }}
-# Host network so Prometheus on the NAS reaches the API at :9093 over the LAN,
+# Host network so the Prometheus beside it reaches the API at :9093 by hostname,
 # like the node and cadvisor exporters. The image's default command already points
 # at the mounted config and storage paths. Opening the port is the play's job.
 Network=host

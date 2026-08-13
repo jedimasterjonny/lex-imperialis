@@ -1,0 +1,48 @@
+[Unit]
+Description=Prometheus
+
+[Container]
+ContainerName=prometheus
+Image={{ prometheus_image }}
+# Host network so it resolves and routes to its scrape targets exactly as the
+# host does, and reaches the co-located exporters on loopback. The web endpoint
+# binds prometheus_listen_address, not every interface.
+Network=host
+NoNewPrivileges=true
+DropCapability=all
+{# The image runs non-root as nobody, so it needs no capability back. #}
+# The image's default command names its own config and storage paths, so it is
+# replaced wholesale rather than appended to.
+Exec=--config.file={{ prometheus_config_dir }}/prometheus.yml \
+  --storage.tsdb.path=/prometheus \
+  --web.listen-address={{ prometheus_listen_address }}
+# :Z relabels the mount container_file_t on each start, so it never depends on
+# the host's ambient label surviving an SELinux relabel (as /etc/caddy's did not).
+Volume={{ prometheus_config_dir }}:{{ prometheus_config_dir }}:ro,Z
+# The TSDB: a named volume, so it survives the container being recreated on every
+# config change. :U hands it to the image's nobody user, which rootful podman
+# would otherwise create root-owned — but :U is a recursive chown, so it walks
+# every block in the retention window at each start. Seconds on NVMe at a year of
+# the fleet's series; worth re-measuring before retention grows much past that.
+Volume=prometheus-data:/prometheus:U
+# Restart backstop, not the monitor — see the health convention in
+# roles/CLAUDE.md. Here it is also the ONLY check, and unavoidably so: a blackbox
+# probe of this endpoint would be scraped by this very process, so it reports
+# nothing once the process is gone. A wholly dead Prometheus surfaces instead as
+# silence at the healthchecks.io deadman, which the Watchdog rule feeds.
+HealthCmd=wget -q -O /dev/null http://{{ prometheus_listen_address }}/-/healthy
+# 5m is the backstop cadence the convention calls for on this hardware. It is also
+# what drives ServiceRestartStorm's restart rate for this unit — change the cadence
+# and that alert's window changes with it.
+HealthInterval=5m
+HealthTimeout=30s
+HealthStartPeriod=30s
+HealthRetries=3
+HealthOnFailure=kill
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

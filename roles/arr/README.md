@@ -12,7 +12,7 @@ too (the role asserts this). Unit changes bounce only the apps they touch.
 ## Health: probe over the network, exec only to restart
 
 The rule and its rationale are in `roles/CLAUDE.md`. Applied here: monitoring is the
-blackbox probe (`prometheus_agent_probe_targets`), raising `ProbeDown`. A healthcheck
+blackbox probe (`prometheus_probe_targets`), raising `ProbeDown`. A healthcheck
 exists only to restart a wedged container, so an app that must never be auto-killed
 carries none at all — the two columns below are not independent.
 

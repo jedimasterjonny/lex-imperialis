@@ -56,18 +56,18 @@
       - 32410/udp
       - 32412-32414/udp
       - 32469/tcp
-      # node_exporter, scraped by the prometheus_agent on auspex over the LAN.
+      # node_exporter, scraped by the Prometheus on auspex over the LAN.
       - 9100/tcp
-      # cadvisor, scraped by the prometheus_agent on auspex over the LAN.
+      # cadvisor, scraped by the Prometheus on auspex over the LAN.
       - 8080/tcp
     # Bind node_exporter and cadvisor to the LAN interface only, so they aren't
     # exposed on solar's podman container networks.
     node_exporter_listen_address: "{{ ansible_facts['default_ipv4']['address'] }}:9100"
     cadvisor_listen_ip: "{{ ansible_facts['default_ipv4']['address'] }}"
-    # Grafana reads the Prometheus on administratum (the NAS) over the LAN. It is
-    # still the TSDB after the monitoring move — only the scraping went to auspex,
-    # so this URL is unchanged.
-    grafana_prometheus_url: http://administratum:9090
+    # Grafana reads the Prometheus on auspex over the LAN — the one that scrapes
+    # the fleet, holds the TSDB on its NVMe and evaluates every rule. The NAS
+    # holds no history any more.
+    grafana_prometheus_url: http://auspex:9090
     # This host's restic key. One per host, so a host that is compromised can
     # open only its own repos — the astropath export carries every host's.
     restic_backup_password: "{{ solar_restic_password }}"

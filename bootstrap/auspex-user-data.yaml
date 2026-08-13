@@ -15,10 +15,10 @@
 hostname: auspex
 
 # Do NOT let cloud-init write /etc/hosts. Its template maps the hostname to
-# 127.0.1.1, and nsswitch consults files before dns — so the Prometheus agent,
-# which runs in the host network namespace on this box, would resolve its own
-# scrape targets (auspex:9100, auspex:8080) to loopback, where nothing listens:
-# the exporters bind the LAN address. DHCP registers the name in DNS, which
+# 127.0.1.1, and nsswitch consults files before dns — so Prometheus, which runs in
+# the host network namespace on this box, would resolve its own scrape targets
+# (auspex:9100, auspex:8080, and its own auspex:9090) to loopback, where nothing
+# listens: all three bind the LAN address. DHCP registers the name in DNS, which
 # answers correctly. false is cloud-init's own default; both true and localhost
 # add the 127.0.1.1 entry.
 manage_etc_hosts: false

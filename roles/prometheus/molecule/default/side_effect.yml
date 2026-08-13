@@ -1,23 +1,24 @@
 ---
-# Regression guard for the single-file bind-mount trap (mechanism in the role's
-# tasks): a config change on an already-running container must recreate it, or the
-# stale inode mount keeps the old config. verify asserts the new target took effect.
-- name: Change the rendered config on the running prometheus
+# A config change on an already-running Prometheus must reach it. The quadlet
+# mounts the config DIRECTORY, so the single-file inode trap the compose
+# deployment carried does not apply — but Prometheus reads its config only at
+# start, so the role's restart handler is the only thing that applies one. That
+# is the property which fails silently: a handler that stops firing leaves the
+# host scraping the entire fleet from yesterday's target list indefinitely, while
+# converge, the idempotence check, and a verify against a freshly started
+# container all still pass.
+- name: Change the scrape config on the running prometheus
   hosts: all
   tasks:
+    # Only this one var is overridden — the target list is the change under test,
+    # so it is stated in full rather than derived from the group_vars value it
+    # shadows, which Ansible reads as a recursive definition. The other three come
+    # from group_vars untouched, so verify still sees the five jobs it asserts and
+    # nothing here can drift away from converge.
     - name: Re-apply prometheus with an added sentinel target
       ansible.builtin.include_role:
         name: prometheus
-      # The Alertmanager list is the change under test — since this role stopped
-      # scraping the fleet it is the only target list it still has. The rest mirror
-      # converge and must stay: defaults would drop the receiver, the out-of-order
-      # window, and the apparmor=unconfined the nested incus container needs to
-      # start.
       vars:
-        prometheus_alertmanager_targets:
-          - localhost:9093
-          - sentinel-regression:9093
-        prometheus_remote_write_receiver: true
-        prometheus_out_of_order_time_window: 4h
-        prometheus_security_opt_extra:
-          - apparmor=unconfined
+        prometheus_node_targets:
+          - localhost:9100
+          - sentinel-regression:9100

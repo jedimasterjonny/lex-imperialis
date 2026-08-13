@@ -5,7 +5,7 @@ blackbox_exporter_config_dir: /etc/blackbox_exporter
 # Address the exporter binds and serves /probe and /metrics on. Loopback by
 # default so only the co-located scraper reaches it, never the LAN — the exporter
 # proxies to an arbitrary target= parameter, so it must not be exposed. Must match
-# the scraping role's blackbox address (prometheus_agent_blackbox_address).
+# the scraping role's blackbox address (prometheus_blackbox_address).
 blackbox_exporter_listen_address: 127.0.0.1:9115
 
 # Prober modules rendered into blackbox.yml. The http_2xx module follows redirects
@@ -28,3 +28,15 @@ blackbox_exporter_modules:
       follow_redirects: true
       preferred_ip_protocol: ip4
       valid_status_codes: [200, 401]
+  # A bare TCP connect, for a host that serves the fleet something other than
+  # HTTP. Its one use is the NAS's NFS port: the NAS runs no exporter and, since
+  # Prometheus moved off it, nothing on the fleet notices it going away — the old
+  # arrangement had the TSDB die with the host and the Watchdog deadman page.
+  # NFS is what the fleet actually depends on it for, so that is what is probed.
+  # A TCP probe measures no certificate, so probe_ssl_earliest_cert_expiry stays
+  # 0 — which ProbeSSLCertExpiringSoon is already guarded against.
+  tcp_connect:
+    prober: tcp
+    timeout: 5s
+    tcp:
+      preferred_ip_protocol: ip4

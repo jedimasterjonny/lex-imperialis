@@ -73,6 +73,37 @@
           - "'probe_success 1' in blackbox_exporter_probe.content"
         fail_msg: the http_2xx probe of a known-good target did not succeed
 
+    # The tcp prober end to end, against the exporter's own listening port — no
+    # external dependency, and a different prober from the two above rather than
+    # another module of the same one. This is the only probe of the NAS, whose
+    # NFS port speaks nothing an http prober could read.
+    - name: Probe a known-open port through the tcp_connect module
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:9115/probe?target=127.0.0.1:9115&module=tcp_connect"
+        return_content: true
+      register: blackbox_exporter_tcp_probe
+
+    # The expiry is asserted alongside the success because it is what keeps
+    # ProbeSSLCertExpiringSoon quiet on this module: that rule is guarded on a
+    # non-zero expiry, so a TCP probe cannot trip it — but only while the probe
+    # reports no certificate. Absent or zero both satisfy the guard, and which of
+    # the two a non-TLS tcp prober emits is upstream's choice, so accept either;
+    # what must never appear is a positive expiry.
+    - name: The tcp probe succeeds and measures no certificate
+      vars:
+        blackbox_exporter_tcp_expiry: >-
+          {{ blackbox_exporter_tcp_probe.content
+             | regex_findall('probe_ssl_earliest_cert_expiry ([0-9.e+-]+)') }}
+      ansible.builtin.assert:
+        that:
+          - "'probe_success 1' in blackbox_exporter_tcp_probe.content"
+          - blackbox_exporter_tcp_expiry | map('float') | select('>', 0) | list | length == 0
+        fail_msg: >-
+          the tcp_connect probe of a known-open port did not succeed, or it
+          reported a certificate expiry {{ blackbox_exporter_tcp_expiry }} that a
+          TCP probe cannot have measured — ProbeSSLCertExpiringSoon's guard rests
+          on that staying absent or zero
+
     # The checks above prove the exporter works; they can't prove its capability
     # set is minimal. Assert the posture directly so a regression that widens the
     # caps or drops the restriction fails here, not silently in production.

@@ -2,7 +2,7 @@
 
 Prometheus [blackbox_exporter](https://github.com/prometheus/blackbox_exporter)
 as a Podman quadlet on the host network. It probes targets on demand at `/probe`;
-the co-located scraper drives it (the `blackbox` job in `prometheus_agent`) with
+the co-located scraper drives it (the `blackbox` job in `prometheus`) with
 one `target=` per probed URL — the public sites and the fleet's internal services
 — so a scrape yields `probe_success` for each, plus the TLS
 `probe_ssl_earliest_cert_expiry` for the HTTPS targets. This role stands up the
@@ -13,7 +13,7 @@ exporter only — the targets and the scrape job live with the scraper.
 The exporter proxies to whatever `target=` it is handed, so exposing it would
 hand anyone on the network an HTTP client running on this host. It binds
 `127.0.0.1:9115` and is therefore only reachable by a scraper on the same
-machine: `prometheus_agent_blackbox_address` must match
+machine: `prometheus_blackbox_address` must match
 `blackbox_exporter_listen_address`, and the two roles must land on the same host.
 
 `Network=host` so the exporter resolves and routes to probe targets exactly as
@@ -25,13 +25,18 @@ the host does.
   directory bind-mounted read-only into the container.
 - `blackbox_exporter_listen_address` — address the exporter binds `/probe` and
   `/metrics` on; loopback by default so it is not exposed on the LAN.
-- `blackbox_exporter_modules` — prober modules rendered into `blackbox.yml`. Two by
-  default, both following redirects (the redirect zones answer 3xx before the final
-  2xx) and probing over IPv4: `http_2xx`, and `http_2xx_or_401`, which additionally
-  accepts a `401`. The latter is for an auth-walled endpoint, where the `401` is
-  itself proof the daemon is up and serving — accepting it keeps that service's
-  credentials off the exporter. The scraper picks the module per target group; see
-  `prometheus_agent`'s `prometheus_agent_probe_targets`.
+- `blackbox_exporter_modules` — prober modules rendered into `blackbox.yml`. Three
+  by default. Two are HTTP, both following redirects (the redirect zones answer 3xx
+  before the final 2xx) and probing over IPv4: `http_2xx`, and `http_2xx_or_401`,
+  which additionally accepts a `401`. The latter is for an auth-walled endpoint,
+  where the `401` is itself proof the daemon is up and serving — accepting it keeps
+  that service's credentials off the exporter. The third, `tcp_connect`, is a bare
+  connect for a host serving the fleet something other than HTTP: its one use is
+  the NAS's NFS port, which is the only signal the fleet has that the NAS is up now
+  that Prometheus no longer runs there and dies with it. A TCP probe measures no
+  certificate, so `probe_ssl_earliest_cert_expiry` stays absent or zero and
+  `ProbeSSLCertExpiringSoon`'s non-zero guard keeps it quiet. The scraper picks the
+  module per target group; see `prometheus`'s `prometheus_probe_targets`.
 
 ## Contract
 
@@ -47,6 +52,6 @@ the host does.
   until it was recreated — the trap the compose deployment worked around. With a
   directory mount the restart handler suffices, and since the exporter reads its
   config only at start, that restart is what applies a change.
-- No podman healthcheck. The co-located agent scrapes it and
+- No podman healthcheck. The co-located Prometheus scrapes it and
   `BlackboxExporterDown` alerts on that, so a network probe already monitors it —
   an exec check would add a restart backstop and nothing else.

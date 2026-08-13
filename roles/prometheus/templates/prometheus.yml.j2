@@ -1,4 +1,20 @@
 # Managed by Ansible (prometheus role).
+#
+# The node, cadvisor, blackbox and alertmanager jobs below carry labels
+# byte-identical to those of the agent this replaced, so the history stored under
+# them joins across the seam rather than leaving two disjoint halves. Renaming a
+# job or moving a target to a different form of its address is what breaks that,
+# not anything about local storage.
+#
+# The self-scrape is the deliberate exception: it moves from the old server's
+# {job="prometheus", instance="localhost:9090"} to this host's name. Only the two
+# monitoring-group rules read it, both threshold rules that do not care, so the
+# break costs a discontinuity in one series rather than anything that alerts.
+#
+# No `external_labels`: they would ride only on what is sent to Alertmanager
+# (there is no federation, remote-write or remote-read here) and nothing needs
+# them. They do NOT join locally stored series, so they are not what continuity
+# above rests on.
 global:
   scrape_interval: 15s
 
@@ -8,12 +24,6 @@ storage:
   tsdb:
     retention:
       time: {{ prometheus_retention_time }}
-{% if prometheus_out_of_order_time_window %}
-    # Without this an agent's replayed backlog is rejected as out of bounds the
-    # moment it predates the last block this server compacted — see the default's
-    # comment.
-    out_of_order_time_window: {{ prometheus_out_of_order_time_window }}
-{% endif %}
 {% if prometheus_alertmanager_targets %}
 
 alerting:
@@ -22,16 +32,93 @@ alerting:
         - targets: {{ prometheus_alertmanager_targets | to_json }}
 
 rule_files:
-  - /etc/prometheus/rules/*.yml
+  - {{ prometheus_config_dir }}/rules/*.yml
 {% endif %}
 
 scrape_configs:
-  # The only job this server runs. Everything the fleet exports is scraped by the
-  # prometheus_agent role elsewhere and pushed in over remote_write, so this
-  # discovers no targets of its own — the alerting block above is how it reaches
-  # Alertmanager, not a scrape of it. The self-scrape stays because
-  # PrometheusRuleEvaluationFailing and PrometheusConfigReloadFailed read it, and
-  # nothing off this host reports on the rule evaluator's own health.
+  # This process's own health. PrometheusRuleEvaluationFailing and
+  # PrometheusConfigReloadFailed read it, and nothing off this host reports on
+  # the rule evaluator. Aimed at prometheus_self_target rather than the bind
+  # address, so the instance label can be a hostname where the bind cannot.
   - job_name: prometheus
     static_configs:
-      - targets: ["localhost:9090"]
+      - targets: ["{{ prometheus_self_target }}"]
+
+  - job_name: node
+    static_configs:
+      - targets: {{ prometheus_node_targets | to_json }}
+
+  - job_name: cadvisor
+    # cadvisor polls every 30s (its housekeeping interval), so scrape at the same
+    # cadence rather than the global 15s and avoid storing each sample twice.
+    scrape_interval: 30s
+    # cadvisor exports an explicit timestamp per sample and only advances it for a
+    # cgroup that saw activity, so an idle container re-serves the identical
+    # sample — same value, same millisecond — on every scrape. Honoured, those
+    # repeats are rejected as out-of-order and the series gains no point at all:
+    # measured on this fleet at 37% of cadvisor's timestamped series, ~130
+    # samples/s dropped across the three targets. Stamping at scrape time instead
+    # costs the sub-scrape-interval precision of cadvisor's own clock, which
+    # nothing here reads, and returns a point per series per scrape.
+    honor_timestamps: false
+    static_configs:
+      - targets: {{ prometheus_cadvisor_targets | to_json }}
+    # The Docker-monitoring dashboard (grafana 15798) groups container series by a
+    # `container` label and selects them with image!="". Both are rebuilt from the
+    # cgroup id: a quadlet container's leaf cgroup is
+    # /system.slice/<name>.service/libpod-payload-<id>, so the unit name is the
+    # container name, and matching that path at all is what marks a series as a
+    # real container — the parent .service and .service/runtime cgroups do not
+    # match, so exactly one series per container is labelled.
+    # image is a constant, not a ref: the dashboard only ever tests it for
+    # emptiness and never displays it, and the image is not recoverable from a
+    # cgroup path. Anything keying on a real image ref must not use this label.
+    metric_relabel_configs:
+      - source_labels: [id]
+        regex: '/system\.slice/(.+)\.service/libpod-payload-[0-9a-f]+'
+        target_label: container
+        replacement: $1
+      - source_labels: [id]
+        regex: '/system\.slice/(.+)\.service/libpod-payload-[0-9a-f]+'
+        target_label: image
+        replacement: podman
+{% if prometheus_probe_targets %}
+
+  # Blackbox probes: each target is passed to the blackbox_exporter as ?target=,
+  # and the scrape hits the exporter, not the target. Each entry carries its
+  # prober module as __param_module, so the module is per target rather than per
+  # job. The relabelling moves the URL into the target param and the instance
+  # label, then rewrites __address__ to the exporter so the scrape lands there.
+  - job_name: blackbox
+    # Each scrape is a live probe (DNS + TLS + redirect-follow), so scrape at 60s,
+    # not the global 15s: the probe alerts key off minutes to hours (probe_success
+    # for 5m, cert expiry for 1h), so a faster cadence only hammers the targets for
+    # no gain.
+    scrape_interval: 60s
+    metrics_path: /probe
+    static_configs:
+{% for group in prometheus_probe_targets %}
+      - targets: {{ group.targets | to_json }}
+        labels:
+          __param_module: {{ group.module | to_json }}
+{% endfor %}
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: {{ prometheus_blackbox_address }}
+{% endif %}
+
+{% if prometheus_alertmanager_targets %}
+
+  # The same targets the alerting block above routes to, scraped here for
+  # up{job="alertmanager"} and the delivery counters AlertmanagerNotificationsFailing
+  # reads. One address for both, so the one Alertmanager carries one instance label.
+  # Gated on the same var as that block, so an empty list leaves no job scraping
+  # nothing rather than one half of the pair rendering without the other.
+  - job_name: alertmanager
+    static_configs:
+      - targets: {{ prometheus_alertmanager_targets | to_json }}
+{% endif %}

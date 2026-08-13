@@ -12,16 +12,23 @@ changing or composing a role.
 - **`vars/` vs `defaults/`.** `vars/main.yml` holds renovate-pinned refs (image digests, version/revision pins, with `# renovate:` comments) plus role-internal constants that are not tunables; `defaults/main.yml` holds tunables and empty-string placeholders for vault secrets, which degrade so molecule runs with no vault.
 - **Secrets** render to a 0600 `EnvironmentFile` (referenced from the quadlet) with `no_log: true` — never into the world-readable unit.
 - **caddy snippet contract.** Backends never edit the Caddyfile: an internal service drops `/etc/caddy/sites/<role>.caddy`, a public one drops `/etc/caddy/sites-public/<role>.caddy`; backends sit on `caddy.network` and publish no host port (only caddy publishes 80/443).
-- **Health: probe over the network, exec only to restart.** A podman `HealthCmd` is a full OCI exec into the container (namespaces, seccomp compile, SELinux transition), costing whole CPU-seconds on the fleet's hardware where the request it wraps costs microseconds — so it is never the monitor. Monitoring is a blackbox network probe from the exporter (`prometheus_agent_probe_targets`), which raises `ProbeDown`. The container's healthcheck exists only to restart a wedged container (`HealthOnFailure=kill`), so it runs at a backstop cadence, sized to the host's headroom — 5m on solar, tighter on a box with cycles to spare. Keep an exec check as a service's *only* check just where nothing off the host can reach it, or where what it asserts is only observable from inside the container's netns. Never `HealthOnFailure=kill` a container that can be mid-transcode or mid-import. When a check's cadence is what drives a restart-rate alert, say so where the interval is set — that coupling is otherwise invisible.
+- **Health: probe over the network, exec only to restart.** A podman `HealthCmd` is a full OCI exec into the container (namespaces, seccomp compile, SELinux transition), costing whole CPU-seconds on the fleet's hardware where the request it wraps costs microseconds — so it is never the monitor. Monitoring is a blackbox network probe from the exporter (`prometheus_probe_targets`), which raises `ProbeDown`. The container's healthcheck exists only to restart a wedged container (`HealthOnFailure=kill`), so it runs at a backstop cadence, sized to the host's headroom — 5m on solar, tighter on a box with cycles to spare. Keep an exec check as a service's *only* check just where nothing off the host can reach it, or where what it asserts is only observable from inside the container's netns. Never `HealthOnFailure=kill` a container that can be mid-transcode or mid-import. When a check's cadence is what drives a restart-rate alert, say so where the interval is set — that coupling is otherwise invisible.
 - **No `meta/dependencies`** — role ordering is enforced by the play and each molecule `converge.yml`.
 - **No tags** — don't introduce them.
 - **`validate:`** guards configs that can lock out a host (sshd `sshd -t`, sudoers `visudo -cf`).
 
 ## Two distributions
 
-Six roles carry both arms: `stow`, `common`, `podman`, `firewalld`, `autoupdate`,
-and `prometheus` (whose update alert must not name a package manager). Everything
-else is single-OS and should stay that way — this is a tax, not a direction.
+Five roles carry both arms: `stow`, `common`, `podman`, `firewalld` and
+`autoupdate`. Everything else is single-OS and should stay that way — this is a
+tax, not a direction.
+
+`prometheus` is the one role that is neither and is easy to file wrongly: it
+branches on nothing and deploys only to the Debian host, so it is single-OS and
+its scenario runs that one arm. But the *alert rules* it ships are evaluated for
+the whole fleet, so they must cover both distributions — which is why the update
+alerts read a build datestamp and a `*_success` metric rather than naming a
+package manager.
 
 - **Install with `ansible.builtin.package`, not `community.general.zypper`,** in a role auspex runs. On openSUSE it dispatches to the zypper module, whose `disable_recommends` already defaults true, so the swap is behaviour-preserving. It has no `update_cache`: `common` refreshes apt's lists ahead of its own install, and so ahead of every later role in the play.
 - **Branch in `defaults/main.yml`, derived from `ansible_facts`** — following `autoupdate_transactional`. Not per-OS task files, and not `vars/Debian.yml`, which would outrank a play's own vars. Prefer a default that makes the OS-specific tasks skip themselves (`common_disabled_repos` is `[]` on Debian, so the four zypper tasks loop over nothing) over a `when:` on each.

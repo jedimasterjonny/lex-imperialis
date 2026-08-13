@@ -10,8 +10,9 @@
     common_user_uid: 1026
     # The NVMe, by label so a controller renaming the device cannot silently
     # point this at the SD card. It carries podman's whole store — images and
-    # every named volume — and on this host that store holds a Prometheus
-    # write-ahead log, written continuously, which is not what an SD card is for.
+    # every named volume — and on this host that store holds the fleet's entire
+    # monitoring history: a year of Prometheus TSDB, written continuously, which
+    # is emphatically not what an SD card is for.
     podman_storage_device: LABEL=containers
     # Staggered autoupdate: after solar's Monday canary and before rogue-trader's
     # Wednesday, so one bad update can't take the fleet in a night. This is the
@@ -19,55 +20,70 @@
     # the distribution's own timers.
     autoupdate_oncalendar: "Tue *-*-* 03:00:00"
     # Bind the exporters to the LAN, like solar and scholam, even though the only
-    # scraper is the agent on this host. Loopback would keep them off the network
+    # scraper is the Prometheus on this host. Loopback would keep them off the network
     # entirely, but it also makes their instance label `localhost:9100`, which is
     # what every alert about this host would then be titled — ambiguous on a
     # five-host fleet at the moment it matters most. The exposure is the one the
     # fleet already accepts on two other hosts.
     node_exporter_listen_address: "{{ ansible_facts['default_ipv4']['address'] }}:9100"
     cadvisor_listen_ip: "{{ ansible_facts['default_ipv4']['address'] }}"
-    # Openings beyond the ssh baseline the firewalld role already carries. 9093 for
-    # the alerts Prometheus on the NAS pushes to Alertmanager here; 9100 and 8080
-    # for the exporters above, which bind the LAN address and so need the port even
-    # though their scraper is local.
+    # Openings beyond the ssh baseline the firewalld role already carries. 9090 so
+    # Grafana on solar can query this Prometheus; 9100 and 8080 for the exporters
+    # above, which bind the LAN address and so need the port even though their
+    # scraper is local.
+    #
+    # 9093 is kept rather than justified: its reason was the NAS's Prometheus
+    # pushing alerts here over the LAN, and that went with the NAS's Prometheus.
+    # Every client left is on this host. Closing it is a separate change from this
+    # one, and worth making — it would take Alertmanager's unauthenticated API off
+    # the LAN.
     firewalld_ports:
+      - 9090/tcp
       - 9093/tcp
       - 9100/tcp
       - 8080/tcp
-    # Where the agent forwards everything it scrapes. The TSDB stays on the NAS:
-    # agent mode keeps no local storage, and the alert rules stay with the TSDB
-    # because agent mode rejects rule_files outright.
-    prometheus_agent_remote_write_url: http://administratum:9090/api/v1/write
-    # Set here rather than left on the role default so both halves of the pair are
-    # visible in the two plays that own them: administratum's
-    # prometheus_out_of_order_time_window must be at least this, or a backlog
-    # replayed after an outage is refused as out of bounds. Change one, change the
-    # other.
-    prometheus_agent_retention_max_time: 4h
-    # The fleet's exporters, moved here from administratum unchanged so the series
-    # keep their labels across the cutover. rogue-trader by its WireGuard address,
-    # as before: it is reachable over the tunnel, not by LAN name.
-    prometheus_agent_node_targets:
+    # Bind the LAN rather than the role's loopback default: Grafana on solar
+    # queries this.
+    prometheus_listen_address: "{{ ansible_facts['default_ipv4']['address'] }}:9090"
+    # Scraped by name, though it binds an address — exactly as node_exporter and
+    # cadvisor above are. This is the instance label on the one series saying
+    # whether the fleet's rule evaluator is healthy, and a bare IP is a poor thing
+    # to title that alert with. Resolving to the LAN address from inside the
+    # container is the same path the node and cadvisor jobs already take.
+    prometheus_self_target: auspex:9090
+    # A year, against the role's 30d default. Measured rather than estimated: the
+    # TSDB this replaces held 2.1 GB at 30 days, so a year is ~26 GB — nothing on
+    # the NVMe the container store now sits on, and holding a year is what the
+    # drive was fitted for. That measurement already includes the cadvisor samples
+    # honor_timestamps: false restores, so do not scale it up again. The old 30d
+    # was sized to the volume it shared on the NAS, not to what anyone wanted.
+    prometheus_retention_time: 1y
+    # The fleet's exporters, unchanged across two moves now — off the NAS to the
+    # agent here, and from the agent into this role — so the series keep their
+    # labels either side of both. rogue-trader by its WireGuard address: it is
+    # reachable over the tunnel, not by LAN name.
+    prometheus_node_targets:
       - solar:9100
       - scholam:9100
       - auspex:9100
       - 192.168.3.4:9100
-    prometheus_agent_cadvisor_targets:
+    prometheus_cadvisor_targets:
       - solar:8080
       - auspex:8080
       - 192.168.3.4:8080
-    # Scraped, not routed to — an agent routes nothing. By hostname rather than
-    # loopback, for the reason the exporters bind the LAN above: this scrape is
-    # what yields up{job="alertmanager"} and the delivery counters
+    # Both routed to and scraped, from the one var: with the second scraper gone
+    # there is no longer any way for this Alertmanager to arrive under two
+    # instance labels. By hostname rather than loopback, for the reason the
+    # exporters bind the LAN above — this scrape is what yields
+    # up{job="alertmanager"} and the delivery counters
     # AlertmanagerNotificationsFailing reads, and `localhost:9093` would title
     # every one of those alerts with a name four other hosts could equally answer
-    # to. The old NAS-side scrape named `solar:9093`; this keeps that identity.
-    # 9093 is already open for the alerts the NAS pushes, so it costs no exposure.
-    prometheus_agent_alertmanager_targets:
+    # to.
+    prometheus_alertmanager_targets:
       - auspex:9093
     # Blackbox-probe via the co-located exporter. Each entry pairs a prober module
     # with the targets to run it against; the same module may appear more than once.
-    prometheus_agent_probe_targets:
+    prometheus_probe_targets:
       # The public sites end-to-end: each a 2xx through the Cloudflare/Firebase edge
       # (redirect zones answer 3xx first, which http_2xx follows), plus per-site TLS
       # expiry.
@@ -103,6 +119,19 @@
       - module: http_2xx_or_401
         targets:
           - https://transmission.{{ caddy_domain }}/transmission/web/
+      # The NAS, which runs no exporter and, now that Prometheus has left it, has
+      # nothing else on the fleet that would notice it going away — the old
+      # arrangement had the TSDB die with the host and the Watchdog deadman page.
+      # Its NFS port rather than DSM's web UI: NFS is what the fleet depends on it
+      # for, so it is the thing whose absence matters. ProbeDown covers it
+      # unchanged — critical, at 5m. Reachability from auspex was confirmed before
+      # this landed, so the first scrape reports the NAS rather than a firewall.
+      # It does make the NAS the first probe target that reboots on its own
+      # account, so a DSM update now pages where it used to pass unremarked:
+      # correct rather than noisy, but it is new.
+      - module: tcp_connect
+        targets:
+          - administratum:2049
   roles:
     - common
     - sshd
@@ -115,10 +144,23 @@
     # no orphan to decommission by hand.
     - node_exporter
     - cadvisor
-    # blackbox_exporter before prometheus_agent so the exporter is up when the
-    # blackbox job first scrapes it — the agent tolerates a briefly-down target,
-    # so this is ordering for tidiness, not a hard dependency.
+    # blackbox_exporter before prometheus so the exporter is up when the blackbox
+    # job first scrapes it — Prometheus tolerates a briefly-down target, so this is
+    # ordering for tidiness, not a hard dependency.
     - blackbox_exporter
-    - prometheus_agent
+    # Replaced prometheus_agent, which this host ran until the TSDB moved here.
+    # The agent was decommissioned by hand at the cutover, because deleting its
+    # role does not remove it and nothing would ever report the leftover: it binds
+    # 127.0.0.1:9090 where this binds the LAN address, so the two run side by side
+    # without conflict, and the inquisition sees a quadlet on disk with a matching
+    # container running and calls it healthy — while it goes on scraping the whole
+    # fleet a second time.
+    #   systemctl stop prometheus-agent
+    #   rm /etc/containers/systemd/prometheus-agent.container && systemctl daemon-reload
+    #   rm -rf /etc/prometheus-agent && podman volume rm prometheus-agent-data
+    # stop, never `disable`: a quadlet unit is generated into
+    # /run/systemd/generator, and systemd refuses to disable a generated unit, so
+    # `disable --now` fails before the --now ever stops the container.
+    - prometheus
     - alertmanager
     - inquisition

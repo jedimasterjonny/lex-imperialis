@@ -25,7 +25,7 @@ podman_storage_device: ""
 #             that boots degraded, since a monitoring host is no use from an
 #             emergency console. The cost is that the failure is silent —
 #             podman writes to the root filesystem underneath the empty mount
-#             point — and nothing but `findmnt` says otherwise.
+#             point — so ContainerStoreMountMissing alerts on it instead.
 #   x-systemd.before=local-fs.target
 #             nofail does not merely make the mount optional, it makes it
 #             UNORDERED: "the mount unit is not ordered before these target
