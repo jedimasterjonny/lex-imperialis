@@ -13,6 +13,69 @@ nor its `golang-github-containers-common` ships or creates it.
 `/etc/containers/systemd`, `netavark-firewalld-reload.service` and quadlet itself
 are all present on Debian unchanged.
 
+## Container store on a device
+
+`podman_storage_device` mounts a block device at `/var/lib/containers`, ahead of
+the install so the store is created on the device rather than shadowed by it.
+Images and every named volume follow from the one fstab entry. Empty by default,
+so the role is unchanged on the hosts that keep their store on root; only
+`auspex` sets it, to `LABEL=containers` — its NVMe, since podman's store there
+holds a continuously-written Prometheus write-ahead log and an SD card is the
+wrong medium for that.
+
+`nofail` is deliberate: a monitoring host that will not boot without its data
+disk is worse than one that boots degraded. The cost is that the failure is
+silent — podman writes to the root filesystem under the empty mount point and
+everything appears to work. `findmnt /var/lib/containers` is what says otherwise,
+and until something on this host is worth alerting about, it is the only thing
+that does.
+
+**Adopting a device on a host that already has a store is not a converge.** The
+task mounts before the install so a *fresh* host builds its store on the device,
+but a host that has been running podman already has one, and mounting a blank
+filesystem over it hides the lot: every image, and every named volume with it.
+Nothing breaks loudly — podman simply reports an empty store, re-pulls each
+image, and the old one sits orphaned underneath the mount point still consuming
+the disk it was moved off.
+
+**Pause `arbites` for the whole procedure** — `touch /var/lib/arbites/pause` on
+scholam. The apply below is not really an apply: merging is what schedules it,
+and the root timer picks up `main` within 15 minutes whether or not the seeding
+has finished. A reconcile landing mid-copy shadows the store it was meant to
+move, and one landing during the reclaim — units stopped, device unmounted, `rm`
+in flight — remounts the device underneath the delete, which is unrecoverable.
+
+The filesystem and its label are made by hand, not by this role; the play var
+only names the result:
+
+```bash
+mkfs.ext4 -L containers /dev/<partition>
+```
+
+Then seed the device, with podman idle:
+
+```bash
+systemctl stop <every quadlet unit on the host>
+mount /dev/disk/by-label/containers /mnt
+rsync -aHAX /var/lib/containers/ /mnt/
+umount /mnt
+```
+
+then apply, confirm `findmnt /var/lib/containers` names the new device and
+`podman images` is intact, and only then reclaim the shadowed copy: stop the
+units again and `umount /var/lib/containers`.
+
+**Check `findmnt /var/lib/containers` returns nothing before deleting anything.**
+A unit that did not actually stop holds the store and the umount fails `EBUSY` —
+at which point the delete lands on the live NVMe copy rather than the shadowed
+one. Once it is confirmed unmounted, delete what is revealed underneath,
+`mount -a`, start the units, and remove the `arbites` pause.
+
+The mount arm is unexercised in CI: an incus container cannot be given a block
+device. Molecule asserts the guard instead — that the empty default leaves fstab
+alone, so nothing here can write a mount onto the three other hosts that run this
+role and have no such device.
+
 ## OCI runtime
 
 `podman_runtime` is written to `/etc/containers/containers.conf.d/10-runtime.conf`

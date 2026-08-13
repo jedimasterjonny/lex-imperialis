@@ -8,6 +8,13 @@
     # even though auspex mounts no shares, so adding one later needs no uid
     # migration on a host that already owns files.
     common_user_uid: 1026
+    # The NVMe, by label so a controller renaming the device cannot silently
+    # point this at the SD card. It carries podman's whole store — images and
+    # every named volume — and on this host that store holds a Prometheus
+    # write-ahead log, written continuously, which is not what an SD card is for.
+    # The mount is nofail, so a device that does not appear leaves podman writing
+    # to the card underneath the mount point rather than stopping the boot.
+    podman_storage_device: LABEL=containers
     # Staggered autoupdate: after solar's Monday canary and before rogue-trader's
     # Wednesday, so one bad update can't take the fleet in a night. This is the
     # fleet's one Debian host, so autoupdate takes its apt arm and masks both of

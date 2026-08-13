@@ -1,4 +1,19 @@
 ---
+# Before the install, not after it: mounting over a populated /var/lib/containers
+# shadows whatever is already there, and the package creates that directory. The
+# module makes the mount point when absent, writes the fstab entry and mounts
+# now, so podman is installed onto the device rather than beside it. Skipped
+# entirely where podman_storage_device is empty, which is every host but auspex.
+- name: Mount the container store's device
+  ansible.posix.mount:
+    path: /var/lib/containers
+    src: "{{ podman_storage_device }}"
+    fstype: ext4
+    opts: "{{ podman_storage_options }}"
+    state: mounted
+  when: podman_storage_device | length > 0
+  become: true
+
 - name: Install podman
   ansible.builtin.package:
     name: "{{ podman_packages }}"
