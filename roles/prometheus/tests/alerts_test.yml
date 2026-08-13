@@ -249,6 +249,72 @@ tests:
               summary: "rogue-trader:9100:/var is mounted read-only"
               description: "/var on rogue-trader:9100 is mounted read-only — writes fail silently. Likely a remount after an I/O error."
 
+  # ContainerStoreMountMissing is an absent() rule over a mount that exists on one
+  # host, so a case with no input at all would satisfy it while proving nothing.
+  # Each case feeds a node_exporter that is plainly up and reporting filesystems —
+  # the fault under test is the mount, not the host.
+  - interval: 1m
+    name: a container store that never mounted alerts
+    input_series:
+      # Root only: /var/lib/containers is a directory on the SD card, exactly what
+      # podman falls through to when the nofail mount does not come up.
+      - series: 'node_filesystem_size_bytes{job="node",instance="auspex:9100",mountpoint="/",device="/dev/mmcblk0p2",fstype="ext4"}'
+        values: "31000000000x30"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: ContainerStoreMountMissing
+        exp_alerts:
+          # absent() carries only the equality matchers, so mountpoint survives and
+          # the device regex does not — and no instance is named, which is why the
+          # annotations cannot reference one.
+          - exp_labels:
+              severity: warning
+              mountpoint: /var/lib/containers
+            exp_annotations:
+              summary: "podman's container store is not mounted from its NVMe"
+              description: >-
+                No filesystem is mounted at /var/lib/containers from an NVMe device. podman
+                is writing its images, volumes and the Prometheus TSDB to the root
+                filesystem underneath the mount point — silently, since nofail lets the host
+                boot without it.
+      # Inside for:, so pending rather than firing.
+      - eval_time: 10m
+        alertname: ContainerStoreMountMissing
+        exp_alerts: []
+
+  # The device matcher doing its job. A mount at the right path from the SD card is
+  # the same fault as no mount at all, and a path-only rule would call it healthy.
+  - interval: 1m
+    name: a container store mounted from the wrong device alerts
+    input_series:
+      - series: 'node_filesystem_size_bytes{job="node",instance="auspex:9100",mountpoint="/var/lib/containers",device="/dev/mmcblk0p3",fstype="ext4"}'
+        values: "24000000000x30"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: ContainerStoreMountMissing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              mountpoint: /var/lib/containers
+            exp_annotations:
+              summary: "podman's container store is not mounted from its NVMe"
+              description: >-
+                No filesystem is mounted at /var/lib/containers from an NVMe device. podman
+                is writing its images, volumes and the Prometheus TSDB to the root
+                filesystem underneath the mount point — silently, since nofail lets the host
+                boot without it.
+
+  # The negative control, and what makes the two cases above mean anything.
+  - interval: 1m
+    name: a container store mounted from its NVMe does not alert
+    input_series:
+      - series: 'node_filesystem_size_bytes{job="node",instance="auspex:9100",mountpoint="/var/lib/containers",device="/dev/nvme0n1p1",fstype="ext4"}'
+        values: "250000000000x30"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: ContainerStoreMountMissing
+        exp_alerts: []
+
   # MicroOSBuildStale is the only rule that sees a rolled-back host, so a rule that
   # parses but cannot fire would restore exactly the blind spot it was written for.
   # These sample at 5m per the file-level note above, the window being a fortnight.
@@ -603,95 +669,6 @@ tests:
         exp_alerts: []
       - eval_time: 7h
         alertname: InquisitionFailed
-        exp_alerts: []
-
-  # PrometheusAgentAbsent is the rule that catches every OTHER rule going quiet,
-  # so a test that only proved it parsed would repeat the exact mistake it exists
-  # to prevent. Both polarities are named cases, and the pending case pins the
-  # for: — without it the firing case would also pass a rule with no wait at all.
-  - interval: 1m
-    name: samples no longer arriving from the agent alerts
-    input_series:
-      # Deliberately not the agent's own series: this input is another job
-      # entirely, so up{job="prometheus_agent"} is genuinely absent while the
-      # server is otherwise healthy. An empty input_series would also satisfy
-      # absent(), but would not distinguish "the agent stopped" from "nothing is
-      # running at all", which is the distinction the rule is making.
-      - series: 'up{job="prometheus",instance="administratum:9090"}'
-        values: "1x30"
-    alert_rule_test:
-      - eval_time: 15m
-        alertname: PrometheusAgentAbsent
-        exp_alerts:
-          - exp_labels:
-              severity: critical
-              job: prometheus_agent
-            exp_annotations:
-              summary: "no samples are arriving from the prometheus agent"
-              description: >-
-                No up{job="prometheus_agent"} series is arriving, so the agent that scrapes
-                the entire fleet is not writing. Every other rule is now evaluating an empty
-                vector and cannot fire — this alert is the only thing standing between a
-                stopped agent and silence. Expect roughly 15 minutes from the agent stopping
-                to this firing, not the 10m for: alone: up stays queryable for the 5m
-                lookback delta after its last sample, so absent() only turns true once that
-                has elapsed.
-      # Inside for:, so pending rather than firing.
-      - eval_time: 5m
-        alertname: PrometheusAgentAbsent
-        exp_alerts: []
-
-  # The negative control, and what makes the case above mean anything: an agent
-  # that is writing must leave the rule silent, even while it is failing to
-  # deliver — the two rules cover different faults and must not double-report.
-  - interval: 1m
-    name: an agent that is writing does not raise the absent alert
-    input_series:
-      - series: 'up{job="prometheus_agent",instance="127.0.0.1:9090"}'
-        values: "1x30"
-    alert_rule_test:
-      - eval_time: 15m
-        alertname: PrometheusAgentAbsent
-        exp_alerts: []
-
-  # The partial-failure case: the channel is up enough to carry its own bad news.
-  - interval: 1m
-    name: an agent failing to write samples alerts
-    input_series:
-      - series: 'prometheus_remote_storage_samples_failed_total{job="prometheus_agent",instance="127.0.0.1:9090",url="http://administratum:9090/api/v1/write"}'
-        values: "0+60x30"
-    alert_rule_test:
-      - eval_time: 20m
-        alertname: PrometheusRemoteWriteFailing
-        exp_alerts:
-          - exp_labels:
-              severity: warning
-              job: prometheus_agent
-              instance: 127.0.0.1:9090
-              url: http://administratum:9090/api/v1/write
-            exp_annotations:
-              summary: "prometheus agent on 127.0.0.1:9090 is failing to write samples"
-              description: >-
-                The agent on 127.0.0.1:9090 has been failing to write samples to
-                http://administratum:9090/api/v1/write for 15 minutes. Its WAL buffers
-                against a receiver outage, but only to
-                --storage.agent.retention.max-time — past that the backlog is dropped, and
-                anything older than the receiver's out_of_order_time_window is refused even
-                once it reconnects.
-      - eval_time: 10m
-        alertname: PrometheusRemoteWriteFailing
-        exp_alerts: []
-
-  # A flat failure counter is a healthy agent: the rule keys on the rate, so a
-  # historical failure that stopped must not keep alerting forever.
-  - interval: 1m
-    name: a failure counter that has stopped rising does not alert
-    input_series:
-      - series: 'prometheus_remote_storage_samples_failed_total{job="prometheus_agent",instance="127.0.0.1:9090",url="http://administratum:9090/api/v1/write"}'
-        values: "500x30"
-    alert_rule_test:
-      - eval_time: 20m
-        alertname: PrometheusRemoteWriteFailing
         exp_alerts: []
 
   # The Pi branch of HostCpuTemperatureHigh. The 15m eval fires and the 10m one does
@@ -1510,9 +1487,9 @@ tests:
   - interval: 1m
     name: rules that fail to evaluate alert without implicating the config reload
     input_series:
-      - series: 'prometheus_rule_evaluation_failures_total{job="prometheus",instance="administratum:9090",rule_group="drift"}'
+      - series: 'prometheus_rule_evaluation_failures_total{job="prometheus",instance="auspex:9090",rule_group="drift"}'
         values: "0+1x40"
-      - series: 'prometheus_config_last_reload_successful{job="prometheus",instance="administratum:9090"}'
+      - series: 'prometheus_config_last_reload_successful{job="prometheus",instance="auspex:9090"}'
         values: "1x40"
     alert_rule_test:
       - eval_time: 25m
@@ -1521,12 +1498,12 @@ tests:
           - exp_labels:
               severity: warning
               job: prometheus
-              instance: administratum:9090
+              instance: auspex:9090
               rule_group: drift
             exp_annotations:
-              summary: "prometheus rule group drift is failing to evaluate on administratum:9090"
+              summary: "prometheus rule group drift is failing to evaluate on auspex:9090"
               description: >-
-                Prometheus on administratum:9090 has failed to evaluate rules in group drift
+                Prometheus on auspex:9090 has failed to evaluate rules in group drift
                 over the last 10 minutes — those rules have silently stopped producing series.
       - eval_time: 25m
         alertname: PrometheusConfigReloadFailed
@@ -1538,11 +1515,11 @@ tests:
   - interval: 1m
     name: a rejected config reload alerts without implicating rule evaluation
     input_series:
-      - series: 'prometheus_config_last_reload_successful{job="prometheus",instance="administratum:9090"}'
+      - series: 'prometheus_config_last_reload_successful{job="prometheus",instance="auspex:9090"}'
         values: "0x40"
       # Flat, not absent: rules that were already failing before the reload was
       # rejected must not make this case pass by accident.
-      - series: 'prometheus_rule_evaluation_failures_total{job="prometheus",instance="administratum:9090",rule_group="drift"}'
+      - series: 'prometheus_rule_evaluation_failures_total{job="prometheus",instance="auspex:9090",rule_group="drift"}'
         values: "7x40"
     alert_rule_test:
       - eval_time: 20m
@@ -1551,11 +1528,11 @@ tests:
           - exp_labels:
               severity: warning
               job: prometheus
-              instance: administratum:9090
+              instance: auspex:9090
             exp_annotations:
-              summary: "prometheus config reload failed on administratum:9090"
+              summary: "prometheus config reload failed on auspex:9090"
               description: >-
-                Prometheus on administratum:9090 rejected its last config reload and is running
+                Prometheus on auspex:9090 rejected its last config reload and is running
                 the previous config — an arbites-applied change has not taken effect.
       - eval_time: 20m
         alertname: PrometheusRuleEvaluationFailing
