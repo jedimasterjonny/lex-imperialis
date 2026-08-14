@@ -6,8 +6,6 @@
   ansible.builtin.import_playbook: solar.yml
 - name: Configure rogue-trader
   ansible.builtin.import_playbook: rogue-trader.yml
-- name: Configure administratum
-  ansible.builtin.import_playbook: administratum.yml
 - name: Configure auspex
   ansible.builtin.import_playbook: auspex.yml
 - name: Configure this host

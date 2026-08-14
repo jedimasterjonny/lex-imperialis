@@ -322,18 +322,30 @@ a missed beat as this host until proven otherwise.
 
 ## administratum (NAS)
 
-Out of this repo's recovery flow — it is the backup target, not a managed
-openSUSE host, and it has no podman repo. DSM's native SMART and RAID monitoring
-emails the operator on any disk or array fault — the array-health signal, since
-the NAS runs no `node_exporter` by design — so degradation is caught before it
-becomes a recovery event. Recover the appliance with DSM (Hyper Backup / the
-RAID). It holds no monitoring data — Prometheus, its TSDB and the rule evaluation
-all live on auspex — so losing the NAS is no longer a monitoring outage. Then
-reapply what this repo still manages there:
+**Not in this repo at all any more.** It left the inventory when its last Docker
+workload did, so there is no play to reapply and no `make apply` step here — the
+NFS server, the exports and the shares are DSM's own configuration, restored with
+DSM. It is still the fleet's backup *target*, and still the thing every other
+host's recovery depends on.
 
-```bash
-make apply PLAY=administratum
-```
+DSM's native SMART and RAID monitoring emails the operator on any disk or array
+fault — the array-health signal, since the NAS runs no `node_exporter` by design
+— so degradation is caught before it becomes a recovery event. The fleet's own
+signal that the NAS is gone is the blackbox `tcp_connect` probe of its NFS port,
+raising `ProbeDown`; it holds no monitoring data, so losing it is no longer a
+monitoring outage.
+
+Recover the appliance with DSM (Hyper Backup / the RAID), then re-export the
+shares the fleet mounts — `solar` and `scholam` name it as their NFS server, and
+those mounts are what the arr stack and the backups run on.
+
+**Temporary, delete after 2026-08-21:** `/volume2/astropath/prometheus` still
+holds the pre-cutover TSDB, kept as the rollback for the move to auspex. Its
+containers are stopped and Docker is uninstalled, so it is inert data — but this
+is the only place left that records it exists, the NAS having left the inventory.
+Rolling back would mean reinstalling Container Manager and `docker compose up -d`
+there. Once the migrated history is trusted, `rm -rf /volume2/astropath/prometheus`
+and delete this paragraph.
 
 The `*-podman-backup` and `*-home-backup` restic repos and the `/scriptorum/photos`
 library are also mirrored off-site to a Hetzner storage box by three Synology Hyper

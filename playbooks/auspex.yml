@@ -23,7 +23,7 @@
     # scraper is the Prometheus on this host. Loopback would keep them off the network
     # entirely, but it also makes their instance label `localhost:9100`, which is
     # what every alert about this host would then be titled — ambiguous on a
-    # five-host fleet at the moment it matters most. The exposure is the one the
+    # four-host fleet at the moment it matters most. The exposure is the one the
     # fleet already accepts on two other hosts.
     node_exporter_listen_address: "{{ ansible_facts['default_ipv4']['address'] }}:9100"
     cadvisor_listen_ip: "{{ ansible_facts['default_ipv4']['address'] }}"

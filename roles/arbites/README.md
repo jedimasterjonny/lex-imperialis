@@ -69,7 +69,7 @@ makes this file the only authority. The connect fails, the run exits non-zero be
 re-applied every 15 minutes with `ArbitesFailed` standing throughout. Re-seed before
 the change merges, not after. The SSH key is the operator's existing key —
 the one the fleet already accepts
-for each host's connection user (`ansible`, and `jonny` on the NAS), so no fleet
+for each host's connection user (`ansible` on every host), so no fleet
 change is needed. Then wire the role into `playbooks/scholam.yml` and run
 `make apply PLAY=scholam` once: it installs the clone, venv, scripts, and units
 and enables the timer. That is the last manual apply — the timer self-sustains
