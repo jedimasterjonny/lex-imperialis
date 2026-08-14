@@ -199,7 +199,6 @@ italicizing->italicising
 journaling->journalling
 kilometer->kilometre
 kilometers->kilometres
-labeled->labelled
 labeling->labelling
 labored->laboured
 laborer->labourer
