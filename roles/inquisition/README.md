@@ -63,5 +63,5 @@ every window above clears that gap.
 Wired onto `solar` and `rogue-trader` after the `podman` role (owns the quadlet
 dir). scholam is excluded despite running a quadlet of its own: its podman use is
 interactive dev work, which an unmanaged check would flag as drift.
-administratum runs Docker Compose, not quadlets, and carries no node_exporter to
-publish through.
+The NAS is not a candidate at all: it is no longer in the inventory, runs no
+containers this repo deploys, and carries no node_exporter to publish through.
