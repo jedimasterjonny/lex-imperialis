@@ -1,0 +1,97 @@
+---
+name: Claude review
+
+# "on" is quoted so yamllint's truthy rule does not read it as a boolean.
+"on":
+  pull_request:
+    types: [opened, labeled, ready_for_review, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # A review that has started has already spent the quota, so let it finish
+  # rather than cancelling it. Several triggers share a ref, so more than one
+  # run per PR is possible; a second queues and then declines. A third would
+  # evict the queued one, which nothing re-fires — tolerable only because the
+  # renovate path emits `opened` plus exactly one `labeled`.
+  cancel-in-progress: false
+
+jobs:
+  review:
+    name: review
+    # Label-gated, drafts and forks excluded. The `labeled` clause stops a
+    # second, unrelated label re-running a review upstream would only decline.
+    # See the README.
+    if: >-
+      contains(github.event.pull_request.labels.*.name, 'review')
+      && (github.event.action != 'labeled' || github.event.label.name == 'review')
+      && github.event.pull_request.draft == false
+      && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    # Higher than the molecule tiers' 20: the skill fans out to a triage agent,
+    # a summariser, four parallel reviewers and a validator per finding, and a
+    # timeout costs the quota without posting anything.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      # Mints the Claude App token the action comments with. See the README.
+      id-token: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Review the pull request
+        uses: anthropics/claude-code-action@e63208cb983318a44e3f945e959ef894b707dcfa # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_OAUTH_TOKEN }}
+          allowed_bots: "renovate[bot]"
+          plugin_marketplaces: "https://github.com/anthropics/claude-code.git"
+          plugins: "code-review@claude-code-plugins"
+          # A URL, not the `owner/repo/pull/N` form upstream's example uses:
+          # the skill feeds this straight to `gh pr view`/`gh pr comment`, and
+          # gh's parser reads that form as a *branch name* and finds nothing.
+          #
+          # The override is repeated here, not just in --append-system-prompt,
+          # because the skill delegates its skip-this-PR decision to a subagent
+          # that does not inherit the session system prompt. This is the user
+          # turn the orchestrator relays onward, so it is the copy that reaches
+          # the decision. See the README.
+          prompt: |
+            /code-review:code-review --comment https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}
+
+            This pull request was routed here deliberately by a label. Review it
+            even though it is automated and even if the diff looks trivial.
+          # All of these are load-bearing, --comment above included; see the
+          # README for why each is.
+          claude_args: >-
+            --allowedTools "mcp__github_inline_comment__create_inline_comment"
+            --disallowedTools "Bash(git push:*),Bash(gh pr merge:*),Bash(gh pr review:*),Bash(gh api:*)"
+            --append-system-prompt "A label routed this pull request here
+            deliberately: review it even though it is automated and even if the
+            diff looks trivial. For a version bump, assess any release notes in
+            the pull request body against how this repository uses the
+            dependency."
+
+  request-signoff:
+    name: request sign-off
+    needs: review
+    # Fires even when the review failed or returned early — see the README.
+    # GitHub refuses a review request from the PR's own author, so this fires on
+    # renovate's PRs and quietly skips the owner's own branches.
+    if: >-
+      !cancelled()
+      && needs.review.result != 'skipped'
+      && github.event.pull_request.user.login != github.repository_owner
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Request review from the owner
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --add-reviewer "$GITHUB_REPOSITORY_OWNER"
