@@ -1,55 +1,53 @@
 ---
-# Where the compose project (compose.yaml + prometheus.yml) is written.
-prometheus_project_dir: /opt/prometheus
+# Where prometheus.yml and the rules directory are rendered, and bind-mounted
+# read-only into the container at the same path.
+prometheus_config_dir: /etc/prometheus
 
-# Host path bind-mounted as the TSDB data dir (/prometheus in the container).
-prometheus_data_dir: /var/lib/prometheus
+# Address the web endpoint binds. Loopback by default, since nothing off a host
+# has business reaching a Prometheus that only it queries; a host whose Grafana
+# lives elsewhere on the LAN overrides it.
+prometheus_listen_address: 127.0.0.1:9090
+
+# What the self-scrape job aims at, and so the `instance` label on the only series
+# that reports whether the fleet's rule evaluator is itself healthy — the two
+# alerts in the monitoring group read nothing else.
+#
+# Defaults to whatever the endpoint binds, which is right while that is loopback.
+# A host binding the LAN overrides it with a NAME: 192.168.x.x:9090 is a poor label
+# to title an alert with, and though --web.listen-address would take a name, making
+# the bind wait on name resolution at boot buys nothing. That split is not new —
+# node_exporter and cadvisor already bind an address and are scraped by hostname.
+prometheus_self_target: "{{ prometheus_listen_address }}"
 
 # How long the TSDB keeps samples. Pinned rather than left on Prometheus's 15d
 # default because MicroOSBuildStale needs a fortnight of history to read, and that
 # floor should not rest on a default nobody declared. Double the window, so a
-# fortnight is there with room. Roughly 2.5 GiB at the fleet's 17k series, against
-# 333 GiB free on the volume.
+# fortnight is there with room. A host with storage to spare sets it far higher:
+# measured on this fleet, 30 days costs 2.1 GB, so a year is ~26 GB.
 prometheus_retention_time: 30d
 
-# The container runs as this uid:gid so the TSDB bind mount can be 0755 owned by
-# the deploy user instead of world-writable — the NAS has no sudo to chown the
-# mount to the image's default nobody (65534). Defaults to the connecting user
-# (root under molecule, jonny on the NAS), which the data-dir task makes the owner.
-prometheus_run_user: "{{ ansible_facts['user_uid'] }}:{{ ansible_facts['user_gid'] }}"
-
-# Alertmanager targets alerts are ROUTED to, each "host:9093". Empty by default,
-# so no alerting block or rule files are configured until a host sets them.
+# Alertmanager targets, each "host:9093" — both the alerting block alerts are
+# ROUTED to and the alertmanager scrape job's target list. One var for both
+# because there is one Alertmanager at one address: scraping it from anywhere
+# else would give it a second instance label, and InstanceDown would then fire on
+# whichever network path blipped rather than on Alertmanager being down.
 #
-# Routed to and not scraped: this role scrapes nothing but itself. The agent
-# co-located with Alertmanager scrapes it over loopback, and adding a scrape here
-# would give the one Alertmanager two instance labels, so InstanceDown would fire
-# on whichever network path blipped rather than on Alertmanager being down.
+# Empty configures no alerting and loads no rules, so the role is a bare scraper
+# until a host sets it.
 prometheus_alertmanager_targets: []
 
-# Accept remote-write pushes (--web.enable-remote-write-receiver), so a
-# Prometheus running in agent mode elsewhere can write into this TSDB. Off by
-# default: the endpoint carries no authentication, so anything that can reach the
-# port can inject series, and it is opened only where an agent actually writes.
-prometheus_remote_write_receiver: false
+# node_exporter scrape targets, each "host:9100".
+prometheus_node_targets: []
 
-# How far behind the head a sample may be and still be ingested, as
-# storage.tsdb.out_of_order_time_window. Empty leaves Prometheus's default, which
-# is no out-of-order ingestion at all.
-#
-# It is what makes a writing agent's buffer real rather than notional. An agent
-# holds samples in its WAL while this server is unreachable and replays them on
-# reconnect — but this server's own self-scrape keeps its head advancing and
-# compacting to a block every 2h, so on reconnect anything older than the last
-# persisted block is rejected as out of bounds and silently dropped. Size this to
-# the agent's --storage.agent.retention.max-time — prometheus_agent_retention_max_time,
-# which that role sets explicitly rather than inheriting a compiled-in default, so
-# this pair cannot come apart under a digest bump — and the two together mean an
-# outage shorter than the buffer loses nothing.
-prometheus_out_of_order_time_window: ""
+# cadvisor scrape targets, each "host:8080", scraped at 30s to match cadvisor's
+# housekeeping interval.
+prometheus_cadvisor_targets: []
 
-# Extra compose security_opt entries, appended to the no-new-privileges the
-# template hardcodes (alongside cap_drop: ALL). Empty in production; the molecule
-# scenario sets apparmor=unconfined because its nested CI container cannot load an
-# AppArmor profile.
-prometheus_security_opt_extra: []
+# Blackbox probe targets: each entry pairs a prober module with the full URLs to
+# run it against, and the same module may appear in more than one entry.
+prometheus_probe_targets: []
+
+# host:port of the blackbox_exporter the blackbox job scrapes. Must match the
+# blackbox_exporter role's blackbox_exporter_listen_address — two independent
+# defaults on co-located roles, agreeing at the exporter's loopback bind.
+prometheus_blackbox_address: 127.0.0.1:9115

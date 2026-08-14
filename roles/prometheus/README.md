@@ -1,81 +1,87 @@
 # prometheus
 
-Prometheus as a single Docker container, deployed from a templated compose
-project with `community.docker.docker_compose_v2`. The TSDB and the rule
-evaluator: it accepts the fleet's samples over remote-write, evaluates the
-shipped rules against them, and routes what fires to the Alertmanager targets in
-`prometheus_alertmanager_targets`.
+Prometheus as a rootful podman quadlet, and the whole of the fleet's monitoring
+in one process: it scrapes every exporter directly, stores the samples, evaluates
+the shipped rules against them, and routes what fires to the Alertmanager targets
+in `prometheus_alertmanager_targets`.
 
-**It scrapes nothing but itself.** The fleet's `node`, `cadvisor`, `blackbox` and
-`alertmanager` jobs belong to the `prometheus_agent` role, which scrapes them
-beside the exporters and writes here. Adding any of them back gives every one of
-those series two writers, so each sample is ingested twice — the reason the
-molecule scenario asserts the job set is exactly `["prometheus"]`.
+One process deliberately. This ran split for a while — an agent beside the
+exporters remote-writing to a server on the NAS — which bought nothing and cost a
+WAL, an out-of-order ingestion window paired by hand across two roles on two
+hosts, an unauthenticated receiver endpoint, and two alerts whose only job was to
+watch the split. Scraper and TSDB on one host need none of it.
 
-## Target: administratum (Synology)
+## Target: auspex (Raspberry Pi OS)
 
-The role's host is the NAS, not a fleet openSUSE node, which shapes it:
-
-- **docker_compose_v2, not docker_container** — the NAS has the `docker compose`
-  CLI but no Docker SDK for Python (and no `pip`), so the module that shells out
-  to the CLI is the one that works.
-- **No `become`** — sudo needs a password there; the deploy runs as the
-  `docker`-group user. The task prepends `/usr/local/bin` to `PATH` for the DSM
-  `docker`.
-- **`network_mode: host`** — the container resolves and routes to scrape targets
-  exactly as the host does, and serves on the host's `:9090`. No LAN address need
-  enter this public repo.
-- **Data dir `0755`, container runs as the deploy user** — no sudo on the NAS to
-  chown the bind mount to the image's default `nobody` (65534), so the container
-  runs as the deploy user (`prometheus_run_user`, the connecting user's `uid:gid`),
-  which owns the dir. Migrating an existing `0777` deployment: stop the container,
-  `chown -R <uid>:<gid>` the data dir as root once (the running container recreates
-  its files as `nobody` under `0777`, so the chown only sticks while it is stopped),
-  then apply.
+- **Host network** — the container resolves and routes to scrape targets exactly
+  as the host does, and reaches the co-located `blackbox_exporter`,
+  `node_exporter` and `cadvisor` over loopback. Prometheus binds
+  `prometheus_listen_address`, not every interface.
+- **The TSDB is the `prometheus-data` named volume**, mounted `:U`. Rootful
+  podman creates a volume root-owned and the image's `nobody` could not write it.
+  `:U` is a recursive chown, so it walks every block in the retention window at
+  each start — seconds on NVMe at a year of the fleet's ~17k series, and worth
+  re-measuring before retention grows much past that.
+- **That volume lands on the NVMe**, because the `podman` role mounts auspex's
+  whole store there (`podman_storage_device`). A year of TSDB on the SD card would
+  wear it out. The mount is `nofail`, so its absence is silent —
+  `ContainerStoreMountMissing` is what says so.
+- **No backup, and no redundancy.** The TSDB sat on a RAID1 pair with a monthly
+  scrub and SMART mail; it now sits on one consumer NVMe with neither. Accepted:
+  it is derived data, so losing it costs dashboards, not recovery.
+- **4 GB of RAM.** The head is trivial at this series count, but a year of
+  retention invites a long-range Grafana query that is not.
+  `--storage.tsdb.retention.size` is the lever if it ever bites.
 
 ## Variables
 
-- `prometheus_project_dir` — where `compose.yaml` + `prometheus.yml` are written.
-- `prometheus_data_dir` — host path bind-mounted as the TSDB (`/prometheus`).
+- `prometheus_config_dir` — where `prometheus.yml` and `rules/` are rendered, and
+  bind-mounted `ro,Z` into the container at the same path.
+- `prometheus_listen_address` — what the web endpoint binds. Loopback by default;
+  auspex binds the LAN so Grafana on solar can reach it.
+- `prometheus_self_target` — what the self-scrape aims at, and so the `instance`
+  label on the only series reporting whether the rule evaluator is itself healthy.
+  Defaults to the bind address, which is right while that is loopback; a host
+  binding the LAN sets a hostname instead: `192.168.x.x:9090` is a poor label to
+  title an alert with, and while `--web.listen-address` would accept a name, making
+  the bind depend on name resolution at boot is a fragility the label does not
+  need. The same bind-an-address, scrape-by-name split `node_exporter` and
+  `cadvisor` already have.
 - `prometheus_retention_time` — how long the TSDB keeps samples, rendered into
   `prometheus.yml` rather than passed as `--storage.tsdb.retention.time`, which
   the pinned Prometheus marks deprecated. Set past the 15d default because
-  `MicroOSBuildStale` reads a fortnight back.
-- `prometheus_run_user` — `uid:gid` the container runs as; owns the `0755` data
-  dir. Defaults to the connecting user (root under molecule, the deploy user on the
-  NAS).
-- `prometheus_alertmanager_targets` — list of `host:9093` Alertmanager targets
-  alerts are *routed* to. Routing only: the agent co-located with Alertmanager
-  scrapes it over loopback, and a scrape from here as well would give the one
-  Alertmanager two `instance` labels, so `InstanceDown` would fire on whichever
-  network path blipped rather than on Alertmanager being down. `up{job="alertmanager"}`
-  therefore arrives over remote-write like everything else — and since delivering
-  an alert about Alertmanager needs a live Alertmanager, the `Watchdog` deadman is
-  what surfaces a wholly dead one. Empty configures no alerting and loads no
-  rules; non-empty adds the `alerting` block and the shipped rule files.
-- `prometheus_remote_write_receiver` — accept remote-write pushes
-  (`--web.enable-remote-write-receiver`), so a Prometheus in agent mode elsewhere
-  writes into this TSDB. Off by default, and worth knowing before it is turned on:
-  the endpoint carries no authentication, so anything that can reach the port can
-  inject series.
-- `prometheus_out_of_order_time_window` — `storage.tsdb.out_of_order_time_window`.
-  Empty leaves Prometheus's default of no out-of-order ingestion, which quietly
-  makes a writing agent's WAL buffer notional: the agent holds samples while this
-  server is unreachable, but this server's own self-scrape keeps its head
-  advancing and compacting every 2h, so on reconnect anything older than the last
-  persisted block is rejected as out of bounds and dropped. Set it to the agent's
-  `prometheus_agent_retention_max_time`, which that role sets explicitly for this
-  reason rather than inheriting a compiled-in default a digest bump could move.
-  Change one and change the other.
-- `prometheus_security_opt_extra` — extra compose `security_opt` entries, appended
-  to the `no-new-privileges` the template hardcodes (alongside `cap_drop: ALL`);
-  empty in production.
+  `MicroOSBuildStale` reads a fortnight back; auspex sets `1y`.
+- `prometheus_alertmanager_targets` — `host:9093` Alertmanager targets, used
+  twice over: the `alerting` block routes there, and the `alertmanager` scrape job
+  scrapes the same addresses for `up{job="alertmanager"}` and the delivery
+  counters `AlertmanagerNotificationsFailing` reads. One var because there is one
+  Alertmanager at one address — scraping it from anywhere else would give it a
+  second `instance` label, and `InstanceDown` would then fire on whichever network
+  path blipped rather than on Alertmanager being down. Delivering an alert about
+  Alertmanager needs a live Alertmanager, so the `Watchdog` deadman is what
+  surfaces a wholly dead one. Empty configures no alerting and loads no rules.
+- `prometheus_node_targets` — `host:9100` node_exporter scrape targets.
+- `prometheus_cadvisor_targets` — `host:8080` cadvisor scrape targets, scraped at
+  cadvisor's own 30s housekeeping interval rather than the global 15s, and with
+  `honor_timestamps: false`: cadvisor stamps each sample itself and only advances
+  the stamp for a cgroup that saw activity, so an idle container re-serves an
+  identical sample that would be rejected as out-of-order and store no point at
+  all. The job's `metric_relabel_configs` rebuild the `container` and `image`
+  labels the Grafana 15798 dashboard groups by out of the cgroup id.
+- `prometheus_probe_targets` — blackbox probe targets: each entry pairs a prober
+  module with the URLs to run it against, so the module is per target rather than
+  per job, and the same module may appear more than once.
+- `prometheus_blackbox_address` — `host:port` of the blackbox_exporter the
+  `blackbox` job scrapes. Must match the `blackbox_exporter` role's
+  `blackbox_exporter_listen_address`: two independent defaults on co-located
+  roles, agreeing at the exporter's loopback bind.
 
 ## Alerting
 
 When `prometheus_alertmanager_targets` is set, the role adds the `alerting` block
-and a `rule_files` glob, mounts its `files/rules/` at `/etc/prometheus/rules`, and
-routes alerts to the targets. The shipped rules are `InstanceDown` (a target
+and a `rule_files` glob, copies its `files/rules/` into `rules/` under
+`prometheus_config_dir` — which the quadlet mounts whole — and routes alerts to
+the targets. The shipped rules are `InstanceDown` (a target
 unreachable for 5m, the `blackbox` job excluded — its targets share one exporter,
 so `up == 0` there is not a down target); the `probes` group — `BlackboxExporterDown`
 (that exporter unreachable, aggregated to one alert so it doesn't fan out per
@@ -92,7 +98,13 @@ last-run timestamp gone stale), the matching `home_backup` pair `HomeBackupFaile
 `FilesystemReadOnly` (one the kernel remounted read-only after an I/O error — the
 host stays up and probes stay green while every write fails. node_exporter hosts
 only: `ro` is a client-side mount option, so unlike `FilesystemSpaceLow` this does
-not reach the NAS through the NFS exports); the `memory` group's `MemoryLow`
+not reach the NAS through the NFS exports) and `ContainerStoreMountMissing`
+(nothing mounted at `/var/lib/containers` from an NVMe, so podman — and this
+Prometheus's own TSDB — is writing to the SD card underneath the mount point.
+`nofail` is what makes that possible and what makes it silent; the device matcher
+is load-bearing, since a mount from the wrong device is the same fault. `absent()`
+carries only the equality matchers, so it names no host, and it also fires when
+that host's node_exporter is down, alongside `InstanceDown`); the `memory` group's `MemoryLow`
 (`MemAvailable` under 10% for 15m — `FilesystemSpaceLow`'s threshold and window, for
 the other exhaustible resource. `MemAvailable` has already netted off reclaimable
 cache, so crossing it is real pressure, not a full-looking cache); the `hardware` group's
@@ -155,14 +167,7 @@ standing pile of no-match albums awaiting hand-processing); the `monitoring` gro
 have silently stopped producing series) and `PrometheusConfigReloadFailed` (a config
 or rule file Prometheus rejected at reload, leaving it on the previous config) — the
 two ways an unattended `arbites` deploy of these very files fails silently,
-both read off the `prometheus` self-scrape job — plus the pair covering the writer
-this server now depends on: `PrometheusAgentAbsent` (critical: no
-`up{job="prometheus_agent"}` for 10m, so nothing is scraping the fleet and nearly
-every other rule here is matching an empty vector rather than firing) and
-`PrometheusRemoteWriteFailing` (the agent's failed-sample rate above zero for 15m —
-the partial case only, since under total failure the counter travels the same
-broken channel it describes and never arrives, which is what the `absent()` rule
-above catches instead) — and `ScheduledJobMetricMissing`
+both read off the `prometheus` self-scrape job — and `ScheduledJobMetricMissing`
 (a host running one of the eight oneshots `SystemdUnitFailed` excludes while
 publishing no matching `*_success` metric. That exclusion is only sound while the
 metric exists: `== 0` and `time() - <gauge> > N` both match nothing on an empty
@@ -203,7 +208,9 @@ multiple of the file's `evaluation_interval` — promtool floors an off-grid one
 silently, and an assertion that lands a step early passes while meaning something
 else.
 
-A changed `prometheus.yml` recreates the container. The config is bind-mounted as
-a single file; Ansible's atomic write gives it a new inode that the pinned mount
-never sees, so a hot `/-/reload` reads the stale config — only a recreate
-re-resolves the mount. The TSDB is a directory mount, so it survives.
+A changed `prometheus.yml` or rule file restarts the container, via the role's
+own handler. Prometheus reads both only at start, and nothing here fires a hot
+`/-/reload`; the quadlet mounts the config *directory*, so the single-file inode
+trap the previous compose deployment carried does not apply. The TSDB is a named
+volume, so it survives the restart — and the molecule scenario's `side_effect`
+proves the change actually reaches the running process rather than just the disk.

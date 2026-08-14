@@ -30,8 +30,8 @@ import yaml
 
 REPO = Path(__file__).resolve().parent.parent
 # Named outright, as the promtool-test hook names the same test file. prometheus is
-# the only role that ships rules and prometheus_agent cannot hold any — agent mode
-# rejects rule_files outright — so there is no pair to discover.
+# the only role that ships rules, and the fleet runs one of it, so there is no pair
+# to discover.
 RULES = REPO / "roles/prometheus/files/rules/alerts.yml"
 TESTS = REPO / "roles/prometheus/tests/alerts_test.yml"
 

@@ -1,113 +1,64 @@
 ---
-# The other half of this pair lives in another role on another host, so nothing
-# else can catch it coming apart. A receiver with no out-of-order window is not a
-# broken receiver — it accepts live samples perfectly and silently refuses every
-# sample an agent replays from its WAL, because by then the head has compacted
-# past them. That is precisely the outage the WAL exists to cover, so the fault
-# surfaces only during an incident and only as a hole in the history afterwards.
-- name: A remote-write receiver has an out-of-order ingestion window
-  ansible.builtin.assert:
-    that:
-      - prometheus_out_of_order_time_window | length > 0
-    fail_msg: >-
-      prometheus_remote_write_receiver is on but prometheus_out_of_order_time_window
-      is empty, so any backlog an agent replays after an outage is rejected as out
-      of bounds and lost without an error. Set it to at least the writing agent's
-      prometheus_agent_retention_max_time — a value this assert cannot check for
-      you, since that half lives in another role on another host.
-    quiet: true
-  when: prometheus_remote_write_receiver
-
-- name: Create the project directory
+- name: Create the config directory
   ansible.builtin.file:
-    path: "{{ prometheus_project_dir }}"
+    path: "{{ prometheus_config_dir }}"
     state: directory
+    owner: root
+    group: root
     mode: "0755"
-
-# Before the 0755 chmod and the run-as-deploy-user recreate below, any pre-existing
-# TSDB must already be owned by the run user. On a fresh host the dir does not exist
-# yet; on a NAS migrating off 0777 it holds nobody-owned (65534) files the
-# unprivileged deploy cannot chown — so fail loudly here, leaving the running
-# container untouched, rather than recreate it into files it cannot write. The
-# operator stops the container and chowns the dir once out-of-band (README).
-- name: Stat the data directory
-  ansible.builtin.stat:
-    path: "{{ prometheus_data_dir }}"
-  register: prometheus_data_pre
-
-- name: List the existing TSDB's top-level entries
-  ansible.builtin.find:
-    paths: "{{ prometheus_data_dir }}"
-    file_type: any
-    recurse: false
-  register: prometheus_data_entries
-  when: prometheus_data_pre.stat.exists
-
-- name: The existing TSDB is owned by the run user
-  ansible.builtin.assert:
-    that:
-      - prometheus_data_entries.files | rejectattr('uid', 'eq', prometheus_run_user.split(':')[0] | int) | list | length == 0
-    fail_msg: >-
-      {{ prometheus_data_dir }} holds entries not owned by uid
-      {{ prometheus_run_user.split(':')[0] }} (an existing TSDB written as nobody).
-      Stop the container and `chown -R {{ prometheus_run_user }} {{ prometheus_data_dir }}`
-      as root once, then re-apply — see README.
-    quiet: true
-  when: prometheus_data_pre.stat.exists
-
-- name: Create the data directory
-  ansible.builtin.file:
-    path: "{{ prometheus_data_dir }}"
-    state: directory
-    # 0755, owned by the deploy user the container also runs as (prometheus_run_user):
-    # no sudo on the NAS to chown the mount to the image's default nobody (65534), so
-    # run the container as the owner rather than leave the TSDB world-writable.
-    mode: "0755"
+  become: true
 
 - name: Deploy the prometheus config
   ansible.builtin.template:
     src: prometheus.yml.j2
-    dest: "{{ prometheus_project_dir }}/prometheus.yml"
+    dest: "{{ prometheus_config_dir }}/prometheus.yml"
+    owner: root
+    group: root
     mode: "0644"
-  register: prometheus_config
+  become: true
+  notify: Restart prometheus
 
-# Alert rules load only when an alertmanager is configured. They sit in a
-# directory mount, not the single-file prometheus.yml, so a changed rule reaches
-# the container — but Prometheus still needs the recreate below to reload it.
+# Alert rules load only when an alertmanager is configured — rule_files is
+# rendered under the same condition, so deploying them otherwise would leave a
+# directory nothing reads.
 - name: Deploy the alert rules
   when: prometheus_alertmanager_targets | length > 0
+  become: true
   block:
     - name: Create the rules directory
       ansible.builtin.file:
-        path: "{{ prometheus_project_dir }}/rules"
+        path: "{{ prometheus_config_dir }}/rules"
         state: directory
+        owner: root
+        group: root
         mode: "0755"
 
     - name: Deploy the alert rules file
       ansible.builtin.copy:
         src: rules/alerts.yml
-        dest: "{{ prometheus_project_dir }}/rules/alerts.yml"
+        dest: "{{ prometheus_config_dir }}/rules/alerts.yml"
+        owner: root
+        group: root
         mode: "0644"
-      register: prometheus_rules
+      notify: Restart prometheus
 
-- name: Deploy the compose file
+- name: Install the prometheus container unit
   ansible.builtin.template:
-    src: compose.yaml.j2
-    dest: "{{ prometheus_project_dir }}/compose.yaml"
+    src: prometheus.container.j2
+    dest: /etc/containers/systemd/prometheus.container
+    owner: root
+    group: root
     mode: "0644"
+  become: true
+  notify: Restart prometheus
 
-# No become: on the NAS sudo needs a password, so the deploy runs as the
-# docker-group user. PATH carries /usr/local/bin, where the DSM docker CLI lives
-# off the non-interactive PATH; harmless on a host where docker is already found.
-#
-# recreate on a config change: prometheus.yml is bind-mounted as a single file, so
-# Ansible's atomic write gives it a new inode the pinned mount never sees — the
-# running container (or a hot /-/reload) keeps reading the stale file. A changed
-# rule file needs the same recreate to reload. A compose change recreates via auto.
-- name: Bring the prometheus stack up
-  community.docker.docker_compose_v2:
-    project_src: "{{ prometheus_project_dir }}"
-    state: present
-    recreate: "{{ 'always' if (prometheus_config.changed or prometheus_rules.changed | default(false)) else 'auto' }}"
-  environment:
-    PATH: "/usr/local/bin:{{ ansible_facts.env.PATH }}"
+# Restart-on-change runs at flush; this generates the quadlet unit and asserts it
+# is up even on a converge where nothing changed and no handler fired.
+- name: Apply pending unit changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Start prometheus
+  ansible.builtin.systemd_service:
+    name: prometheus
+    state: started
+  become: true

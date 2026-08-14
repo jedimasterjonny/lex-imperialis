@@ -6,38 +6,19 @@
   # docker-group user.
   become: false
   vars:
-    # prometheus gets a compose project on a subdir of the NAS's own astropath
-    # volume, beside the TSDB data (a local bind mount, not NFS).
-    prometheus_project_dir: /volume2/astropath/prometheus
-    prometheus_data_dir: /volume2/astropath/prometheus/data
     docker_prune_project_dir: /volume2/astropath/docker_prune
-    # Storage and rule evaluation only. Everything is now scraped by the agent on
-    # auspex and pushed here, so this Prometheus discovers no targets of its own
-    # beyond its hardcoded self-scrape — which stays, because
-    # PrometheusRuleEvaluationFailing and PrometheusConfigReloadFailed read it.
-    prometheus_remote_write_receiver: true
-    # Sized to the agent's prometheus_agent_retention_max_time. The agent buffers
-    # to its WAL while this host is unreachable, but the self-scrape above keeps
-    # this head advancing and compacting every 2h, so without this window anything
-    # replayed from further back is refused as out of bounds and lost silently.
-    # Change one and change the other.
-    prometheus_out_of_order_time_window: 4h
-    # No node_exporter on the NAS itself, by design: CPU/RAM/load stay DSM's
-    # domain, its data-volume free space is already scraped via solar/rogue-trader's
-    # NFS mounts of the exports (FilesystemSpaceLow covers nfs4), and a total outage
-    # trips the Watchdog deadman — Prometheus dies with the host, the heartbeat stops.
-    #
-    # Where alerts are routed, and only that — the role scrapes nothing but itself,
-    # so there is no scrape of Alertmanager here to suppress. The agent beside it on
-    # auspex does that; a second scrape from here would give the one Alertmanager
-    # two instance labels, and InstanceDown would fire on whichever network path
-    # blipped rather than on Alertmanager being down.
-    prometheus_alertmanager_targets:
-      - auspex:9093
   roles:
-    # blackbox_exporter moved to auspex with the scraping: it binds loopback and
-    # must sit on the same host as whatever drives its /probe endpoint.
-    - prometheus
-    # Weekly docker image prune — the reciprocal of the podman role's timer on
-    # the podman hosts. Order-independent of the stacks above.
+    # All that is left here. Prometheus moved to auspex, which now scrapes, stores
+    # and evaluates on one host; blackbox_exporter went with the scraping before
+    # it. Dropping the role stops managing the NAS container but does NOT stop it,
+    # so the compose project under /volume2/astropath/prometheus was brought down
+    # by hand at the cutover, and its data directory kept a while as the rollback.
+    #
+    # Why stopped and not merely unmanaged, which is the part worth remembering:
+    # two Prometheis on this fleet cannot both run. Neither sets external_labels,
+    # so both emit an identical {alertname="Watchdog"}, and Alertmanager groups by
+    # alertname alone — the two collapse into one alert that either can keep
+    # alive. A dead Prometheus on auspex would then be total silence behind a
+    # green heartbeat, which is the one failure this whole arrangement rests on
+    # being loud.
     - docker_prune

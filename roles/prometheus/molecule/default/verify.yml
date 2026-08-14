@@ -2,8 +2,11 @@
 - name: Verify
   hosts: all
   gather_facts: false
-  vars_files:
-    - ../../defaults/main.yml
+  # Both resolved lazily, at the point of use, so they can name a register set
+  # further down. Each is read by two tasks that would otherwise restate it.
+  vars:
+    prometheus_expected_jobs: ['alertmanager', 'blackbox', 'cadvisor', 'node', 'prometheus']
+    prometheus_inspected: "{{ prometheus_inspect.stdout | from_json | first }}"
   tasks:
     - name: Wait for prometheus to be ready
       ansible.builtin.uri:
@@ -14,29 +17,76 @@
       retries: 30
       delay: 2
 
+    - name: Read prometheus's own metrics
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9090/metrics
+        return_content: true
+      register: prometheus_metrics
+
+    # The property a rendered-file check cannot see, and the one this whole role
+    # now rests on: the process holds a TSDB. Its predecessor ran the same image
+    # with --agent, which keeps no local storage and refuses rule_files outright,
+    # so a stray --agent creeping back into Exec= would leave every shipped rule
+    # unevaluated while /-/ready still answered 200. Both halves are asserted
+    # because either alone is satisfiable by accident.
+    - name: The process holds a TSDB and is not running in agent mode
+      vars:
+        # Double-quoted so YAML turns \n into a real newline, anchoring the match
+        # to the sample line: unanchored it would also hit the # HELP line and
+        # prometheus_tsdb_head_series_created_total.
+        prometheus_head_series_sample: "\nprometheus_tsdb_head_series "
+      ansible.builtin.assert:
+        that:
+          - prometheus_head_series_sample in prometheus_metrics.content
+          - "'prometheus_agent_active_series' not in prometheus_metrics.content"
+        fail_msg: >-
+          No prometheus_tsdb_head_series sample, or prometheus_agent_* series are
+          present — this process is not storing samples locally. Without a TSDB
+          there is nothing for the shipped rules to evaluate against, and agent
+          mode rejects rule_files by name at startup.
+
     # Poll, not a one-shot read: verify runs right after side_effect recreates the
     # container, and /-/ready goes green before the scrape pools register their
-    # targets.
-    - name: Wait for the self-scrape job to register
+    # targets. Waits for PRESENCE only, deliberately weaker than the assertion
+    # below — an extra job would satisfy this, and must fail rather than be waited
+    # out.
+    - name: Wait for all five scrape jobs to register
       ansible.builtin.uri:
         url: http://127.0.0.1:9090/api/v1/targets
         return_content: true
       register: prometheus_targets
       until:
-        # The self-scrape backs PrometheusRuleEvaluationFailing and
-        # PrometheusConfigReloadFailed; dropping the job would silently strip both
-        # alerts of their metrics while every other check here stayed green. It is
-        # the only job this role renders — the fleet's targets belong to
-        # prometheus_agent, whose own scenario asserts them.
         - >-
-          prometheus_targets.json.data.activeTargets
-          | selectattr('labels.job', 'eq', 'prometheus') | list | length > 0
+          prometheus_expected_jobs
+          | difference(prometheus_targets.json.data.activeTargets
+                       | map(attribute='labels.job') | unique | list)
+          | length == 0
       retries: 30
       delay: 2
 
-    # This is the routing half of the role's boundary, asserted by the until: —
-    # the task fails after 30 retries if the alerting block never took, so it
-    # needs no separate assert. Polled like the scrape job: the static target is
+    # Exact equality, where the wait above only demanded presence. Both directions
+    # matter: this host is the fleet's only scraper, so a job dropped from the
+    # template takes every series it carried with it and no other writer backfills
+    # them — and a job arriving twice, or a stray one creeping in, double-writes
+    # series that then have two sources. The self-scrape is load-bearing twice
+    # over: PrometheusRuleEvaluationFailing and PrometheusConfigReloadFailed read
+    # it, and nothing off this host reports on the rule evaluator's health.
+    - name: The scraped job set is exactly the five the role renders
+      vars:
+        prometheus_scraped_jobs: >-
+          {{ prometheus_targets.json.data.activeTargets
+             | map(attribute='labels.job') | unique | sort }}
+      ansible.builtin.assert:
+        that:
+          - prometheus_scraped_jobs == prometheus_expected_jobs
+        fail_msg: >-
+          this server scraped {{ prometheus_scraped_jobs }} — the fleet's only
+          scraper is missing a job, and nothing else writes those series.
+        quiet: true
+
+    # The routing half of the role's boundary, asserted by the until: — the task
+    # fails after 30 retries if the alerting block never took, so it needs no
+    # separate assert. Polled like the scrape jobs: the static target is
     # discovered shortly after /-/ready, even though nothing listens on 9093.
     - name: Wait for the alertmanager to register
       ansible.builtin.uri:
@@ -56,12 +106,12 @@
         return_content: true
       register: prometheus_loaded_rules
 
-    # The rule_files glob and its mounted rule both have to take effect for these
-    # rules to appear. The shipped file is the roster: parsed on the controller
-    # and compared as a set against what Prometheus loaded, so a new alert needs
-    # no edit here and one that fails to load has nowhere to hide. The two length
-    # assertions are not redundant with the set compare — set equality alone
-    # passes a duplicated name masking a missing one, and two empty lists are
+    # The rule_files glob and the mounted rules directory both have to take effect
+    # for these rules to appear. The shipped file is the roster: parsed on the
+    # controller and compared as a set against what Prometheus loaded, so a new
+    # alert needs no edit here and one that fails to load has nowhere to hide. The
+    # two length assertions are not redundant with the set compare — set equality
+    # alone passes a duplicated name masking a missing one, and two empty lists are
     # trivially equal, which is the shape this whole assertion exists to refuse.
     - name: The shipped alert rules are loaded
       vars:
@@ -153,127 +203,114 @@
         return_content: true
       register: prometheus_loaded_config
 
-    # side_effect added this target; finding it in the LOADED config proves the
-    # recreate applied the change — a stale single-file mount + reload would not.
-    - name: The side-effect config change reached the running container
+    # side_effect added this target after the container was already up. Finding it
+    # in the config the PROCESS loaded — not the file on disk — is what proves the
+    # restart handler applied the change; without it Prometheus would go on
+    # scraping its previous target list with nothing reporting the divergence.
+    - name: The side-effect config change reached the running prometheus
       ansible.builtin.assert:
         that:
-          - "'sentinel-regression:9093' in prometheus_loaded_config.json.data.yaml"
+          - "'sentinel-regression:9100' in prometheus_loaded_config.json.data.yaml"
         fail_msg: >-
-          The running prometheus did not pick up the config change — the container
-          was not recreated (stale single-file bind mount).
+          The running prometheus did not pick up the config change, so the restart
+          handler did not fire and it is still scraping the previous targets.
 
-    # The role's boundary, asserted rather than assumed: it routes to Alertmanager
-    # and scrapes nothing but itself. Both halves fail differently — an alerting
-    # block that lost its target delivers nothing, while a scrape job creeping back
-    # in duplicates what the agent already sends, so one Alertmanager arrives under
-    # two instance labels and InstanceDown fires on a blipping network path rather
-    # than on Alertmanager being down. The same reasoning holds for node, cadvisor
-    # and blackbox: re-add any of them here and every one of those series is
-    # ingested twice, once from each writer.
-    - name: Nothing but this server is scraped
+    # The group's module has to survive as __param_module into the URL actually
+    # scraped, or a target silently falls back to the exporter's default module.
+    # Anchor on the parameter boundary: a bare 'module=http_2xx' is also satisfied
+    # by 'module=http_2xx_or_401'.
+    - name: The blackbox target is scraped with its group's prober module
       vars:
-        scraped_jobs: >-
+        prometheus_blackbox_scrape_urls: >-
           {{ prometheus_targets.json.data.activeTargets
-             | map(attribute='labels.job') | unique | sort }}
+             | selectattr('labels.job', 'eq', 'blackbox')
+             | map(attribute='scrapeUrl') | list }}
       ansible.builtin.assert:
         that:
-          - scraped_jobs == ["prometheus"]
+          - prometheus_blackbox_scrape_urls | select('search', 'module=http_2xx(&|$)') | list | length > 0
+          - prometheus_blackbox_scrape_urls | select('search', 'target=https%3A%2F%2Fexample.com') | list | length > 0
         fail_msg: >-
-          this server must scrape only itself, but it scraped {{ scraped_jobs }}.
-          A job creeping back gives those series two writers — the agent already
-          sends them — so every sample is ingested twice.
+          The blackbox scrape URLs {{ prometheus_blackbox_scrape_urls }} do not carry
+          the entry's module and target, so the probe would run the exporter's
+          default module against the wrong thing.
 
-    # Rendered from prometheus_out_of_order_time_window. Read back from the config
-    # Prometheus resolved rather than the file on disk: the point is that it
-    # reached the process, since without it an agent's replayed backlog is
-    # rejected as out of bounds and lost with no error anyone sees.
-    - name: The out-of-order ingestion window reached the running config
+    # Both properties of the cadvisor job, parsed and scoped to it rather than
+    # substring-matched against the whole document: every other job honours
+    # timestamps, and Prometheus renders that default explicitly into the loaded
+    # config, so a flat search would pass on any of them. node is asserted
+    # alongside to prove the override did not land globally.
+    #
+    # The relabels are copied from the agent this role absorbed and the Grafana
+    # 15798 dashboard depends on them, so dropping either fails here rather than
+    # silently as empty panels.
+    - name: The cadvisor job stamps at scrape time and rebuilds the container labels
+      vars:
+        prometheus_loaded_jobs: "{{ (prometheus_loaded_config.json.data.yaml | from_yaml).scrape_configs }}"
+        prometheus_cadvisor_job: "{{ prometheus_loaded_jobs | selectattr('job_name', 'eq', 'cadvisor') | first }}"
+        prometheus_node_job: "{{ prometheus_loaded_jobs | selectattr('job_name', 'eq', 'node') | first }}"
       ansible.builtin.assert:
         that:
-          - "'out_of_order_time_window: 4h' in prometheus_loaded_config.json.data.yaml"
+          - prometheus_cadvisor_job.honor_timestamps is defined
+          - not prometheus_cadvisor_job.honor_timestamps
+          - prometheus_node_job.honor_timestamps
+          - >-
+            prometheus_cadvisor_job.metric_relabel_configs
+            | map(attribute='target_label') | sort == ['container', 'image']
+          - >-
+            prometheus_cadvisor_job.metric_relabel_configs
+            | selectattr('regex', 'search', 'libpod-payload-') | list | length == 2
         fail_msg: >-
-          The resolved config carries no out_of_order_time_window, so a writing
-          agent's WAL buffer is notional — anything older than the last compacted
-          block is dropped on reconnect.
+          The cadvisor job honours cadvisor's own timestamps, so every idle
+          container's repeated sample is dropped as out-of-order and the series
+          gains no point — or the override leaked to the other jobs, or the
+          metric_relabel_configs that rebuild the dashboard's container and image
+          labels from the cgroup id did not reach the loaded config.
 
-    # A path, not a readable flag: without --web.enable-remote-write-receiver the
-    # endpoint 404s, and with it an empty body is a 400. So a non-404 is the only
-    # proof the flag reached the process — asserting on the rendered compose file
-    # would pass on a container that never took it.
-    - name: Probe the remote-write receiver
-      ansible.builtin.uri:
-        url: http://127.0.0.1:9090/api/v1/write
-        method: POST
-        body: ""
-        status_code: [200, 204, 400, 404, 405, 415]
-      register: prometheus_remote_write_probe
-
-    - name: The remote-write receiver accepts pushes
-      ansible.builtin.assert:
-        that:
-          - prometheus_remote_write_probe.status != 404
-        fail_msg: >-
-          /api/v1/write returned 404, so --web.enable-remote-write-receiver never
-          reached the container and an agent writing here would be refused.
-
-    # The checks above prove prometheus works; they can't prove its capability set
-    # is minimal. Assert the posture directly so a regression that widens the caps
-    # or drops the restriction fails here, not silently in production.
     - name: Read prometheus's security posture
-      ansible.builtin.command: docker inspect prometheus
+      ansible.builtin.command: podman inspect prometheus
+      become: true
       register: prometheus_inspect
       changed_when: false
 
-    # docker inspect exposes the request (HostConfig), not podman's EffectiveCaps/
-    # BoundingCaps: CapDrop == [ALL] with an empty CapAdd is the docker equivalent
-    # of "no capabilities" (either half missing widens them). Match no-new-privileges
-    # as a substring — docker's rendering of the :true suffix is not guaranteed
-    # (podman drops it, docker may not).
-    - name: Prometheus keeps no capabilities and bars privilege escalation
-      vars:
-        prometheus: "{{ prometheus_inspect.stdout | from_json | first }}"
+    # BoundingCaps, not EffectiveCaps: this image runs non-root, whose
+    # EffectiveCaps are empty whatever the drop says — asserting on those would be
+    # a check that cannot fail. Only the bounding set reflects DropCapability=all.
+    # The non-root user comes from the image rather than this role, so an upstream
+    # change could drop it silently; assert it explicitly.
+    - name: Prometheus keeps no capabilities, bars escalation and runs non-root
       ansible.builtin.assert:
         that:
-          - "prometheus.HostConfig.CapDrop | default([], true) | sort == ['ALL']"
-          - "prometheus.HostConfig.CapAdd | default([], true) == []"
-          - >-
-            prometheus.HostConfig.SecurityOpt | default([], true)
-            | select('search', 'no-new-privileges') | list | length > 0
-        fail_msg: "prometheus's capability or no-new-privileges posture has regressed"
-        quiet: true
-
-    # The container runs as a pinned uid:gid so the TSDB mount is 0755 owned by that
-    # user, not world-writable. A regression that drops `user:` reverts Config.User
-    # to the image default (a name, nobody), which needs the 0777 dir back.
-    - name: Prometheus runs as a pinned uid:gid, not the image-default nobody
-      vars:
-        prometheus: "{{ prometheus_inspect.stdout | from_json | first }}"
-      ansible.builtin.assert:
-        that:
-          - prometheus.Config.User | default('', true) is match('^[0-9]+:[0-9]+$')
-        fail_msg: "prometheus is not pinned to a uid:gid — it may be running as the image-default nobody"
-        quiet: true
-
-    - name: Stat the TSDB data directory
-      ansible.builtin.stat:
-        path: "{{ prometheus_data_dir }}"
-      register: prometheus_data_stat
-
-    # 0755 closes the world-writable hole; owned-by-the-container-uid is the other
-    # half — a 0755 dir the container cannot write is just as broken. The pinned-uid
-    # assert above guarantees Config.User is numeric, so int() here is safe.
-    - name: The TSDB data dir is 0755 and owned by the uid the container runs as
-      vars:
-        prometheus: "{{ prometheus_inspect.stdout | from_json | first }}"
-        container_uid: "{{ prometheus.Config.User | regex_replace(':.*$', '') | int }}"
-      ansible.builtin.assert:
-        that:
-          - prometheus_data_stat.stat.exists
-          - prometheus_data_stat.stat.isdir
-          - prometheus_data_stat.stat.mode == '0755'
-          - prometheus_data_stat.stat.uid == container_uid
+          - prometheus_inspected.BoundingCaps | default([], true) | sort == []
+          - "'no-new-privileges' in (prometheus_inspected.HostConfig.SecurityOpt | default([], true))"
+          - prometheus_inspected.Config.User == 'nobody'
         fail_msg: >-
-          the prometheus data dir is not 0755 owned by the container's uid — the TSDB
-          is world-writable or the container cannot write it
+          prometheus's posture has regressed: bounding caps
+          {{ prometheus_inspected.BoundingCaps | default([], true) }}, security-opt
+          {{ prometheus_inspected.HostConfig.SecurityOpt | default([], true) }}, user
+          {{ prometheus_inspected.Config.User }}.
         quiet: true
+
+    # The TSDB must outlive the container: every config change recreates it, and a
+    # scratch upper layer would take a year of history with it each time.
+    - name: The TSDB is a named volume, not the container's writable layer
+      vars:
+        prometheus_tsdb_mounts: >-
+          {{ prometheus_inspected.Mounts | default([], true)
+             | selectattr('Destination', 'eq', '/prometheus') | list }}
+      ansible.builtin.assert:
+        that:
+          - prometheus_tsdb_mounts | length == 1
+          - prometheus_tsdb_mounts | map(attribute='Name', default='') | list == ['prometheus-data']
+        fail_msg: >-
+          /prometheus is not backed by the prometheus-data named volume — the TSDB
+          would be discarded on the next config change that recreates the container.
+        quiet: true
+
+    # The inquisition's `unpinned` class reads exactly this, and a quadlet whose
+    # Image lost its digest is a container that silently drifts on the next pull.
+    - name: The quadlet pins its image by digest
+      ansible.builtin.command: grep -E '^Image=.*@sha256:[0-9a-f]{64}$' /etc/containers/systemd/prometheus.container
+      become: true
+      register: prometheus_pin
+      changed_when: false
+      failed_when: prometheus_pin.rc != 0

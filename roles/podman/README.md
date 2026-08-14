@@ -20,15 +20,14 @@ the install so the store is created on the device rather than shadowed by it.
 Images and every named volume follow from the one fstab entry. Empty by default,
 so the role is unchanged on the hosts that keep their store on root; only
 `auspex` sets it, to `LABEL=containers` — its NVMe, since podman's store there
-holds a continuously-written Prometheus write-ahead log and an SD card is the
-wrong medium for that.
+holds a year of continuously-written Prometheus TSDB and an SD card is the wrong
+medium for that.
 
 `nofail` is deliberate: a monitoring host that will not boot without its data
 disk is worse than one that boots degraded. The cost is that the failure is
 silent — podman writes to the root filesystem under the empty mount point and
-everything appears to work. `findmnt /var/lib/containers` is what says otherwise,
-and until something on this host is worth alerting about, it is the only thing
-that does.
+everything appears to work. `findmnt /var/lib/containers` is what says otherwise
+by hand, and `ContainerStoreMountMissing` is what says it unattended.
 
 **Adopting a device on a host that already has a store is not a converge.** The
 task mounts before the install so a *fresh* host builds its store on the device,

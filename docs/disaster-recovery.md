@@ -40,6 +40,12 @@ no podman repo; its recoverable state is the git repo, `.vault_pass`, and its
 `/home` restic repo. `administratum` (the NAS) is the backup *target*; its DR is
 DSM's job (see below).
 
+`auspex` runs no backup role either, and unlike scholam it is not stateless: its
+Prometheus TSDB is a year of the fleet's monitoring history on a single NVMe with
+no RAID, no scrub and no repo. That is accepted rather than overlooked — it is
+derived data, so losing it costs dashboards and not recovery — but it is the one
+piece of fleet state with no copy anywhere.
+
 **Off-site copy:** three Synology Hyper Backup tasks mirror the on-NAS backups
 off-site to a Hetzner storage box over rsync, each a plain true mirror (latest
 state only, no version history): the `*-podman-backup` repos on Wednesday 02:00,
@@ -267,10 +273,17 @@ play, run locally, then the home restore.
 
 ## auspex (Raspberry Pi 5)
 
-Stateless by design, and so the shortest recovery here: no NFS mount, no backup
-role, nothing to restore. The only state it holds is Alertmanager's silences and
-notification log, and the agent's write-ahead log is a few hours of buffer by
-construction — everything else is rebuilt from the repo.
+No NFS mount and no backup role, so nothing here is restored from a repo. What it
+does hold is the fleet's entire monitoring history: Prometheus's TSDB, a year of
+it, on the NVMe mounted at `/var/lib/containers`. There is no copy of that
+anywhere — accepted, because it is derived data whose loss costs dashboards
+rather than recovery, but it means the card and the drive fail differently.
+
+**A card rebuild does not touch the NVMe.** Reflashing the SD card and re-applying
+the play remounts the existing store, so the TSDB, Alertmanager's silences and
+every other named volume survive the procedure below. Losing the NVMe itself is
+what loses the history, and nothing restores it — fit a replacement, partition it
+`LABEL=containers`, and the fleet starts recording again from empty.
 
 1. Write Raspberry Pi OS Lite arm64 to a fresh card, then put
    `bootstrap/auspex-user-data.yaml` on the card's FAT partition as `user-data`,
@@ -295,16 +308,17 @@ construction — everything else is rebuilt from the repo.
    ssh-keyscan -H auspex >>/etc/arbites/ssh/known_hosts
    ```
 
-Silences do not survive, so anything deliberately muted before the loss starts
-firing again after step 3. The scrape gap is a hole in the NAS's history rather
-than a fault to repair: the agent buffers only to
-`--storage.agent.retention.max-time`, and the NAS refuses samples older than its
-`out_of_order_time_window` even once the agent reconnects.
+Anything deliberately silenced before a loss that took the NVMe with it starts
+firing again after step 3. The outage itself is a hole in the history rather than
+a fault to repair: nothing buffers samples on the fleet's behalf, so what was not
+scraped is simply gone.
 
-While auspex is down the fleet is unmonitored rather than noisily broken — most
-rules match an empty vector instead of firing. `PrometheusAgentAbsent` on the NAS
-is what says so, and the `Watchdog` deadman covers the case where auspex takes
-Alertmanager with it.
+While auspex is down the fleet is unmonitored rather than noisily broken — every
+rule matches an empty vector instead of firing, because the process that would
+evaluate them is the one that stopped. Nothing on the fleet can say so, and
+nothing needs to: no evaluation means no `Watchdog`, no heartbeat, and
+healthchecks.io pages on the silence. That deadman is the whole signal, so treat
+a missed beat as this host until proven otherwise.
 
 ## administratum (NAS)
 
@@ -313,11 +327,9 @@ openSUSE host, and it has no podman repo. DSM's native SMART and RAID monitoring
 emails the operator on any disk or array fault — the array-health signal, since
 the NAS runs no `node_exporter` by design — so degradation is caught before it
 becomes a recovery event. Recover the appliance with DSM (Hyper Backup / the
-RAID), which also returns Prometheus's TSDB (a local bind mount at
-`/volume2/astropath/prometheus/data`). The TSDB is now the fleet's only copy of
-its own history and the only place the alert rules are evaluated, so a loss here
-is a monitoring outage as well as a data one — auspex keeps scraping throughout,
-but its buffer is hours, not days. Then redeploy the compose project:
+RAID). It holds no monitoring data — Prometheus, its TSDB and the rule evaluation
+all live on auspex — so losing the NAS is no longer a monitoring outage. Then
+reapply what this repo still manages there:
 
 ```bash
 make apply PLAY=administratum

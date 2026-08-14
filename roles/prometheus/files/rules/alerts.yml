@@ -160,6 +160,38 @@ groups:
           summary: "{{ $labels.instance }}:{{ $labels.mountpoint }} is mounted read-only"
           description: "{{ $labels.mountpoint }} on {{ $labels.instance }} is mounted read-only — writes fail silently. Likely a remount after an I/O error."
 
+      # podman's store is mounted off a separate block device where a host sets
+      # the podman role's podman_storage_device — auspex, whose store holds this
+      # Prometheus's own TSDB and has no business on an SD card. That mount is
+      # nofail, deliberately: a monitoring host that will not boot without its
+      # data disk is worse than one that boots degraded. The cost is that the
+      # failure is completely silent — podman just writes to the root filesystem
+      # under the empty mount point, every container starts, every probe stays
+      # green, and the card fills up over weeks. This is the only thing that says
+      # so, and it catches the mount coming up from the wrong device too.
+      #
+      # absent() carries only the matcher's labels, so there is no instance to
+      # name. It also fires when the host's node_exporter is down, alongside
+      # InstanceDown — honest rather than silent, and the pair reads correctly:
+      # nothing can confirm the mount while nothing is reporting.
+      #
+      # Fleet-global, not per host: absent() is satisfied by ANY host reporting
+      # such a mount. Exactly right while one host sets podman_storage_device —
+      # the day a second does, one of them can lose its mount silently while the
+      # other keeps this quiet, and the rule needs rewriting per instance.
+      - alert: ContainerStoreMountMissing
+        expr: absent(node_filesystem_size_bytes{mountpoint="/var/lib/containers", device=~"/dev/nvme.+"})
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "podman's container store is not mounted from its NVMe"
+          description: >-
+            No filesystem is mounted at /var/lib/containers from an NVMe device. podman
+            is writing its images, volumes and the Prometheus TSDB to the root
+            filesystem underneath the mount point — silently, since nofail lets the host
+            boot without it.
+
   - name: memory
     rules:
       # Mirrors FilesystemSpaceLow: the same 10% headroom, severity and window, for
@@ -653,55 +685,6 @@ groups:
           description: >-
             Prometheus on {{ $labels.instance }} rejected its last config reload and is
             running the previous config — an arbites-applied change has not taken effect.
-      # The failure mode the agent architecture introduces, and the one nothing
-      # else can see. Every scrape target reaches this server through one agent, so
-      # if that agent stops, samples simply stop arriving — and almost every rule
-      # here then matches an EMPTY VECTOR rather than firing. `== 0` and
-      # `time() - <gauge> > N` both match nothing on an empty vector, which is the
-      # same trap ScheduledJobMetricMissing exists for further down. InstanceDown
-      # cannot help either: it keys on `up == 0`, and a target nobody scrapes
-      # publishes no `up` at all.
-      #
-      # Critical, not warning: while this fires the entire fleet is unmonitored.
-      # A wholly dead agent host is covered differently and adequately — Alertmanager
-      # dies with it, the Watchdog beat stops, and the deadman receiver pages — but a
-      # live host whose agent has stopped is invisible without this.
-      #
-      # absent() carries only the matcher's labels, so there is no instance to name.
-      - alert: PrometheusAgentAbsent
-        expr: absent(up{job="prometheus_agent"})
-        for: 10m
-        labels:
-          severity: critical
-        annotations:
-          summary: "no samples are arriving from the prometheus agent"
-          description: >-
-            No up{job="prometheus_agent"} series is arriving, so the agent that scrapes
-            the entire fleet is not writing. Every other rule is now evaluating an empty
-            vector and cannot fire — this alert is the only thing standing between a
-            stopped agent and silence. Expect roughly 15 minutes from the agent stopping
-            to this firing, not the 10m for: alone: up stays queryable for the 5m
-            lookback delta after its last sample, so absent() only turns true once that
-            has elapsed.
-      # Ordered after the absent() rule deliberately, because it is the weaker of the
-      # two and only the pair is complete: the agent reports this counter over the same
-      # remote_write channel the counter describes, so under TOTAL failure it never
-      # arrives and this rule matches nothing. It catches the partial case — some
-      # samples rejected, a full queue, a receiver refusing writes it once accepted —
-      # where the channel is up enough to carry its own bad news.
-      - alert: PrometheusRemoteWriteFailing
-        expr: rate(prometheus_remote_storage_samples_failed_total{job="prometheus_agent"}[5m]) > 0
-        for: 15m
-        labels:
-          severity: warning
-        annotations:
-          summary: "prometheus agent on {{ $labels.instance }} is failing to write samples"
-          description: >-
-            The agent on {{ $labels.instance }} has been failing to write samples to
-            {{ $labels.url }} for 15 minutes. Its WAL buffers against a receiver outage,
-            but only to --storage.agent.retention.max-time — past that the backlog is
-            dropped, and anything older than the receiver's out_of_order_time_window is
-            refused even once it reconnects.
       # The eight oneshots SystemdUnitFailed excludes are excluded *because* each
       # writes a *_success metric with a bespoke *Failed rule. That trade only holds
       # while the metric is actually published: every one of those rules is `== 0` or

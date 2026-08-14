@@ -1,10 +1,40 @@
 ---
+# Debian, not Tumbleweed, and only Debian. auspex is the only host this role runs
+# on, so the Tumbleweed platform it inherited from the agent tested the one
+# distribution it is deployed to nowhere. The role branches on neither — no
+# packages, no OS-conditional defaults — so a second platform buys no coverage,
+# only runtime. The two other auspex-only quadlet roles (alertmanager,
+# blackbox_exporter) are single-platform too, but still on Tumbleweed — the same
+# gap this closes here, left alone rather than widened into this change.
+#
+# podman mounts overlays for its storage, which incus only permits in a
+# nested-container-capable instance. The CI runner's AppArmor denies a nested
+# runtime's sysctl fd-reopen, so drop the profile — the instance is throwaway.
 platforms:
   - name: "lex-prometheus-incus-${MOLECULE_RUN_ID:-local}"
-    image: images:opensuse/tumbleweed/cloud
-    # docker mounts overlays for its storage, which incus only permits in a
-    # nested-container-capable instance. The CI runner's AppArmor denies nested
-    # runc's sysctl fd-reopen, so drop the profile — the instance is throwaway.
+    image: images:debian/13/cloud
     config:
       security.nesting: "true"
       raw.lxc: lxc.apparmor.profile=unconfined
+# One source for the scenario's scrape targets, read by converge as the input and
+# by side_effect as the set the sentinel is added to. Stated here rather than in
+# converge because include_role vars replace rather than merge: restating them in
+# side_effect would drift the first time a target changes, and verify asserts the
+# job set is exactly the five these render.
+#
+# Nothing listens on any of them. Each target need only be discovered for its job
+# to register, which is what verify asserts — not that a scrape succeeded.
+provisioner:
+  inventory:
+    group_vars:
+      all:
+        prometheus_alertmanager_targets:
+          - localhost:9093
+        prometheus_node_targets:
+          - localhost:9100
+        prometheus_cadvisor_targets:
+          - localhost:8080
+        prometheus_probe_targets:
+          - module: http_2xx
+            targets:
+              - https://example.com
