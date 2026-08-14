@@ -33,15 +33,15 @@ This has a side effect I never considered before I began: a repo that describes 
 
 ## The Stack
 
-Tumbleweed on the Beelinks, MicroOS on the VPS, DSM on the NAS, Raspberry Pi OS on the Pi — whose fan needs an RP1 PWM driver openSUSE's aarch64 kernel lacks. Workloads are rootful podman quadlets, bar the NAS, where Docker Compose is what DSM offers.
+Tumbleweed on the Beelinks, MicroOS on the VPS, DSM on the NAS, Raspberry Pi OS on the Pi — whose fan needs an RP1 PWM driver openSUSE's aarch64 kernel lacks. Workloads are rootful podman quadlets.
 
-Backends publish no host port at all: they sit on caddy's network and drop a snippet into `/etc/caddy/sites/`. A DNS-01 wildcard issues their certs, so an internal service gets TLS without ever facing the internet. plex is the exception — host-networked, and reached directly. Container state is a named volume, never a host bind mount, so `podman_backup` can restic every volume to the NAS weekly.
+Backends publish no host port at all: they sit on caddy's network and drop a snippet into `/etc/caddy/sites/`. A DNS-01 wildcard issues their certs, so an internal service gets TLS without ever facing the internet. plex is the exception — host-networked, and reached directly. Container state is a named volume, never a host bind mount.
 
 `solar` runs the media stack — prowlarr, sonarr, radarr, lidarr, beets, recyclarr, plex, transmission — with media over NFSv4 from the NAS. All but beets, plex and recyclarr are netns-confined to the wireguard container: the tunnel drops and their network drops with it.
 
 `rogue-trader` serves the public WordPress site behind the same caddy role and joins the fleet over WireGuard, which carries both its scrape and its backup. Its root is read-only: packages come from the `packer/` image, not its play.
 
-`auspex` runs Prometheus in agent mode to scrape the fleet, blackbox_exporter probes the public sites, and Alertmanager sends what fires. The NAS keeps the TSDB and evaluates the alert rules — an agent can hold none. Grafana runs on `solar`, pointed at the NAS. node_exporter runs on every host but the NAS, and cadvisor on the workload hosts. Liveness is a blackbox probe over the network; a container's own healthcheck exists only to restart it when stuck, and anything that must not be killed mid-flight carries none at all.
+`auspex` runs Prometheus to scrape the fleet, blackbox_exporter probes the public sites, and Alertmanager sends what fires. Grafana runs on `solar`, pointed at `auspex`. node_exporter runs on every host but the NAS, and cadvisor on the workload hosts. Liveness is a blackbox probe over the network; a container's own healthcheck exists only to restart it when stuck, and anything that must not be killed mid-flight carries none at all.
 
 Updates run unattended and staggered: `solar` Monday as the canary, `auspex` Tuesday, the VPS midweek, `scholam` last, so one bad update cannot brick the fleet in a single night. One timer per host, with the distribution's own update timers masked, and every run writes its outcome as a metric so a silent failure alerts.
 
