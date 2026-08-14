@@ -7,6 +7,29 @@
   vars:
     podman_expected_runtime: crun
   tasks:
+    # The guard, not the mount. An incus container cannot be given a block
+    # device, so the store-on-a-device arm runs nowhere in CI — it is asserted
+    # live on auspex instead.
+    #
+    # What this pins is narrow, and worth stating so it is not mistaken for more:
+    # on the empty default this role leaves fstab alone. Dropping the `when:`
+    # outright would not reach here — the mount of an empty src fails the converge
+    # first, which is louder. What it does catch is a change that writes the entry
+    # without mounting (`state: present`), or any later task that touches fstab:
+    # a stray line is permanent drift on the three other hosts that run this role
+    # and have no such device.
+    - name: Read fstab
+      ansible.builtin.slurp:
+        path: /etc/fstab
+      register: podman_fstab
+
+    - name: No container-store mount was written on the empty default
+      ansible.builtin.assert:
+        that:
+          - "'/var/lib/containers' not in (podman_fstab.content | b64decode)"
+        fail_msg: "the role wrote a /var/lib/containers fstab entry with podman_storage_device unset"
+        quiet: true
+
     - name: Query the podman runtime
       ansible.builtin.command: podman info
       become: true

@@ -13,3 +13,36 @@ podman_packages:
   - podman
   - aardvark-dns
   - "{{ podman_runtime }}"
+
+# Block device to mount at /var/lib/containers, so podman's whole store — images
+# and named volumes both — lands on it. Empty means no mount at all, following
+# nfs_shares: [], so the role is unchanged on the hosts that keep their store on
+# root. A LABEL= or UUID= src survives a controller renaming the device.
+podman_storage_device: ""
+
+# Mount options for the above.
+#   nofail    a host that will not boot without its data disk is worse than one
+#             that boots degraded, since a monitoring host is no use from an
+#             emergency console. The cost is that the failure is silent —
+#             podman writes to the root filesystem underneath the empty mount
+#             point — and nothing but `findmnt` says otherwise.
+#   x-systemd.before=local-fs.target
+#             nofail does not merely make the mount optional, it makes it
+#             UNORDERED: "the mount unit is not ordered before these target
+#             units", so without this the mount races the services that use it.
+#             Quadlet is no help — a generated unit carries RequiresMountsFor for
+#             /run/containers and / but never the graph root — so a container
+#             winning the race builds a store on the root filesystem, and the
+#             mount then lands on top of it. Worse, the next arbites tick sees
+#             ismount() false, mounts over a store podman has open, and splits it.
+#             This restores the ordering without restoring the requirement: the
+#             mount stays Wants=, so a dead device still boots degraded.
+#   noatime   the store is written constantly and nothing reads atime off it
+#
+# No x-systemd.device-timeout: systemd's 90 s default is deliberate here, because
+# the asymmetry runs the wrong way. Too long costs 80 extra seconds on a host that
+# boots rarely, and only when the device is genuinely dead — which the next
+# reconcile reports loudly within 15 minutes anyway. Too short costs the split
+# store: a device that enumerates a second past the timeout is skipped, podman
+# builds its store on the root filesystem, and a later converge mounts over it.
+podman_storage_options: "defaults,noatime,nofail,x-systemd.before=local-fs.target"
