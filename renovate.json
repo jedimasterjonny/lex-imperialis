@@ -128,6 +128,11 @@
   },
   "packageRules": [
     {
+      "description": "A major is the one update type nothing here automerges, so it lands as a PR waiting on a human; the label routes it through the claude review workflow first. addLabels merges rather than replaces, so unlike the rules below this one does not care where it sits in the order.",
+      "matchUpdateTypes": ["major"],
+      "addLabels": ["review"]
+    },
+    {
       "description": "Grafana dashboard revisions are bare incrementing integers.",
       "matchDatasources": ["custom.grafana-dashboards"],
       "versioning": "regex:^(?<major>\\d+)$"

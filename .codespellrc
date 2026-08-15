@@ -11,11 +11,12 @@
 # and their British forms suggested. It is codespell's en-GB_to_en-US dictionary
 # reversed, minus the homographs that are valid in British English (program, disk,
 # licence the verb, meter, `color` the flag) and the API/tooling tokens that only
-# look American — `synchronize` the GitHub event, the `Authorization` header,
-# `capitalize` the Jinja filter, `catalog` the beets term. `dictionary = ...,-`
-# keeps the builtin typo dictionaries loaded alongside it; LICENSE and the
-# dictionary file are skipped (verbatim legal text; the dictionary lists the very
-# American spellings it flags). It is hand-maintained — renovate cannot track it —
+# look American — `synchronize` and `labeled` the GitHub events, the
+# `Authorization` header, `capitalize` the Jinja filter, `catalog` the beets
+# term. `dictionary = ...,-` keeps the builtin typo dictionaries loaded
+# alongside it; LICENSE and the dictionary file are skipped (verbatim legal
+# text; the dictionary lists the very American spellings it flags).
+# It is hand-maintained — renovate cannot track it —
 # so it only ever drifts as a miss (an American spelling upstream later adds),
 # never a false positive.
 #

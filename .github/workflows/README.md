@@ -7,8 +7,8 @@ tests, gated to the tiers and roles a PR actually touches; **firebase** (two
 workflows) builds, gates, and deploys the `jonnyoc-site` website; **terraform**
 plans and gates the OpenTofu tree on a PR and applies it to live cloud infra on
 merge; **hugo go.sum autofix** completes Renovate's Blowfish-bump `go.sum` in
-place. Most guard PRs; **firebase** and **terraform** also act on a merge to
-`main`.
+place; **claude review** posts an advisory code review on a PR you label. Most
+guard PRs; **firebase** and **terraform** also act on a merge to `main`.
 
 A **draft PR runs only lint**. The other PR workflows guard their work (molecule
 tiers, the site build/preview, the terraform plan, the `go.sum` amend) behind the
@@ -190,3 +190,91 @@ App** (`AUTOFIX_APP_ID` / `AUTOFIX_APP_KEY`), not `GITHUB_TOKEN`: a `GITHUB_TOKE
 push wouldn't re-trigger the required `site-gate` check and would hang the PR. It
 can't loop — the push only happens when `go.sum` is incomplete, which the pushed
 fix clears. Fork PRs are skipped (read-only token, unpushable branch).
+
+## claude review
+
+Runs `anthropics/claude-code-action` against a PR and posts a Claude Code
+review. Advisory, so it is not a required check and needs no always-reporting
+gate job.
+
+Opt-in: add the **`review`** label. Renovate's arrives as its own `labeled`
+event, since neither the REST nor the GraphQL create-PR call accepts labels;
+`opened` covers the browser's create form, which attaches them as part of
+creation. Fork PRs are skipped, GitHub withholding secrets from them, and so are
+drafts: label a draft and it is reviewed when it leaves draft, via
+`ready_for_review`.
+
+There is no `synchronize` trigger, and the guard ignores any label other than
+`review`, because upstream declines a PR it has already commented on: a second
+run spends quota to return clean. The review is therefore once per PR, which has
+a consequence worth holding onto at sign-off — **when Renovate force-pushes a
+major to a newer version in the same range, the review on the page is of the
+superseded diff**, not of what would merge. Re-adding `synchronize` would not
+fix it, since upstream would decline that run too. Two gestures do re-run: a
+reviewed PR pushed back to draft and marked ready, and a close-and-reopen. Both
+usually cost only that decline — but upstream's test is whether Claude has
+already commented, so if the first run errored or posted nothing, the second is
+a full review.
+
+Renovate applies that label to every **major** update (`renovate.json`), the one
+update type nothing here automerges. Renovate is named in `allowed_bots` because
+the action rejects bot actors outright — the mechanism that stops bots
+triggering Claude in a loop — so without it every major would be refused before
+the review began. Named rather than `*`, which on a public repo would let any
+external app invoke the action.
+
+The label gate exists because the run is metered in people, not money.
+`CLAUDE_OAUTH_TOKEN` is a subscription token, so a review costs no API
+billing but draws on the owner's own Claude Code allowance — and reviewing every
+PR would spend it on bumps that automerge unread overnight.
+
+`request-signoff` then requests review from the owner, so the PR reaches the
+inbox already read rather than as a raw diff. A separate job so that only it
+holds `pull-requests: write`; the review job comments with the Claude App token
+its `id-token: write` mints, so it needs none. It skips the owner's own PRs,
+since GitHub refuses a review request from the PR's author, and deliberately
+fires even when the review failed or returned early. The request
+means "a human is needed here", not "Claude approved this" — whether Claude got
+there is carried by the check status and by whether it left a comment. Gating it
+on a successful review would drop an unreviewed major out of the review queue,
+which is the one case that most needs to stay in it.
+
+Two inputs here are unpinned, against the discipline everything else follows.
+The model is deliberate — the action takes Claude Code's own default, and a
+model string is not a datasource renovate can bump. The plugin marketplace is
+not: `plugin_marketplaces` takes a bare git URL and resolves it at run time, so
+the skill deciding whether a review happens is whatever is on that repo's HEAD,
+and nothing in the action accepts a ref for it. That reaches further than the
+prose — the skill's own `allowed-tools` frontmatter is where the review's `gh`
+grants come from, since `claude_args` names only the MCP tool, so an upstream
+edit moves what the reviewer may do and not just what it is told to do. The
+`--disallowedTools` fence is a floor under that: the OIDC-minted App token is
+write-scoped and reaches the agent's shell, and the review reads release notes a
+dependency's author wrote, so pushing, merging, approving and `gh api` are
+denied rather than left to the skill's discretion. Treat it as defence in depth,
+not a boundary — the rules are command-prefix matches, and a determined
+rephrasing (`git -c … push`) is not covered. Vendoring the command locally would
+close the gap properly; `install-plugins.ts` accepts a path.
+
+That skill stops before reviewing when the PR "does not need code review (e.g.
+automated PR ...)" — which is every Renovate PR, the entire class this exists to
+review, and it exits cleanly enough to still look reviewed.
+The override answers that — both the automated leg and the "trivial change that
+is obviously correct" one, which a one-line pin bump would otherwise trip — and
+points the review at the release notes in the PR body, as far as the skill's own
+allowed tools reach. It is deliberately in **both** `prompt` and
+`--append-system-prompt`: the skill delegates that decision to a subagent, which
+inherits the user turn but not the session system prompt, so the `prompt` copy
+is the one that reaches it. `--allowedTools` duplicates the same tool the skill's own frontmatter
+names, because the action starts the inline-comment MCP server only when
+`claude_args` names it.
+
+The action also refuses to run when the workflow file differs from the copy on
+the default branch: a PR cannot run a workflow it just edited. So a PR changing
+this file gets a green, eleven-second `review` job that reviewed nothing, and
+the change only takes effect once merged — which also means Renovate's own
+majors bumping `claude-code-action` or `actions/checkout` *in this file* are
+systematically the ones that never get reviewed. Sign-off is still requested, so
+the PR stays in the queue. Absence of a comment is the other signal, though only
+while upstream keeps posting a summary when it finds nothing — a sibling copy of
+that skill already does not.

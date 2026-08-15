@@ -102,7 +102,7 @@ pass:
 
 1. `ansible-vault rekey inventory/group_vars/all/vault.yml` (old → new); commit the re-encrypted vault.
 2. Overwrite the local `.vault_pass`.
-3. `gh secret set VAULT_PASSWORD` — the sole CI secret.
+3. `gh secret set VAULT_PASSWORD` — the only CI secret that decrypts the vault, though not the only one CI holds; it lives in the main-only `fleet-apply` environment rather than among the plain repo secrets.
 4. Re-seed scholam's `/etc/arbites/vault_pass` (0600 root), or the next reconcile cannot decrypt.
 5. Update the password manager.
 6. Confirm a CI run, a `make check`, and an arbites reconcile all still decrypt.
@@ -117,7 +117,8 @@ in `terraform/infra-shared.tf` and apply.
 
 ## Out-of-band secrets
 
-Two secrets are not in the vault:
+Three secrets are not in the vault:
 
 - **`/etc/arbites/ssh/id_ed25519`** — a copy of the operator's fleet SSH key the reconcile timer connects with (it cannot be vaulted: the reconciler needs it to reach the fleet). Rotation is fleet-wide — add the new public key to every host's connection-user `authorized_keys`, re-seed the file via the arbites bootstrap, confirm a reconcile, then remove the old key. See the role's README.
 - **dev workstation claude.ai OAuth token** (`~/.claude.json`) — the `dev` role reads and rewrites it under `no_log` for `claude-remote-control`. Rotate by re-running `claude` and `/login` as the dev user; it is a session token, not a vault secret.
+- **`CLAUDE_OAUTH_TOKEN`** (repo secret) — the subscription token the `claude review` workflow authenticates with. A distinct credential from the one above, and expiring: when it lapses the `review` job goes red on the next labelled major. Rotate with `claude setup-token`, then `gh secret set CLAUDE_OAUTH_TOKEN`.
