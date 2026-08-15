@@ -14,10 +14,18 @@ every response, and on the TLS vhost adds a one-year `Strict-Transport-Security`
 header — without `includeSubDomains`, since this is the fleet apex and would
 otherwise pin every sibling subdomain to HTTPS.
 
-Homepage validates the `Host` header on its API routes against
-`HOMEPAGE_ALLOWED_HOSTS`. The unit lists only the apex vhost: the loopback
+Homepage validates the `Host` header against `HOMEPAGE_ALLOWED_HOSTS` on the
+dashboard and the API routes, 400ing an unlisted vhost; static assets and the
+auth routes are exempt. The unit lists only the apex vhost — the loopback
 `host:port` the healthcheck sends is seeded into the allowlist regardless.
 `LOG_TARGETS=stdout` keeps logs off the config mount.
+
+The built-in auth gate stays off: `HOMEPAGE_AUTH_ENABLED=true` alone turns it
+on, and without a signing secret, an external URL and a credential it is a
+sign-in page nothing can log into. Both health signals hit `/api/healthcheck`,
+which the gate exempts, so a lockout would read as green — hence the molecule
+scenario asserting the dashboard root itself answers 200 with redirects
+unfollowed.
 
 ## Config
 

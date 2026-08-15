@@ -6,13 +6,17 @@
     - ../../defaults/main.yml
   tasks:
     # Reached through caddy with the apex Host header: homepage has no published
-    # port, only the caddy network. A 200 also proves v1 host validation accepts
-    # the proxy vhost.
+    # port, only the caddy network. A 200 here proves the dashboard's own Host
+    # validation allows the proxy vhost. Redirects are left unfollowed: the auth
+    # gate (off by default) answers the root with a 307 to /auth/signin, and
+    # following it would let the sign-in page's 200 pass as if the dashboard
+    # were served.
     - name: Wait for homepage to answer through the proxy
       ansible.builtin.uri:
         url: http://127.0.0.1/
         headers:
           Host: "{{ homepage_domain }}"
+        follow_redirects: none
         return_content: true
       register: homepage_page
       until: homepage_page.status == 200
@@ -73,3 +77,15 @@
           - "'no-new-privileges' in (container.HostConfig.SecurityOpt | default([], true))"
         fail_msg: "homepage's capability or no-new-privileges posture has regressed"
         quiet: true
+
+    # Same reasoning as the capabilities: the 200 through caddy proves the apex is
+    # allowed, not that the check is on — HOMEPAGE_ALLOWED_HOSTS=* would serve that
+    # 200 too. Reaching the container on its own network address sends an unlisted
+    # Host, so the dashboard root must 400.
+    - name: An unlisted Host is refused on the dashboard root
+      vars:
+        container: "{{ homepage_posture.stdout | from_json | first }}"
+      ansible.builtin.uri:
+        url: "http://{{ container.NetworkSettings.Networks.caddy.IPAddress }}:3000/"
+        follow_redirects: none
+        status_code: 400

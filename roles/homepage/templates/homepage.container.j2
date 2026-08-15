@@ -14,9 +14,9 @@ AddCapability=CHOWN SETGID SETUID
 Environment=PUID={{ homepage_uid }}
 Environment=PGID={{ homepage_uid }}
 Environment=TZ={{ homepage_timezone }}
-# Host header allowlist for the API routes. Only the vhost caddy proxies with
-# needs listing: the middleware seeds the list with the loopback host:port the
-# healthcheck sends, whatever this variable holds.
+# Host header allowlist, enforced on the dashboard as well as the API routes.
+# Only the vhost caddy proxies with needs listing — the healthcheck's loopback
+# host:port is seeded in regardless of what this variable holds.
 Environment=HOMEPAGE_ALLOWED_HOSTS={{ homepage_domain }}
 # Log to stdout only, so nothing is written under the config mount.
 Environment=LOG_TARGETS=stdout
