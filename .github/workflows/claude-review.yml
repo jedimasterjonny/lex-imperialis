@@ -40,11 +40,18 @@ jobs:
       issues: read
       # Mints the Claude App token the action comments with. See the README.
       id-token: write
+    outputs:
+      # The action's own verdict on whether Claude ran. Empty when it
+      # short-circuits without starting — the workflow-file-differs refusal in
+      # the README — which the job's status alone cannot be told apart from a
+      # review that ran and found nothing. review-outcome needs that apart.
+      conclusion: ${{ steps.claude.outputs.conclusion }}
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Review the pull request
+        id: claude
         uses: anthropics/claude-code-action@9d7150bc8a3dae8149739a88019d192b579ad90c # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_OAUTH_TOKEN }}
@@ -95,3 +102,45 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
         run: gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --add-reviewer "$GITHUB_REPOSITORY_OWNER"
+
+  review-outcome:
+    name: review outcome
+    needs: review
+    # Upstream posts its summary at its own discretion: #497 got a "no issues
+    # found" comment, #485 and #491 got nothing from runs that spent four
+    # minutes doing the work. Silence then reads exactly like a review that
+    # never fired, so record the outcome rather than leaving it to be inferred.
+    # Gated on the action's own conclusion, not the job's status: a PR that
+    # edits this workflow gets a green eleven-second review job that never
+    # started Claude, and "no findings" there would be a claim about a review
+    # that did not happen. A failed review is carried by its own check for the
+    # same reason. Not gated on the PR's author, unlike the sign-off above —
+    # the ambiguity is the same on the owner's own labelled PRs.
+    if: ${{ !cancelled() && needs.review.outputs.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Say so when the review posted nothing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          # Findings land as review comments on the diff, the summary as an
+          # issue comment, so both lists are needed — checking only one would
+          # label a PR that got inline findings "no findings". The app's login
+          # is `claude` through GraphQL and `claude[bot]` through REST.
+          authors=$(
+            gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json comments \
+              --jq '.comments[].author.login'
+            gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/comments" --paginate \
+              --jq '.[].user.login'
+          )
+          if printf '%s\n' "$authors" | grep -qiE '^claude(\[bot\])?$'; then
+            echo "Review posted its own comment; nothing to add."
+            exit 0
+          fi
+          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" \
+            --body "Claude reviewed this and posted no findings — [run]($RUN_URL)."

@@ -267,9 +267,23 @@ its `id-token: write` mints, so it needs none. It skips the owner's own PRs,
 since GitHub refuses a review request from the PR's author, and deliberately
 fires even when the review failed or returned early. The request
 means "a human is needed here", not "Claude approved this" — whether Claude got
-there is carried by the check status and by whether it left a comment. Gating it
+there is carried by the check status and by `review-outcome` below. Gating it
 on a successful review would drop an unreviewed major out of the review queue,
 which is the one case that most needs to stay in it.
+
+`review-outcome` closes the gap that leaves. Upstream posts its summary at its
+own discretion — #497 got a "no issues found" comment, while #485 and #491 got
+nothing from runs that spent four minutes doing the work — and an empty PR reads
+exactly like a review that never fired. So when the review succeeds and the
+Claude App left neither an issue comment nor an inline one, this job says so in
+a line of its own. It checks both lists, since findings land on the diff and the
+summary does not, and matches `claude` and `claude[bot]` because GraphQL and
+REST disagree on a bot's login. It holds `pull-requests: write` for the same
+reason `request-signoff` does, and for the same reason is a job the agent's
+shell never enters. Unlike sign-off it is not gated on the PR's author: the
+ambiguity is identical on the owner's own labelled PRs. It stays silent after a
+failed review — that is what the check status is for, and "no findings" would be
+a claim nobody verified.
 
 Two inputs here are unpinned, against the discipline everything else follows.
 The model is deliberate — the action takes Claude Code's own default, and a
@@ -307,6 +321,7 @@ this file gets a green, eleven-second `review` job that reviewed nothing, and
 the change only takes effect once merged — which also means Renovate's own
 majors bumping `claude-code-action` or `actions/checkout` *in this file* are
 systematically the ones that never get reviewed. Sign-off is still requested, so
-the PR stays in the queue. Absence of a comment is the other signal, though only
-while upstream keeps posting a summary when it finds nothing — a sibling copy of
-that skill already does not.
+the PR stays in the queue, and `review-outcome` stays silent — it gates on the
+action's `conclusion` output, which is empty when the action short-circuits
+without starting Claude, precisely so it cannot report "no findings" about a
+review that never ran.
