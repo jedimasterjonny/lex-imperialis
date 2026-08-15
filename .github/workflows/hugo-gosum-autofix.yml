@@ -73,7 +73,7 @@ jobs:
       - name: Set up Hugo
         uses: peaceiris/actions-hugo@2752ce1d29631191ea3f27c23495fa06139a5b78 # v3.2.1
         with:
-          hugo-version: "0.164.0"
+          hugo-version: "0.165.0"
           extended: true
 
       # `hugo mod tidy` drops the superseded lines; the build downloads the theme
