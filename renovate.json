@@ -178,10 +178,10 @@
       "groupName": "arr containers"
     },
     {
-      "description": "A plex restart kills active streams, and the window is the hours nobody is watching. groupName null takes plex back out of the group above, which would otherwise merge it at any hour. platformAutomerge must stay off beside the schedule — GitHub's native auto-merge lands a PR as soon as it is green and ignores automergeSchedule (renovate#21436). No vulnerability alert clears this window either: renovate maps the docker datasource to no OSV or Dependabot ecosystem, so a container image never raises one.",
+      "description": "A plex restart kills active streams, so it merges 02:00-06:00 — the first streams start at 06:00, and podman_backup's stop-every-container run is done by 01:01. autoupdate's 03:00 reboot sits inside the window deliberately: an apply racing it only fails the run, which arbites retries, where an apply during the backup would leave restic a half-written config volume. groupName null takes plex out of the group above, which would otherwise merge it at any hour. platformAutomerge must stay off beside the schedule: GitHub's native auto-merge lands a PR as soon as it is green and ignores automergeSchedule (renovate#21436). No vulnerability alert reaches this either — renovate maps the docker datasource to no OSV or Dependabot ecosystem.",
       "matchPackageNames": ["lscr.io/linuxserver/plex"],
       "groupName": null,
-      "automergeSchedule": ["after 1am and before 5am"],
+      "automergeSchedule": ["after 2am and before 6am"],
       "platformAutomerge": false
     },
     {
