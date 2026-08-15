@@ -10,17 +10,14 @@
   ],
   "description": [
     "minimumReleaseAge holds a version bump for 3 days. Automerge reaches root-equivalent containers and arbites applies a merge within ~15 min, so an unheld bump could be live in one cycle with nobody in the loop.",
-    "internalChecksFilter is strict, so a too-young version opens no PR at all. vulnerabilityAlerts clears minimumReleaseAge with prCreation immediate, so an OSV fix still lands at once. Digest updates and container images are exempt — see the rules below.",
-    "automergeSchedule constrains merging, not PR creation: bumps still open and run CI when ready, they just cannot land mid-session and move main out from under an operator branch. Each collision costs a rebase and a full CI re-run, hetzner tier included. vulnerabilityAlerts clears the window as well as the age hold."
+    "internalChecksFilter is strict, so a too-young version opens no PR at all. vulnerabilityAlerts (renovate's own defaults, not configured here) clears minimumReleaseAge with prCreation immediate, so an OSV fix still lands at once. Digest updates and container images are exempt — see the rules below.",
+    "No global automergeSchedule: an automerged bump lands as soon as it is green, at any hour. plex alone is windowed — see the rule below. Landing no longer forces an open operator branch to rebase, main's ruleset having gone loose; .github/workflows/README.md covers what that trades away.",
+    "Squash merging must stay off in the repository settings, not only in main's ruleset: renovate takes its automerge method from the repo settings — squash first where allowed, then merge — and never reads the ruleset, so with squash on GitHub rejects every enablePullRequestAutoMerge call. Automerge then degrades rather than stops, falling back to renovate merging inside its own run: one PR per run, and only in a run that clears any schedule. That reads as a backlog, not a fault. Rebase merging is off for the repo's merge-commit convention, not for this."
   ],
   "semanticCommits": "enabled",
   "timezone": "Europe/London",
   "osvVulnerabilityAlerts": true,
   "minimumReleaseAge": "3 days",
-  "automergeSchedule": ["after 1am and before 5am"],
-  "vulnerabilityAlerts": {
-    "automergeSchedule": null
-  },
   "customManagers": [
     {
       "customType": "regex",
@@ -176,9 +173,16 @@
       "allowedVersions": "<8"
     },
     {
-      "description": "Every container here restarts on merge with something in flight to lose — plex mid-stream, transmission mid-torrent, sonarr/radarr mid-import. The plex-only window this replaces was the same rule scoped to one of the ten. Grouped, they restart in one window instead of scattered. Matched by file: the role's vars hold nothing else renovate manages, so a new container joins without a rule change.",
+      "description": "Grouped so a batch of image bumps merges and applies once rather than per image. No window here: a restart at the wrong moment costs a re-verify or a re-run — see the plex rule below. Matched by file: the role's vars hold nothing else renovate manages, so a new container joins without a rule change.",
       "matchFileNames": ["roles/arr/vars/main.yml"],
       "groupName": "arr containers"
+    },
+    {
+      "description": "A plex restart kills active streams, and the window is the hours nobody is watching. groupName null takes plex back out of the group above, which would otherwise merge it at any hour. platformAutomerge must stay off beside the schedule — GitHub's native auto-merge lands a PR as soon as it is green and ignores automergeSchedule (renovate#21436). No vulnerability alert clears this window either: renovate maps the docker datasource to no OSV or Dependabot ecosystem, so a container image never raises one.",
+      "matchPackageNames": ["lscr.io/linuxserver/plex"],
+      "groupName": null,
+      "automergeSchedule": ["after 1am and before 5am"],
+      "platformAutomerge": false
     },
     {
       "description": "google and google-beta release in lockstep, so two PRs are the same bump twice. matchDatasources keeps this off google-github-actions/auth.",
