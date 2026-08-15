@@ -300,8 +300,7 @@ jobs:
   # But a fork PR that *does* touch terraform also skips the plan (it can't reach
   # the vault or WIF), and a green gate would then wave an unplanned, unchecked infra
   # change past the required check — so fail when discover flagged terraform in scope
-  # yet the plan didn't run. Make this a required check (with strict status policy)
-  # so an automerge waits on it.
+  # yet the plan didn't run. Make this a required check so an automerge waits on it.
   terraform-gate:
     name: terraform-gate
     if: always()
