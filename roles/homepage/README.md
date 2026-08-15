@@ -14,9 +14,10 @@ every response, and on the TLS vhost adds a one-year `Strict-Transport-Security`
 header — without `includeSubDomains`, since this is the fleet apex and would
 otherwise pin every sibling subdomain to HTTPS.
 
-Homepage v1 validates the `Host` header against `HOMEPAGE_ALLOWED_HOSTS`; the
-unit allows the apex vhost plus the loopback `host:port` the liveness probe
-sends. `LOG_TARGETS=stdout` keeps logs off the config mount.
+Homepage validates the `Host` header on its API routes against
+`HOMEPAGE_ALLOWED_HOSTS`. The unit lists only the apex vhost: the loopback
+`host:port` the healthcheck sends is seeded into the allowlist regardless.
+`LOG_TARGETS=stdout` keeps logs off the config mount.
 
 ## Config
 

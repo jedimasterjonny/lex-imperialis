@@ -14,9 +14,10 @@ AddCapability=CHOWN SETGID SETUID
 Environment=PUID={{ homepage_uid }}
 Environment=PGID={{ homepage_uid }}
 Environment=TZ={{ homepage_timezone }}
-# v1 validates the Host header: the apex vhost, plus the loopback host:port the
-# liveness probe sends.
-Environment=HOMEPAGE_ALLOWED_HOSTS={{ homepage_domain }},127.0.0.1:3000
+# Host header allowlist for the API routes. Only the vhost caddy proxies with
+# needs listing: the middleware seeds the list with the loopback host:port the
+# healthcheck sends, whatever this variable holds.
+Environment=HOMEPAGE_ALLOWED_HOSTS={{ homepage_domain }}
 # Log to stdout only, so nothing is written under the config mount.
 Environment=LOG_TARGETS=stdout
 # Operator data store: homepage seeds skeleton services/widgets/bookmarks here on
