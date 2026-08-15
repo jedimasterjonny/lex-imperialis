@@ -5,8 +5,9 @@ name: molecule
 # Two tiers, routed by the scenarios a role ships: incus runs free on the GitHub
 # runner on the Tumbleweed image (default); the full-VM tier runs on a billable
 # Hetzner VM (Hetzner Cloud cannot nest KVM, so the VM is the real machine).
-# discover gates each to the roles a PR actually touches. No push:main — the
-# --no-ff merge tree equals the validated PR tree.
+# discover gates each to the roles a PR actually touches. No push:main — a
+# post-merge tier would bill a Hetzner VM on every merge; see README.md for what
+# catches a break instead.
 "on":
   pull_request:
     # types replaces the default set, so opened/synchronize/reopened must stay;

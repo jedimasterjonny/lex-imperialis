@@ -356,13 +356,15 @@ rogue-trader's backups can then be restored as normal. The laptop's `time-machin
 SMB share on `scriptorum` is not mirrored off-site, so it is not recovered — the
 laptop simply resumes Time Machine onto the rebuilt share.
 
-## Branch protection
+## Branch protection and merge methods
 
 Protection on `main` is a GitHub ruleset — repository config, not part of the
-git tree — so a settings loss does not restore it. Recreate `protect main`
-(requires the `pre-commit`, `secret-scan`, `molecule-gate`, `terraform-gate`, and
-`site-gate` checks, branches up to date, plus a PR before any merge to `main`;
-blocks force-push and deletion) from the repo root:
+git tree — so a settings loss does not restore it. The checks are deliberately
+loose: a branch need not be up to date to merge, for the reasons in
+`.github/workflows/README.md`. Recreate `protect main` (requires the
+`pre-commit`, `secret-scan`, `molecule-gate`, `terraform-gate`, and `site-gate`
+checks, plus a PR before any merge to `main`; blocks force-push and deletion)
+from the repo root:
 
 ```bash
 gh api --method POST \
@@ -379,7 +381,7 @@ gh api --method POST \
     { "type": "pull_request",
       "parameters": { "required_approving_review_count": 0, "allowed_merge_methods": ["merge"] } },
     { "type": "required_status_checks",
-      "parameters": { "strict_required_status_checks_policy": true, "required_status_checks": [
+      "parameters": { "strict_required_status_checks_policy": false, "required_status_checks": [
         { "context": "pre-commit" }, { "context": "secret-scan" }, { "context": "molecule-gate" },
         { "context": "terraform-gate" }, { "context": "site-gate" }
       ] } }
@@ -387,3 +389,17 @@ gh api --method POST \
 }
 JSON
 ```
+
+Restore the repository merge settings too — the ruleset does not carry them, and
+a fresh repository enables all three merge methods with auto-merge off:
+
+```bash
+gh api --method PATCH \
+  "repos/$(gh repo view --json nameWithOwner -q .nameWithOwner)" \
+  -F allow_squash_merge=false -F allow_rebase_merge=false \
+  -F allow_auto_merge=true
+```
+
+Squash on, or auto-merge off, each silently degrades Renovate's automerge to one
+PR per run rather than breaking it; `renovate.json`'s `description` has the
+mechanism.

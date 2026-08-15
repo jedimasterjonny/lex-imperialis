@@ -44,11 +44,14 @@ A re-push cancels the superseded PR run; `main` runs finish, so every commit on
 ## molecule
 
 Runs on every PR (no path filter) and `workflow_dispatch` — so the
-`molecule-gate` check (below) is always reported. No `push: main`; the `--no-ff`
-merge tree equals the validated PR tree. A `discover` job reads the PR diff and
-emits one role matrix per tier; each tier job runs only when its matrix is
-non-empty, with `fail-fast: false`. Concurrency is per-ref and cancels
-superseded PR runs (the hetzner teardown backstop still fires on cancel).
+`molecule-gate` check (below) is always reported. No `push: main`: a post-merge
+tier would bill a Hetzner VM on every merge. Since the required checks are loose
+(see **Branch protection**), a break that shows only against a moved `main`
+surfaces as a failed `arbites` apply rather than a red check. A `discover` job
+reads the PR diff and emits one role matrix per tier; each tier job runs only
+when its matrix is non-empty, with `fail-fast: false`. Concurrency is per-ref
+and cancels superseded PR runs (the hetzner teardown backstop still fires on
+cancel).
 
 ### discover
 
@@ -106,6 +109,35 @@ as required checks, and a required check that never reports blocks the merge —
 so this one stable, always-reported check is what the `main` branch ruleset
 requires, alongside `pre-commit`, `secret-scan`, and the `terraform-gate` and
 `site-gate` checks the terraform and firebase workflows report the same way.
+
+## Branch protection
+
+The `main` ruleset takes its five gate checks **loose** — a branch does not have
+to be up to date with `main` to merge. It allows only merge commits and blocks
+force-push and deletion; `docs/disaster-recovery.md` carries the payload to
+recreate it, and the repository merge-method settings that must be restored
+alongside it.
+
+Strict would make every merge to `main` invalidate every open branch, costing a
+rebase and a full CI re-run, hetzner tier included, on a branch that was already
+green. Loose buys that back at the price of a PR's checks being green against
+the base it was cut from, not the base it lands on.
+
+`rebaseWhen: auto` resolves to `behind-base-branch` **only** where `automerge`
+is true, so Renovate does refresh its own automerging branches — but only when a
+later run catches one behind, and platform automerge lands them the moment they
+go green, usually first. Everything else resolves to `conflicted` and is never
+refreshed: operator branches, and every dependency held off automerge in
+`renovate.json`, which is the highest-reach set in the repo.
+
+Strict also blocked merging a stale branch, which `unattended-author` was
+silently relying on: it applies the branch tree to the fleet and then merges,
+carrying no up-to-date step of its own, so a `main` that moved during the apply
+now lands unapplied and untested — and `arbites` puts it on the fleet within 15
+minutes regardless. The guard belongs in that skill's own merge phase; it is not
+there yet and nothing tracks it. GitHub's merge queue would fix this and is not
+available: it is limited to organisation-owned repositories, and this one is
+owned by a user account.
 
 ## firebase
 
@@ -226,7 +258,7 @@ external app invoke the action.
 The label gate exists because the run is metered in people, not money.
 `CLAUDE_OAUTH_TOKEN` is a subscription token, so a review costs no API
 billing but draws on the owner's own Claude Code allowance — and reviewing every
-PR would spend it on bumps that automerge unread overnight.
+PR would spend it on bumps that automerge unread.
 
 `request-signoff` then requests review from the owner, so the PR reaches the
 inbox already read rather than as a raw diff. A separate job so that only it
