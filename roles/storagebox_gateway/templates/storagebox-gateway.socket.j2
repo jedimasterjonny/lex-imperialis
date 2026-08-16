@@ -1,0 +1,16 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Storage box gateway socket
+
+[Socket]
+ListenStream={{ storagebox_gateway_listen }}
+# Bind an address the host may not hold yet. The listener is pinned to the
+# WireGuard address, which is absent at boot until the tunnel activates and
+# disappears again whenever wireguard_client re-activates the profile on a moved
+# endpoint. IP_FREEBIND makes the bind succeed regardless, which is what lets
+# this unit skip the NetworkManager-wait-online ordering node_exporter and
+# cadvisor need — they bind at start and cannot free-bind.
+FreeBind=true
+
+[Install]
+WantedBy=sockets.target

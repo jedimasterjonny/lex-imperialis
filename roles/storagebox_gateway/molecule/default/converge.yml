@@ -1,0 +1,11 @@
+---
+- name: Converge
+  hosts: all
+  vars:
+    # Point the forward at the container's own sshd. The real upstream is an SSH
+    # service too, so this exercises the proxy end to end rather than stopping at
+    # the rendered units — verify reads a banner back through the listener, which
+    # is the only assertion that proves bytes actually traverse it.
+    storagebox_gateway_target: "127.0.0.1:22"
+  roles:
+    - role: storagebox_gateway

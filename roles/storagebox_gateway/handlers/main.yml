@@ -1,0 +1,16 @@
+---
+# Named role-uniquely so a later role redefining a shared handler name cannot
+# reorder this one past its flush.
+#
+# Restarting the socket is enough to apply a change to either unit: the service
+# takes its listening fd from systemd, so it cannot be started outside socket
+# activation, and `Requires=` on the socket means this restart stops whatever
+# proxy is running. That also makes it the one disruptive act in the role — a
+# unit change landing mid-copy cuts it, and the reconcile applies main every 15
+# minutes.
+- name: Restart storagebox-gateway
+  ansible.builtin.systemd_service:
+    name: storagebox-gateway.socket
+    state: restarted
+    daemon_reload: true
+  become: true

@@ -1,0 +1,89 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - ../../defaults/main.yml
+  tasks:
+    - name: Read the gateway socket's state
+      ansible.builtin.systemd_service:
+        name: storagebox-gateway.socket
+      register: storagebox_gateway_socket
+      become: true
+
+    # Enablement is what survives a reboot, and nothing else here covers it —
+    # that the socket is bound and working is proved far better by the banner
+    # read below.
+    - name: The gateway socket is enabled
+      ansible.builtin.assert:
+        that:
+          - storagebox_gateway_socket.status['UnitFileState'] == 'enabled'
+        fail_msg: >-
+          the gateway socket is not enabled
+          ({{ storagebox_gateway_socket.status['UnitFileState'] }})
+        quiet: true
+
+    # Asserted because neither would be noticed going missing: dropping FreeBind
+    # fails nothing until a reboot, on a host that reboots weekly and unattended,
+    # and a listen address widened to a wildcard forwards to the storage box from
+    # the internet while passing every other check here.
+    - name: The socket free-binds
+      ansible.builtin.assert:
+        that:
+          - storagebox_gateway_socket.status['FreeBind'] == 'yes'
+        fail_msg: >-
+          the gateway socket lost FreeBind
+          (FreeBind={{ storagebox_gateway_socket.status['FreeBind'] }})
+        quiet: true
+
+    # Asserted against the rendered unit, not the unit's parsed status: the
+    # systemd_service module flattens repeated properties to the last value, and
+    # there is one Listen per ListenStream=, so a wildcard added *above* the
+    # configured line would be invisible there while the socket served the
+    # internet. The unit file is where such a line would come from, and reading it
+    # needs no `command`.
+    - name: Read the rendered socket unit
+      ansible.builtin.slurp:
+        src: /etc/systemd/system/storagebox-gateway.socket
+      register: storagebox_gateway_socket_unit
+      become: true
+
+    - name: The unit declares the configured listener and no other
+      vars:
+        listeners: >-
+          {{ (storagebox_gateway_socket_unit.content | b64decode).splitlines()
+             | select('match', '\s*ListenStream=') | list }}
+      ansible.builtin.assert:
+        that:
+          - listeners == ['ListenStream=' ~ storagebox_gateway_listen]
+        fail_msg: >-
+          the socket unit declares {{ listeners }}, expected only
+          ListenStream={{ storagebox_gateway_listen }}
+        quiet: true
+
+    # The proxy is socket-activated, so this connection is what execs it, and the
+    # banner can only come from the sshd on the far side: proof it started,
+    # resolved its upstream and forwarded in both directions. Asserting the
+    # rendered units would pass against a proxy that never runs.
+    - name: Read a banner back through the gateway
+      ansible.builtin.wait_for:
+        host: "{{ storagebox_gateway_listen.split(':')[0] }}"
+        port: "{{ storagebox_gateway_listen.split(':')[1] }}"
+        search_regex: "^SSH-"
+        timeout: 10
+
+    - name: Read the activated proxy service's state
+      ansible.builtin.systemd_service:
+        name: storagebox-gateway.service
+      register: storagebox_gateway_service
+      become: true
+
+    # The socket is opened by systemd and handed over, so the proxy holds no
+    # privilege of its own. A regression to a root ExecStart would still pass the
+    # banner read above.
+    - name: The proxy runs under a dynamic unprivileged user
+      ansible.builtin.assert:
+        that:
+          - storagebox_gateway_service.status['DynamicUser'] == 'yes'
+        fail_msg: "the proxy service is not confined to a dynamic unprivileged user"
+        quiet: true

@@ -1,0 +1,11 @@
+---
+- name: Prepare
+  hosts: all
+  tasks:
+    # The forward needs something to reach, and converge points it at this. The
+    # cloud image ships sshd but does not guarantee it is running.
+    - name: Start the sshd the forward targets
+      ansible.builtin.systemd_service:
+        name: sshd
+        state: started
+      become: true

@@ -1,0 +1,88 @@
+---
+- name: The forward target is set
+  ansible.builtin.assert:
+    that:
+      - storagebox_gateway_target | length > 0
+    fail_msg: storagebox_gateway_target is empty — set it from the vault (README)
+    quiet: true
+
+- name: Stat the socket proxy binary
+  ansible.builtin.stat:
+    path: "{{ storagebox_gateway_proxyd }}"
+  register: storagebox_gateway_binary
+
+# The service is socket-activated, so nothing execs the binary until a client
+# connects. Without this guard a path that moved under us passes the apply and
+# surfaces at the next backup window as a refused connection with no failed unit.
+- name: The socket proxy binary is present
+  ansible.builtin.assert:
+    that:
+      - storagebox_gateway_binary.stat.exists
+    fail_msg: "{{ storagebox_gateway_proxyd }} is missing — systemd no longer ships it at this path"
+    quiet: true
+
+# systemd labels a socket unit's listening fd with the domain its ExecStart would
+# transition into, and systemd-socket-proxyd has a confined one
+# (systemd_socket_proxyd_t). Its only name_bind/name_connect rules over port_type
+# sit behind these two booleans, both off by default, and the domain's own
+# systemd_socket_proxyd_port_t has no ports assigned — so out of the box the
+# socket cannot bind 23/tcp (telnetd_port_t) and the proxy cannot reach the box.
+# Nothing here would show it: the apply only writes files and starts a unit, and
+# the incus tier runs with SELinux disabled.
+- name: Read the proxy domain's SELinux booleans
+  ansible.builtin.slurp:
+    src: "/sys/fs/selinux/booleans/{{ item }}"
+  loop: "{{ storagebox_gateway_selinux_booleans }}"
+  register: storagebox_gateway_boolean_state
+  become: true
+  when: ansible_facts['selinux']['status'] == 'enabled'
+
+# Each file reads "<current> <pending>", so anything but a leading 1 means the
+# domain still cannot bind or connect. Reading first keeps this idempotent —
+# setsebool always exits 0 and would otherwise report changed on every converge.
+#
+# The skip guard comes first and is load-bearing: a task-level `when` on a looped
+# task is evaluated per item, so where SELinux is off the read above still
+# registers a result per boolean, each skipped and carrying no `content`. Ansible
+# short-circuits these in order, so this stops the next line dereferencing it.
+- name: Let the proxy domain bind and connect the storage box port
+  ansible.builtin.command: "{{ storagebox_gateway_setsebool }} -P {{ item.item }} on"
+  loop: "{{ storagebox_gateway_boolean_state.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - not (item.skipped | default(false))
+    - (item.content | b64decode).split()[0] != '1'
+  changed_when: true
+  become: true
+  notify: Restart storagebox-gateway
+
+- name: Install the gateway socket and service units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - storagebox-gateway.socket
+    - storagebox-gateway.service
+  become: true
+  # The service unit carries the vault-held endpoint in ExecStart=, so --diff
+  # would print it. It is not hidden on the host — the unit is 0644 and the
+  # endpoint is in the proxy's argv either way, which is why an EnvironmentFile
+  # would buy nothing here; vaulting keeps it out of the public repo, and this
+  # keeps it out of run output.
+  no_log: true
+  notify: Restart storagebox-gateway
+
+# daemon_reload registers units systemd has not seen before enabling them; it
+# does not itself report changed, so the task stays idempotent. A unit that
+# changed is rebound by the handler at the end of the play.
+- name: Enable and start the gateway socket
+  ansible.builtin.systemd_service:
+    name: storagebox-gateway.socket
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true
