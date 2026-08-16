@@ -29,15 +29,20 @@
     mode: "0644"
   become: true
 
-# autoupdate.service's ExecStopPost hook: records each run's outcome as a
-# node_exporter textfile metric so a silently failing unattended update alerts.
-- name: Install the update metric script
+# autoupdate.service's two metric hooks, both writing node_exporter textfiles:
+# the ExecStopPost records each run's outcome so a silently failing unattended
+# update alerts, and the ExecStartPost publishes the packages the run was told to
+# leave behind, which a successful one hides.
+- name: Install the update metric scripts
   ansible.builtin.template:
-    src: autoupdate-metric.sh.j2
-    dest: /usr/local/sbin/autoupdate-metric.sh
+    src: "{{ item }}.j2"
+    dest: "/usr/local/sbin/{{ item }}"
     owner: root
     group: root
     mode: "0755"
+  loop:
+    - autoupdate-metric.sh
+    - autoupdate-holds.sh
   become: true
 
 - name: Install the update service

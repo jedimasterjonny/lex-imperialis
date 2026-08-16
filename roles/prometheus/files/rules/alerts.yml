@@ -434,6 +434,41 @@ groups:
             unpatched and not updating itself. A failed boot most likely rolled it back to
             the previous snapshot: check `journalctl -u health-checker` and `snapper list`.
 
+      # The third way an update goes wrong, and the only one AutoupdateFailed and
+      # AutoupdateOverdue read as healthy on every host rather than just MicroOS as
+      # the rule above does: `zypper dup` and `apt-get dist-upgrade` skip a locked or
+      # held package and exit 0, so the run succeeds, the timestamp advances, and
+      # that one package stops being patched for as long as the lock stands. Dependency conflicts and an unreachable repository both
+      # fail loudly instead — non-interactive zypper cancels on a solver problem, and
+      # a skipped repository exits 106, which is not in the unit's SuccessExitStatus —
+      # so a lock is the one silent skip left.
+      #
+      # A hold is a deliberate act (autoupdate's README names `apt-mark hold
+      # rpi-eeprom` as the lever for the Pi's EEPROM trade), so this is not a fault to
+      # fix but a decision to re-take, and it stands until the lock goes. Written by
+      # autoupdate.service's ExecStartPost, so it moves at that host's weekly cadence
+      # and no faster: it cannot fire before the update it suppressed has actually
+      # run — and, the asymmetry that matters, clearing the lock does not clear this
+      # until the next weekly update rewrites the file. That is how a warning-severity
+      # rule gets muted for good, so the republish is in the description rather than
+      # left for the operator to work out. 1h because nothing about a lock needs a
+      # fast page; the hook publishes by rename, so there is no half-written scrape
+      # to ride out.
+      - alert: AutoupdatePackageHeld
+        expr: autoupdate_package_hold == 1
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.package }} is held back from updates on {{ $labels.instance }}"
+          description: >-
+            {{ $labels.package }} on {{ $labels.instance }} is locked or held, so the last
+            unattended update skipped it and still exited successfully. Clear it with
+            `apt-mark unhold`, or with `zypper removelock` after checking `zypper locks`
+            for the type — removelock exits 0 having done nothing on a pattern lock
+            without `-t`. Then re-run `autoupdate-holds.sh` to republish, or this stands
+            until that host's next weekly update rewrites the metric.
+
       # WordPress auto-applies minor core releases (and any plugins or themes the
       # operator opted into) on its own twice-daily cadence; the 24h for: plus the
       # six-hourly check keeps the gauge fresh enough that those clear first, so

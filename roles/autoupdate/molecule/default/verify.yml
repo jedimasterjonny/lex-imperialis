@@ -18,6 +18,18 @@
       {{ ['apt-daily.timer', 'apt-daily-upgrade.timer']
          if 'debian' in group_names
          else [] }}
+    # A package every image ships, so the holds hook can be driven through a real
+    # lock rather than a hand-written .prom — the parse is the half of that script
+    # worth testing, and each distribution reports its holds differently.
+    autoupdate_held_package: bash
+    autoupdate_hold_argv: >-
+      {{ ['apt-mark', 'hold', autoupdate_held_package]
+         if 'debian' in group_names
+         else ['zypper', '--non-interactive', 'addlock', autoupdate_held_package] }}
+    autoupdate_unhold_argv: >-
+      {{ ['apt-mark', 'unhold', autoupdate_held_package]
+         if 'debian' in group_names
+         else ['zypper', '--non-interactive', 'removelock', autoupdate_held_package] }}
   tasks:
     # daemon_reload is a no-op that just makes the module gather and return the
     # timer's systemctl-show properties to assert against; it reads, not mutates.
@@ -82,6 +94,21 @@
         fail_msg: "the service runs update commands beyond the expected ones"
         quiet: true
 
+    # Read directly for the same reason as ExecStart above: the unit repeats
+    # ExecStartPost=, and systemd_service keeps only the last of a repeated
+    # property — which is the reboot, so the holds hook before it would go
+    # unasserted while reading as though it had been checked.
+    - name: Read the update service's ExecStartPost lines
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - show
+          - autoupdate.service
+          - --property=ExecStartPost
+      register: autoupdate_execstartpost
+      changed_when: false
+      become: true
+
     - name: The service runs unattended and reboots
       ansible.builtin.assert:
         that:
@@ -94,9 +121,28 @@
           # Pinned to systemctl, not just to "reboot": handing the job to
           # rebootmgr is the plausible edit here, and the one the unit template
           # argues against — it exits 0 having never rebooted.
-          - "'argv[]=/usr/bin/systemctl reboot ;' in autoupdate_service.status.ExecStartPost"
+          - "'argv[]=/usr/bin/systemctl reboot ;' in autoupdate_execstartpost.stdout"
           - "'autoupdate-metric.sh' in autoupdate_service.status.ExecStopPost"
         fail_msg: "the service does not run non-interactively, accept 102/103, reboot, then record the outcome"
+        quiet: true
+
+    - name: The holds hook runs after the update and before the reboot
+      ansible.builtin.assert:
+        that:
+          # Ignore-prefixed: systemd renders the `-` as ignore_errors=yes on the
+          # entry, and without it a broken metric writer fails the unit and
+          # strands the host on the pre-update kernel.
+          - "'autoupdate-holds.sh ; ignore_errors=yes' in autoupdate_execstartpost.stdout"
+          # The whole list in order, not two membership tests: ordering is the
+          # point of the placement — anything after `systemctl reboot` races
+          # shutdown, which is the hazard ExecStopPost has to sync against — and
+          # matching each entry on its own would leave a third hook appended after
+          # the reboot entirely unasserted. Reading the property directly cost the
+          # incidental "reboot is last" that the flattened one gave for free.
+          - >-
+            autoupdate_execstartpost.stdout | regex_findall('argv\\[\\]=(\\S+)')
+            == ['/usr/local/sbin/autoupdate-holds.sh', '/usr/bin/systemctl']
+        fail_msg: "the holds hook does not run ahead of the reboot, or failing it can fail the unit"
         quiet: true
 
     # The Debian platform is the only tier that can prove the takeover: no tier
@@ -179,6 +225,71 @@
         that:
           - "'autoupdate_success 0' in (autoupdate_metric_fail.content | b64decode)"
         fail_msg: "the update outcome metric did not report a failed run"
+        quiet: true
+
+    # The holds hook, driven directly the way ExecStartPost would, across the lock
+    # being set and cleared. Only two states are read: the hook is stateless — it
+    # rebuilds the file from what the package manager reports right then — so what
+    # it writes for a host that has never held anything is byte-identical to what
+    # it writes once the hold is released, and the released read is the one whose
+    # state this scenario actually built. Nothing downstream trips over a lock left
+    # behind by a failure here either, since the first thing this does is set one
+    # and both hold commands are idempotent — so no block/always rescue.
+    - name: Hold a package back from updates
+      ansible.builtin.command:
+        argv: "{{ autoupdate_hold_argv }}"
+      changed_when: false
+      become: true
+
+    - name: Publish the holds metric with a package held
+      ansible.builtin.command: /usr/local/sbin/autoupdate-holds.sh
+      changed_when: false
+      become: true
+
+    - name: Read the holds metric with a package held
+      ansible.builtin.slurp:
+        src: "{{ autoupdate_textfile_dir }}/autoupdate-holds.prom"
+      register: autoupdate_holds_one
+      become: true
+
+    - name: Release the held package
+      ansible.builtin.command:
+        argv: "{{ autoupdate_unhold_argv }}"
+      changed_when: false
+      become: true
+
+    - name: Publish the holds metric after the hold is released
+      ansible.builtin.command: /usr/local/sbin/autoupdate-holds.sh
+      changed_when: false
+      become: true
+
+    - name: Read the holds metric after the hold is released
+      ansible.builtin.slurp:
+        src: "{{ autoupdate_textfile_dir }}/autoupdate-holds.prom"
+      register: autoupdate_holds_cleared
+      become: true
+
+    - name: The holds hook publishes the lock being set and cleared
+      ansible.builtin.assert:
+        that:
+          # The whole line, label and value: the package name is what the alert
+          # puts in front of the operator, and a parse that dropped it would still
+          # emit a series the rule fires on.
+          - >-
+            'autoupdate_package_hold{package="' ~ autoupdate_held_package ~ '"} 1'
+            in (autoupdate_holds_one.content | b64decode)
+          # Dropped, not zeroed. Not for the alert's sake — `== 1` means a 0 would
+          # resolve it too — but for the metric's: a hook that carried cleared
+          # holds forward as zeroes would grow a series per package ever locked, on
+          # every host, forever. This is the assertion that pins the rebuild.
+          - "'autoupdate_package_hold{' not in (autoupdate_holds_cleared.content | b64decode)"
+          # An on-disk well-formedness check, and only that: the text parser drops
+          # a family carrying no samples, so a header-only file and no file at all
+          # are the same thing at scrape time. It proves the hook ran and wrote
+          # something parseable, not that a silent writer would be noticed — that
+          # blind spot is the one the README holds as accepted.
+          - "'# TYPE autoupdate_package_hold gauge' in (autoupdate_holds_cleared.content | b64decode)"
+        fail_msg: "the holds hook does not publish the held and released states as the alert reads them"
         quiet: true
 
     # No tier boots MicroOS. This pins the selector's transactional branch and

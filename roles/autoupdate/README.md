@@ -55,6 +55,30 @@ scrapes that file (its `node_exporter_textfile_directory` must match), and the
 `prometheus` role's `AutoupdateFailed` / `AutoupdateOverdue` rules surface a
 failed or overdue update.
 
+An `ExecStartPost` hook, ahead of the reboot, writes `autoupdate-holds.prom`
+beside it: `autoupdate_package_hold{package}` per package this host holds back,
+from `zypper --xmlout --non-interactive ll` on openSUSE and `apt-mark showhold`
+on Debian — both local reads, with no repository load and nothing to fail on a
+lagging mirror. A hold is the one deliberate skip the outcome metric cannot see: a
+`dup` or `dist-upgrade` that leaves a locked package alone still exits 0, so the
+run reads as a success while that package silently stops being patched.
+`AutoupdatePackageHeld` alerts on it. Blind spots: a lock stanza `addlock` never
+writes — one naming no package, or two names in one entry — is read wrong or not
+at all, and apt's resolver can keep a package back with no hold set.
+
+It runs from the update rather than a timer of its own, so it cannot report a skip
+before an update has skipped anything — and the gauge then moves only when a run's
+hook succeeds, which cuts both ways. A cleared lock keeps the alert firing and a
+newly set one goes unreported for up to a week. The hook is `-`-prefixed, so the
+reboot never hinges on a metric writer, but strict within: a failed query dies
+before the rename, leaving the last publication standing rather than a hold-free
+lie until a run whose hook succeeds — and nothing alerts on that freeze. Accepted
+rather than fixed: re-running `autoupdate-holds.sh` republishes at once, which is
+what the alert tells the operator to do, and watching the hook properly would want
+a `*_success` metric, a `ScheduledJobMetricMissing` roster entry and the paired
+rules behind it — more machinery than a warning-severity gauge over two local
+reads is worth.
+
 rogue-trader is where the transactional arm runs, and the only place that arm's
 command is proven: no molecule tier boots MicroOS, so the scenario pins the
 selector against shadowed facts and nothing more. The stop-before-mask ordering

@@ -183,6 +183,57 @@ tests:
         alertname: AutoupdateFailed
         exp_alerts: []
 
+  # AutoupdatePackageHeld is the case the two rules above call healthy: the update
+  # ran, exited 0 and advanced its timestamp having skipped the held package. Both
+  # metrics are held green here for exactly that reason — a case carrying only the
+  # hold would pass against a rule that had been keyed on failure by mistake.
+  #
+  # One case, not two, because the resolve path is the same series: the hook emits
+  # one sample per held package and none at all for a host holding nothing, so
+  # clearing a lock resolves this through staleness — and asserting that needs the
+  # alert to have fired first. Samples stop at 70m; 80m is past the 5m horizon.
+  # What the 80m assertion pins is that the expression stays instant: wrap it in a
+  # lookback (max_over_time, say) and a cleared lock keeps paging. It is not about
+  # a 0 being published instead — `== 1` resolves on that too. Split in two, the
+  # resolve case would restate the for: window and carry a second copy of the
+  # annotations, a reword away from drifting out of step with this one.
+  - interval: 1m
+    name: a package held back from a successful update alerts, and clears with the lock
+    input_series:
+      - series: 'autoupdate_package_hold{job="node",instance="auspex:9100",package="rpi-eeprom"}'
+        values: "1x70 _x50"
+      - series: 'autoupdate_success{job="node",instance="auspex:9100"}'
+        values: "1x120"
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: AutoupdatePackageHeld
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: auspex:9100
+              package: rpi-eeprom
+            exp_annotations:
+              summary: "rpi-eeprom is held back from updates on auspex:9100"
+              description: >-
+                rpi-eeprom on auspex:9100 is locked or held, so the last unattended update
+                skipped it and still exited successfully. Clear it with `apt-mark unhold`,
+                or with `zypper removelock` after checking `zypper locks` for the type —
+                removelock exits 0 having done nothing on a pattern lock without `-t`. Then
+                re-run `autoupdate-holds.sh` to republish, or this stands until that host's
+                next weekly update rewrites the metric.
+      # Still inside for:, so the case above cannot pass against a shortened window.
+      - eval_time: 55m
+        alertname: AutoupdatePackageHeld
+        exp_alerts: []
+      - eval_time: 65m
+        alertname: AutoupdateFailed
+        exp_alerts: []
+      # Past the staleness horizon, so the series is genuinely gone.
+      - eval_time: 80m
+        alertname: AutoupdatePackageHeld
+        exp_alerts: []
+
   # FilesystemReadOnly carves out the MicroOS root, which is read-only by design.
   # The carve-out is the kind that silently over-reaches, so all three polarities
   # are named: the state it must ignore, and the two neighbouring states it must

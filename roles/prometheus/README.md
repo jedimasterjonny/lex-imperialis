@@ -145,7 +145,11 @@ reboot, onto `@/var`, which no rollback reverts, so the pair above stays satisfi
 by a run that was undone, while the old snapshot keeps every probe and unit green.
 Staleness rather than the obvious regression because a rollback returns the host to
 the build it was already running, and the failed boot is gone well before the
-exporter is scraped) plus the WordPress-update rules
+exporter is scraped) and `AutoupdatePackageHeld` (a package locked or held on any
+host, which `AutoupdateFailed` and `AutoupdateOverdue` read as healthy: an update
+that skips a locked package still exits 0 and advances its timestamp. Published by
+the update run itself, so it cannot fire before the update it suppressed has run,
+and does not clear on its own until the next one) plus the WordPress-update rules
 `WordpressUpdateAvailable` (an update awaiting a hand — a major, or anything not
 opted into auto-update) and the update-check pair `WordpressUpdateCheckFailed` /
 `WordpressUpdateCheckOverdue` (a six-hourly update check that errored or has not
@@ -185,8 +189,9 @@ update, cron, reconcile, and drift-check outcome pairs, and the music backlog ga
 all read an `ExecStopPost`-written metric off node_exporter's textfile collector — the
 drift payload the offender rules read is written by the check itself; the
 WordPress update gauge and its check pair read the same collector, but from a
-metric `wp-update-check.sh` writes itself rather than via an `ExecStopPost` hook. The
-rules sit
+metric `wp-update-check.sh` writes itself rather than via an `ExecStopPost` hook;
+the autoupdate hold gauge comes from an `ExecStartPost` hook on the update unit,
+so it is written before that run's reboot rather than after it. The rules sit
 in a directory mount, so a changed rule reaches the container — but, like a config
 change, only a recreate makes Prometheus reload it.
 
