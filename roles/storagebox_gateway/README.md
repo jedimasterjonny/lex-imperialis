@@ -81,6 +81,12 @@ The scenario reads an SSH banner back through the listener, so the proxy is
 exercised end to end — activation, upstream resolution and bidirectional
 forwarding. What it cannot cover is the free-bind itself, which needs an address
 the host does not hold; the real upstream, which needs the box; and the SELinux
-tasks above, which the incus tier skips because it runs unconfined. That last one
-is the gap that matters — the denial is invisible to the apply and surfaces only
-as `ProbeDown`.
+tasks above, which the incus tier skips because it runs unconfined. That denial
+would be invisible to the apply and surface only as `ProbeDown`.
+
+The service's `Type=` is a second such gap, and a worse one because the tier does
+not merely skip it but disagrees: the Tumbleweed image's
+`systemd-socket-proxyd` sends `READY=1` where MicroOS's build does not carry it
+at all, so `Type=notify` passes every container assertion and then, on the host,
+leaves the unit in `activating` until `TimeoutStartSec` kills the proxy — 90s
+into any copy long enough to matter, which a millisecond banner read never is.
