@@ -104,6 +104,42 @@
           TCP probe cannot have measured — ProbeSSLCertExpiringSoon's guard rests
           on that staying absent or zero
 
+    # No SSH endpoint exists in this scenario, so assert the exchange off the
+    # parsed config, as http_2xx_or_401 above does. Parsed rather than
+    # substring-matched: 'SSH' appears in the module's own name.
+    - name: The tcp_ssh_banner module is loaded and expects a banner
+      ansible.builtin.assert:
+        that:
+          - "'tcp_ssh_banner' in blackbox_exporter_loaded_modules"
+          - >-
+            '^SSH-' in (blackbox_exporter_loaded_modules.tcp_ssh_banner.tcp.query_response
+                        | map(attribute='expect', default='') | list)
+        fail_msg: >-
+          the running blackbox_exporter did not load the tcp_ssh_banner module, or
+          loaded it without the banner expectation that is its whole point
+      vars:
+        blackbox_exporter_loaded_modules: >-
+          {{ (blackbox_exporter_loaded_config.content | from_yaml).modules }}
+
+    # The behavioural half, and the one that matters: with query_response dropped
+    # the module degenerates into tcp_connect and would report success here — and
+    # would then report success in production against a gateway whose upstream is
+    # dead, which is the whole reason the module exists. The exporter's own port
+    # speaks HTTP, so it offers no banner and keeps the probe self-contained.
+    - name: Probe a port that speaks no SSH through the tcp_ssh_banner module
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:9115/probe?target=127.0.0.1:9115&module=tcp_ssh_banner"
+        return_content: true
+      register: blackbox_exporter_not_ssh_probe
+
+    - name: The tcp_ssh_banner probe fails where no banner is offered
+      ansible.builtin.assert:
+        that:
+          - "'probe_success 0' in blackbox_exporter_not_ssh_probe.content"
+        fail_msg: >-
+          the tcp_ssh_banner probe succeeded against a port serving no SSH banner —
+          its query_response has been dropped and it is now a bare TCP connect
+
     # The checks above prove the exporter works; they can't prove its capability
     # set is minimal. Assert the posture directly so a regression that widens the
     # caps or drops the restriction fails here, not silently in production.
