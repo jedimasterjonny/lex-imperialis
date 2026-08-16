@@ -9,7 +9,15 @@
     common_user_uid: 1026
     # Staggered autoupdate: the public VPS updates mid-week, after solar's canary
     # run, so one bad rolling snapshot can't brick the whole fleet in one night.
-    autoupdate_oncalendar: "Wed *-*-* 03:00:00"
+    # 06:00 rather than 03:00 because storagebox_gateway below puts this host on
+    # the NAS's off-site mirror path: a transactional reboot now severs whatever
+    # Hyper Backup is copying, and its windows (Tue 03:00 photos, Wed 02:00
+    # podman, Thu 04:00 home — docs/backups.md) are DSM's, invisible from here.
+    # With the timer's RandomizedDelaySec=2h the reboot lands 06:00–08:00, so it
+    # clears a Wed 02:00 mirror that runs under four hours. A first full mirror
+    # can exceed that; pause the timer for that one run rather than schedule
+    # around a one-off.
+    autoupdate_oncalendar: "Wed *-*-* 06:00:00"
     # The tunnel definition, in wg-quick's format. It stays in that format because
     # the same text is what /etc/wireguard/wg0.conf holds, so re-enabling
     # wg-quick@wg0 remains a working rollback from a NetworkManager that will not
@@ -69,12 +77,31 @@
     # open only its own repos — the astropath export carries every host's, and
     # this is the public box.
     restic_backup_password: "{{ rogue_trader_restic_password }}"
+    # The storage box forward. The NAS's Hyper Backup tasks reach the box through
+    # this rather than over the public internet, which is what lets the box refuse
+    # every source outside Hetzner — it and this host are both in the same
+    # location. Bound to the WireGuard address, the only one the NAS reaches it
+    # on and never the public interface. The proxy is transparent at the TCP
+    # layer, so the NAS's SSH session runs end to end and this host holds none of
+    # the box's credentials — which is what makes it safe here rather than on a
+    # host of its own.
+    storagebox_gateway_listen: 192.168.3.4:23
+    # The vault var is the bare host — the port is Hetzner's documented SSH port
+    # for a storage box, not a secret, and it reads better beside the rich rule
+    # and the probe target that name the same 23.
+    storagebox_gateway_target: "{{ rogue_trader_storagebox_endpoint }}:23"
     firewalld_rich_rules:
       # SSH reaches the box only over the tunnel (LAN source), so scope it to the
       # LAN subnet rather than opening 22 on the public interface.
       - rule family="ipv4" source address="192.168.1.0/24" service name="ssh" accept
       - rule family="ipv4" source address="192.168.1.0/24" port port="9100" protocol="tcp" accept
       - rule family="ipv4" source address="192.168.1.0/24" port port="8080" protocol="tcp" accept
+      # The storage box forward, for the NAS pushing to it and auspex probing it.
+      # Load-bearing exactly as the two rules above are: traffic arriving on the
+      # tunnel lands in the public zone and is dropped without it. Binding the
+      # socket to the tunnel address keeps the forward off the public interface;
+      # it does not admit anything.
+      - rule family="ipv4" source address="192.168.1.0/24" port port="23" protocol="tcp" accept
   roles:
     - common
     - sshd
@@ -85,6 +112,9 @@
     # The WireGuard tunnel, run by NetworkManager, plus the refresh that keeps it
     # up across a home WAN-IP change. NFS and the metrics binds below ride it.
     - wireguard_client
+    # The storage box forward. After wireguard_client for reading order only —
+    # the socket free-binds, so it does not need the tunnel address to exist.
+    - storagebox_gateway
     - podman
     - autoupdate
     # Materialises the schedule this host has always declared but never
