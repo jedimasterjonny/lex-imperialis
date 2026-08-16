@@ -1,0 +1,10 @@
+---
+# Address:port the proxy listens on. Loopback by default, so a host that sets
+# nothing exposes the forward to nobody; a host overrides it to the address its
+# client reaches it on.
+storagebox_gateway_listen: "127.0.0.1:23"
+
+# Upstream the proxy forwards to, as host:port. Empty by default and rejected at
+# converge: the endpoint names the storage box account, so it comes from the
+# vault rather than this public repo.
+storagebox_gateway_target: ""

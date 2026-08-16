@@ -1,0 +1,16 @@
+---
+# Ships with systemd, so this role installs no package — which is what keeps it
+# cheap on a transactional host, where an install means a new snapshot and a
+# reboot.
+storagebox_gateway_proxyd: /usr/lib/systemd/systemd-socket-proxyd
+
+# The two booleans the proxy's confined domain needs, and the tool that sets
+# them. setsebool ships with policycoreutils, which the host already carries;
+# ansible.posix.seboolean would be the idiomatic module but it imports the
+# semanage python binding, which MicroOS does not ship — and installing that
+# there stages into a new snapshot rather than the running system, so the very
+# next task would fail against a host that does not have it yet.
+storagebox_gateway_selinux_booleans:
+  - systemd_socket_proxyd_bind_any
+  - systemd_socket_proxyd_connect_any
+storagebox_gateway_setsebool: /usr/sbin/setsebool

@@ -1,0 +1,18 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Storage box gateway
+Requires=storagebox-gateway.socket
+After=storagebox-gateway.socket
+
+[Service]
+Type=notify
+ExecStart={{ storagebox_gateway_proxyd }} {{ storagebox_gateway_target }}
+# systemd opens the listening socket and hands it over, so the proxy only ever
+# copies bytes between two descriptors and needs no identity of its own.
+# DynamicUser implies the rest of the posture — NoNewPrivileges and
+# RestrictSUIDSGID are forced on, ProtectSystem=strict and ProtectHome=read-only
+# implied, and /tmp/ disconnected — so spelling those out again would add no-ops
+# and, in PrivateTmp's case, downgrade the implied "disconnected" to "true".
+# ProtectHome is the one worth tightening past what it implies.
+DynamicUser=yes
+ProtectHome=yes

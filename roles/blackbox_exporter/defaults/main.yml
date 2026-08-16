@@ -40,3 +40,24 @@ blackbox_exporter_modules:
     timeout: 5s
     tcp:
       preferred_ip_protocol: ip4
+  # A TCP connect that also reads the peer's SSH banner. Its one use is
+  # rogue-trader's storage box gateway, where tcp_connect would assert nothing:
+  # that listener is socket-activated, so the kernel completes the handshake from
+  # systemd's backlog before the proxy is execed at all. A bare connect therefore
+  # succeeds while the proxy fails to start, fails to resolve the box, or is
+  # refused by it — which is every failure the probe exists to catch. Reading the
+  # banner walks the whole path instead: socket bound, proxy activated, upstream
+  # resolved, box reachable, bytes forwarded both ways.
+  # `send` after the expect is upstream's own ssh_banner idiom, and it is here for
+  # manners rather than for the check: the target is a third party's appliance
+  # probed every 60s, and identifying the client beats leaving 1,440 aborted
+  # pre-auth handshakes a day on it. `^SSH-` rather than `^SSH-2.0-` so a server
+  # version bump on an endpoint we do not control cannot turn the probe red.
+  tcp_ssh_banner:
+    prober: tcp
+    timeout: 5s
+    tcp:
+      preferred_ip_protocol: ip4
+      query_response:
+        - expect: "^SSH-"
+        - send: "SSH-2.0-blackbox_ssh_check"

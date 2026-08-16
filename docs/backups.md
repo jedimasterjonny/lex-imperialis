@@ -14,7 +14,7 @@ off-site, since the laptop is its own second copy. Six layers:
 | Photo library | the Google Photos archive | `/scriptorum/photos` | on demand | [`negative-space`](https://github.com/jedimasterjonny/negative-space) — external |
 | Laptop Time Machine | the operator's laptop | `time-machine` SMB share on `scriptorum` (1 TB cap) | hourly, by macOS | macOS + DSM — external |
 | Bit-rot scrub | every block on both arrays | `scriptorum` + `astropath` | monthly | DSM — NAS-side |
-| Off-site mirror | the podman + home restic repos and the photo library | Hetzner storage box | podman Wed 02:00 · home Thu 04:00 · photos Tue 03:00 | DSM Hyper Backup — NAS-side |
+| Off-site mirror | the podman + home restic repos and the photo library | Hetzner storage box, via rogue-trader | podman Wed 02:00 · home Thu 04:00 · photos Tue 03:00 | DSM Hyper Backup — NAS-side |
 
 The first two are Ansible-managed — `podman_backup` and `home_backup`, both thin
 consumers of the shared `restic_backup` engine. The rest are DSM tasks on the NAS
@@ -80,9 +80,12 @@ repos.
 
 Three Synology Hyper Backup tasks mirror the on-NAS backups to a Hetzner storage
 box over rsync — each a plain mirror (latest state only, no version history),
-encrypted in transit. The restic repos carry their own encryption, so the off-site
-copy of them is opaque to the provider; `photos-backup` is not a restic repo and
-is stored as-is. Each is a true mirror — a file removed on the NAS is removed off-site too,
+encrypted in transit. They do not reach the box directly: each targets the
+`storagebox_gateway` forward on `rogue-trader` (its WireGuard address, port 23),
+which is what lets the box refuse every source outside Hetzner — a Hetzner
+Console setting, not this repo's. The restic repos carry their own encryption, so
+the off-site copy of them is opaque to the provider; `photos-backup` is not a
+restic repo and is stored as-is. Each is a true mirror — a file removed on the NAS is removed off-site too,
 so a pruned restic snapshot or a deleted photo does not linger. They sit on
 separate weekly slots so they don't contend on the uplink, each after the run it
 copies so it never captures a mid-write repo:
@@ -92,6 +95,11 @@ copies so it never captures a mid-write repo:
 - **`home-backup`** — the `*-home-backup` restic repos (`solar`, `scholam`,
   `rogue-trader`), Thursday 04:00, after the hosts' Thursday runs.
 - **`photos-backup`** — the `/scriptorum/photos` library, Tuesday 03:00.
+
+Routing through `rogue-trader` makes it a single point of failure for all three.
+`ProbeDown` covers the forward (auspex, `tcp_ssh_banner`), and its `autoupdate`
+reboot moved from Wed 03:00 to 06:00 so a transactional reboot cannot cut the Wed
+02:00 mirror — see `playbooks/rogue-trader.yml` for the four-hour assumption.
 
 A failed run alerts by email. This is the only geographic redundancy: the media
 library is not mirrored (it is re-acquirable), so a total NAS loss keeps the

@@ -132,6 +132,18 @@
       - module: tcp_connect
         targets:
           - administratum:2049
+      # rogue-trader's storage box forward. The off-site mirror runs weekly, so
+      # without this a dead gateway would sit unnoticed until a Hyper Backup task
+      # failed — and it is on the restore path too, where finding it broken is
+      # worse. Probed on the tunnel address it binds, which is also the only
+      # address the NAS reaches it on, so this fails exactly when the backup would.
+      # tcp_ssh_banner rather than tcp_connect for the reason in that module's own
+      # comment. The cost is a pre-auth connection to the box every 60s, and a
+      # Hetzner-side blip now pages: ProbeDown is critical at for: 5m with no
+      # per-target severity. Accepted deliberately — this is on the restore path.
+      - module: tcp_ssh_banner
+        targets:
+          - 192.168.3.4:23
   roles:
     - common
     - sshd
