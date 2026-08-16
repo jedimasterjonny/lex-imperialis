@@ -87,3 +87,20 @@
           - storagebox_gateway_service.status['DynamicUser'] == 'yes'
         fail_msg: "the proxy service is not confined to a dynamic unprivileged user"
         quiet: true
+
+    # The banner read proves bytes move; it does not prove systemd agrees the
+    # service started, because a proxy relays perfectly well while stuck in
+    # activating — and one stuck there is killed at TimeoutStartSec, severing
+    # whatever is in flight. Deliberately not claimed as a guard against the
+    # Type=notify regression that caused exactly that: this image's build does
+    # send READY=1, so it reaches active either way and only the real host shows
+    # the fault (see the service template).
+    - name: Systemd considers the proxy started
+      ansible.builtin.assert:
+        that:
+          - storagebox_gateway_service.status['ActiveState'] == 'active'
+        fail_msg: >-
+          the proxy is {{ storagebox_gateway_service.status['ActiveState'] }},
+          not active — systemd will kill it at TimeoutStartSec and sever any
+          transfer running at the time
+        quiet: true

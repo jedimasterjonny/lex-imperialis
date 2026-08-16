@@ -5,7 +5,18 @@ Requires=storagebox-gateway.socket
 After=storagebox-gateway.socket
 
 [Service]
-Type=notify
+# Type=exec, not the notify the man page's example uses. MicroOS's build of
+# systemd-socket-proxyd carries no READY=1 at all — the string is absent from the
+# binary there and present on Tumbleweed, at the identical systemd 261.2 — so
+# notify can never be satisfied on the host this actually runs on. The unit sat
+# in activating until TimeoutStartSec expired and systemd killed the proxy,
+# severing whatever transfer was in flight 90s into every copy. exec considers it
+# started once it has exec'd, which is all a relay whose listening socket systemd
+# already holds can meaningfully report.
+#
+# The container tier cannot catch a regression back to notify: its Tumbleweed
+# image has the notifying build and reaches active either way.
+Type=exec
 ExecStart={{ storagebox_gateway_proxyd }} {{ storagebox_gateway_target }}
 # systemd opens the listening socket and hands it over, so the proxy only ever
 # copies bytes between two descriptors and needs no identity of its own.
