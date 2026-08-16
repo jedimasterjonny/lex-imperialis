@@ -30,9 +30,10 @@ autoupdate_update_command: >-
      if autoupdate_debian | bool
      else ['/usr/bin/zypper --non-interactive dup --auto-agree-with-licenses'] }}
 
-# node_exporter textfile-collector directory the update outcome metric is written
-# to (autoupdate.prom). Must match the node_exporter role's
-# node_exporter_textfile_directory so Prometheus scrapes what this writes.
+# node_exporter textfile-collector directory the role's two metric hooks write to
+# — autoupdate.prom for the run outcome, autoupdate-holds.prom for the packages
+# the run was told to skip. Must match the node_exporter role's
+# node_exporter_textfile_directory so Prometheus scrapes what these write.
 autoupdate_textfile_dir: /var/lib/node_exporter/textfile_collector
 
 # The timer's systemd OnCalendar schedule. Set per host so the fleet updates on

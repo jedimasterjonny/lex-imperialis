@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# autoupdate.service ExecStartPost hook: publish the packages this host holds
+# back from unattended updates as a node_exporter textfile metric. A locked or
+# held package is skipped by a `dup`/`dist-upgrade` that then exits 0, so
+# $SERVICE_RESULT — and with it autoupdate_success — records a clean run on a
+# host that has silently stopped patching that one package.
+#
+# Runs from the update rather than a timer of its own, and ahead of the unit's
+# reboot: what it publishes is what that run left behind, so it cannot report a
+# skip before an update has actually skipped anything, and the write never races
+# shutdown the way the ExecStopPost hook's does.
+set -euo pipefail
+
+dir="{{ autoupdate_textfile_dir }}"
+
+# The one distro branch in this repo rendered in Jinja rather than resolved in
+# defaults/main.yml the way autoupdate_update_command and autoupdate_masked_timers
+# are, and deliberately: those select a command line, where these two arms differ
+# in the parse as well — bare names against XML needing a sed. Hoisted, that
+# pipeline would sit in a nested-quoted ternary inside a folded YAML scalar, and
+# bin/shellcheck-jinja.sh (which lints *.sh.j2 and passes on this file) would no
+# longer see it. Keep the shell where the shell gate can read it.
+{% if autoupdate_debian | bool %}
+# One held package per line, nothing at all when none are held, and unique by
+# construction — dpkg holds one selection state per package.
+held="$(apt-mark showhold)"
+{% else %}
+# --xmlout puts one <lock> element per line, each carrying one <name>; unlike
+# `ll --solvables` it reads /etc/zypp/locks without loading the repositories, so
+# there is no refresh to fail on a lagging mirror. MicroOS takes this arm too: the
+# lock file is package policy on @/etc, and transactional-update honours it like
+# any other dup. <type> is dropped, so a lock on a pattern is published under the
+# package label: it suppresses updates just the same, but `removelock <name>`
+# without the matching `-t` exits 0 having removed nothing, which is why the
+# alert sends the operator to `zypper locks` first. Dropping it is also why
+# sort -u is load-bearing rather than tidiness — locking a name as both a package
+# and a pattern emits the line twice, and a repeated line is a duplicate series
+# that errors the whole scrape. sed -n exits 0 on no match, and pipefail still
+# surfaces a zypper that errors, so a failing query dies here rather than
+# publishing a hold-free run as a success.
+held="$(zypper --xmlout --non-interactive ll | sed -n 's:.*<name>\([^<]*\)</name>.*:\1:p' | sort -u)"
+{% endif %}
+
+mkdir -p "$dir"
+# Publish atomically: write a temp file the exporter's *.prom glob ignores, then
+# rename it over the target so no scrape reads a half-written file. 0644 so the
+# exporter's unprivileged user can read it. The family is absent on a host
+# holding nothing, which is the fleet's normal state — the alert keys on
+# presence, so there is no denominator to carry.
+tmp="$(mktemp "$dir/.autoupdate-holds.prom.XXXXXX")"
+{
+    echo '# HELP autoupdate_package_hold A package held back from unattended updates.'
+    echo '# TYPE autoupdate_package_hold gauge'
+    while IFS= read -r package; do
+        [ -n "$package" ] || continue
+        # Escaped per the text format: a lock is a glob a human typed, so it can
+        # carry " or \, and node_exporter drops every metric in a file it cannot
+        # parse — which would take this rule dark while autoupdate.prom beside it
+        # kept reporting a successful run.
+        esc="${package//\\/\\\\}"
+        esc="${esc//\"/\\\"}"
+        echo "autoupdate_package_hold{package=\"$esc\"} 1"
+    done <<< "$held"
+} > "$tmp"
+chmod 0644 "$tmp"
+mv "$tmp" "$dir/autoupdate-holds.prom"

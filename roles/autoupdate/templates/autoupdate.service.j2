@@ -34,6 +34,11 @@ SuccessExitStatus=102 103
 # rebooting. The 3h this spans is what the alert's for: has to outlast.
 Restart=on-failure
 RestartSec=1h
+# Ahead of the reboot, so the write does not race shutdown the way ExecStopPost's
+# does, and `-`-prefixed because the reboot must not hinge on a metric writer: a
+# failed check leaves the previous publication standing rather than stranding the
+# host on the pre-update kernel. The script's header has what it publishes and why.
+ExecStartPost=-/usr/local/sbin/autoupdate-holds.sh
 # Reboot here rather than hand the job to rebootmgr on MicroOS: a
 # transactional-update asked to reboot exits 0 even when rebootmgrd is down and
 # the reboot silently never happens, which the metric below would still record
