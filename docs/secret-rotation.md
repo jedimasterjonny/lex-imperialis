@@ -76,6 +76,15 @@ public address, never over the tunnel:
 5. Revoke both openings from step 1 explicitly — `roles/firewalld` only ever
    adds, so re-converging without the rich rule leaves it in place.
 
+`rogue_trader_storagebox_endpoint` is vaulted for topology, not secrecy: it names
+the storage box account, which is what an attacker would need to aim at the box.
+Nothing mints it and it does not rotate — it changes only if the box is replaced,
+which means an `ansible-vault edit` and `make apply PLAY=rogue-trader`
+(`roles/storagebox_gateway` consumes it as `storagebox_gateway_target`). It is
+rendered into `ExecStart=` in a 0644 unit, so the task sets `no_log` to keep it
+out of `--diff`; it is not hidden on the host, since the proxy carries it in argv
+regardless. Vaulting keeps it out of the public repo, not off the box.
+
 ## Tooling tokens (vault vars, not rendered to a host)
 
 Sourced into OpenTofu by `bin/vault-var.sh` at run time — no second copy. Rotate
@@ -117,7 +126,9 @@ in `terraform/infra-shared.tf` and apply.
 
 ## Out-of-band secrets
 
-Three secrets are not in the vault:
+Four secrets are not in the vault:
+
+- **Hetzner storage box SSH credential** — held by DSM Hyper Backup on the NAS; nothing in this repo reads it. Rotate in the Hetzner Console and DSM together. Losing it with the NAS blocks an off-site restore, so it is also a `disaster-recovery.md` prerequisite.
 
 - **`/etc/arbites/ssh/id_ed25519`** — a copy of the operator's fleet SSH key the reconcile timer connects with (it cannot be vaulted: the reconciler needs it to reach the fleet). Rotation is fleet-wide — add the new public key to every host's connection-user `authorized_keys`, re-seed the file via the arbites bootstrap, confirm a reconcile, then remove the old key. See the role's README.
 - **dev workstation claude.ai OAuth token** (`~/.claude.json`) — the `dev` role reads and rewrites it under `no_log` for `claude-remote-control`. Rotate by re-running `claude` and `/login` as the dev user; it is a session token, not a vault secret.

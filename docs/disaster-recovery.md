@@ -9,12 +9,16 @@ the restore returns the stateful volume data the backup holds.
 Recovery is driven from a control host with:
 
 - The repo (public, on GitHub) — clone it.
-- `.vault_pass` — gitignored, so restore it from the password manager. It is the
-  only secret not in git.
+- `.vault_pass` — gitignored, so restore it from the password manager. It
+  unlocks every other secret in the repo.
 - The venv: `python -m venv .venv && . .venv/bin/activate && pip install -r requirements-dev.txt`.
 - SSH reach to the host being recovered — over the LAN, or over WireGuard for a
   rogue-trader that still has its tunnel. A rebuilt rogue-trader has neither
   until step 3, so it is reached at its public address instead.
+- The Hetzner Console login for the **storage box project** (password manager;
+  a separate project from emmas-edit, and in neither the vault nor terraform).
+  Needed to recover the off-site copy: it is the way back to both External
+  Reachability and the box's sub-account password.
 
 `scholam` is the usual control host. If `scholam` itself is lost, recover it
 first (below), or drive the others from any machine meeting the above.
@@ -53,6 +57,10 @@ the `*-home-backup` repos on Thursday 04:00, and the `/scriptorum/photos` librar
 on Tuesday 03:00 — each an hour or more after the run it copies. A failed run
 alerts by email, so a stalled copy surfaces rather than drifting unnoticed. A lost
 NAS is recoverable from it — see [administratum](#administratum-nas).
+
+The tasks reach the box through the `storagebox_gateway` forward on
+`rogue-trader`, so it is on the restore path as well as the backup path — see
+[administratum](#administratum-nas).
 
 ## solar (and any openSUSE podman host)
 
@@ -350,7 +358,24 @@ and delete this paragraph.
 The `*-podman-backup` and `*-home-backup` restic repos and the `/scriptorum/photos`
 library are also mirrored off-site to a Hetzner storage box by three Synology Hyper
 Backup tasks (podman Wednesday 02:00, home Thursday 04:00, photos Tuesday 03:00).
-After rebuilding the NAS, restore those tasks' sets to return the repos to
+
+**Restore the path before the data.** The box refuses every source outside
+Hetzner, and a rebuilt NAS is outside it, so a restored Hyper Backup task pointed
+straight at the box will fail. First get one of the two routes back:
+
+- `rogue-trader` up with `storagebox_gateway` running, and the tasks' destination
+  set to `192.168.3.4` port 23. This repo does not hold that destination — it
+  exists only in DSM's Hyper Backup config, so a NAS rebuilt without that config
+  needs it set by hand; or
+- a throwaway Hetzner VM running the same forward, if rogue-trader is gone; or
+- External Reachability re-enabled in the Hetzner Console (Prerequisites), the
+  escape hatch when there is no Hetzner host at all. Turn it back off afterwards.
+
+Either way the box's SSH credential is needed too, and it lives only in DSM's
+Hyper Backup config (see [`secret-rotation.md`](secret-rotation.md)) — if that
+went with the NAS, reset the sub-account password in the Console.
+
+Then restore those tasks' sets to return the repos to
 `/volume2/astropath/` and the photo library to its share; solar's, scholam's, and
 rogue-trader's backups can then be restored as normal. The laptop's `time-machine`
 SMB share on `scriptorum` is not mirrored off-site, so it is not recovered — the
