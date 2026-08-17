@@ -23,7 +23,7 @@
         mode: "0600"
       loop:
         - /etc/arbites/vault_pass
-        - /etc/arbites/ssh/id_ed25519
+        - /etc/arbites/ssh/id_arbites
       become: true
 
     # Host-key checking defaults on, so the role also asserts an operator-seeded

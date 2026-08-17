@@ -22,7 +22,7 @@ arbites_playbook: playbooks/site.yml
 # public repo. 0600 root, placed out-of-band (README).
 arbites_config_dir: /etc/arbites
 arbites_vault_pass_file: "{{ arbites_config_dir }}/vault_pass"
-arbites_ssh_key_file: "{{ arbites_config_dir }}/ssh/id_ed25519"
+arbites_ssh_key_file: "{{ arbites_config_dir }}/ssh/id_arbites"
 # The known_hosts pinning each fleet host's key. Consulted only when host-key
 # checking is on (below); it maps topology (host keys + addresses), so it is
 # operator-placed out-of-band like the secrets above, not committed (README).
