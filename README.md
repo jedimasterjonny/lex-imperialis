@@ -23,6 +23,7 @@ This has a side effect I never considered before I began: a repo that describes 
   - `astropath` — 348 GiB usable RAID1 NVMe array
 - `auspex` — Raspberry Pi 5 — Monitoring host
 - `rogue-trader` — Hetzner VPS — WordPress host
+- `port-wander` — 1 TB Hetzner Storage Box — Off-site backup
 
 ### The Retinue
 
@@ -52,6 +53,7 @@ flowchart TD
   fttp[FTTP] ---|1G| gw[Cloud Gateway]
   gw ---|10G SFP+| core[Core]
   rogue[rogue-trader] ---|VPN| gw
+  rogue ---|hcloud| pw[port-wander]
 
   core ---|2.5G| study[Study]
   core ---|10G| apu[Upstairs AP]
