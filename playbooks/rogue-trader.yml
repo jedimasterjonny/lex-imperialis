@@ -7,6 +7,13 @@
     # matches) so NFS ownership reconciles — the v4 mounts use numeric sec=sys,
     # which carries raw uids and bypasses name-based idmapping.
     common_user_uid: 1026
+    # Narrower than the fleet list: the owner account here authorises only the
+    # control host. The other two declared keys are laptops, one of them
+    # employer-controlled, and this is the public VPS — the one host where a
+    # device that never reached it should not start to. Replaces the group_vars
+    # list rather than extending it, which is what play vars do.
+    common_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDHpcn9yrjN0+bAFrmfGo7X4qMdklxvJ3bqdSiyJf5ju jonny@scholam
     # Staggered autoupdate: the public VPS updates mid-week, after solar's canary
     # run, so one bad rolling snapshot can't brick the whole fleet in one night.
     # 06:00 rather than 03:00 because storagebox_gateway below puts this host on
