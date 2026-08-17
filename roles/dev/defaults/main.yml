@@ -4,6 +4,7 @@ dev_packages:
   # Compiles bootstrap/*.bu; the pre-commit butane hook calls it on PATH.
   - butane
   - direnv
+  - fzf
   - gh
   - git
   - git-filter-repo
