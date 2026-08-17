@@ -9,8 +9,6 @@
 # the common role's job; this stays at what Ansible needs to connect at all.
 set -euo pipefail
 
-keys_url=https://github.com/jedimasterjonny.keys
-
 [ "$(id -u)" -eq 0 ] || { echo "ERROR: run as root." >&2; exit 1; }
 
 tmp="$(mktemp)"
@@ -27,9 +25,19 @@ echo 'ansible ALL=(ALL:ALL) NOPASSWD: ALL' >"$tmp"
 visudo -cf "$tmp"
 install -o root -g root -m 0440 "$tmp" /etc/sudoers.d/ansible
 
-# The operator's keys open the ansible account; validate the fetch so a bad
-# response can never land as an empty or garbage authorized_keys.
-curl -fsSL "$keys_url" >"$tmp"
+# The two identities that administer the fleet: the control host, and the
+# reconciler. Inlined rather than fetched from https://github.com/<owner>.keys,
+# which is what this did — that list answers "may push git", a different question
+# from "may hold root here", and reading it put two git-only corporate machines
+# on this NOPASSWD account. These are common_ansible_authorized_keys from
+# inventory/group_vars/all/authorized_keys.yml; keep them in step, since that
+# list is authoritative and a converge will strip anything this seeds beyond it.
+# ssh-keygen still validates, so a mangled paste fails here rather than landing
+# as a broken authorized_keys.
+cat >"$tmp" <<'KEYS'
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDHpcn9yrjN0+bAFrmfGo7X4qMdklxvJ3bqdSiyJf5ju jonny@scholam
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDzG7xvJdEAAFfdkOLh1JQT4tRTV3VgUOpoYJqjTl9qk arbites@scholam
+KEYS
 ssh-keygen -lf "$tmp" >/dev/null
 install -d -o ansible -g ansible -m 0700 /home/ansible/.ssh
 install -o ansible -g ansible -m 0600 "$tmp" /home/ansible/.ssh/authorized_keys

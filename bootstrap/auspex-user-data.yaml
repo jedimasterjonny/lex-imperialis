@@ -64,12 +64,15 @@ users:
     # ssh_pwauth is off below. This host is stateless by design and its documented
     # recovery is a reflash, so there is no console password to lose.
     lock_passwd: true
+    # common_authorized_keys from inventory/group_vars/all/authorized_keys.yml.
+    # That list is authoritative, so anything seeded here beyond it is stripped
+    # by the first converge — a reflashed card is briefly wider than the repo
+    # says until the reconciler reaches it, which is the reason to keep these
+    # two in step rather than let this file drift.
     ssh_authorized_keys:
       - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBisd2MYLbDmcgdaIUEpGK90EV29GRj4MJmLCkSoPSEH"
       - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJOC/Z1aIrzRbU38qVF86ppQUEETHfd/w0ddjTnGjHUD"
-      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFHPaOryibzw1eOKUFlpbUhJroFn82wifNQhkQL8Lc+C"
       - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDHpcn9yrjN0+bAFrmfGo7X4qMdklxvJ3bqdSiyJf5ju"
-      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAf1/BtlFVoK4rcdhuUldFpQ8VwGp3rbLcAGAY6gSL+x"
   # The account the plays connect as — what bootstrap/host.sh creates on a
   # Tumbleweed host. Key-only with passwordless sudo so plays escalate unattended.
   # Note: NOT system: true. cloud-init appends -m only for non-system users and
@@ -80,12 +83,11 @@ users:
     shell: /bin/bash
     lock_passwd: true
     sudo: "ALL=(ALL:ALL) NOPASSWD: ALL"
+    # common_ansible_authorized_keys: the control host and the reconciler, and
+    # nothing else — this account escalates without a password.
     ssh_authorized_keys:
-      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBisd2MYLbDmcgdaIUEpGK90EV29GRj4MJmLCkSoPSEH"
-      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJOC/Z1aIrzRbU38qVF86ppQUEETHfd/w0ddjTnGjHUD"
-      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFHPaOryibzw1eOKUFlpbUhJroFn82wifNQhkQL8Lc+C"
       - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDHpcn9yrjN0+bAFrmfGo7X4qMdklxvJ3bqdSiyJf5ju"
-      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAf1/BtlFVoK4rcdhuUldFpQ8VwGp3rbLcAGAY6gSL+x"
+      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDzG7xvJdEAAFfdkOLh1JQT4tRTV3VgUOpoYJqjTl9qk"
 
 ssh_pwauth: false
 
