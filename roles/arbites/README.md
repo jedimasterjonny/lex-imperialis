@@ -44,9 +44,14 @@ place them *before* the apply that first includes the role. On scholam as root �
 restore the secrets from the password manager on a rebuild, like `.vault_pass`:
 
 ```bash
-install -D -m 0600 -o root -g root ~jonny/.ssh/id_ed25519 /etc/arbites/ssh/id_ed25519
+ssh-keygen -t ed25519 -N '' -C 'arbites@scholam' -f /etc/arbites/ssh/id_arbites
 install -D -m 0600 -o root -g root ~jonny/lex-imperialis/.vault_pass /etc/arbites/vault_pass
 ```
+
+The key is generated here rather than restored: it is the reconciler's own
+identity, so a rebuild wants a new one, and its public half is declared in
+`inventory/group_vars/all/authorized_keys.yml` — add the new one there and apply
+before pointing the timer at it, or the first host it reaches refuses it.
 
 Seed the `known_hosts` over the trusted LAN with each host's key at the exact
 address the reconcile connects to it — the inventory's `ansible_host` where set, the
@@ -67,10 +72,12 @@ absent, a re-imaged host presents a different one, and `GlobalKnownHostsFile=/de
 makes this file the only authority. The connect fails, the run exits non-zero before
 `last_applied` is written, so the cheap no-op path never trips and the full fleet is
 re-applied every 15 minutes with `ArbitesFailed` standing throughout. Re-seed before
-the change merges, not after. The SSH key is the operator's existing key —
-the one the fleet already accepts
-for each host's connection user (`ansible` on every host), so no fleet
-change is needed. Then wire the role into `playbooks/scholam.yml` and run
+the change merges, not after. The SSH key is the reconciler's own, not the
+operator's: `common` authorises it on each host's connection user (`ansible`)
+from the declared list, so the fleet change is that list rather than anything
+placed by hand. Keeping the two identities apart is what lets either be rotated
+without the other, and means a compromise of the operator's interactive key is
+not also fleet-wide unattended root. Then wire the role into `playbooks/scholam.yml` and run
 `make apply PLAY=scholam` once: it installs the clone, venv, scripts, and units
 and enables the timer. That is the last manual apply — the timer self-sustains
 after, applying even its own future changes (no restart handler, so a self-apply
