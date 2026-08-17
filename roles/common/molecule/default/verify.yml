@@ -19,6 +19,8 @@
     common_expected_bash_package: "{{ 'bash-ubuntu' if 'debian' in group_names else 'bash-suse' }}"
   vars_files:
     - ../../defaults/main.yml
+    - ../../vars/main.yml
+    - fixtures.yml
   tasks:
     - name: Look up the owner account
       ansible.builtin.getent:
@@ -331,3 +333,70 @@
         that:
           - common_hostname_cmd.stdout == common_hostname
         fail_msg: "hostname is {{ common_hostname_cmd.stdout }}, expected {{ common_hostname }}"
+
+    - name: Read the owner's authorized_keys
+      ansible.builtin.slurp:
+        src: "{{ common_user_home }}/.ssh/authorized_keys"
+      register: common_owner_keys
+      become: true
+
+    - name: Read the ansible account's authorized_keys
+      ansible.builtin.slurp:
+        src: "/home/{{ common_ansible_user }}/.ssh/authorized_keys"
+      register: common_ansible_keys
+      become: true
+
+    # The additive arm: an exclusive list would have taken the undeclared key
+    # with it, so this is what proves a first deploy cannot revoke access. The
+    # declared key was planted comment-less, so finding it with its comment also
+    # proves the rewrite of a bootstrap-seeded key happened.
+    - name: The owner's declared key is authorised and the undeclared one survives
+      ansible.builtin.assert:
+        that:
+          - common_fixture_owner_key in (common_owner_keys.content | b64decode)
+          - common_fixture_undeclared_key in (common_owner_keys.content | b64decode)
+        fail_msg: "owner keys are {{ common_owner_keys.content | b64decode }}"
+
+    # The authoritative arm, and the one the fleet rollout depends on. Equality
+    # rather than a membership test plus a line count: it also catches the file
+    # holding one key that is the wrong one.
+    - name: The ansible account holds its declared key and nothing else
+      ansible.builtin.assert:
+        that:
+          - (common_ansible_keys.content | b64decode | trim) == common_fixture_ansible_key
+        fail_msg: "ansible keys are {{ common_ansible_keys.content | b64decode }}"
+
+    # Ownership is load-bearing for the owner only: the fixture creates that
+    # account at the wrong uid and the role's user task moves it, relying on
+    # usermod to carry the home directory with it. Were that to stop, the file
+    # would be left owned by a stale uid, sshd's StrictModes would refuse it, and
+    # the assertions above would still pass on content alone. The ansible account
+    # has no such task — the role manages its keys and not its identity — so that
+    # row is true by construction and rides along for symmetry.
+    #
+    # Mode is asserted even though the role does not hold it (README): the first
+    # converge writes both files, and a write is the one moment the mode is the
+    # role's doing and a regression to group-readable is cheaply visible.
+    - name: Stat both key files
+      ansible.builtin.stat:
+        path: "{{ item.home }}/.ssh/authorized_keys"
+      register: common_key_file_stat
+      loop:
+        - home: "{{ common_user_home }}"
+          owner: "{{ common_user_name }}"
+        - home: "/home/{{ common_ansible_user }}"
+          owner: "{{ common_ansible_user }}"
+      loop_control:
+        label: "{{ item.home }}"
+      become: true
+
+    - name: Each key file is owner-only and owned by its own account
+      ansible.builtin.assert:
+        that:
+          - item.stat.pw_name == item.item.owner
+          - item.stat.mode == '0600'
+        fail_msg: "{{ item.item.home }} authorized_keys is {{ item.stat.mode }} owned by {{ item.stat.pw_name }}"
+        quiet: true
+      loop: "{{ common_key_file_stat.results }}"
+      loop_control:
+        label: "{{ item.item.home }}"

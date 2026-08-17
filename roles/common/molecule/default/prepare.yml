@@ -1,1 +1,57 @@
-../../../../molecule/incus/prepare.yml
+---
+# Not the symlink the other incus scenarios carry: the fixtures below belong to
+# common alone, and seeding them into the shared play would plant them in motd's
+# and dev's instances too. Imported rather than copied, so that play stays
+# authoritative for the scenarios that do symlink it.
+- name: Import the shared incus preparation
+  ansible.builtin.import_playbook: ../../../../molecule/incus/prepare.yml
+
+- name: Seed the accounts and the keys the role must reconcile
+  hosts: all
+  vars_files:
+    - ../../defaults/main.yml
+    - ../../vars/main.yml
+    - fixtures.yml
+  tasks:
+    # Both accounts exist only so keys can be planted before the role runs.
+    # Deliberately at the wrong uid and with no group, so the role has to
+    # reconcile both and verify's checks test it rather than this fixture. The
+    # group half only bites on Debian: openSUSE's useradd defaults GROUP=100,
+    # which is already common_user_group, so that arm starts reconciled.
+    - name: Create the accounts the role authorises keys for at the wrong identity
+      ansible.builtin.user:
+        name: "{{ item.name }}"
+        uid: "{{ item.uid }}"
+        create_home: true
+      loop:
+        - name: "{{ common_user_name }}"
+          uid: 1500
+        - name: "{{ common_ansible_user }}"
+          uid: 1501
+      loop_control:
+        label: "{{ item.name }}"
+      become: true
+
+    # Declared by neither list, so each account's outcome is decided purely by
+    # its exclusive setting: the owner's list is additive and must leave this
+    # alone, the ansible account's is authoritative and must remove it.
+    - name: Plant a key neither list declares
+      ansible.posix.authorized_key:
+        user: "{{ item }}"
+        key: "{{ common_fixture_undeclared_key }}"
+      loop:
+        - "{{ common_user_name }}"
+        - "{{ common_ansible_user }}"
+      become: true
+
+    # The fleet's actual starting state, which the lists alone do not reproduce:
+    # a declared key already on disk without its comment, as bootstrap left it.
+    # authorized_key matches on key data, so this hits the non-matching branch
+    # and is deleted and re-added carrying the comment on first converge. That is
+    # the additive path every host takes on its first apply, and the idempotence
+    # check is what proves it settles rather than rewriting on every run.
+    - name: Plant a declared key the way bootstrap left it, without its comment
+      ansible.posix.authorized_key:
+        user: "{{ common_user_name }}"
+        key: "{{ common_fixture_owner_key_bare }}"
+      become: true

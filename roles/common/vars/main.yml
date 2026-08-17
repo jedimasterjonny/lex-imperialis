@@ -1,0 +1,5 @@
+---
+# The account every play connects as, not a tunable: bootstrap creates it under
+# this name on each host and inventory/hosts.yml connects as it, so overriding
+# it here would only authorise keys on an account that does not exist.
+common_ansible_user: ansible

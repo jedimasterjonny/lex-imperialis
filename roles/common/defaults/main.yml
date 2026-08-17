@@ -20,6 +20,11 @@ common_user_home: "/home/{{ common_user_name }}"
 # Applied only where SELinux is manageable, so the molecule containers (no
 # SELinux) skip it.
 common_selinux_mode: enforcing
+# Empty until an inventory declares them — see README.
+common_authorized_keys: []
+common_ansible_authorized_keys: []
+common_authorized_keys_exclusive: false
+common_ansible_authorized_keys_exclusive: false
 
 # Kernel modules barred from loading, in unload order — a holder must be listed
 # before the module it holds.
