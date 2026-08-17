@@ -2,12 +2,20 @@
 # Fleet SSH access — see roles/common/README.md for what the lists mean and why
 # they split this way. Public keys, so plaintext and not the vault.
 #
+# Authoritative: a key absent from a list below is removed from that account on
+# the next converge. Both were additive until every declared key was proven live
+# on every host — the ansible account's by a full reconcile running under them,
+# the owner's by a session opened with them.
+#
 # Not the only place fleet keys are written. bootstrap/host.sh curls the whole
 # GitHub list into a new host's ansible account, and auspex-user-data.yaml seeds
 # five keys into both of its accounts — both go beyond what is declared here.
 # rogue-trader.bu seeds only the control-host key, which is declared, but it is
-# still a second copy a rotation has to reach. Both lists are additive for now,
-# so nothing here converges any of that away.
+# still a second copy a rotation has to reach. A converge now undoes those seeds,
+# so a rebuilt or reflashed host is wider than this file only until the
+# reconciler next reaches it.
+common_authorized_keys_exclusive: true
+common_ansible_authorized_keys_exclusive: true
 common_authorized_keys:
   # Personal MacBook. Also Hetzner's jonny-mbp, injected into new cloud servers.
   - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBisd2MYLbDmcgdaIUEpGK90EV29GRj4MJmLCkSoPSEH jonny@Jonnys-MacBook-Pro.local
