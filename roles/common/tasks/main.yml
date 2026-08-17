@@ -233,6 +233,37 @@
     validate: /usr/sbin/visudo -cf %s
   become: true
 
+# The grant that makes an unattended apply possible, and the widest privilege on
+# the fleet. Written once by whichever bootstrap built the host and reconciled by
+# nothing since — the same drift the key lists had, on the account those keys
+# open. validate keeps a broken policy off disk; a rejected render fails the play
+# with the previous file intact rather than leaving the account unable to
+# escalate.
+- name: Grant the ansible account passwordless sudo
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/{{ common_ansible_user }}
+    content: |
+      ## The account the plays connect as. NOPASSWD so a play — and the arbites
+      ## timer — escalates with no operator present.
+      {{ common_ansible_user }} ALL=(ALL:ALL) NOPASSWD: ALL
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s
+  become: true
+
+# cloud-init writes the same grant under its own name, so auspex carried it twice
+# once the task above landed: one managed, one not. Ordered after that task on
+# purpose — the reverse would leave a window with no grant at all, and an apply
+# that failed in it would strand the account unable to escalate. A no-op on hosts
+# bootstrap/host.sh built, which never had this file. A reflash recreates it, and
+# the next converge removes it again.
+- name: Remove the unmanaged cloud-init copy of that grant
+  ansible.builtin.file:
+    path: /etc/sudoers.d/90-cloud-init-users
+    state: absent
+  become: true
+
 # One task per account, each passing the whole list as a single newline-joined
 # key: exclusive against a loop would leave only the last iteration's key.
 - name: Authorise the owner's SSH keys

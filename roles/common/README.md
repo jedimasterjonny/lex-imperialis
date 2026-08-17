@@ -22,6 +22,17 @@ Wheel sudo authenticates with the member's own password — the drop-in
 overrides SUSE's vendor-default `targetpw` — and is `visudo`-validated so
 a broken policy never lands.
 
+The `ansible` account's NOPASSWD grant is held the same way, at
+`/etc/sudoers.d/<common_ansible_user>`. It is the widest privilege on the fleet
+and was written once by whichever bootstrap built the host, then reconciled by
+nothing — the same drift the key lists had, on the account those keys open.
+Holding it also settles *where* it lives: cloud-init writes the identical rule as
+`90-cloud-init-users`, so auspex had it under a different name from every other
+host. That file is removed, after the managed one is written — the reverse order
+would leave a window with no grant, and an apply failing inside it would strand
+the account unable to escalate. A reflash recreates it and the next converge
+takes it away again.
+
 `common_authorized_keys` and `common_ansible_authorized_keys` declare who may
 reach the owner account and the `ansible` account (`common_ansible_user`, a
 constant in `vars/` — bootstrap fixes that name and the inventory connects as

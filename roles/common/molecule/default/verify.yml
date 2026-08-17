@@ -65,6 +65,47 @@
     # The stat proves the file exists and is sudo-readable; slurp it to prove the
     # policy itself — wheel gets full sudo and authenticates with its own password
     # (targetpw off), the two lines that make the drop-in load-bearing.
+    - name: Stat the ansible account's sudoers drop-in
+      ansible.builtin.stat:
+        path: "/etc/sudoers.d/{{ common_ansible_user }}"
+      register: common_sudoers_ansible
+
+    - name: The ansible sudoers drop-in is installed and sudo-readable
+      ansible.builtin.assert:
+        that:
+          - common_sudoers_ansible.stat.exists
+          - common_sudoers_ansible.stat.mode == '0440'
+          - common_sudoers_ansible.stat.pw_name == 'root'
+          - common_sudoers_ansible.stat.gr_name == 'root'
+        fail_msg: "/etc/sudoers.d/{{ common_ansible_user }} is missing or not root:root 0440"
+
+    - name: The unmanaged cloud-init copy of the grant is gone
+      ansible.builtin.stat:
+        path: /etc/sudoers.d/90-cloud-init-users
+      register: common_sudoers_cloudinit
+
+    - name: Only the managed drop-in grants the account passwordless sudo
+      ansible.builtin.assert:
+        that:
+          - not common_sudoers_cloudinit.stat.exists
+        fail_msg: "90-cloud-init-users still grants NOPASSWD alongside the managed file"
+
+    # What the policy resolves to, not merely what was written: sudo -l -U parses
+    # the whole sudoers tree for that account, so it catches a drop-in that lands
+    # correctly but is overridden, unparsed, or naming an account that does not
+    # exist — none of which a file read would show.
+    - name: Ask sudo what the ansible account may actually do
+      ansible.builtin.command: "sudo -n -l -U {{ common_ansible_user }}"
+      register: common_sudo_effective
+      changed_when: false
+      become: true
+
+    - name: The account resolves to passwordless root
+      ansible.builtin.assert:
+        that:
+          - "'(ALL : ALL) NOPASSWD: ALL' in common_sudo_effective.stdout"
+        fail_msg: "sudo does not grant {{ common_ansible_user }} NOPASSWD root: {{ common_sudo_effective.stdout }}"
+
     - name: Read the wheel sudoers drop-in
       ansible.builtin.slurp:
         src: /etc/sudoers.d/wheel
