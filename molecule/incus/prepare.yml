@@ -3,8 +3,8 @@
 # common pins for the owner — `opensuse` on Tumbleweed, `debian` on Debian. Both
 # are removed unconditionally rather than per image: state=absent on a name the
 # image does not carry is a no-op, so the loop stays idempotent either way.
-# Scenarios that create the owner symlink this in (common, dev); motd also
-# carries it as the harness exemplar, so a break here fails CI via the
+# Scenarios that create the owner symlink this in (dev), or import it (common);
+# motd also carries it as the harness exemplar, so a break here fails CI via the
 # shared-infra proxy.
 - name: Prepare
   hosts: all

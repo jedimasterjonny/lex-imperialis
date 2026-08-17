@@ -233,6 +233,24 @@
     validate: /usr/sbin/visudo -cf %s
   become: true
 
+# One task per account, each passing the whole list as a single newline-joined
+# key: exclusive against a loop would leave only the last iteration's key.
+- name: Authorise the owner's SSH keys
+  ansible.posix.authorized_key:
+    user: "{{ common_user_name }}"
+    key: "{{ common_authorized_keys | join('\n') }}"
+    exclusive: "{{ common_authorized_keys_exclusive }}"
+  when: common_authorized_keys | length > 0
+  become: true
+
+- name: Authorise the ansible account's SSH keys
+  ansible.posix.authorized_key:
+    user: "{{ common_ansible_user }}"
+    key: "{{ common_ansible_authorized_keys | join('\n') }}"
+    exclusive: "{{ common_ansible_authorized_keys_exclusive }}"
+  when: common_ansible_authorized_keys | length > 0
+  become: true
+
 - name: Deploy the owner's dotfiles
   ansible.builtin.include_role:
     name: stow

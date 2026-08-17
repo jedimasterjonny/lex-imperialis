@@ -16,6 +16,20 @@
     common_ntp_sources:
       - time.cloudflare.com
       - lex-absent-ntp.invalid
+    # Fixture keys, not the fleet's: inventory/group_vars/all is not this
+    # scenario's inventory, so the lists are declared here.
+    common_authorized_keys:
+      - "{{ common_fixture_owner_key }}"
+    common_ansible_authorized_keys:
+      - "{{ common_fixture_ansible_key }}"
+    # Both arms in one converge: the owner's list stays additive, matching the
+    # role default, while the ansible account's is authoritative. Prepare plants
+    # the undeclared keys, so the removal happens on the first converge and the
+    # second finds nothing left to do — the idempotence check still passes.
+    common_authorized_keys_exclusive: false
+    common_ansible_authorized_keys_exclusive: true
+  vars_files:
+    - fixtures.yml
   tasks:
     - name: Apply the common role
       ansible.builtin.include_role:

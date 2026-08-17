@@ -1,0 +1,8 @@
+---
+# Key fixtures, loaded by prepare, converge and verify. The owner key is built
+# from its bare half so prepare can plant the comment-less form by construction
+# rather than recovering it by splitting the joined one.
+common_fixture_owner_key_bare: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMjknACeyZUs+E8onZyBwCCpEkCbBaUqWCNrHBUi+iqC
+common_fixture_owner_key: "{{ common_fixture_owner_key_bare }} lex-fixture-owner"
+common_fixture_ansible_key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMFqKmglA0YgCK9dRgNBEHbJsZDalXGIM+lVz1VBYhiJ lex-fixture-ansible
+common_fixture_undeclared_key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKHWDWLSsdduTJ/dOhAJrIkyAhzA9Ax9owy6bsAkmeen

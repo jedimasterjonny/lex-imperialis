@@ -1,0 +1,27 @@
+---
+# Fleet SSH access — see roles/common/README.md for what the lists mean and why
+# they split this way. Public keys, so plaintext and not the vault.
+#
+# Not the only place fleet keys are written. bootstrap/host.sh curls the whole
+# GitHub list into a new host's ansible account, and auspex-user-data.yaml seeds
+# five keys into both of its accounts — both go beyond what is declared here.
+# rogue-trader.bu seeds only the control-host key, which is declared, but it is
+# still a second copy a rotation has to reach. Both lists are additive for now,
+# so nothing here converges any of that away.
+common_authorized_keys:
+  # Personal MacBook. Also Hetzner's jonny-mbp, injected into new cloud servers.
+  - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBisd2MYLbDmcgdaIUEpGK90EV29GRj4MJmLCkSoPSEH jonny@Jonnys-MacBook-Pro.local
+  # Corporate MacBook. Employer-controlled hardware, so deliberately owner-only:
+  # it reaches a host as jonny and sudo asks for a password.
+  - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJOC/Z1aIrzRbU38qVF86ppQUEETHfd/w0ddjTnGjHUD jonnyoc@corp-mb
+  # The control host itself.
+  - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDHpcn9yrjN0+bAFrmfGo7X4qMdklxvJ3bqdSiyJf5ju jonny@scholam
+
+common_ansible_authorized_keys:
+  # The control host: what an operator-run play connects with.
+  - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDHpcn9yrjN0+bAFrmfGo7X4qMdklxvJ3bqdSiyJf5ju jonny@scholam
+  # arbites, held root-only at /etc/arbites/ssh/id_arbites. Authorised here
+  # before the reconciler is pointed at it, or it would lock itself out of the
+  # first host it reached; until that switch it opens the account and goes
+  # unused, and roles/arbites still connects with the operator's key.
+  - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDzG7xvJdEAAFfdkOLh1JQT4tRTV3VgUOpoYJqjTl9qk arbites@scholam
