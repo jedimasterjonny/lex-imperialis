@@ -136,7 +136,10 @@
       # without this a dead gateway would sit unnoticed until a Hyper Backup task
       # failed — and it is on the restore path too, where finding it broken is
       # worse. Probed on the tunnel address it binds, which is also the only
-      # address the NAS reaches it on, so this fails exactly when the backup would.
+      # address the NAS reaches it on. It covers the path and not authorisation:
+      # External Reachability is enforced inside the box's sshd, so a source it
+      # refuses still gets a banner — a revoked rogue-trader leaves this green
+      # while every mirror fails, and only the Hyper Backup mail catches it.
       # tcp_ssh_banner rather than tcp_connect for the reason in that module's own
       # comment. The cost is a pre-auth connection to the box every 60s, and a
       # Hetzner-side blip now pages: ProbeDown is critical at for: 5m with no

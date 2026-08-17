@@ -37,8 +37,15 @@ address does neither.
 
 `ProbeDown`, via the `tcp_ssh_banner` blackbox module auspex probes this listener
 with — see that module's comment for why a bare `tcp_connect` would assert
-nothing here. It is also the fleet's only check that the box still accepts this
-source; the Hyper Backup failure mail is the other, a week later.
+nothing here.
+
+It covers the path, not authorisation, and the distinction is sharper than it
+sounds. Hetzner enforces External Reachability inside sshd rather than at the
+packet layer: a source the box refuses still completes the handshake, reads the
+banner and retrieves the host key, and is only then offered an empty
+authentication method list. So a revoked `rogue-trader` would leave this probe
+green while every mirror failed, and the signal would be a Hyper Backup failure
+mail up to a week later.
 
 A box whose address changes behind the same name needs no intervention: the proxy
 resolves its upstream per accepted connection, so the next connection follows
