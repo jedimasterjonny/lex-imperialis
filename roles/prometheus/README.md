@@ -149,7 +149,12 @@ exporter is scraped) and `AutoupdatePackageHeld` (a package locked or held on an
 host, which `AutoupdateFailed` and `AutoupdateOverdue` read as healthy: an update
 that skips a locked package still exits 0 and advances its timestamp. Published by
 the update run itself, so it cannot fire before the update it suppressed has run,
-and does not clear on its own until the next one) plus the WordPress-update rules
+and does not clear on its own until the next one) and `AutoupdatePackagesUncleaned`
+(packages nothing needs that the post-update cleanup left installed —
+`class="unneeded"` means its own removal failed or, on MicroOS, never ran, and
+`class="orphaned"` means no repository offers them, which is deliberately never
+removed unattended. Published by the same hook on the same weekly cadence, so it
+too clears only on the next run) plus the WordPress-update rules
 `WordpressUpdateAvailable` (an update awaiting a hand — a major, or anything not
 opted into auto-update) and the update-check pair `WordpressUpdateCheckFailed` /
 `WordpressUpdateCheckOverdue` (a six-hourly update check that errored or has not

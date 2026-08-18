@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# autoupdate.service ExecStartPost hook: uninstall what the update left behind,
+# then publish what is still installed that should not be as a node_exporter
+# textfile metric. Two classes, and only the first is safe to remove unattended:
+#
+#   unneeded — pulled in as a dependency and now required by nothing. This is
+#              the class the hook removes: `apt-get autoremove` is exactly it,
+#              and `zypper remove --clean-deps` over `zypper packages
+#              --unneeded` is its openSUSE equivalent.
+#   orphaned — installed, and offered by no repository. Removed only where it is
+#              also unneeded — the classes overlap, and a package in both is
+#              dead twice over, though nothing but a snapshot can put it back —
+#              and never for being an orphan alone: a repository that fails to
+#              load turns every package it carries into an orphan, where nothing
+#              a mirror does can make an installed package unrequired. What the
+#              count publishes is therefore the orphans that are not unneeded:
+#              something installed requires them, or a hand (or a role) asked
+#              for them. AutoupdatePackagesUncleaned puts those in front of the
+#              operator to take package by package.
+#
+# Runs from the update rather than a timer of its own, and ahead of the reboot,
+# for the same reasons as the holds hook beside it.
+set -euo pipefail
+
+dir="{{ autoupdate_textfile_dir }}"
+
+# Non-empty lines on stdin. grep exits 1 having already printed the 0 that is the
+# honest answer, and scoping the `|| true` inside the function is what keeps it
+# covering that and nothing else: the reads are their own assignments below, where
+# a package manager that failed still dies under errexit rather than publishing
+# its silence as a clean count.
+count() {
+    grep -c . || true
+}
+
+# Branched in Jinja rather than resolved in defaults/main.yml, for the reason
+# autoupdate-holds.sh.j2 beside it is: these arms differ in the parse as well as
+# the command line, and hoisting them into a ternary would bury shell pipelines in
+# a folded YAML scalar where bin/shellcheck-jinja.sh no longer lints them.
+{% if autoupdate_debian | bool %}
+# apt keeps the auto-installed flag itself, so autoremove is precisely the
+# unneeded set. --purge takes each package's conffiles with it rather than
+# leaving behind the residual-config cruft this hook exists to clear.
+removal_rc=0
+apt-get --yes --purge autoremove || removal_rc=$?
+
+# Recounted from the same command afterwards rather than assumed to be zero: what
+# a failed or partial pass leaves behind is exactly what the alert reads. Being
+# the same command, it is the one arm where a removal can fail and take the
+# recount with it — a dpkg left mid-transaction fails both, and the script dies
+# here rather than publishing. Not covered further because it cannot arrive
+# quietly: this hook runs only after `apt-get dist-upgrade` exited 0 minutes
+# earlier, and a dpkg broken enough to fail the recount fails that first, which
+# is AutoupdateFailed's case, not this one's.
+unneeded_list="$(apt-get --dry-run --purge autoremove | sed -n 's/^\(Purg\|Remv\) \([^ ]*\).*/\2/p')"
+# `apt`, not `apt-get`: ?obsolete is apt's pattern language, and apt warns on
+# stderr that its CLI is unstable — hence the redirect, which costs nothing here
+# because pipefail still surfaces a non-zero exit. Names are cut out rather than
+# lines counted so the "Listing..." header cannot be read as a package.
+orphaned_list="$(apt list '?obsolete' 2>/dev/null | sed -n 's:^\([^/ ]*\)/.*:\1:p')"
+{% else %}
+# One class of package, as a list of names. `zypper packages` prints a table even
+# under --xmlout, so the parse is the table: skip past the rule under the header,
+# then take the Name column. awk exits 0 whether it matched or not, and "No
+# packages found." never reaches the rule, so nothing to clean reads as an empty
+# list rather than a failure. The rule is matched as dashes and pluses rather than
+# a literal `---+`, whose first run is as wide as the status column and not fixed
+# at three — a rule this failed to recognise would publish an empty list as a
+# clean zero, which is the one wrong answer nothing downstream can see.
+#
+# 106 is zypper's "a repository was skipped", reported alongside a complete list
+# of the repositories it could read, and tolerated here for the reason the unit
+# whitelists 102/103: one flaky mirror at 03:00 must not abort the hook and leave
+# last week's counts standing on disk with nothing to mark them stale. What a
+# skipped repository can distort is the orphaned count — a repository that did not
+# load offers nothing — and that is a false alert which clears itself on the next
+# run. It cannot reach the removal: unneeded is a property of what the installed
+# packages require, which no mirror is party to.
+packages() {
+    zypper --non-interactive packages "$1" \
+        | awk -F'|' '/^[-+]+$/ {body = 1; next} body {gsub(/[[:space:]]/, "", $3); print $3}' \
+        || [ "$?" = 106 ]
+}
+
+removal_rc=0
+{% if autoupdate_transactional | bool %}
+# MicroOS reports but never removes. A second transactional-update after the dup
+# bases its snapshot on the running system, silently discarding the update this
+# hook was called from, unless it is given --continue — which fails outright when
+# the dup changed nothing and deleted its own snapshot. Neither risk is worth
+# taking to reclaim disk on a host that is minimal by construction, so the alert
+# asks the operator to run `transactional-update run zypper remove --clean-deps`
+# over the names by hand instead.
+{% else %}
+unneeded_packages="$(packages --unneeded)"
+if [ -n "$unneeded_packages" ]; then
+    mapfile -t to_remove <<< "$unneeded_packages"
+    # --clean-deps so the dependencies these leave unneeded in turn go in the
+    # same transaction, rather than one layer of the chain a week.
+    zypper --non-interactive remove --clean-deps "${to_remove[@]}" || removal_rc=$?
+    # zypper's info codes are not failures: 102/103 say a reboot or restart is
+    # recommended after a removal that worked — the pair the unit whitelists in
+    # SuccessExitStatus for the same reason — and 106 that a repository was
+    # skipped. Carried through, they would journal a successful cleanup as failed.
+    case "$removal_rc" in 102 | 103 | 106) removal_rc=0 ;; esac
+fi
+{% endif %}
+
+unneeded_list="$(packages --unneeded)"
+orphaned_list="$(packages --orphaned)"
+{% endif %}
+
+# The classes overlap: a package can be unneeded and offered by no repository at
+# once. Where the removal ran that resolves itself, since the overlap goes with
+# the unneeded set — but where it did not (MicroOS) or failed, one package would
+# otherwise raise two alerts prescribing a different remedy each. Subtracting
+# makes the two disjoint wherever they are read, which is what lets the alert say
+# flatly that an orphan it names is one nothing has made unneeded. -x so gcc15 is
+# not read as a match for gcc, and -e rather than -f because the list is a shell
+# string: an empty one is then a pattern matching only the empty line, which is
+# exactly the no-op wanted.
+orphaned_list="$(printf '%s\n' "$orphaned_list" | grep -vxF -e "$unneeded_list" || true)"
+
+unneeded="$(printf '%s\n' "$unneeded_list" | count)"
+orphaned="$(printf '%s\n' "$orphaned_list" | count)"
+
+mkdir -p "$dir"
+# Publish atomically: write a temp file the exporter's *.prom glob ignores, then
+# rename it over the target so no scrape reads a half-written file. 0644 so the
+# exporter's unprivileged user can read it. Both classes are published every run,
+# zeroes included — unlike the holds file beside it the label set here is fixed
+# and two wide, so carrying them costs nothing and resolves the alert on the run
+# that clears the last package instead of waiting out staleness.
+tmp="$(mktemp "$dir/.autoupdate-cleanup.prom.XXXXXX")"
+{
+    echo '# HELP autoupdate_uncleaned_packages Installed packages the post-update cleanup did not remove.'
+    echo '# TYPE autoupdate_uncleaned_packages gauge'
+    echo "autoupdate_uncleaned_packages{class=\"unneeded\"} $unneeded"
+    echo "autoupdate_uncleaned_packages{class=\"orphaned\"} $orphaned"
+} > "$tmp"
+chmod 0644 "$tmp"
+mv "$tmp" "$dir/autoupdate-cleanup.prom"
+
+# The removal's exit code, not the publication's. The unit ignores it — the hook
+# is `-`-prefixed, so the reboot never hinges on a cleanup — but the journal
+# records it, and a run that removed nothing because zypper cancelled on a solver
+# problem should not read as clean there.
+exit "$removal_rc"

@@ -469,6 +469,46 @@ groups:
             without `-t`. Then re-run `autoupdate-holds.sh` to republish, or this stands
             until that host's next weekly update rewrites the metric.
 
+      # The fourth thing a successful update leaves behind, and the only one that is
+      # not a fault: `dup` and `dist-upgrade` update packages, they never uninstall
+      # the ones nothing needs any more. autoupdate.service's ExecStartPost cleanup
+      # removes that class itself, so a healthy host publishes {class="unneeded"} 0
+      # and this fires on what the cleanup cannot clear — a removal that failed, and
+      # MicroOS, where a second transaction could discard the dup so none runs — plus
+      # {class="orphaned"}, the packages no repository offers that are not unneeded
+      # either, so something requires them or a hand asked for them. Those are removed
+      # only where they are also unneeded and never for being orphans: a repository
+      # that fails to load turns every package it carries into an orphan, so keying an
+      # unattended removal on that class would strip a host over a mirror outage.
+      #
+      # Written by the same hook as the holds gauge and inheriting its cadence: it
+      # moves at that host's weekly update and no faster, so removing an orphan by
+      # hand does not clear this until the next run rewrites the file — which is why
+      # the republish is in the description rather than left to be worked out. Unlike
+      # the holds gauge it resolves on the value, not by staleness: the label set is
+      # fixed and two wide, so the hook publishes both classes every run, zero
+      # included. 1h because nothing about accumulated cruft needs a fast page, and
+      # the hook publishes by rename, so there is no half-written scrape to ride out.
+      - alert: AutoupdatePackagesUncleaned
+        expr: autoupdate_uncleaned_packages > 0
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value }} {{ $labels.class }} package(s) left on {{ $labels.instance }} after the update"
+          description: >-
+            The post-update cleanup on {{ $labels.instance }} left {{ $value }}
+            {{ $labels.class }} package(s) installed. `orphaned` means no repository offers
+            them and nothing has made them unneeded, so the cleanup never takes them —
+            decide those one at a time, and in the role if a role installs them. `unneeded`
+            means its removal failed, or the host is MicroOS, where it does not run: clear
+            that with `transactional-update run zypper remove --clean-deps <names>`, which
+            shows here only after the reboot. List them with
+            `zypper packages --{{ $labels.class }}`, or on Debian with
+            `apt-get --dry-run --purge autoremove` and `apt list '?obsolete'`. Then re-run
+            `autoupdate-cleanup.sh` to republish, or this stands until that host's next
+            weekly update rewrites the metric.
+
       # WordPress auto-applies minor core releases (and any plugins or themes the
       # operator opted into) on its own twice-daily cadence; the 24h for: plus the
       # six-hourly check keeps the gauge fresh enough that those clear first, so

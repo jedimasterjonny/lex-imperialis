@@ -29,10 +29,11 @@
     mode: "0644"
   become: true
 
-# autoupdate.service's two metric hooks, both writing node_exporter textfiles:
-# the ExecStopPost records each run's outcome so a silently failing unattended
-# update alerts, and the ExecStartPost publishes the packages the run was told to
-# leave behind, which a successful one hides.
+# autoupdate.service's three hooks, all writing node_exporter textfiles: the
+# ExecStopPost records each run's outcome so a silently failing unattended update
+# alerts, and the two ExecStartPost hooks publish what a successful run hides —
+# the packages it was told to leave behind, and the ones it left behind that the
+# cleanup could not remove.
 - name: Install the update metric scripts
   ansible.builtin.template:
     src: "{{ item }}.j2"
@@ -43,6 +44,7 @@
   loop:
     - autoupdate-metric.sh
     - autoupdate-holds.sh
+    - autoupdate-cleanup.sh
   become: true
 
 - name: Install the update service

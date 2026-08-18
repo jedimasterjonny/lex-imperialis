@@ -55,9 +55,65 @@ scrapes that file (its `node_exporter_textfile_directory` must match), and the
 `prometheus` role's `AutoupdateFailed` / `AutoupdateOverdue` rules surface a
 failed or overdue update.
 
-An `ExecStartPost` hook, ahead of the reboot, writes `autoupdate-holds.prom`
-beside it: `autoupdate_package_hold{package}` per package this host holds back,
-from `zypper --xmlout --non-interactive ll` on openSUSE and `apt-mark showhold`
+The first `ExecStartPost` hook, ahead of the reboot, uninstalls what the update
+leaves behind and writes `autoupdate-cleanup.prom`:
+`autoupdate_uncleaned_packages{class}`, one sample for each of the two classes of
+package nothing needs. `unneeded` — auto-installed and now required by nothing —
+is the class it removes, with `apt-get --yes --purge autoremove` on Debian and
+`zypper remove --clean-deps` over `zypper packages --unneeded` on openSUSE, which
+has no autoremove of its own. `orphaned` — installed, and offered by no
+repository — is removed only where it is also unneeded, never for being an orphan
+alone: a repository that fails to load turns every package it carries into an
+orphan, where nothing a mirror does can make an installed package unrequired, so
+keying the removal on the other class is what stops a mirror outage stripping a
+host. The two overlap, and a package in both goes with the unneeded set — dead
+twice over, though only a snapshot can put it back, since no repository offers
+it. What the orphaned count publishes is therefore the orphans that are *not*
+unneeded — subtracted, so that holds on a host where the removal failed or never
+runs as much as on one where it worked: something installed requires them, or
+they were asked for by hand — or by a role, in which case the decision belongs in
+the role, since removing them only invites the next converge to put them back.
+`AutoupdatePackagesUncleaned` alerts on either count above zero.
+
+Both counts are recomputed after the removal rather than assumed, so a healthy
+host publishes `unneeded` 0 and the alert reads exactly what the pass could not
+clear: a removal that failed, an orphan awaiting a decision, or MicroOS, where
+the removal does not run at all. A second `transactional-update` after the dup
+bases its snapshot on the running system — silently discarding the very update
+the hook was called from — unless given `--continue`, which then fails outright
+when the dup changed nothing and deleted its own snapshot. rogue-trader is
+minimal by construction, so it reports, and the operator clears it by hand with
+`transactional-update run zypper remove --clean-deps <names>` over what
+`zypper packages --unneeded` lists — then reboots, because that removal lands in
+a new snapshot while the running system's RPM database is unchanged, so re-running
+the hook republishes the same count. For the same reason MicroOS counts describe
+the snapshot the host is running, not the one the dup just built: the hook runs
+before the reboot, so what it publishes is always one update behind. Immaterial
+while the count is zero, and worth remembering when it is not.
+
+The hook is `-`-prefixed for more than the metric's sake: a solver problem in the
+removal must not cost the host its reboot onto the new kernel. A failed removal
+still publishes on openSUSE, where the recount is a separate read; on Debian it
+is the same `autoremove` in dry-run, so a dpkg left mid-transaction fails both
+and the script dies before the rename — but that state fails `dist-upgrade`
+first, which is `AutoupdateFailed`'s case rather than this one's. A failed
+*query* likewise leaves the last publication standing, as with the holds hook
+below. zypper's exit 106 is not one: a repository it could not refresh is
+tolerated, since aborting over a flaky mirror would freeze the counts with
+nothing to mark them stale. That can inflate the orphaned count for a run — a
+repository that did not load offers nothing — which is a false alert that clears
+itself, and it cannot reach the removal. Two interactions worth knowing. A lock
+beats the cleanup rather than fighting it: `zypper remove --clean-deps` skips a
+locked package, removes the rest and still exits 0, and apt drops a held package
+— and anything only it requires — from `autoremove` outright, so neither is
+counted afterwards and this alert stays quiet. `AutoupdatePackageHeld` is what
+reports that package, as it does for the update itself. And `--clean-deps` takes
+the dependencies the listed packages leave unneeded in turn, so the transaction
+is routinely larger than the count that triggered it.
+
+The other `ExecStartPost` hook writes `autoupdate-holds.prom` beside it:
+`autoupdate_package_hold{package}` per package this host holds back, from
+`zypper --xmlout --non-interactive ll` on openSUSE and `apt-mark showhold`
 on Debian — both local reads, with no repository load and nothing to fail on a
 lagging mirror. A hold is the one deliberate skip the outcome metric cannot see: a
 `dup` or `dist-upgrade` that leaves a locked package alone still exits 0, so the
@@ -81,6 +137,9 @@ reads is worth.
 
 rogue-trader is where the transactional arm runs, and the only place that arm's
 command is proven: no molecule tier boots MicroOS, so the scenario pins the
-selector against shadowed facts and nothing more. The stop-before-mask ordering
-is no longer unproven, though — the Debian platform ships both apt timers active,
-so it exercises the two tasks for real.
+selector against shadowed facts and nothing more, and the cleanup's transactional
+arm — which only decides not to remove — is never rendered under test at all. The
+removal on the other two arms is proven for real: the scenario strands a
+dependency on each platform and asserts the hook uninstalls it. The
+stop-before-mask ordering is no longer unproven either — the Debian platform
+ships both apt timers active, so it exercises the two tasks for real.
