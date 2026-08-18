@@ -32,6 +32,32 @@ unreadable to the container under enforcing SELinux; the `Restart caddy` handler
 must recreate (not reload), since only the `:ro,Z` mount's relabel on start makes
 the new file readable.
 
+## Proxied hosts with no role
+
+`caddy_proxied_hosts` maps a subdomain to an upstream this repo does not
+deploy, and is the one `sites/` snippet caddy drops itself — everything else
+there comes from the role that owns the backend. The point is the cert: the
+fleet's wildcard is already issued, so fronting a LAN appliance with it beats
+the untrusted self-signed cert the appliance serves.
+
+```yaml
+caddy_proxied_hosts:
+  nas:
+    upstream: https://appliance.lan:5001
+    insecure: true
+```
+
+`insecure` skips verification on the upstream hop, which is exactly what an
+appliance serving that self-signed cert needs. It is a LAN hop to a known host
+and the browser still gets a trusted cert, but it is off by default — set it
+only where the upstream's own cert is the reason for proxying.
+
+It requires an `https://` upstream. caddy refuses the pairing with `http://`
+("upstream address scheme is HTTP but transport is configured for HTTP+TLS"),
+and since a Caddyfile that will not parse crash-loops the proxy that every
+service on the host sits behind, the role asserts it rather than letting the
+typo reach caddy.
+
 ## Public sites
 
 A role serving its own public domain (an apex, not a wildcard subdomain) drops
