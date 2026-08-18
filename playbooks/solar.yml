@@ -76,6 +76,156 @@
     # the fleet, holds the TSDB on its NVMe and evaluates every rule. The NAS
     # holds no history any more.
     grafana_prometheus_url: http://auspex:9090
+    # The apex dashboard. href is what the browser opens, so it is the URL the
+    # service is actually used over; siteMonitor is fetched by the homepage
+    # container itself, so it takes the internal container address — no hairpin
+    # DNS, no TLS, and no dependency on caddy, the thing every href already goes
+    # through. The container drops CAP_NET_RAW, so homepage's ICMP `ping:` can
+    # never work here: every status on this dashboard is an HTTP siteMonitor.
+    #
+    # This is a convenience dashboard, not a monitor — the alert for each of
+    # these is auspex's blackbox probe. Keep the tiles in step with arr_enabled
+    # above; a stale tile here is a dead link, not a missing alert.
+    homepage_title: Strategium
+    # stone, not amber: amber is the warmest palette homepage ships but it lands
+    # as bright orange on every accent. stone is Tailwind's warm grey — sepia
+    # rather than citrus.
+    homepage_color: stone
+    homepage_services:
+      - Archive:
+          - Plex:
+              icon: plex.png
+              description: Media server
+              href: http://solar:32400/web
+              # Host-networked and unproxied, and /identity answers without a token.
+              siteMonitor: http://solar:32400/identity
+          - Sonarr:
+              icon: sonarr.png
+              description: Television
+              href: https://sonarr.{{ caddy_domain }}
+              siteMonitor: http://sonarr:8989/ping
+          - Radarr:
+              icon: radarr.png
+              description: Film
+              href: https://radarr.{{ caddy_domain }}
+              siteMonitor: http://radarr:7878/ping
+          - Lidarr:
+              icon: lidarr.png
+              description: Music
+              href: https://lidarr.{{ caddy_domain }}
+              siteMonitor: http://lidarr:8686/ping
+      - Acquisition:
+          - Prowlarr:
+              icon: prowlarr.png
+              description: Indexers
+              href: https://prowlarr.{{ caddy_domain }}
+              siteMonitor: http://prowlarr:9696/ping
+          - Transmission:
+              icon: transmission.png
+              description: BitTorrent
+              href: https://transmission.{{ caddy_domain }}
+              # No siteMonitor: RPC auth is on, so an unauthenticated fetch is a
+              # 401 and the tile would read as down. Giving homepage the
+              # credentials to avoid that is the transmission widget's job, not a
+              # status dot's. auspex probes it with http_2xx_or_401 instead.
+          - beets:
+              icon: beets.png
+              description: Tagging pipeline
+              href: https://beets.{{ caddy_domain }}
+              siteMonitor: http://beets:8337/
+      - Vigil:
+          - Grafana:
+              icon: grafana.png
+              description: Dashboards
+              href: https://grafana.{{ caddy_domain }}
+              siteMonitor: http://grafana:3000/api/health
+          - Prometheus:
+              icon: prometheus.png
+              description: Metrics and alert rules
+              href: http://auspex:9090
+              siteMonitor: http://auspex:9090/-/healthy
+          - Alertmanager:
+              icon: alertmanager.png
+              description: Alert routing
+              href: http://auspex:9093
+              siteMonitor: http://auspex:9093/-/healthy
+    # Group order on the dashboard, so it is declared, not alphabetical.
+    homepage_layout:
+      Archive:
+        style: row
+        columns: 4
+      Acquisition:
+        style: row
+        columns: 3
+      Vigil:
+        style: row
+        columns: 3
+    homepage_widgets:
+      # The visible page title. settings.yaml's title: only sets the browser tab —
+      # homepage renders no heading of its own — so the greeting widget is the
+      # only way to put the name on the page. Declared first, at the largest size.
+      - greeting:
+          text_size: 4xl
+          text: Strategium
+      # Info widgets lay out left to right in declaration order. Weekday and date
+      # without the year: the year is the one component nobody loses track of.
+      - datetime:
+          text_size: xl
+          format:
+            weekday: long
+            day: numeric
+            month: long
+            hour: 2-digit
+            minute: 2-digit
+            hourCycle: h23
+      - search:
+          provider: duckduckgo
+          target: _blank
+    homepage_bookmarks:
+      - Fleet:
+          - Repository:
+              - abbr: LI
+                href: https://github.com/jedimasterjonny/lex-imperialis
+          - Synology:
+              - abbr: NAS
+                href: https://nas.{{ caddy_domain }}
+          - UniFi:
+              - abbr: UI
+                href: https://unifi.ui.com
+          # Where alertmanager posts. Vault-sourced: the guild and channel ids
+          # in the path should not sit in a public repo.
+          - Discord alerts:
+              - abbr: DC
+                href: "{{ alertmanager_discord_channel_url }}"
+          # Holds the Watchdog deadman. The service root, not the check itself:
+          # a check's page is keyed by the same uuid as its ping url, so deep
+          # linking would put a credential that can silence the deadman on the
+          # dashboard.
+          - Healthchecks:
+              - abbr: HC
+                href: https://healthchecks.io/
+      - Void:
+          - Hetzner:
+              - abbr: HZ
+                href: https://console.hetzner.cloud
+          - Google Cloud:
+              - abbr: GC
+                href: https://console.cloud.google.com
+          - Cloudflare:
+              - abbr: CF
+                href: https://dash.cloudflare.com
+      - Domains:
+          - emmasedit.com:
+              - abbr: EE
+                href: https://emmasedit.com
+          # Trailing slash deliberately: /wp-admin without it 301s to http://
+          # before landing on the login, and this skips that plain-HTTP hop.
+          - emmasedit admin:
+              - abbr: WP
+                href: https://emmasedit.com/wp-admin/
+          - jonnyoc.uk:
+              - abbr: JO
+                href: https://jonnyoc.uk
     # This host's restic key. One per host, so a host that is compromised can
     # open only its own repos — the astropath export carries every host's.
     restic_backup_password: "{{ solar_restic_password }}"

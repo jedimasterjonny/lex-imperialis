@@ -1,3 +1,13 @@
 ---
 # renovate's image manager bumps the tag.
 homepage_image: ghcr.io/gethomepage/homepage:v2.0.0@sha256:638dacf5c844e908dc06c1fd57a2b5694f8efd91f91f152829ea0c2f547458f2
+
+# The config files Ansible owns: rendered to /etc/homepage and each mounted
+# read-only over the seeded config volume, from this one list. Not a tunable —
+# the set is the role's config-as-code contract, and a name here without a
+# matching template is a converge failure, not a no-op.
+homepage_configs:
+  - settings.yaml
+  - services.yaml
+  - widgets.yaml
+  - bookmarks.yaml

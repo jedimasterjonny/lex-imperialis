@@ -10,6 +10,29 @@ homepage_tls: true
 # Dashboard title, rendered into the managed settings.yaml.
 homepage_title: Homepage
 
+# Presentation, rendered into settings.yaml. statusStyle: dot reduces a
+# siteMonitor result to a coloured dot rather than printing the response time on
+# every tile.
+homepage_theme: dark
+homepage_color: slate
+homepage_header_style: boxed
+homepage_status_style: dot
+
+# The dashboard's own content, one variable per managed config file, serialised
+# as-is into services.yaml, widgets.yaml and bookmarks.yaml. Empty here because a
+# dashboard is a host's spec, not a role's: the fleet's groups, tiles and
+# bookmarks live in the play, as prometheus's probe targets do. A host that sets
+# none gets an empty dashboard rather than the examples homepage ships, which is
+# what declaring no content should mean.
+homepage_services: []
+homepage_widgets: []
+homepage_bookmarks: []
+
+# Per-group layout, keyed by the group names in homepage_services. Key order is
+# significant — homepage lays the groups out in the order this declares them — so
+# it is rendered order-preserving rather than sorted.
+homepage_layout: {}
+
 # Container timezone, for the dashboard's date/time display.
 homepage_timezone: Etc/UTC
 
