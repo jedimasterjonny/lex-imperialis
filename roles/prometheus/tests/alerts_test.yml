@@ -234,6 +234,56 @@ tests:
         alertname: AutoupdatePackageHeld
         exp_alerts: []
 
+  # The cleanup's counterpart to the case above: the update ran, exited 0, removed
+  # what it could, and what it could not remove is still installed. unneeded is held
+  # at 0 throughout as the control the label makes necessary — the expression selects
+  # the family rather than one class, so a single firing class has to be shown not to
+  # drag the other in with it.
+  #
+  # One case, not two, and for the opposite reason to the holds case above: the hook
+  # publishes both classes every run, zero included, so the resolve is a value change
+  # on a live series rather than staleness — and asserting it needs the alert to have
+  # fired first. Written as a run that cleared the orphan, which is the resolve path
+  # that exists: `> 0` is what makes the published zero resolve at all, and a lookback
+  # wrapped round it would keep paging for a package already gone.
+  - interval: 1m
+    name: packages the post-update cleanup could not remove alert, and clear when they go
+    input_series:
+      - series: 'autoupdate_uncleaned_packages{job="node",instance="scholam:9100",class="orphaned"}'
+        values: "1x70 0x50"
+      - series: 'autoupdate_uncleaned_packages{job="node",instance="scholam:9100",class="unneeded"}'
+        values: "0x120"
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: AutoupdatePackagesUncleaned
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: scholam:9100
+              class: orphaned
+            exp_annotations:
+              summary: "1 orphaned package(s) left on scholam:9100 after the update"
+              description: >-
+                The post-update cleanup on scholam:9100 left 1 orphaned package(s)
+                installed. `orphaned` means no repository offers them and nothing has made
+                them unneeded, so the cleanup never takes them — decide those one at a
+                time, and in the role if a role installs them. `unneeded` means its removal
+                failed, or the host is MicroOS, where it does not run: clear that with
+                `transactional-update run zypper remove --clean-deps <names>`, which shows
+                here only after the reboot. List them with `zypper packages --orphaned`, or
+                on Debian with `apt-get --dry-run --purge autoremove` and `apt list
+                '?obsolete'`. Then re-run `autoupdate-cleanup.sh` to republish, or this
+                stands until that host's next weekly update rewrites the metric.
+      # Still inside for:, so the case above cannot pass against a shortened window.
+      - eval_time: 55m
+        alertname: AutoupdatePackagesUncleaned
+        exp_alerts: []
+      # The next weekly run removed the orphan and published the zero.
+      - eval_time: 75m
+        alertname: AutoupdatePackagesUncleaned
+        exp_alerts: []
+
   # FilesystemReadOnly carves out the MicroOS root, which is read-only by design.
   # The carve-out is the kind that silently over-reaches, so all three polarities
   # are named: the state it must ignore, and the two neighbouring states it must
