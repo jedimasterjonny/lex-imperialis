@@ -64,6 +64,14 @@
     # exposed on solar's podman container networks.
     node_exporter_listen_address: "{{ ansible_facts['default_ipv4']['address'] }}:9100"
     cadvisor_listen_ip: "{{ ansible_facts['default_ipv4']['address'] }}"
+    # The NAS fronted by caddy, purely for the cert: DSM serves its own untrusted
+    # one, and the fleet's wildcard is already issued. LAN-only either way — the
+    # zone resolves privately — so this exposes nothing new. administratum runs
+    # nothing this repo deploys and has no role to drop a snippet of its own.
+    caddy_proxied_hosts:
+      nas:
+        upstream: https://administratum:5001
+        insecure: true
     # Grafana reads the Prometheus on auspex over the LAN — the one that scrapes
     # the fleet, holds the TSDB on its NVMe and evaluates every rule. The NAS
     # holds no history any more.
