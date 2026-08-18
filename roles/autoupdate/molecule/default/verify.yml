@@ -30,6 +30,16 @@
       {{ ['apt-mark', 'unhold', autoupdate_held_package]
          if 'debian' in group_names
          else ['zypper', '--non-interactive', 'removelock', autoupdate_held_package] }}
+    # A package installed only for what it pulls in, then dropped: its dependency
+    # is left auto-installed and required by nothing, which is the one class the
+    # cleanup removes. Built this way rather than by flagging a package auto
+    # because openSUSE has no command that sets that flag — the resolver owns it
+    # — so install-then-drop is the only construction both distributions share.
+    # Each pair is absent from its image, so the install really does pull the
+    # dependency in; an image that later ships either fails the fixture assertion
+    # below rather than quietly leaving the cleanup nothing to remove.
+    autoupdate_cruft_parent: "{{ 'jq' if 'debian' in group_names else 'man' }}"
+    autoupdate_cruft_package: "{{ 'libjq1' if 'debian' in group_names else 'groff' }}"
   tasks:
     # daemon_reload is a no-op that just makes the module gather and return the
     # timer's systemctl-show properties to assert against; it reads, not mutates.
@@ -126,12 +136,16 @@
         fail_msg: "the service does not run non-interactively, accept 102/103, reboot, then record the outcome"
         quiet: true
 
-    - name: The holds hook runs after the update and before the reboot
+    - name: The metric hooks run after the update and before the reboot
       ansible.builtin.assert:
         that:
           # Ignore-prefixed: systemd renders the `-` as ignore_errors=yes on the
           # entry, and without it a broken metric writer fails the unit and
-          # strands the host on the pre-update kernel.
+          # strands the host on the pre-update kernel. The cleanup carries the
+          # same prefix for more than the metric's sake — it is the hook that
+          # uninstalls, so a solver problem there must not cost the host its
+          # reboot onto the new kernel.
+          - "'autoupdate-cleanup.sh ; ignore_errors=yes' in autoupdate_execstartpost.stdout"
           - "'autoupdate-holds.sh ; ignore_errors=yes' in autoupdate_execstartpost.stdout"
           # The whole list in order, not two membership tests: ordering is the
           # point of the placement — anything after `systemctl reboot` races
@@ -141,8 +155,10 @@
           # incidental "reboot is last" that the flattened one gave for free.
           - >-
             autoupdate_execstartpost.stdout | regex_findall('argv\\[\\]=(\\S+)')
-            == ['/usr/local/sbin/autoupdate-holds.sh', '/usr/bin/systemctl']
-        fail_msg: "the holds hook does not run ahead of the reboot, or failing it can fail the unit"
+            == ['/usr/local/sbin/autoupdate-cleanup.sh',
+                '/usr/local/sbin/autoupdate-holds.sh',
+                '/usr/bin/systemctl']
+        fail_msg: "the metric hooks do not run ahead of the reboot, or failing one can fail the unit"
         quiet: true
 
     # The Debian platform is the only tier that can prove the takeover: no tier
@@ -290,6 +306,145 @@
           # blind spot is the one the README holds as accepted.
           - "'# TYPE autoupdate_package_hold gauge' in (autoupdate_holds_cleared.content | b64decode)"
         fail_msg: "the holds hook does not publish the held and released states as the alert reads them"
+        quiet: true
+
+    # The cleanup hook, driven directly the way ExecStartPost would, across a
+    # package the two tasks below deliberately strand. Whether the arm uninstalls
+    # is the half worth testing — the counts it publishes afterwards are the
+    # package manager's own answer to the same question the removal asked.
+    # Ahead of the install, so what follows builds the same state whatever the
+    # image or an earlier run left: a dependency already installed is not pulled
+    # in again, and one already flagged user-installed is not unneeded however it
+    # got there — leaving the cleanup nothing to remove and the assertions below
+    # asserting nothing. A no-op on both images as they ship.
+    - name: Clear the dependency the fixture is about to strand
+      ansible.builtin.package:
+        name: "{{ autoupdate_cruft_package }}"
+        state: absent
+      become: true
+
+    - name: Install a package for what it pulls in
+      ansible.builtin.package:
+        name: "{{ autoupdate_cruft_parent }}"
+        state: present
+      become: true
+
+    # Plainly absent, with no autoremove or clean_deps: the dependency then stays
+    # behind auto-installed and required by nothing, which is the state the
+    # cleanup exists to clear.
+    - name: Drop the package again, leaving its dependency unneeded
+      ansible.builtin.package:
+        name: "{{ autoupdate_cruft_parent }}"
+        state: absent
+      become: true
+
+    - name: Read the installed packages before the cleanup
+      ansible.builtin.package_facts:
+      become: true
+
+    - name: The dropped package left its dependency behind
+      ansible.builtin.assert:
+        that:
+          - autoupdate_cruft_package in ansible_facts.packages
+        fail_msg: >-
+          {{ autoupdate_cruft_package }} is not installed, so the fixture built no cruft
+          and the assertions below would pass against a hook that removes nothing
+        quiet: true
+
+    # Debian only, and the recount is why. openSUSE reaches both its counts through
+    # the same parse the removal is driven from, so a parse that read nothing would
+    # remove nothing and fail the assertions below; apt's recount is a second,
+    # independent command, and a parse that stopped matching would publish a clean
+    # zero for a host that had just failed to remove anything. So block dpkg and
+    # assert the count comes back non-zero — which is also the contract the README
+    # states, that a failed removal still publishes what it left behind.
+    - name: A blocked removal publishes what it left behind
+      when: "'debian' in group_names"
+      become: true
+      block:
+        - name: Block dpkg so the removal fails
+          ansible.builtin.copy:
+            content: 'DPkg::Pre-Invoke {"false";};'
+            dest: /etc/apt/apt.conf.d/99-molecule-block-dpkg
+            owner: root
+            group: root
+            mode: "0644"
+
+        - name: Run the cleanup hook with the removal blocked
+          ansible.builtin.command: /usr/local/sbin/autoupdate-cleanup.sh
+          register: autoupdate_cleanup_blocked
+          changed_when: false
+          # The hook exits with the removal's own code, which the unit ignores and
+          # the journal keeps. A zero here would mean the block never bit and the
+          # assertion below was reading an ordinary successful pass.
+          failed_when: autoupdate_cleanup_blocked.rc == 0
+
+        - name: Read the cleanup metric from the blocked run
+          ansible.builtin.slurp:
+            src: "{{ autoupdate_textfile_dir }}/autoupdate-cleanup.prom"
+          register: autoupdate_cleanup_blocked_metric
+
+        - name: The blocked run publishes a non-zero unneeded count
+          ansible.builtin.assert:
+            that:
+              # Non-zero rather than the exact two (the stranded dependency and the
+              # one only it requires): the arithmetic is apt's, and pinning it would
+              # break on a dependency change that says nothing about this hook.
+              - >-
+                (autoupdate_cleanup_blocked_metric.content | b64decode)
+                is search('autoupdate_uncleaned_packages\{class="unneeded"\} [1-9]')
+            fail_msg: "a removal that failed published no packages left to remove"
+            quiet: true
+      always:
+        # Unblocked here rather than after the assertion: `make verify` is
+        # re-runnable by design, and a drop-in left behind by a failed assertion
+        # would fail every later run for a reason that has nothing to do with them.
+        - name: Unblock dpkg
+          ansible.builtin.file:
+            path: /etc/apt/apt.conf.d/99-molecule-block-dpkg
+            state: absent
+
+    - name: Run the cleanup hook
+      ansible.builtin.command: /usr/local/sbin/autoupdate-cleanup.sh
+      changed_when: false
+      become: true
+
+    - name: Read the installed packages after the cleanup
+      ansible.builtin.package_facts:
+      become: true
+
+    - name: Read the cleanup metric
+      ansible.builtin.slurp:
+        src: "{{ autoupdate_textfile_dir }}/autoupdate-cleanup.prom"
+      register: autoupdate_cleanup_metric
+      become: true
+
+    - name: The cleanup uninstalls the unneeded package and publishes both classes
+      ansible.builtin.assert:
+        that:
+          - autoupdate_cruft_package not in ansible_facts.packages
+          # The count recomputed after the removal, not before it: a hook that
+          # published what it found on the way in would report this host as still
+          # carrying the package it had just uninstalled.
+          - >-
+            'autoupdate_uncleaned_packages{class="unneeded"} 0'
+            in (autoupdate_cleanup_metric.content | b64decode)
+          # The orphaned count is asserted numeric rather than zero: an image is
+          # free to ship a package its repositories no longer offer, and the
+          # number is the tool's answer either way. It pins the sample's shape,
+          # not its parse — no tier has an orphan to count, so a parse that read
+          # nothing would publish the same 0 as a host with none. Accepted: the
+          # openSUSE arm reads orphans through the parse the removal above proves,
+          # leaving only `apt list '?obsolete'` unwitnessed, and building a
+          # genuine orphan to witness it means hand-rolling a package no
+          # repository offers.
+          - >-
+            (autoupdate_cleanup_metric.content | b64decode)
+            is search('autoupdate_uncleaned_packages\{class="orphaned"\} [0-9]+')
+          - >-
+            '# TYPE autoupdate_uncleaned_packages gauge'
+            in (autoupdate_cleanup_metric.content | b64decode)
+        fail_msg: "the cleanup hook does not uninstall unneeded packages and publish what it left"
         quiet: true
 
     # No tier boots MicroOS. This pins the selector's transactional branch and
