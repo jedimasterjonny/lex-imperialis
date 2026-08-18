@@ -31,16 +31,37 @@ unfollowed.
 
 `/app/config` is the `homepage-config` named volume: homepage seeds the
 scaffolding it requires there on first boot (and crash-loops if it can't write
-it), then the operator adds `services.yaml`, `widgets.yaml` and `bookmarks.yaml`
-directly — service widgets carry API keys, kept out of this public repo (as
-recyclarr's config is). A named volume keeps that operator data off a host bind
-mount and lets `podman_backup` capture it.
+it). A named volume keeps that off a host bind mount and lets `podman_backup`
+capture it.
 
-Ansible owns only `settings.yaml` (the title), rendered to `/etc/homepage` and
-mounted read-only as a single file on top of the volume, so it stays
-config-as-code without shadowing the seeded data. Root owns the mode-0644 file;
-the container reads it as its own id (`homepage_uid`, PUID/PGID) over the `:ro`
-bind regardless of host owner.
+The dashboard itself is config-as-code. Ansible renders `settings.yaml`,
+`services.yaml`, `widgets.yaml` and `bookmarks.yaml` (`homepage_configs`) to
+`/etc/homepage` and mounts each read-only as a single file on top of the volume,
+so they never shadow the seeded data. Root owns the mode-0644 files; the
+container reads them as its own id (`homepage_uid`, PUID/PGID) over the `:ro`
+binds regardless of host owner.
+
+The three content files are pass-throughs — `homepage_services`,
+`homepage_widgets` and `homepage_bookmarks` serialised as-is — because a
+dashboard is a host's spec, not a role's: the fleet's tiles live in
+`playbooks/solar.yml`, as prometheus's probe targets live in `playbooks/auspex.yml`.
+A host that declares none gets an empty dashboard, not homepage's shipped
+examples. Every render is `sort_keys=False`: homepage lays groups and tiles out
+in file order, and `settings.yaml`'s `layout:` orders the groups, so an
+alphabetising dumper silently rewrites the dashboard. The scenario asserts that
+order survives.
+
+`href` is what the browser opens, so it is the URL the service is used over;
+`siteMonitor` is fetched by the homepage container, so it takes the internal
+container address — no hairpin DNS, no TLS, and no dependency on caddy, which
+every `href` already goes through. Homepage's ICMP `ping:` cannot be used at all
+here: the container drops `CAP_NET_RAW`. None of this is monitoring — the alert
+for each tile is auspex's blackbox probe.
+
+Service widgets are not wired up. They carry API keys, which this public repo
+cannot hold in plaintext; homepage substitutes `{{HOMEPAGE_VAR_X}}` and
+`{{HOMEPAGE_FILE_X}}` in any config file, so the keys would arrive via a 0600
+`EnvironmentFile` exactly as `roles/arr` already delivers `arr_api_keys`.
 
 The container's podman healthcheck against `/api/healthcheck` is the restart backstop,
 not the monitor (see `roles/CLAUDE.md`); monitoring is the blackbox probe of the same
@@ -59,6 +80,9 @@ as a failed healthcheck.
 - `homepage_domain` — apex domain homepage serves at; follows `caddy_domain`.
 - `homepage_tls` — front the apex with an `acme_dns` cert (needs caddy's `caddy_cloudflare_api_token`); `false` serves plain HTTP (molecule).
 - `homepage_title` — dashboard title, rendered into `settings.yaml`.
+- `homepage_theme`, `homepage_color`, `homepage_header_style`, `homepage_status_style` — presentation, rendered into `settings.yaml`.
+- `homepage_services`, `homepage_widgets`, `homepage_bookmarks` — the dashboard's content, serialised into the matching config file.
+- `homepage_layout` — per-group style and columns, keyed by the group names in `homepage_services`; declaration order is the dashboard's group order.
 - `homepage_timezone` — container timezone for date/time display.
 - `homepage_uid` — host id the container runs as (PUID/PGID).
 

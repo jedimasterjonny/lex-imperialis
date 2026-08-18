@@ -33,23 +33,49 @@
         fail_msg: "a security header is missing from the proxied response"
         quiet: true
 
-    # The single-file settings.yaml mount is the config-as-code contract: Ansible
-    # renders it and podman mounts it read-only on top of the seeded config volume.
-    # The title is applied client-side, so it never reaches the served HTML — read
-    # the file from inside the container instead. The distinctive title is present
-    # only if the mount landed at /app/config/settings.yaml over the volume rather
-    # than being shadowed by the container's own seeded skeleton.
-    - name: Read the mounted settings from inside the container
-      ansible.builtin.command: podman exec homepage cat /app/config/settings.yaml
+    # The single-file mounts are the config-as-code contract: Ansible renders each
+    # config and podman mounts it read-only on top of the seeded config volume.
+    # The content is applied client-side, so it never reaches the served HTML —
+    # read the files from inside the container instead. Each fixture token is
+    # present only if that mount landed over the volume rather than being
+    # shadowed by the container's own seeded skeleton.
+    - name: Read the mounted configs from inside the container
+      ansible.builtin.command: "podman exec homepage cat /app/config/{{ item.file }}"
       become: true
-      register: homepage_settings
+      register: homepage_config_files
       changed_when: false
+      loop:
+        - file: settings.yaml
+          token: Adeptus Molecularum
+        - file: services.yaml
+          token: Astropath
+        - file: widgets.yaml
+          token: greeting
+        - file: bookmarks.yaml
+          token: Lexicanum
+      loop_control:
+        label: "{{ item.file }}"
 
-    - name: The provisioned settings.yaml is mounted over the config volume
+    - name: Every managed config is mounted over the config volume
       ansible.builtin.assert:
         that:
-          - "'Adeptus Molecularum' in homepage_settings.stdout"
-        fail_msg: the managed settings.yaml is not mounted at /app/config/settings.yaml
+          - item.item.token in item.stdout
+        fail_msg: "the managed {{ item.item.file }} is not mounted at /app/config/{{ item.item.file }}"
+        quiet: true
+      loop: "{{ homepage_config_files.results }}"
+      loop_control:
+        label: "{{ item.item.file }}"
+
+    # homepage orders the dashboard's groups by the order settings.yaml declares
+    # them, so the renderer must not sort the layout keys. converge declares Fleet
+    # before Archive precisely because sorting would swap them.
+    - name: The layout keeps the declared group order rather than an alphabetical one
+      vars:
+        settings: "{{ (homepage_config_files.results | selectattr('item.file', 'eq', 'settings.yaml') | first).stdout }}"
+      ansible.builtin.assert:
+        that:
+          - settings.index('Fleet:') < settings.index('Archive:')
+        fail_msg: the rendered layout has been sorted, which reorders the dashboard's groups
         quiet: true
 
     # A non-zero exit fails the task, proving the health endpoint answers and its

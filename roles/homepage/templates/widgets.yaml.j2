@@ -1,0 +1,5 @@
+{#- The dashboard's content is a host's spec, so it is declared in the play and
+    serialised here as-is. sort_keys=False because homepage renders groups and
+    tiles in file order; the default sorting dumper would rewrite that order. -#}
+---
+{{ homepage_widgets | to_nice_yaml(indent=2, width=1000, sort_keys=False) | trim }}

@@ -25,9 +25,11 @@ Environment=LOG_TARGETS=stdout
 # backing store off a host bind mount — podman labels it container_file_t (no :Z)
 # and podman_backup captures it automatically.
 Volume=homepage-config:/app/config
-# Ansible owns only settings.yaml; mounted read-only as a single file on top of
-# the volume so it stays config-as-code without shadowing the seeded data.
-Volume=/etc/homepage/settings.yaml:/app/config/settings.yaml:ro,Z
+# Ansible owns the dashboard configs; each mounted read-only as a single file on
+# top of the volume so they stay config-as-code without shadowing the seeded data.
+{% for config in homepage_configs %}
+Volume=/etc/homepage/{{ config }}:/app/config/{{ config }}:ro,Z
+{% endfor %}
 # Restart backstop against homepage's own health endpoint (busybox wget ships in
 # the alpine image), not the monitor — see the health convention in roles/CLAUDE.md.
 HealthCmd=wget -q --tries=1 --spider http://127.0.0.1:3000/api/healthcheck

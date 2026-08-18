@@ -1,2 +1,13 @@
 ---
 title: {{ homepage_title }}
+theme: {{ homepage_theme }}
+color: {{ homepage_color }}
+headerStyle: {{ homepage_header_style }}
+statusStyle: {{ homepage_status_style }}
+{% if homepage_layout %}
+{# Order-preserving, and trimmed before indenting: homepage lays the groups out #}
+{# in the order declared here, so an alphabetising dumper would reorder the #}
+{# dashboard. #}
+layout:
+{{ homepage_layout | to_nice_yaml(indent=2, width=1000, sort_keys=False) | trim | indent(2, true) }}
+{% endif %}

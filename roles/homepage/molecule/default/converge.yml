@@ -8,6 +8,37 @@
     # is read: the default "Homepage" is also the app's built-in fallback, so it
     # matches even when the single-file mount is broken.
     homepage_title: Adeptus Molecularum
+    # One distinctive token per managed config, so verify can prove each single-file
+    # mount landed rather than being shadowed by the container's seeded skeleton.
+    homepage_services:
+      - Fleet:
+          - Astropath:
+              description: Molecule fixture
+              href: http://localhost/
+              siteMonitor: http://localhost/
+      - Archive:
+          - Scriptorum:
+              description: Molecule fixture
+              href: http://localhost/
+    homepage_widgets:
+      - greeting:
+          text_size: xl
+          text: Adeptus Molecularum
+    homepage_bookmarks:
+      - Codex:
+          - Lexicanum:
+              - abbr: LX
+                href: http://localhost/
+    # Declared in an order alphabetical sorting would reverse, so a dumper that
+    # sorts the layout keys — silently reordering the dashboard's groups — fails
+    # verify instead of shipping.
+    homepage_layout:
+      Fleet:
+        style: row
+        columns: 1
+      Archive:
+        style: row
+        columns: 1
   tasks:
     - name: Apply the podman role
       ansible.builtin.include_role:
