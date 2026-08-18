@@ -22,6 +22,37 @@
   become: true
   notify: Restart caddy
 
+# caddy refuses tls_insecure_skip_verify over an http:// upstream ("upstream
+# address scheme is HTTP but transport is configured for HTTP+TLS"), and a
+# Caddyfile that will not parse crash-loops the proxy every service on the host
+# sits behind — systemd gives up after five restarts and the whole vhost is gone.
+# Fail the play on the typo instead.
+- name: Assert every insecure proxied host has an https upstream
+  ansible.builtin.assert:
+    that:
+      - item.value.upstream is match('https://')
+    fail_msg: >-
+      caddy_proxied_hosts.{{ item.key }} sets insecure but its upstream is not
+      https://, which caddy refuses to parse
+    quiet: true
+  loop: "{{ caddy_proxied_hosts | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  when: item.value.insecure | default(false)
+
+# The one snippet caddy owns itself: every other sites/ file is dropped by the
+# role that deploys its backend, but these upstreams have no role to drop one.
+# Always rendered — an empty file is a no-op to the wildcard vhost's import.
+- name: Register the proxied hosts that no role owns
+  ansible.builtin.template:
+    src: proxied.caddy.j2
+    dest: /etc/caddy/sites/proxied.caddy
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart caddy
+
 # Keeps the token out of the world-readable Caddyfile; caddy reads it from
 # the environment instead.
 - name: Deploy the environment file

@@ -1,0 +1,17 @@
+{% for name, spec in caddy_proxied_hosts.items() %}
+@{{ name }} host {{ name }}.{{ caddy_domain }}
+handle @{{ name }} {
+{% if spec.insecure | default(false) %}
+	# The upstream serves its own untrusted cert, so this hop skips verification:
+	# a LAN hop to a known host, in exchange for a trusted cert in the browser.
+	reverse_proxy {{ spec.upstream }} {
+		transport http {
+			tls_insecure_skip_verify
+		}
+	}
+{% else %}
+	reverse_proxy {{ spec.upstream }}
+{% endif %}
+}
+
+{% endfor %}

@@ -1,6 +1,18 @@
 ---
 - name: Converge
   hosts: all
+  vars:
+    # Both arms of the snippet. The upstreams are a closed port, so each answers
+    # 502 — which still proves the matcher and handle are live, since an
+    # unregistered subdomain 404s. Pointing them at caddy's own listener instead
+    # would loop: reverse_proxy preserves the Host, so the proxied request
+    # re-enters the same matcher.
+    caddy_proxied_hosts:
+      plain:
+        upstream: http://127.0.0.1:9
+      appliance:
+        upstream: https://127.0.0.1:9
+        insecure: true
   tasks:
     - name: Apply the podman role
       ansible.builtin.include_role:

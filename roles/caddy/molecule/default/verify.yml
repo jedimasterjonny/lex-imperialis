@@ -34,6 +34,43 @@
           Host: nonexistent.example
         status_code: 404
 
+    # caddy_proxied_hosts is the one sites/ snippet the role drops itself. The
+    # fixture upstreams are a closed port, so 502 is the proxy reporting it could
+    # not reach one — which proves the generated matcher and handle are live, not
+    # merely syntactically valid: an unregistered subdomain 404s above, so only
+    # the snippet can turn this into a 502.
+    - name: A proxied host routes to its upstream through the wildcard vhost
+      ansible.builtin.uri:
+        url: http://127.0.0.1/
+        headers:
+          Host: "plain.{{ caddy_domain }}"
+        status_code: 502
+
+    - name: A proxied host skipping upstream verification also routes
+      ansible.builtin.uri:
+        url: http://127.0.0.1/
+        headers:
+          Host: "appliance.{{ caddy_domain }}"
+        status_code: 502
+
+    - name: Read the generated snippet
+      ansible.builtin.slurp:
+        src: /etc/caddy/sites/proxied.caddy
+      register: caddy_proxied_snippet
+      become: true
+
+    # The 204s above pass either way — skipping verification is invisible over a
+    # plain-HTTP upstream — so assert the flag's two arms directly.
+    - name: Only the flagged host skips upstream certificate verification
+      vars:
+        snippet: "{{ caddy_proxied_snippet.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - snippet.count('tls_insecure_skip_verify') == 1
+          - snippet.index('@appliance') < snippet.index('tls_insecure_skip_verify')
+        fail_msg: the insecure upstream flag is not confined to the host that declared it
+        quiet: true
+
     # Renovate bumps the image unattended; catch a build that drops the
     # DNS-01 plugin before it reaches the fleet.
     - name: The cloudflare DNS module is compiled in
