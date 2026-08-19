@@ -13,6 +13,12 @@
     mode: "0755"
   become: true
 
+# no_log because one of these carries a vault value: the Discord channel the
+# alertmanager bookmark points at. Without it --diff prints the URL in full on
+# every check run, and arbites logs its own applies. It costs the diff on the
+# other configs too — the loop is one task — which is the price of not printing
+# the one. The 0644 above is deliberate and stays: the container reads these over
+# :ro binds as PUID, not root, and the role creates no host group to narrow to.
 - name: Provision the dashboard configs
   ansible.builtin.template:
     src: "{{ item }}.j2"
@@ -22,6 +28,7 @@
     mode: "0644"
   loop: "{{ homepage_configs }}"
   become: true
+  no_log: true
   notify: Restart homepage
 
 # A full public site block (not a sites/ wildcard snippet), imported as a
