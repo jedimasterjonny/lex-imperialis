@@ -31,6 +31,22 @@
   no_log: true
   notify: Restart homepage
 
+# The widget credentials, kept out of the mode-0644 configs above: homepage
+# substitutes {{HOMEPAGE_VAR_<NAME>}} in any config file with the environment, so
+# the dashboard holds only the placeholder and the value arrives here at 0600 —
+# exactly as roles/arr delivers arr_api_keys. Rendered unconditionally so
+# dropping a credential empties the file rather than stranding the old value.
+- name: Deploy the widget credentials environment file
+  ansible.builtin.template:
+    src: env.j2
+    dest: /etc/homepage/env
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  no_log: true
+  notify: Restart homepage
+
 # A full public site block (not a sites/ wildcard snippet), imported as a
 # top-level site and certified through the global acme_dns.
 - name: Register the caddy public site block

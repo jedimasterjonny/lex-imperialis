@@ -78,6 +78,42 @@
         fail_msg: the rendered layout has been sorted, which reorders the dashboard's groups
         quiet: true
 
+    # The whole point of the HOMEPAGE_VAR_ indirection: the credential reaches
+    # the container as environment, and the config the container reads carries
+    # only the placeholder. Assert both ends, because either alone passes while
+    # the secret is being written into a world-readable file.
+    - name: The managed configs carry the placeholder, never the credential
+      vars:
+        services: "{{ (homepage_config_files.results | selectattr('item.file', 'eq', 'services.yaml') | first).stdout }}"
+        # noqa: jinja[spacing] — homepage substitutes with a literal replaceAll of
+        # `{{`+key+`}}`, so the inner spaces the rule wants would stop every widget
+        # credential resolving. Asserted in exactly the form homepage matches,
+        # which is the point: a well-meant reformat of the play must fail here.
+        placeholder: !unsafe "{{HOMEPAGE_VAR_MOLECULE_TOKEN}}"
+      ansible.builtin.assert:
+        that:
+          - placeholder in services
+          - "'adeptus-molecularum-fixture-token' not in services"
+        fail_msg: services.yaml holds the credential itself rather than its placeholder
+        quiet: true
+
+    - name: Read the credentials environment file
+      ansible.builtin.stat:
+        path: /etc/homepage/env
+      register: homepage_env
+      become: true
+
+    # 0600 root-owned, unlike the mode-0644 configs beside it: this is the one
+    # file under /etc/homepage that holds secrets in the clear.
+    - name: The credentials environment file is readable only by root
+      ansible.builtin.assert:
+        that:
+          - homepage_env.stat.exists
+          - homepage_env.stat.mode == '0600'
+          - homepage_env.stat.pw_name == 'root'
+        fail_msg: /etc/homepage/env is missing or is not root-only
+        quiet: true
+
     # A non-zero exit fails the task, proving the health endpoint answers and its
     # loopback Host is allowed.
     - name: The healthcheck passes
@@ -102,6 +138,17 @@
           - "container.EffectiveCaps | default([], true) | sort == ['CAP_CHOWN', 'CAP_SETGID', 'CAP_SETUID']"
           - "'no-new-privileges' in (container.HostConfig.SecurityOpt | default([], true))"
         fail_msg: "homepage's capability or no-new-privileges posture has regressed"
+        quiet: true
+
+    # The env file is only useful if the unit actually reads it, so assert the
+    # variable reached the container rather than just landing on disk.
+    - name: The credential reached the container's environment
+      vars:
+        container: "{{ homepage_posture.stdout | from_json | first }}"
+      ansible.builtin.assert:
+        that:
+          - "'HOMEPAGE_VAR_MOLECULE_TOKEN=adeptus-molecularum-fixture-token' in (container.Config.Env | default([], true))"
+        fail_msg: the unit is not reading /etc/homepage/env, so no widget credential can resolve
         quiet: true
 
     # Same reasoning as the capabilities: the 200 through caddy proves the apex is

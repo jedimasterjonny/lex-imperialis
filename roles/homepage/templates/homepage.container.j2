@@ -20,6 +20,10 @@ Environment=TZ={{ homepage_timezone }}
 Environment=HOMEPAGE_ALLOWED_HOSTS={{ homepage_domain }}
 # Log to stdout only, so nothing is written under the config mount.
 Environment=LOG_TARGETS=stdout
+# Widget credentials, substituted into the dashboard configs by their
+# HOMEPAGE_VAR_ name. A 0600 file rather than Environment= lines, which would
+# land in this world-readable unit.
+EnvironmentFile=/etc/homepage/env
 # Operator data store: homepage seeds skeleton services/widgets/bookmarks here on
 # first boot and the entrypoint chowns it to PUID. A named volume keeps the
 # backing store off a host bind mount — podman labels it container_file_t (no :Z)
