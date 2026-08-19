@@ -82,6 +82,12 @@
     # DNS, no TLS, and no dependency on caddy, the thing every href already goes
     # through. The container drops CAP_NET_RAW, so homepage's ICMP `ping:` can
     # never work here: every status on this dashboard is an HTTP siteMonitor.
+    # A tile's `widget:` block is fetched server-side too, so its url follows
+    # siteMonitor's reasoning; its credential is a {{HOMEPAGE_VAR_X}} placeholder
+    # resolved from homepage_secrets below, so no key reaches the rendered
+    # services.yaml. Those placeholders are matched by literal string replace:
+    # the missing spaces inside the braces are load-bearing, and !unsafe is what
+    # stops Ansible resolving them here instead of homepage resolving them there.
     #
     # This is a convenience dashboard, not a monitor — the alert for each of
     # these is auspex's blackbox probe. Keep the tiles in step with arr_enabled
@@ -99,56 +105,130 @@
               href: http://solar:32400/web
               # Host-networked and unproxied, and /identity answers without a token.
               siteMonitor: http://solar:32400/identity
+              widget:
+                type: plex
+                url: http://solar:32400
+                key: !unsafe "{{HOMEPAGE_VAR_PLEX_TOKEN}}"
           - Sonarr:
               icon: sonarr.png
               description: Television
               href: https://sonarr.{{ caddy_domain }}
               siteMonitor: http://sonarr:8989/ping
+              widget:
+                type: sonarr
+                url: http://sonarr:8989
+                key: !unsafe "{{HOMEPAGE_VAR_SONARR_KEY}}"
           - Radarr:
               icon: radarr.png
               description: Film
               href: https://radarr.{{ caddy_domain }}
               siteMonitor: http://radarr:7878/ping
+              widget:
+                type: radarr
+                url: http://radarr:7878
+                key: !unsafe "{{HOMEPAGE_VAR_RADARR_KEY}}"
           - Lidarr:
               icon: lidarr.png
               description: Music
               href: https://lidarr.{{ caddy_domain }}
               siteMonitor: http://lidarr:8686/ping
+              # No enableQueue: the lidarr widget has no detailed queue listing.
+              widget:
+                type: lidarr
+                url: http://lidarr:8686
+                key: !unsafe "{{HOMEPAGE_VAR_LIDARR_KEY}}"
       - Acquisition:
           - Prowlarr:
               icon: prowlarr.png
               description: Indexers
               href: https://prowlarr.{{ caddy_domain }}
               siteMonitor: http://prowlarr:9696/ping
+              widget:
+                type: prowlarr
+                url: http://prowlarr:9696
+                key: !unsafe "{{HOMEPAGE_VAR_PROWLARR_KEY}}"
           - Transmission:
               icon: transmission.png
               description: BitTorrent
               href: https://transmission.{{ caddy_domain }}
               # No siteMonitor: RPC auth is on, so an unauthenticated fetch is a
-              # 401 and the tile would read as down. Giving homepage the
-              # credentials to avoid that is the transmission widget's job, not a
-              # status dot's. auspex probes it with http_2xx_or_401 instead.
+              # 401 and the tile would read as down. The widget below is what
+              # holds the credentials — a status dot never gets them. auspex
+              # probes it with http_2xx_or_401 instead.
+              #
+              # rpcUrl is left at the widget's /transmission/ default, which is
+              # the LSIO image's own rpc-url.
+              widget:
+                type: transmission
+                url: http://transmission:9091
+                username: !unsafe "{{HOMEPAGE_VAR_TRANSMISSION_USERNAME}}"
+                password: !unsafe "{{HOMEPAGE_VAR_TRANSMISSION_PASSWORD}}"
           - beets:
               icon: beets.png
               description: Tagging pipeline
               href: https://beets.{{ caddy_domain }}
               siteMonitor: http://beets:8337/
+              # No widget: homepage ships none for beets. The pipeline's backlog
+              # is a node_exporter textfile metric, so grafana is where it reads.
+      # The same two apps again, this time with enableQueue — the detailed
+      # download listing, which has no fold of its own and would otherwise sit
+      # open down the page. Only a group can collapse, so the listing gets its
+      # own, marked initiallyCollapsed below: homepage keeps collapse state in
+      # memory, so this folds again on every load and opens on a click. The
+      # tiles above stay the always-visible ones and keep the counts; these carry
+      # no description or siteMonitor, which would only duplicate their work.
+      - Manifest:
+          - Sonarr:
+              icon: sonarr.png
+              href: https://sonarr.{{ caddy_domain }}
+              widget:
+                type: sonarr
+                url: http://sonarr:8989
+                key: !unsafe "{{HOMEPAGE_VAR_SONARR_KEY}}"
+                enableQueue: true
+          - Radarr:
+              icon: radarr.png
+              href: https://radarr.{{ caddy_domain }}
+              widget:
+                type: radarr
+                url: http://radarr:7878
+                key: !unsafe "{{HOMEPAGE_VAR_RADARR_KEY}}"
+                enableQueue: true
       - Vigil:
           - Grafana:
               icon: grafana.png
               description: Dashboards
               href: https://grafana.{{ caddy_domain }}
               siteMonitor: http://grafana:3000/api/health
+              # version 2 because the widget's default speaks the pre-10.4 API
+              # and grafana here is 13.x. Only the two inventory counts: alerting
+              # is Prometheus's and Alertmanager's on auspex, so grafana holds no
+              # rules and its alert fields would read a permanent zero.
+              widget:
+                type: grafana
+                version: 2
+                url: http://grafana:3000
+                # Not a secret: grafana's admin_user is the image default and
+                # the role does not make it settable. The password is.
+                username: admin
+                password: !unsafe "{{HOMEPAGE_VAR_GRAFANA_PASSWORD}}"
+                fields: [dashboards, datasources]
           - Prometheus:
               icon: prometheus.png
               description: Metrics and alert rules
               href: http://auspex:9090
               siteMonitor: http://auspex:9090/-/healthy
+              # The one widget needing no credential: the API is unauthenticated
+              # on the LAN, so it takes no entry in homepage_secrets.
+              widget:
+                type: prometheus
+                url: http://auspex:9090
           - Alertmanager:
               icon: alertmanager.png
               description: Alert routing
               href: http://auspex:9093
               siteMonitor: http://auspex:9093/-/healthy
+              # No widget: homepage ships none for alertmanager.
     # Group order on the dashboard, so it is declared, not alphabetical.
     homepage_layout:
       Archive:
@@ -157,6 +237,11 @@
       Acquisition:
         style: row
         columns: 3
+      # Folded on every load; the group header is all that shows until clicked.
+      Manifest:
+        style: row
+        columns: 2
+        initiallyCollapsed: true
       Vigil:
         style: row
         columns: 3
@@ -226,6 +311,19 @@
           - jonnyoc.uk:
               - abbr: JO
                 href: https://jonnyoc.uk
+    # Widget credentials, delivered to the container as a 0600 EnvironmentFile
+    # and substituted into the configs by name. Same keys the services above
+    # already own — one credential per service, not a homepage-specific one —
+    # so a rotation there is a rotation here.
+    homepage_secrets:
+      PLEX_TOKEN: "{{ solar_plex_token }}"
+      SONARR_KEY: "{{ arr_api_keys.sonarr }}"
+      RADARR_KEY: "{{ arr_api_keys.radarr }}"
+      LIDARR_KEY: "{{ arr_api_keys.lidarr }}"
+      PROWLARR_KEY: "{{ arr_api_keys.prowlarr }}"
+      TRANSMISSION_USERNAME: "{{ arr_transmission_username }}"
+      TRANSMISSION_PASSWORD: "{{ arr_transmission_password }}"
+      GRAFANA_PASSWORD: "{{ grafana_admin_password }}"
     # This host's restic key. One per host, so a host that is compromised can
     # open only its own repos — the astropath export carries every host's.
     restic_backup_password: "{{ solar_restic_password }}"

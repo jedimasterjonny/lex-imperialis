@@ -58,14 +58,29 @@ every `href` already goes through. Homepage's ICMP `ping:` cannot be used at all
 here: the container drops `CAP_NET_RAW`. None of this is monitoring — the alert
 for each tile is auspex's blackbox probe.
 
-Service widgets are not wired up. They carry API keys, which this public repo
-cannot hold in plaintext; homepage substitutes `{{HOMEPAGE_VAR_X}}` and
-`{{HOMEPAGE_FILE_X}}` in any config file, so the keys would arrive via a 0600
-`EnvironmentFile` exactly as `roles/arr` already delivers `arr_api_keys`.
-
 The container's podman healthcheck against `/api/healthcheck` is the restart backstop,
 not the monitor (see `roles/CLAUDE.md`); monitoring is the blackbox probe of the same
 endpoint, which — homepage serving the apex — exercises caddy on the way through.
+
+## Service widgets
+
+A tile's `widget:` block reads the service's own API, so it needs a credential —
+which this public repo cannot hold in plaintext, and which must not land in the
+mode-0644 configs either. Homepage substitutes `{{HOMEPAGE_VAR_<NAME>}}` in any
+config file with the environment variable of that name, so `homepage_secrets`
+renders to a 0600 `EnvironmentFile` at `/etc/homepage/env` that the unit reads,
+exactly as `roles/arr` delivers `arr_api_keys`; the dashboard itself holds only
+the placeholder. Keys are bare (`SONARR_KEY`) — the role adds the
+`HOMEPAGE_VAR_` prefix homepage matches on, and a name it does not carry is a
+placeholder homepage leaves untouched, so the widget fails rather than the
+render. The scenario asserts both ends: the credential is in the container's
+environment and is *not* in `services.yaml`.
+
+Widget URLs follow `siteMonitor`'s reasoning, not `href`'s — homepage fetches
+them itself, from the container. `arr_api_keys` and the transmission RPC
+credentials are the same vault values `roles/arr` configures the services with,
+so a rotation there is a rotation here. Values are read as literal env lines: a
+credential containing `#`, a quote or a newline will not survive.
 
 ## Hardening
 
@@ -85,5 +100,6 @@ as a failed healthcheck.
 - `homepage_layout` — per-group style and columns, keyed by the group names in `homepage_services`; declaration order is the dashboard's group order.
 - `homepage_timezone` — container timezone for date/time display.
 - `homepage_uid` — host id the container runs as (PUID/PGID).
+- `homepage_secrets` — widget credentials, keyed by the bare name the configs reference as `{{HOMEPAGE_VAR_<NAME>}}`; rendered to the 0600 `/etc/homepage/env`.
 
 The image (`homepage_image`) is pinned by digest; renovate bumps it.

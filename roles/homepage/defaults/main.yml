@@ -39,3 +39,12 @@ homepage_timezone: Etc/UTC
 # Least-privilege host id the container drops to (PUID/PGID). Avoids 1000, which
 # the cloud image's default user holds.
 homepage_uid: 3010
+
+# Widget credentials, keyed by the bare name the config files reference — the
+# role adds the HOMEPAGE_VAR_ prefix homepage matches on. Delivered as a 0600
+# EnvironmentFile rather than rendered into the dashboard, because homepage
+# substitutes {{HOMEPAGE_VAR_<NAME>}} in any config file at read time: a service
+# widget's key therefore reaches the container without a secret ever landing in
+# the mode-0644 /etc/homepage/*.yaml. Empty here for the same reason the content
+# vars are — whose API a dashboard talks to is a host's spec, not a role's.
+homepage_secrets: {}

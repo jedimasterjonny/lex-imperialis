@@ -8,6 +8,11 @@
     # is read: the default "Homepage" is also the app's built-in fallback, so it
     # matches even when the single-file mount is broken.
     homepage_title: Adeptus Molecularum
+    # A fixture credential, to prove the widget-secret path end to end: the
+    # value must reach the container's environment and must not appear in any
+    # of the mode-0644 configs, which carry only the placeholder.
+    homepage_secrets:
+      MOLECULE_TOKEN: adeptus-molecularum-fixture-token
     # One distinctive token per managed config, so verify can prove each single-file
     # mount landed rather than being shadowed by the container's seeded skeleton.
     homepage_services:
@@ -16,6 +21,13 @@
               description: Molecule fixture
               href: http://localhost/
               siteMonitor: http://localhost/
+              # Nothing answers on 8989 here, so the tile renders a widget error
+              # — which is fine: what is under test is that the placeholder is
+              # what lands in services.yaml, not that the API call succeeds.
+              widget:
+                type: sonarr
+                url: http://localhost:8989
+                key: !unsafe "{{HOMEPAGE_VAR_MOLECULE_TOKEN}}"
       - Archive:
           - Scriptorum:
               description: Molecule fixture
