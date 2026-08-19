@@ -273,8 +273,20 @@ groups:
       # the increase. wireguard is excluded because WireguardTunnelDown below watches
       # the same counter on a lower threshold: it would otherwise raise a second,
       # differently-named alert for one fault, and group_by is on alertname.
+      #
+      # Both thresholds here sit on a half, and that is not a typo. increase() does
+      # not return the delta it measured: it rescales that delta to the range
+      # boundaries, so what comes back for N restarts is only approximately N — on
+      # the fleet's scrape cadence, 3.01-3.05 for three. Written `> 3` the rule fires
+      # on the third restart while its own description says "more than 3 times", and
+      # WireguardTunnelDown below was worse: `> 1` fired on a single restart, which
+      # paged twice in the week this was found, both times for a kill the tunnel had
+      # already recovered from before the alert fired. The rescaling runs in both
+      # directions — a ragged window can report *under* the delta as readily as over
+      # it — so each threshold sits midway between the count that should be quiet and
+      # the count that should page, rather than on either.
       - alert: ServiceRestartStorm
-        expr: increase(node_systemd_service_restart_total{name!="wireguard.service"}[15m]) > 3 and on(instance) time() - node_boot_time_seconds > 15 * 60
+        expr: increase(node_systemd_service_restart_total{name!="wireguard.service"}[15m]) > 3.5 and on(instance) time() - node_boot_time_seconds > 15 * 60
         for: 5m
         labels:
           severity: warning
@@ -289,8 +301,10 @@ groups:
       # fire on the second restart (~7m) rather than the fourth. Restarts here are
       # automatic ones only, so an Ansible-driven restart never trips it — nor does a
       # PartOf-propagated stop of a joiner. Same boot gate as above.
+      # Half-threshold for the reason given above; measured here, one restart reads
+      # 1.004-1.017 and two 2.03.
       - alert: WireguardTunnelDown
-        expr: increase(node_systemd_service_restart_total{name="wireguard.service"}[15m]) > 1 and on(instance) time() - node_boot_time_seconds > 15 * 60
+        expr: increase(node_systemd_service_restart_total{name="wireguard.service"}[15m]) > 1.5 and on(instance) time() - node_boot_time_seconds > 15 * 60
         for: 5m
         labels:
           severity: critical

@@ -1483,6 +1483,110 @@ tests:
               summary: "the wireguard tunnel is down on solar:9100"
               description: "wireguard auto-restarted more than once in 15 minutes — it cannot reach the internet through wg0, so the arr stack has no egress."
 
+  # The boundary the half-thresholds turn on; alerts.yml argues why they are halves.
+  # What matters here is `interval: 4m` rather than the 1m used elsewhere, which is the
+  # whole reason these cases are worth their length. Sample the series on any divisor
+  # of the 5m evaluation grid and every window edge lands exactly on a sample, there is
+  # nothing for the rescaling to reach for, the factor comes out at exactly 1.0, and one
+  # restart reads as exactly 1.0 — which `> 1` and `> 1.5` reject alike. Written that
+  # way this case passes against the broken rule and guards nothing; it was, and it did.
+  # 4m is the shortest interval on which the edges stay off the grid for two consecutive
+  # evaluations, which is what the for: needs to resolve either way.
+  #
+  # A single restart is what a rotated VPN endpoint costs when arr-wireguard-refresh
+  # does not get there first, and the tunnel is back inside ten seconds, so it must stay
+  # silent; a second inside the window is a tunnel that is not coming back, which is the
+  # fault this names.
+  - interval: 4m
+    name: a single wireguard restart does not raise the tunnel alert
+    input_series:
+      - series: 'node_systemd_service_restart_total{job="node",instance="solar:9100",name="wireguard.service"}'
+        values: "0x5 1x8"
+      - series: 'node_boot_time_seconds{job="node",instance="solar:9100"}'
+        values: "0x13"
+    alert_rule_test:
+      # 30m is the load-bearing one: the lone restart reads 1.083 here and 1.167
+      # there, so under `> 1` it is only *pending* at 25m — and exp_alerts compares
+      # firing alerts, so this eval passes against the broken rule on its own.
+      # Measured, not assumed. 25m stays to document the pending phase; delete 30m
+      # and the guard is gone.
+      - eval_time: 25m
+        alertname: WireguardTunnelDown
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: WireguardTunnelDown
+        exp_alerts: []
+
+  # The other side of that boundary: the same series with one more step in it. The two
+  # steps are 4m apart here against ~9s on the fleet, where systemd re-runs a killed
+  # container almost immediately — either way they share the 15m window, which is all
+  # the rule asks. Reads 2.333 at 30m and 1.875 at 35m: both over 1.5, and the second
+  # of them under 2, which is why the threshold is not `>= 2`.
+  - interval: 4m
+    name: two wireguard restarts in the window raise the tunnel alert
+    input_series:
+      - series: 'node_systemd_service_restart_total{job="node",instance="solar:9100",name="wireguard.service"}'
+        values: "0x5 1 2x7"
+      - series: 'node_boot_time_seconds{job="node",instance="solar:9100"}'
+        values: "0x13"
+    alert_rule_test:
+      # Pending at 30m, so 35m is the first evaluation past the for: — this pins the
+      # wait as well as the match.
+      - eval_time: 35m
+        alertname: WireguardTunnelDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: node
+              instance: solar:9100
+              name: wireguard.service
+            exp_annotations:
+              summary: "the wireguard tunnel is down on solar:9100"
+              description: "wireguard auto-restarted more than once in 15 minutes — it cannot reach the internet through wg0, so the arr stack has no egress."
+
+  # ServiceRestartStorm's half of the same boundary. It carried the identical bug
+  # and was found by the same investigation: `> 3` fires on the third restart while
+  # the description says "more than 3 times". Three steps land in one scrape gap
+  # here, which is what a flapping unit does on the fleet — systemd re-runs it in
+  # under a second and a 15s scrape sees 0 then 3 — and it is also the geometry that
+  # keeps the rescaling visible across two evaluations, as the wireguard cases above
+  # need it to be.
+  - interval: 4m
+    name: three restarts of an ordinary unit do not raise the storm alert
+    input_series:
+      - series: 'node_systemd_service_restart_total{job="node",instance="solar:9100",name="caddy.service"}'
+        values: "0x5 3x8"
+      - series: 'node_boot_time_seconds{job="node",instance="solar:9100"}'
+        values: "0x13"
+    alert_rule_test:
+      # Reads 3.25 then 3.5 — over `> 3` at both, which is pending then firing.
+      - eval_time: 25m
+        alertname: ServiceRestartStorm
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: ServiceRestartStorm
+        exp_alerts: []
+
+  - interval: 4m
+    name: four restarts of an ordinary unit raise the storm alert
+    input_series:
+      - series: 'node_systemd_service_restart_total{job="node",instance="solar:9100",name="caddy.service"}'
+        values: "0x5 4x8"
+      - series: 'node_boot_time_seconds{job="node",instance="solar:9100"}'
+        values: "0x13"
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: ServiceRestartStorm
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: solar:9100
+              name: caddy.service
+            exp_annotations:
+              summary: "caddy.service is restarting repeatedly on solar:9100"
+              description: "caddy.service on solar:9100 auto-restarted more than 3 times in 15 minutes."
+
   # The catch-all, whose whole risk is its exclusion roster: eight oneshots are
   # excluded *because* each has a bespoke *Failed rule carrying a richer description
   # and the right severity, and group_by is on alertname, so a name left in would
