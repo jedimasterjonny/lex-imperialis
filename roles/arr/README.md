@@ -225,6 +225,17 @@ local traffic does not.
   cost more often to catch that. It is also the one probe that *cannot* be a
   network probe — egress through the tunnel is only observable from inside the
   netns.
+- **Endpoint refresh** — wg-quick resolves the peer hostname once and it names a
+  rotating pool, so the tunnel outlives the member it is pinned to; until now only
+  the auto-recovery kill cleared that, bouncing every joiner for a fault one
+  `wg set` fixes. `arr-wireguard-refresh.timer` re-points the peer in place every
+  30s (`arr_wireguard_refresh_interval`, in `vars/main.yml` beside the healthcheck
+  that sizes it), gated on `FailingStreak`, then on the config still naming a host
+  — an IP literal is the blackhole, left alone — then on egress probed with that
+  check's own `cmd`. It moves off the address in use, not onto whatever the pool
+  answered with. Not a backstop: a re-point that does not take fails the next
+  healthcheck and the kill proceeds as before. `files/arr-wireguard-refresh`
+  argues the gates and their order.
 - **Kill-switch** — with `arr_wireguard_conf` empty, the role generates a
   blackhole config: random keys, `AllowedIPs = 0.0.0.0/0`, a TEST-NET
   endpoint. wg0 comes up with a dead default route, so no confined app's

@@ -40,6 +40,16 @@ arr_wireguard_conf: ""
 # host that keeps its wg config elsewhere.
 arr_wireguard_conf_path: /etc/wireguard/wg0.conf
 
+# Endpoint refresh (files/arr-wireguard-refresh; cadence in vars/main.yml, beside
+# the healthcheck that sizes it). bind-utils for the dig(1) it resolves the peer
+# endpoint with, as wireguard_client installs for its own.
+arr_wireguard_refresh_packages:
+  - bind-utils
+# Public rather than the host's, so the answer does not depend on what the LAN
+# caches. It cannot be the container's resolver at all — that one is the VPN's,
+# down the tunnel being repaired.
+arr_wireguard_refresh_resolver: 1.1.1.1
+
 # beets standing-library catalog. A daily timer runs an incremental
 # `beet import -A` then `beet update` over the music library so the standing
 # catalog tracks what lidarr adds — catalog only, no re-tag and no media writes.

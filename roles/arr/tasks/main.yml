@@ -105,6 +105,39 @@
       no_log: true
       notify: Restart wireguard for arr
 
+    # Re-points the peer when the provider retires the pool member the tunnel
+    # resolved at start; files/arr-wireguard-refresh carries the reasoning.
+    - name: Install the tooling the wireguard endpoint refresh needs
+      community.general.zypper:
+        name: "{{ arr_wireguard_refresh_packages }}"
+        state: present
+
+    - name: Install the wireguard endpoint refresh script
+      ansible.builtin.copy:
+        src: arr-wireguard-refresh
+        dest: /usr/local/sbin/arr-wireguard-refresh
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install the wireguard endpoint refresh service and timer
+      ansible.builtin.template:
+        src: "{{ item }}.j2"
+        dest: "/etc/systemd/system/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - arr-wireguard-refresh.service
+        - arr-wireguard-refresh.timer
+
+    - name: Enable and start the wireguard endpoint refresh timer
+      ansible.builtin.systemd_service:
+        name: arr-wireguard-refresh.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+
 # The shared group only when an enabled app carries it (the media-access apps).
 - name: Create the shared group
   ansible.builtin.group:

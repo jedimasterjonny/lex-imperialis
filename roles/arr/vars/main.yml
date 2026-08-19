@@ -166,7 +166,24 @@ arr_apps:
     # so a dead tunnel takes the whole stack's egress with it. 90s x 2 kills at ~3m,
     # and the restart that follows is what raises WireguardTunnelDown (the prometheus
     # role) — a dead tunnel has no other signal.
+    #
+    # It now sizes two things. arr-wireguard-refresh triggers off this check's
+    # failure count and has until the next check to re-point the peer, so the
+    # interval below is the window it gets, and the tick underneath has to stay
+    # well inside it. `cmd` is the refresh's egress probe too — the unit renders
+    # it from here, so the two cannot come to assert different things.
+    #
+    # This one cmd has to stay bare argv, unlike its neighbours: podman takes a
+    # bare string as CMD-SHELL, but the refresh unit hands it to `podman exec`
+    # with no shell, so a `||` or a pipe here would fail the exec, be read as
+    # egress being down, and re-point on every tick. No `%` either — it reaches
+    # the unit's ExecStart, where systemd would expand it as a specifier.
     healthcheck:
       cmd: ping -c1 -W5 1.1.1.1
       interval: 90s
       retries: 2
+
+# How often arr-wireguard-refresh looks. Not in defaults/: no play will ever set
+# it, and it is meaningless except against the healthcheck interval directly
+# above — which is the whole reason it lives here rather than a file away.
+arr_wireguard_refresh_interval: 30s

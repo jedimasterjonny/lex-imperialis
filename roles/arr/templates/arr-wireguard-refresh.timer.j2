@@ -1,0 +1,14 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Periodically re-point the arr WireGuard peer after a failed healthcheck
+
+[Timer]
+OnBootSec={{ arr_wireguard_refresh_interval }}
+OnUnitActiveSec={{ arr_wireguard_refresh_interval }}
+{# systemd defaults AccuracySec to 1min, which would let a 30s tick elapse #}
+{# anywhere up to 90s and land outside the healthcheck window this is sized to #}
+{# sit inside. The tick is cheap, so buy the precision the sizing assumes. #}
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target
