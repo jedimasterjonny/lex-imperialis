@@ -1,0 +1,17 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Re-point the arr WireGuard peer at a live server after a failed healthcheck
+
+[Service]
+Type=oneshot
+{# A hung podman exec would otherwise sit on systemd's 90s default. Runs cannot #}
+{# stack up behind it either way — systemd merges a start job for a unit that is #}
+{# already running — but bounding it keeps a wedged exec from holding the timer #}
+{# past its own period. #}
+TimeoutStartSec=60s
+{# The container and interface are fixed by the role: vars/main.yml names the app #}
+{# wireguard and binds its config in as wg_confs/wg0.conf, which is what wg-quick #}
+{# takes the interface name from. The probe is the container's own HealthCmd, so #}
+{# the refresh cannot end up asserting something other than what the healthcheck #}
+{# it triggers off asserts. #}
+ExecStart=/usr/local/sbin/arr-wireguard-refresh wireguard wg0 {{ arr_wireguard_conf_path }} {{ arr_wireguard_refresh_resolver }} {{ arr_apps.wireguard.healthcheck.cmd }}

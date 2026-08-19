@@ -1,0 +1,148 @@
+#!/bin/sh
+# Re-point the arr stack's WireGuard peer at a live server when the provider
+# retires the one the tunnel is pinned to.
+#
+# wg-quick resolves the peer's endpoint hostname once, when it configures the
+# interface, and WireGuard holds that address for the life of wg0. A commercial
+# VPN endpoint is not one server but a rotating pool -- the hostname answers with
+# a different member every few seconds, and members are drained and retired under
+# it -- so the tunnel outlives its own server. Keepalives and handshake retries
+# go on reaching an address nothing answers on, and egress is gone until
+# something re-resolves the name. Restarting the container does re-resolve, which
+# is what the healthcheck kill has been doing, but it bounces the whole netns
+# with it -- transmission and every other joiner -- for a fault a single `wg set`
+# fixes without touching the interface.
+#
+# This is wireguard-tools' own contrib/reresolve-dns.sh mechanism (re-resolve,
+# then `wg set ... endpoint`) with a deliberately different trigger, for which see
+# below. Running on the host rather than in the container is forced, not chosen:
+# wg-quick points the container's resolver at the VPN's own nameservers and routes
+# every unmarked packet down wg0, so a lookup from in there would go through the
+# tunnel it is trying to repair.
+#
+# THE GATES, cheapest first, and the order is deliberate:
+#
+#   1. FailingStreak, via podman inspect (~40ms). The healthy path is this read
+#      and nothing else. It is the container's own healthcheck verdict rather than
+#      a second probe of the same thing, and it is earlier than any event podman
+#      offers -- `health_status` fires on the transition to unhealthy, which is
+#      already the kill.
+#   2. The config: readable, an Endpoint, and that Endpoint a name. Local, free,
+#      and ahead of the exec on purpose. A blackhole tunnel (no real config) is
+#      meant to stay dead, so its streak climbs forever and never resets; probing
+#      egress first would spend a full ping timeout on every tick, for ever, on
+#      exactly the host that least wants it.
+#   3. Egress, via the container's own HealthCmd, handed in as argv. This is the
+#      deciding gate and the reason the streak alone will not do: FailingStreak is
+#      a level, not an edge -- it holds its value for a whole healthcheck interval,
+#      so this runs two or three times inside one window. Without this, the ticks
+#      after a successful re-point would read the address just repaired as the one
+#      to move away from, and walk a working tunnel back onto the pool at random.
+#      It also absorbs a single dropped ping, which is a streak of 1 and nothing
+#      worth re-pointing for.
+#
+# Handshake age cannot be the trigger, which is where this parts company with
+# wireguard_client's refresh and with reresolve-dns.sh: a healthy tunnel rekeys
+# about every 120s, so any threshold above that sawtooth leaves less margin before
+# the kill than FailingStreak does.
+#
+# That gate ordering is also load-bearing for a reason that is easy to miss:
+# WireGuard roams. It moves a peer's endpoint to the source of the last
+# authenticated packet it received, so on a tunnel still passing traffic a
+# `wg set` is undone by the next reply from the old address. Measured on the
+# fleet: rc 0, and the endpoint was back before the following command ran.
+# Re-pointing on a plain timer would therefore be a silent no-op for ever. It
+# sticks only once nothing is arriving to snap it back. The same property makes
+# this self-correcting: if the address it moved off recovers mid-tick, roaming
+# takes the tunnel back to it.
+#
+# None of this is a backstop. A re-point landing late in a healthcheck window can
+# still miss -- the new peer may not have handshaked before the next check runs,
+# taking the streak to 2 -- and a re-point that does not take fails that check
+# anyway. Either way the kill proceeds exactly as it did before this existed.
+#
+# A `wg set` that fails exits non-zero, but the timer re-runs 30s later, so the
+# unit is never in `failed` long enough for SystemdUnitFailed's 15m to notice.
+# That is deliberate rather than missed: this is best-effort, and the fault it
+# fails to fix is the one WireguardTunnelDown already names.
+set -u
+
+[ $# -ge 5 ] || {
+    echo "usage: arr-wireguard-refresh <container> <interface> <config> <resolver> <probe...>" >&2
+    exit 2
+}
+container=$1
+iface=$2
+conf=$3
+resolver=$4
+shift 4
+# What is left in "$@" is the egress probe.
+
+# Gate 1. A container that is absent, still starting, or carrying no healthcheck
+# reports nothing numeric here; every one of those means no failure to act on.
+streak=$(podman inspect "$container" --format '{{.State.Health.FailingStreak}}' 2>/dev/null) || exit 0
+case "$streak" in
+    '' | *[!0-9]*) exit 0 ;;
+esac
+[ "$streak" -gt 0 ] || exit 0
+
+# Gate 2.
+[ -r "$conf" ] || exit 0
+# Neither strip is cosmetic. arr_wireguard_conf is whatever the provider's portal
+# handed the operator: a CRLF file would carry \r into the port, and wg-quick
+# accepts a trailing `# comment` that would glue onto it. Either one makes every
+# `wg set` fail, and the unit then logs a failure every tick for ever.
+endpoint=$(sed -n 's/^[[:space:]]*Endpoint[[:space:]]*=[[:space:]]*\([^#]*\).*/\1/p' "$conf" |
+    head -n1 | tr -d '[:space:]')
+[ -n "$endpoint" ] || exit 0
+host=${endpoint%:*}
+port=${endpoint##*:}
+# A config with no port at all leaves the hostname here. Better to do nothing than
+# to fail every tick over a config only the operator can fix.
+case "$port" in
+    '' | *[!0-9]*) exit 0 ;;
+esac
+# An IP literal has nothing to re-resolve; the generated blackhole config is one.
+case "$host" in
+    *[!0-9.]*) ;;
+    *) exit 0 ;;
+esac
+
+# Gate 3.
+podman exec "$container" "$@" >/dev/null 2>&1 && exit 0
+
+# A public resolver rather than the host's keeps the answer independent of what
+# the LAN caches. No answer -- resolver unreachable, NXDOMAIN -- leaves the peer
+# alone for the next tick rather than tearing it off a DNS blip.
+addresses=$(dig +short +time=3 +tries=2 "@${resolver}" "$host" A |
+    grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$')
+[ -n "$addresses" ] || exit 0
+
+# One exec for both the peer key and the address in use; `wg show` reports the
+# resolved address and never the hostname it came from.
+endpoints=$(podman exec "$container" wg show "$iface" endpoints 2>/dev/null) || exit 0
+# The hostname came from the config's first Endpoint and the address in use comes
+# from wg's first peer; nothing guarantees those are the same peer. One peer is
+# what a VPN client config has, so require it rather than guess which is which.
+[ "$(printf '%s\n' "$endpoints" | grep -c .)" -eq 1 ] || exit 0
+read -r peer current _ <<EOF
+$endpoints
+EOF
+[ -n "$peer" ] || exit 0
+current=${current%:*}
+
+# Move off the address in use rather than to whatever the pool happened to
+# answer with: the lookup returns a different member almost every time, so
+# re-pointing at the one already failing would burn the tick and log a change
+# that changed nothing. An answer offering nothing else means the pool has not
+# dropped it yet -- wait for the next tick.
+newip=$(printf '%s\n' "$addresses" | grep -vxF "$current" | head -n1)
+[ -n "$newip" ] || exit 0
+
+if podman exec "$container" wg set "$iface" peer "$peer" endpoint "${newip}:${port}"; then
+    logger -t arr-wireguard-refresh \
+        "${iface} peer ${current} -> ${newip}:${port} after ${streak} failed healthcheck(s)"
+else
+    logger -t arr-wireguard-refresh "${iface} re-point to ${newip}:${port} failed"
+    exit 1
+fi

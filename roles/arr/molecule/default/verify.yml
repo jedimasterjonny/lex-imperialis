@@ -269,6 +269,164 @@
       become: true
       changed_when: false
 
+    # Only the script: a unit file that does not exist could not be enabled and
+    # active, which the next pair asserts, and starting the service below proves
+    # it parses.
+    - name: Stat the refresh script
+      ansible.builtin.stat:
+        path: /usr/local/sbin/arr-wireguard-refresh
+      register: arr_refresh_script
+      become: true
+
+    - name: The refresh script is installed executable
+      ansible.builtin.assert:
+        that:
+          - arr_refresh_script.stat.exists
+          - arr_refresh_script.stat.mode == '0755'
+        fail_msg: "arr-wireguard-refresh is missing or not executable"
+        quiet: true
+
+    - name: Read the refresh timer's unit state
+      ansible.builtin.systemd_service:
+        name: arr-wireguard-refresh.timer
+      register: arr_refresh_timer
+      become: true
+
+    - name: The refresh timer is enabled and running
+      ansible.builtin.assert:
+        that:
+          - arr_refresh_timer.status.UnitFileState == 'enabled'
+          - arr_refresh_timer.status.ActiveState == 'active'
+        fail_msg: >-
+          arr-wireguard-refresh.timer is {{ arr_refresh_timer.status.UnitFileState }}
+          and {{ arr_refresh_timer.status.ActiveState }}
+        quiet: true
+
+    # The guard that protects the kill-switch, and the only half of the refresh a
+    # container can exercise: the blackhole config's endpoint is an IP literal, so
+    # there is no name to re-resolve and the script must leave the peer alone even
+    # though the tunnel is failing its healthcheck by design. Without this the
+    # refresh would chase a dead tunnel that is meant to stay dead. Driving the
+    # healthcheck first is what makes the case real — FailingStreak is the script's
+    # trigger, and at zero it would return early for the wrong reason and pass.
+    - name: Fail the wireguard healthcheck so the refresh has a streak to act on
+      ansible.builtin.command: podman healthcheck run wireguard
+      become: true
+      failed_when: false
+      changed_when: false
+
+    - name: The refresh has a non-zero failing streak to act on
+      ansible.builtin.command: podman inspect wireguard --format '{{ '{{' }}.State.Health.FailingStreak{{ '}}' }}'
+      register: arr_refresh_streak
+      become: true
+      changed_when: false
+      failed_when: arr_refresh_streak.stdout | int < 1
+
+    - name: Record the blackhole peer before the refresh runs
+      ansible.builtin.command: podman exec wireguard wg show wg0 endpoints
+      register: arr_refresh_before
+      become: true
+      changed_when: false
+
+    # Through the unit, not the script: the rendered ExecStart is where the
+    # arguments are assembled, and a hand-built argv would leave that assembly
+    # untested.
+    - name: The refresh leaves a blackhole tunnel's IP-literal endpoint alone
+      ansible.builtin.systemd_service:
+        name: arr-wireguard-refresh.service
+        state: started
+      become: true
+
+    - name: Read how the refresh unit exited
+      ansible.builtin.systemd_service:
+        name: arr-wireguard-refresh.service
+      register: arr_refresh_blackhole
+      become: true
+
+    - name: Record the blackhole peer after the refresh runs
+      ansible.builtin.command: podman exec wireguard wg show wg0 endpoints
+      register: arr_refresh_after
+      become: true
+      changed_when: false
+
+    # Compared before against after rather than against the TEST-NET literal: what
+    # `wg show` prints for a peer that has never completed a handshake is its
+    # business, and pinning the literal would assert that instead of the property
+    # this cares about, which is that the refresh changed nothing.
+    - name: The refresh made no change to the blackhole peer
+      ansible.builtin.assert:
+        that:
+          - arr_refresh_blackhole.status.ExecMainStatus | int == 0
+          - arr_refresh_after.stdout == arr_refresh_before.stdout
+        fail_msg: >-
+          the refresh disturbed the blackhole tunnel: exit
+          {{ arr_refresh_blackhole.status.ExecMainStatus }},
+          {{ arr_refresh_before.stdout }} -> {{ arr_refresh_after.stdout }}
+        quiet: true
+
+    # The other side of the guard, and the only way the container tier reaches the
+    # part that actually re-points: a config whose Endpoint is a *name*. one.one.one.one
+    # is a real two-address pool, and `wg set` needs no reachable peer to accept an
+    # endpoint, so this drives the whole path the blackhole case skips — the conf
+    # parse, the hostname branch, dig, the peer and current-address extraction, the
+    # pick-something-else filter and the `wg set` itself. Left on a scratch config so
+    # the role's own blackhole conf, and the kill-switch it encodes, are untouched.
+    #
+    # `false` as the probe, not the real HealthCmd: this case needs the egress gate
+    # to fail, and a genuine `ping -W5` through a tunnel blackholed by design can
+    # only ever burn its whole timeout. The HealthCmd-derived argv is not skipped —
+    # the blackhole case above runs the rendered unit, which is where it is built.
+    - name: Write a scratch config whose endpoint is a name, not a literal
+      ansible.builtin.copy:
+        content: |
+          [Peer]
+          Endpoint = one.one.one.one:51820
+        dest: /tmp/arr-refresh-scratch.conf
+        owner: root
+        group: root
+        mode: "0600"
+      become: true
+
+    - name: The refresh re-points a named endpoint at a member of its pool
+      ansible.builtin.command:
+        argv:
+          - /usr/local/sbin/arr-wireguard-refresh
+          - wireguard
+          - wg0
+          - /tmp/arr-refresh-scratch.conf
+          - "{{ arr_wireguard_refresh_resolver }}"
+          - "false"
+      register: arr_refresh_named
+      become: true
+      changed_when: false
+
+    - name: Read where the refresh moved the peer
+      ansible.builtin.command: podman exec wireguard wg show wg0 endpoints
+      register: arr_refresh_moved
+      become: true
+      changed_when: false
+
+    - name: The peer now points at an address the pool actually returned
+      ansible.builtin.assert:
+        that:
+          # Length first: an empty stdout would otherwise raise an index error and
+          # lose the diagnostic below. rc is not asserted — the command task has no
+          # failed_when, so a non-zero exit has already failed the play.
+          - arr_refresh_moved.stdout.split() | length > 1
+          - arr_refresh_moved.stdout.split()[1] in ['1.1.1.1:51820', '1.0.0.1:51820']
+        fail_msg: >-
+          the refresh did not re-point onto the pool: rc {{ arr_refresh_named.rc }},
+          endpoint {{ arr_refresh_moved.stdout }}. This case resolves
+          one.one.one.one against 1.1.1.1, so a blocked resolver fails here too —
+          check egress before reading it as a code fault.
+        quiet: true
+
+    - name: Remove the scratch config
+      ansible.builtin.file:
+        path: /tmp/arr-refresh-scratch.conf
+        state: absent
+      become: true
+
     # Run each webui app's probe directly (a non-zero exit fails the task), so
     # the command resolving inside the image and the endpoint answering are both
     # proven. wireguard is excluded — its blackhole tunnel is meant to fail.
