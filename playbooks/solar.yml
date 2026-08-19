@@ -229,6 +229,170 @@
               href: http://auspex:9093
               siteMonitor: http://auspex:9093/-/healthy
               # No widget: homepage ships none for alertmanager.
+      # Host health for the whole fleet, read from the Prometheus on auspex
+      # rather than from each host's own exporter: one address to reach, and the
+      # same series the alerts evaluate. RAM and Temp are MemoryLow and
+      # HostCpuTemperatureHigh stated as used rather than free, so a tile and the
+      # alert about it cannot disagree; CPU mirrors no alert, because sustained
+      # load is a fact about a host rather than a fault, and nor does Disk — see
+      # below. Still convenience, not monitoring: nothing here pages, and a host
+      # that stops being scraped empties its tile rather than marking it down.
+      #
+      # Four metrics is the widget's hard cap: it fetches metrics[0:4] and
+      # renders anything past that blank. Disk is the used share of the host's
+      # largest block device: topk picks it by size, and the join brings back
+      # that mountpoint's free space. device=~"/dev/.*" is load-bearing — the NAS
+      # export three of these hosts mount is larger than anything local, so
+      # without it all three would report the array's fill rather than their own
+      # disk. On the btrfs hosts every subvolume reports the pool's size, so the
+      # topk tie between them is broken arbitrarily; harmless, since they all
+      # report the same free space. This is narrower than FilesystemSpaceLow,
+      # which fires on any filesystem under 10% free, so a small partition can
+      # page while this tile still reads low. `instance` is the node job's target
+      # in playbooks/auspex.yml verbatim; renaming one there blanks a tile here.
+      #
+      # No href — there is no per-host page to open, and grafana in Vigil is the
+      # way into the history — and no siteMonitor, which would have homepage
+      # fetch an exporter port it otherwise never touches to report what the four
+      # metrics beside it already show.
+      - Cogitators:
+          - solar:
+              icon: mdi-server
+              description: Media and downloads
+              widget:
+                type: prometheusmetric
+                url: http://auspex:9090
+                # Against the widget's 10s default: these are 15s-scraped gauges
+                # read by four tiles at once, and none of them moves in a minute.
+                refreshInterval: 60000
+                metrics:
+                  - label: CPU
+                    query: 100 - avg(rate(node_cpu_seconds_total{instance="solar:9100", mode="idle"}[5m])) * 100
+                    format:
+                      type: percent
+                  - label: RAM
+                    query: 100 - node_memory_MemAvailable_bytes{instance="solar:9100"} / node_memory_MemTotal_bytes * 100
+                    format:
+                      type: percent
+                  - label: Disk
+                    query: >-
+                      100 - (node_filesystem_avail_bytes{instance="solar:9100", device=~"/dev/.*"}
+                      / node_filesystem_size_bytes) * 100
+                      and on (instance, mountpoint)
+                      topk(1, node_filesystem_size_bytes{instance="solar:9100", device=~"/dev/.*"})
+                    format:
+                      type: percent
+                  - label: Temp
+                    query: max(node_hwmon_temp_celsius{instance="solar:9100", chip="platform_coretemp_0"})
+                    format:
+                      type: number
+                      suffix: "°C"
+                      options:
+                        maximumFractionDigits: 0
+          - scholam:
+              icon: mdi-server
+              description: Control and development
+              widget:
+                type: prometheusmetric
+                url: http://auspex:9090
+                refreshInterval: 60000
+                metrics:
+                  - label: CPU
+                    query: 100 - avg(rate(node_cpu_seconds_total{instance="scholam:9100", mode="idle"}[5m])) * 100
+                    format:
+                      type: percent
+                  - label: RAM
+                    query: 100 - node_memory_MemAvailable_bytes{instance="scholam:9100"} / node_memory_MemTotal_bytes * 100
+                    format:
+                      type: percent
+                  - label: Disk
+                    query: >-
+                      100 - (node_filesystem_avail_bytes{instance="scholam:9100", device=~"/dev/.*"}
+                      / node_filesystem_size_bytes) * 100
+                      and on (instance, mountpoint)
+                      topk(1, node_filesystem_size_bytes{instance="scholam:9100", device=~"/dev/.*"})
+                    format:
+                      type: percent
+                  - label: Temp
+                    query: max(node_hwmon_temp_celsius{instance="scholam:9100", chip="platform_coretemp_0"})
+                    format:
+                      type: number
+                      suffix: "°C"
+                      options:
+                        maximumFractionDigits: 0
+          - auspex:
+              icon: mdi-raspberry-pi
+              description: Monitoring host
+              widget:
+                type: prometheusmetric
+                url: http://auspex:9090
+                refreshInterval: 60000
+                metrics:
+                  - label: CPU
+                    query: 100 - avg(rate(node_cpu_seconds_total{instance="auspex:9100", mode="idle"}[5m])) * 100
+                    format:
+                      type: percent
+                  - label: RAM
+                    query: 100 - node_memory_MemAvailable_bytes{instance="auspex:9100"} / node_memory_MemTotal_bytes * 100
+                    format:
+                      type: percent
+                  # The largest device here is the NVMe carrying the TSDB,
+                  # which is the one worth watching — the SD card holding / is a
+                  # tenth of its size.
+                  - label: Disk
+                    query: >-
+                      100 - (node_filesystem_avail_bytes{instance="auspex:9100", device=~"/dev/.*"}
+                      / node_filesystem_size_bytes) * 100
+                      and on (instance, mountpoint)
+                      topk(1, node_filesystem_size_bytes{instance="auspex:9100", device=~"/dev/.*"})
+                    format:
+                      type: percent
+                  # thermal_thermal_zone0, not the N150s' platform_coretemp_0:
+                  # this is the Pi, and its chip label is the other one
+                  # HostCpuTemperatureHigh matches on.
+                  - label: Temp
+                    query: max(node_hwmon_temp_celsius{instance="auspex:9100", chip="thermal_thermal_zone0"})
+                    format:
+                      type: number
+                      suffix: "°C"
+                      options:
+                        maximumFractionDigits: 0
+          - rogue-trader:
+              icon: mdi-cloud-outline
+              description: Public web host
+              widget:
+                type: prometheusmetric
+                url: http://auspex:9090
+                refreshInterval: 60000
+                # Scraped over the tunnel, so its instance label is the WireGuard
+                # address rather than a name, exactly as playbooks/auspex.yml
+                # declares the target.
+                metrics:
+                  - label: CPU
+                    query: 100 - avg(rate(node_cpu_seconds_total{instance="192.168.3.4:9100", mode="idle"}[5m])) * 100
+                    format:
+                      type: percent
+                  - label: RAM
+                    query: >-
+                      100 - node_memory_MemAvailable_bytes{instance="192.168.3.4:9100"}
+                      / node_memory_MemTotal_bytes * 100
+                    format:
+                      type: percent
+                  - label: Disk
+                    query: >-
+                      100 - (node_filesystem_avail_bytes{instance="192.168.3.4:9100", device=~"/dev/.*"}
+                      / node_filesystem_size_bytes) * 100
+                      and on (instance, mountpoint)
+                      topk(1, node_filesystem_size_bytes{instance="192.168.3.4:9100", device=~"/dev/.*"})
+                    format:
+                      type: percent
+                  # Uptime in the slot the others give to temperature: a Hetzner
+                  # VM exports no hwmon sensor, and this is the host an
+                  # unannounced reboot is most likely to happen to.
+                  - label: Uptime
+                    query: time() - node_boot_time_seconds{instance="192.168.3.4:9100"}
+                    format:
+                      type: duration
     # Group order on the dashboard, so it is declared, not alphabetical.
     homepage_layout:
       Archive:
@@ -245,6 +409,9 @@
       Vigil:
         style: row
         columns: 3
+      Cogitators:
+        style: row
+        columns: 4
     homepage_widgets:
       # The visible page title. settings.yaml's title: only sets the browser tab —
       # homepage renders no heading of its own — so the greeting widget is the
