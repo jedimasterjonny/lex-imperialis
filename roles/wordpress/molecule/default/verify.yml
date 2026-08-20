@@ -477,6 +477,55 @@
         fail_msg: "the update-check metric is missing a success, timestamp, or per-type gauge line"
         quiet: true
 
+    - name: The boost timer is active
+      ansible.builtin.systemd_service:
+        name: wordpress-boost.timer
+        daemon_reload: true
+      register: wordpress_boost_timer
+      become: true
+      failed_when: wordpress_boost_timer.status.ActiveState != 'active'
+
+    # Stop it so a live six-hourly fire can't clobber the .prom the metric check
+    # below writes and reads back.
+    - name: Stop the boost timer for the metric check
+      ansible.builtin.systemd_service:
+        name: wordpress-boost.timer
+        state: stopped
+      become: true
+
+    - name: Run the boost service
+      ansible.builtin.systemd_service:
+        name: wordpress-boost.service
+        state: started
+      become: true
+
+    - name: Read the boost metric after the run
+      ansible.builtin.slurp:
+        src: "{{ wordpress_textfile_dir }}/wordpress-boost.prom"
+      register: wordpress_boost_metric
+      become: true
+
+    # This role does not manage the jetpack-boost plugin, so the molecule site
+    # never has it — which makes this the degraded path, and the one worth
+    # pinning: the script must still publish a complete, well-formed file rather
+    # than erroring out or emitting value-less lines node_exporter would reject.
+    # wordpress_boost_installed 0 is the assertion that proves it took that path.
+    - name: The boost metric publishes every gauge with Boost absent
+      vars:
+        wordpress_boost_metric_text: "{{ wordpress_boost_metric.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "wordpress_boost_metric_text is search('(?m)^wordpress_boost_success [01]$')"
+          - "wordpress_boost_metric_text is search('(?m)^wordpress_boost_last_run_timestamp_seconds [0-9]+$')"
+          - "wordpress_boost_metric_text is search('(?m)^wordpress_boost_installed 0$')"
+          - "wordpress_boost_metric_text is search('(?m)^wordpress_boost_critical_css_generated 0$')"
+          - "wordpress_boost_metric_text is search('(?m)^wordpress_boost_critical_css_updated_timestamp_seconds 0$')"
+          - "wordpress_boost_metric_text is search('(?m)^wordpress_boost_critical_css_providers\\{status=\"success\"\\} 0$')"
+          - "wordpress_boost_metric_text is search('(?m)^wordpress_boost_critical_css_providers\\{status=\"error\"\\} 0$')"
+          - "wordpress_boost_metric_text is search('(?m)^wordpress_boost_critical_css_stored_bytes 0$')"
+        fail_msg: "the boost metric did not degrade to a complete zeroed file with Boost absent"
+        quiet: true
+
     # podman healthcheck run executes each container's HealthCmd; rc 0 = healthy.
     - name: Each container passes its healthcheck
       ansible.builtin.command: "podman healthcheck run {{ item }}"

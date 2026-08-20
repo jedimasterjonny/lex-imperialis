@@ -160,7 +160,16 @@ opted into auto-update) and the update-check pair `WordpressUpdateCheckFailed` /
 `WordpressUpdateCheckOverdue` (a six-hourly update check that errored or has not
 completed in over a day) and the cron pair `WordpressCronFailed` /
 `WordpressCronOverdue` (the 5-minute wp-cron run that hard-failed or has not run
-in over an hour); the `arbites` group's `ArbitesFailed` /
+in over an hour) and the Jetpack Boost rules `WordpressBoostCriticalCssMissing`
+(critical CSS Boost reports ungenerated, gated on `wordpress_boost_installed`
+since the `wordpress` role does not manage the plugin),
+`WordpressBoostCriticalCssStale` (generated over 30 days ago, gated instead on
+`wordpress_boost_critical_css_generated` so a never-generated install — which
+carries `updated` 0 — raises one alert rather than two) and the check pair
+`WordpressBoostFailed` / `WordpressBoostOverdue`, the latter the only rule that
+catches a stopped timer, since the check always exits 0 by design and its last
+textfile keeps reading healthy. The permanently failing-provider count
+deliberately carries no rule; the `arbites` group's `ArbitesFailed` /
 `ArbitesStale` (an unattended fleet reconcile that failed or has not completed
 in over 2 hours); the `drift` group's `ContainerDigestDrift` /
 `UnmanagedContainerRunning` / `QuadletNotRunning` / `QuadletUnpinned` (the

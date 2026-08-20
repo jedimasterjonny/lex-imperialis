@@ -58,6 +58,34 @@ auto-updates to clear first. `WordpressUpdateCheckFailed` /
 broken checker can't mask a real pending update. The role only reports updates;
 apply them with `wp core update`, `wp plugin update` (and so on) or through wp-admin.
 
+## Critical CSS alerting
+
+`wordpress-boost.timer` runs `/usr/local/sbin/wp-boost.sh` every six
+hours — offset 20 minutes from the update check so the two `wp` containers don't
+start on the same tick — reading Jetpack Boost's `critical_css_state` and the
+stored `jb_store_css` posts into `wordpress_textfile_dir/wordpress-boost.prom` as
+`wordpress_boost_installed`, `wordpress_boost_critical_css_generated`,
+`wordpress_boost_critical_css_updated_timestamp_seconds`,
+`wordpress_boost_critical_css_providers{status="success|error"}` and
+`wordpress_boost_critical_css_stored_bytes`, alongside the usual
+`wordpress_boost_success` / `_last_run_timestamp_seconds` pair. A failed
+check carries the last-good values forward, as the update check does.
+
+Boost's free tier generates critical CSS in the browser, so nothing on the host
+can regenerate it: the role reports, and `WordpressBoostCriticalCssMissing` /
+`WordpressBoostCriticalCssStale` clear when the operator regenerates from the
+Boost admin page. Both cover a state `status` alone hides — a plugin update
+resets it while the previously stored CSS is still served, and it reads
+`generated` even when individual providers failed. The error count is published
+without a rule: a provider whose pages carry no external stylesheet fails every
+run. The role does not manage the plugin, so `wordpress_boost_installed` is 0 on
+a WordPress host without Boost and `WordpressBoostCriticalCssMissing` gates on
+it; `WordpressBoostCriticalCssStale` gates on
+`wordpress_boost_critical_css_generated` instead, so a never-generated install
+raises one alert rather than two. `WordpressBoostFailed` /
+`WordpressBoostOverdue` cover the check itself — the script always exits 0, so
+the overdue rule is what catches a stopped timer or a deleted script.
+
 ## Secrets
 
 `wordpress_db_password` and `wordpress_db_root_password` are vault-sourced and

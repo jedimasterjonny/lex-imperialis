@@ -345,7 +345,8 @@ groups:
       - alert: SystemdUnitFailed
         expr: >-
           node_systemd_unit_state{state="failed",
-          name!~"(arbites|inquisition|podman-backup|home-backup|autoupdate|wordpress-cron|wordpress-db-dump|wordpress-update-check)[.]service"} == 1
+          name!~"(arbites|inquisition|podman-backup|home-backup|autoupdate|wordpress-cron|wordpress-db-dump|wordpress-update-check|wordpress-boost)[.]service"}
+          == 1
         for: 15m
         labels:
           severity: warning
@@ -588,6 +589,78 @@ groups:
           summary: "WordPress cron overdue on {{ $labels.instance }}"
           description: "{{ $labels.instance }} has not run WordPress cron in over an hour — scheduled posts and tasks have stalled."
 
+      # Jetpack Boost's free tier generates critical CSS in the browser, so
+      # nothing on the host — or in these rules — can regenerate it. They report
+      # only, and clear when the operator regenerates from wp-admin.
+      #
+      # All three gauges are published whether or not Boost is installed, so the
+      # two rules below gate on a second series rather than on absence: the role
+      # does not manage the plugin, and a WordPress host without it must not
+      # alert for CSS it was never meant to have.
+      #
+      # Deliberately no rule on wordpress_boost_critical_css_providers{status="error"}.
+      # A provider whose pages carry no external stylesheet fails every single
+      # run — emmasedit's singular_wpm-testimonial does — so a rule on the error
+      # count would fire permanently and teach the operator to ignore it. The
+      # gauge is published for context; the two real failures are below.
+      - alert: WordpressBoostCriticalCssMissing
+        expr: wordpress_boost_critical_css_generated == 0 and on (instance) wordpress_boost_installed == 1
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Jetpack Boost critical CSS not generated on {{ $labels.instance }}"
+          description: >-
+            Boost reports no critical CSS on {{ $labels.instance }} — a plugin update
+            resets the state — so pages load without it, or worse serve a stale copy
+            still in storage. Regenerate from the Boost admin page.
+      # Keyed on generated == 1, not installed == 1: an install that has never
+      # generated carries updated 0, which would otherwise trip this rule as well
+      # as the missing one above and raise two alerts for one fault.
+      #
+      # Critical CSS only goes stale when the theme or above-the-fold markup
+      # changes, which is operator-driven — so this is a nudge, not a fault, and
+      # 30d is set long enough that a site left alone does not nag. Lengthen or
+      # drop it if it ever does.
+      - alert: WordpressBoostCriticalCssStale
+        expr: >-
+          time() - wordpress_boost_critical_css_updated_timestamp_seconds > 30 * 86400
+          and on (instance) wordpress_boost_critical_css_generated == 1
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Jetpack Boost critical CSS stale on {{ $labels.instance }}"
+          description: >-
+            The critical CSS on {{ $labels.instance }} was generated over 30 days ago
+            and no longer reflects any theme or markup change since. Regenerate it from
+            the Boost admin page.
+      # The six-hourly metric holds success=0 constant until the next run, so a
+      # single transient wp-cli blip would satisfy a short for:; 12h (over two
+      # checks) fires only on a sustained failure, matching WordpressUpdateCheckFailed.
+      - alert: WordpressBoostFailed
+        expr: wordpress_boost_success == 0
+        for: 12h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Jetpack Boost check failed on {{ $labels.instance }}"
+          description: "The last Jetpack Boost check on {{ $labels.instance }} errored — critical CSS may have lapsed unseen."
+      # The six-hourly timer caps a healthy check at ~6h old; over a day (four
+      # missed runs) gives ample grace before flagging a stalled checker. This is
+      # the only rule that catches a stopped timer or a deleted script: the check
+      # always exits 0 by design, so wordpress-boost.service can barely enter
+      # failed, its last .prom stays on disk serving success 1 indefinitely, and
+      # SystemdUnitFailed excludes the unit on the grounds this pair covers it.
+      - alert: WordpressBoostOverdue
+        expr: time() - wordpress_boost_last_run_timestamp_seconds > 1 * 86400
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Jetpack Boost check overdue on {{ $labels.instance }}"
+          description: "{{ $labels.instance }} has not completed a Jetpack Boost check in over a day."
+
   - name: arbites
     rules:
       - alert: ArbitesFailed
@@ -820,6 +893,7 @@ groups:
           or (group by (instance, name) (node_systemd_unit_state{name="wordpress-db-dump.service"}) unless on (instance) wordpress_db_dump_success)
           or (group by (instance, name) (node_systemd_unit_state{name="wordpress-cron.service"}) unless on (instance) wordpress_cron_success)
           or (group by (instance, name) (node_systemd_unit_state{name="wordpress-update-check.service"}) unless on (instance) wordpress_update_check_success)
+          or (group by (instance, name) (node_systemd_unit_state{name="wordpress-boost.service"}) unless on (instance) wordpress_boost_success)
           or (group by (instance, name) (node_systemd_unit_state{name="autoupdate.service"}) unless on (instance) autoupdate_success)
           or (group by (instance, name) (node_systemd_unit_state{name="arbites.service"}) unless on (instance) arbites_success)
           or (group by (instance, name) (node_systemd_unit_state{name="inquisition.service"}) unless on (instance) inquisition_success)
