@@ -188,7 +188,7 @@
              | regex_findall('name="([a-z-]+)[.]service"') | sort }}
       ansible.builtin.assert:
         that:
-          - prometheus_excluded_units | length == 8
+          - prometheus_excluded_units | length == 9
           - prometheus_excluded_units == prometheus_covered_units
         fail_msg: >-
           SystemdUnitFailed excludes {{ prometheus_excluded_units }} but

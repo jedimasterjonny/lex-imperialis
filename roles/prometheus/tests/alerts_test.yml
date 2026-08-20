@@ -1064,6 +1064,8 @@ tests:
       # Six-hourly.
       - series: 'wordpress_update_check_last_run_timestamp_seconds{job="node",instance="rogue-trader:9100"}'
         values: "-21600x20"
+      - series: 'wordpress_boost_last_run_timestamp_seconds{job="node",instance="rogue-trader:9100"}'
+        values: "-21600x20"
       # Every fifteen minutes.
       - series: 'arbites_last_run_timestamp_seconds{job="node",instance="scholam:9100"}'
         values: "-900x20"
@@ -1082,6 +1084,9 @@ tests:
         exp_alerts: []
       - eval_time: 1h5m
         alertname: WordpressUpdateCheckOverdue
+        exp_alerts: []
+      - eval_time: 1h5m
+        alertname: WordpressBoostOverdue
         exp_alerts: []
       - eval_time: 1h5m
         alertname: ArbitesStale
@@ -1338,6 +1343,158 @@ tests:
               description: "2 core update(s) are pending on rogue-trader:9100 — apply via wp-cli or wp-admin."
       - eval_time: 23h55m
         alertname: WordpressUpdateAvailable
+        exp_alerts: []
+
+  # The install gate is what keeps these rules off a WordPress host that never had
+  # Boost: the role does not manage the plugin, so the check publishes generated 0
+  # there too, and without the gate every such host would alert for CSS it was
+  # never meant to have.
+  - interval: 5m
+    name: ungenerated critical CSS alerts only where Boost is installed
+    input_series:
+      - series: 'wordpress_boost_installed{job="node",instance="rogue-trader:9100"}'
+        values: "1x30"
+      - series: 'wordpress_boost_critical_css_generated{job="node",instance="rogue-trader:9100"}'
+        values: "0x30"
+      - series: 'wordpress_boost_installed{job="node",instance="solar:9100"}'
+        values: "0x30"
+      - series: 'wordpress_boost_critical_css_generated{job="node",instance="solar:9100"}'
+        values: "0x30"
+    alert_rule_test:
+      - eval_time: 1h5m
+        alertname: WordpressBoostCriticalCssMissing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: rogue-trader:9100
+            exp_annotations:
+              summary: "Jetpack Boost critical CSS not generated on rogue-trader:9100"
+              description: >-
+                Boost reports no critical CSS on rogue-trader:9100 — a plugin update
+                resets the state — so pages load without it, or worse serve a stale copy
+                still in storage. Regenerate from the Boost admin page.
+      - eval_time: 55m
+        alertname: WordpressBoostCriticalCssMissing
+        exp_alerts: []
+
+  # Pins the anti-overlap property: an install that has never generated carries
+  # updated 0, so keying the stale rule on generated == 1 rather than on
+  # installed == 1 is what stops one fault raising two alerts.
+  - interval: 5m
+    name: ageing critical CSS alerts, and an ungenerated one raises only the missing rule
+    input_series:
+      - series: 'wordpress_boost_critical_css_generated{job="node",instance="rogue-trader:9100"}'
+        values: "1x30"
+      - series: 'wordpress_boost_critical_css_updated_timestamp_seconds{job="node",instance="rogue-trader:9100"}'
+        values: "-2592000x30"
+      - series: 'wordpress_boost_installed{job="node",instance="solar:9100"}'
+        values: "1x30"
+      - series: 'wordpress_boost_critical_css_generated{job="node",instance="solar:9100"}'
+        values: "0x30"
+      - series: 'wordpress_boost_critical_css_updated_timestamp_seconds{job="node",instance="solar:9100"}'
+        values: "0x30"
+    alert_rule_test:
+      - eval_time: 1h5m
+        alertname: WordpressBoostCriticalCssStale
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: rogue-trader:9100
+            exp_annotations:
+              summary: "Jetpack Boost critical CSS stale on rogue-trader:9100"
+              description: >-
+                The critical CSS on rogue-trader:9100 was generated over 30 days ago and
+                no longer reflects any theme or markup change since. Regenerate it from
+                the Boost admin page.
+
+  # Freshly generated CSS is not stale however long the test runs.
+  - interval: 5m
+    name: recently generated critical CSS does not alert
+    input_series:
+      - series: 'wordpress_boost_critical_css_generated{job="node",instance="rogue-trader:9100"}'
+        values: "1x30"
+      - series: 'wordpress_boost_critical_css_updated_timestamp_seconds{job="node",instance="rogue-trader:9100"}'
+        values: "-86400x30"
+    alert_rule_test:
+      - eval_time: 2h
+        alertname: WordpressBoostCriticalCssStale
+        exp_alerts: []
+
+  # A provider whose pages carry no external stylesheet fails every run, so the
+  # error gauge is published for context and deliberately carries no rule. This
+  # pins that: a healthy install with a permanently failing provider is silent.
+  - interval: 5m
+    name: a permanently failing critical CSS provider raises nothing
+    input_series:
+      - series: 'wordpress_boost_installed{job="node",instance="rogue-trader:9100"}'
+        values: "1x30"
+      - series: 'wordpress_boost_critical_css_generated{job="node",instance="rogue-trader:9100"}'
+        values: "1x30"
+      - series: 'wordpress_boost_critical_css_updated_timestamp_seconds{job="node",instance="rogue-trader:9100"}'
+        values: "-3600x30"
+      - series: 'wordpress_boost_success{job="node",instance="rogue-trader:9100"}'
+        values: "1x30"
+      - series: 'wordpress_boost_critical_css_providers{job="node",instance="rogue-trader:9100",status="error"}'
+        values: "1x30"
+    alert_rule_test:
+      - eval_time: 2h
+        alertname: WordpressBoostCriticalCssMissing
+        exp_alerts: []
+      - eval_time: 2h
+        alertname: WordpressBoostCriticalCssStale
+        exp_alerts: []
+      - eval_time: 2h
+        alertname: WordpressBoostFailed
+        exp_alerts: []
+
+  # The six-hourly metric holds success 0 constant until the next run, so 12h is
+  # what makes this rule about a sustained failure rather than one transient blip.
+  - interval: 5m
+    name: a sustained boost check failure alerts
+    input_series:
+      - series: 'wordpress_boost_success{job="node",instance="rogue-trader:9100"}'
+        values: "0x160"
+    alert_rule_test:
+      - eval_time: 12h5m
+        alertname: WordpressBoostFailed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: rogue-trader:9100
+            exp_annotations:
+              summary: "Jetpack Boost check failed on rogue-trader:9100"
+              description: "The last Jetpack Boost check on rogue-trader:9100 errored — critical CSS may have lapsed unseen."
+      - eval_time: 11h55m
+        alertname: WordpressBoostFailed
+        exp_alerts: []
+
+  # A stopped timer or deleted script leaves the last .prom on disk serving
+  # success 1 for ever, so this rule — not WordpressBoostFailed, and not
+  # SystemdUnitFailed, which excludes the unit — is what catches a dead check.
+  - interval: 5m
+    name: a boost check that has stopped running alerts
+    input_series:
+      - series: 'wordpress_boost_last_run_timestamp_seconds{job="node",instance="rogue-trader:9100"}'
+        values: "-86400x30"
+      - series: 'wordpress_boost_success{job="node",instance="rogue-trader:9100"}'
+        values: "1x30"
+    alert_rule_test:
+      - eval_time: 1h5m
+        alertname: WordpressBoostOverdue
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: rogue-trader:9100
+            exp_annotations:
+              summary: "Jetpack Boost check overdue on rogue-trader:9100"
+              description: "rogue-trader:9100 has not completed a Jetpack Boost check in over a day."
+      # The frozen metric still reads healthy, which is the point.
+      - eval_time: 1h5m
+        alertname: WordpressBoostFailed
         exp_alerts: []
 
   # The fstype exclusion is what keeps this rule about disks: a tmpfs at 99% is the
