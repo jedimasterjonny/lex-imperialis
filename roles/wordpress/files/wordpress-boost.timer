@@ -1,0 +1,13 @@
+[Unit]
+Description=Six-hourly Jetpack Boost critical CSS check
+
+[Timer]
+# Boost's critical CSS only moves when the operator regenerates it by hand or a
+# plugin update resets the state, so six-hourly is ample for rules whose for: is
+# an hour. Offset from the update check's 00/6:00 so the two wp-cli containers
+# do not start on the same tick.
+OnCalendar=*-*-* 00/6:20:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

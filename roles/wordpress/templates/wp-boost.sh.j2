@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# wordpress-boost.service ExecStart: publish the health of Jetpack Boost's
+# critical CSS as node_exporter textfile metrics. Boost's free tier generates
+# critical CSS in the browser, so nothing on the host can regenerate it — this
+# only reports, and a reset or ageing state surfaces as an alert the operator
+# clears by hand from wp-admin. Runs the cli wrapper against the live stack; on
+# any wp-cli error it still publishes, recording the failure in
+# wordpress_boost_success and carrying the last-good values forward —
+# zeroing them would raise the missing-CSS alert on a transient blip. Always
+# exits 0 once it can write the textfile dir: its job is to produce the metric,
+# and the check's own outcome rides in it.
+set -uo pipefail
+
+dir="{{ wordpress_textfile_dir }}"
+prom="$dir/wordpress-boost.prom"
+mkdir -p "$dir"
+
+# Last value published for a metric line, empty if none recorded yet — lets a
+# failed check carry the previous values rather than zero them. Takes the whole
+# metric name including any label set, so the two providers series resolve
+# separately.
+last_value() {
+    grep -m1 "^$1 " "$prom" 2>/dev/null | awk '{print $NF}'
+}
+
+# One wp-cli call for the whole state, rather than one per metric: six
+# space-separated fields — installed, generated, updated, providers ok,
+# providers failed, stored bytes.
+#
+# Boost is not managed by this role, so its absence is a first-class answer
+# (installed 0) and not an error: jetpack_boost_ds_get() only exists while the
+# plugin is active, which is also the molecule case.
+#
+# The payload is tagged and picked out with awk rather than read straight off
+# stdout: a stray PHP warning can share the stream (the hardening mu-plugin is
+# bind-mounted with podman's :Z, labelled for the web container, so the
+# throwaway cli container can trip an include warning) and would otherwise be
+# parsed as the values. awk reads to EOF rather than exiting on the match: an
+# early exit would SIGPIPE wp mid-write, and pipefail would then turn a
+# perfectly good read into a recorded check failure.
+#
+# The PHP is single-quoted so its $s/$wpdb refs reach wp-cli intact rather than
+# expanding here.
+# shellcheck disable=SC2016
+if state=$(wp eval '
+    if ( ! function_exists( "jetpack_boost_ds_get" ) ) {
+        echo "boost_state 0 0 0 0 0 0";
+    } else {
+        $s  = (array) jetpack_boost_ds_get( "critical_css_state" );
+        $ok = 0;
+        $ko = 0;
+        foreach ( (array) ( $s["providers"] ?? array() ) as $provider ) {
+            $provider = (array) $provider;
+            if ( ( $provider["status"] ?? "" ) === "success" ) {
+                ++$ok;
+            } else {
+                ++$ko;
+            }
+        }
+        global $wpdb;
+        $bytes = (int) $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT COALESCE(SUM(LENGTH(post_content)),0) FROM {$wpdb->posts} WHERE post_type = %s",
+                "jb_store_css"
+            )
+        );
+        printf(
+            "boost_state 1 %d %d %d %d %d",
+            ( $s["status"] ?? "" ) === "generated" ? 1 : 0,
+            (int) ( $s["updated"] ?? 0 ),
+            $ok,
+            $ko,
+            $bytes
+        );
+    }
+' </dev/null 2>/dev/null |
+    awk '$1 == "boost_state" && !found { print $2, $3, $4, $5, $6, $7; found = 1 } END { exit !found }'); then
+    success=1
+    read -r installed generated updated providers_ok providers_error stored_bytes <<<"$state"
+else
+    success=0
+    installed=$(last_value wordpress_boost_installed)
+    generated=$(last_value wordpress_boost_critical_css_generated)
+    updated=$(last_value wordpress_boost_critical_css_updated_timestamp_seconds)
+    providers_ok=$(last_value 'wordpress_boost_critical_css_providers{status="success"}')
+    providers_error=$(last_value 'wordpress_boost_critical_css_providers{status="error"}')
+    stored_bytes=$(last_value wordpress_boost_critical_css_stored_bytes)
+fi
+
+# Default every value to 0: an empty result (no prior file on a first failed
+# run) must not reach the heredoc as a value-less line — node_exporter rejects
+# the whole file if it does.
+installed=${installed:-0}
+generated=${generated:-0}
+updated=${updated:-0}
+providers_ok=${providers_ok:-0}
+providers_error=${providers_error:-0}
+stored_bytes=${stored_bytes:-0}
+
+# Publish atomically: write a temp file the exporter's *.prom glob ignores, then
+# rename it over the target so no scrape reads a half-written file. 0644 so the
+# exporter's unprivileged user can read it.
+tmp="$(mktemp "$dir/.wordpress-boost.prom.XXXXXX")"
+cat >"$tmp" <<EOF
+# HELP wordpress_boost_success Whether the last Jetpack Boost check completed (1) or errored (0).
+# TYPE wordpress_boost_success gauge
+wordpress_boost_success $success
+# HELP wordpress_boost_last_run_timestamp_seconds Unix time the last Jetpack Boost check finished.
+# TYPE wordpress_boost_last_run_timestamp_seconds gauge
+wordpress_boost_last_run_timestamp_seconds $(date +%s)
+# HELP wordpress_boost_installed Whether the Jetpack Boost plugin is active (1) or absent (0).
+# TYPE wordpress_boost_installed gauge
+wordpress_boost_installed $installed
+# HELP wordpress_boost_critical_css_generated Whether Boost reports critical CSS as generated (1) or not (0).
+# TYPE wordpress_boost_critical_css_generated gauge
+wordpress_boost_critical_css_generated $generated
+# HELP wordpress_boost_critical_css_updated_timestamp_seconds Unix time Boost last finished generating critical CSS.
+# TYPE wordpress_boost_critical_css_updated_timestamp_seconds gauge
+wordpress_boost_critical_css_updated_timestamp_seconds $updated
+# HELP wordpress_boost_critical_css_providers Critical CSS source providers by generation outcome.
+# TYPE wordpress_boost_critical_css_providers gauge
+wordpress_boost_critical_css_providers{status="success"} $providers_ok
+wordpress_boost_critical_css_providers{status="error"} $providers_error
+# HELP wordpress_boost_critical_css_stored_bytes Critical CSS currently stored, and so served, in bytes.
+# TYPE wordpress_boost_critical_css_stored_bytes gauge
+wordpress_boost_critical_css_stored_bytes $stored_bytes
+EOF
+chmod 0644 "$tmp"
+mv "$tmp" "$prom"
