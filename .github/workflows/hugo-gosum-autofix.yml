@@ -78,16 +78,25 @@ jobs:
 
       # `hugo mod tidy` drops the superseded lines; the build downloads the theme
       # and records its content hash — the same completion the preview build does
-      # — so together they yield the canonical two-line entry. Abort if tidy ever
-      # drops the theme require rather than commit a broken go.mod.
+      # — so together they yield the canonical two-line entry. Abort unless the
+      # theme require survives tidy byte-identical: tidy resolves against
+      # config/_default/module.toml, so on a major bump it silently reverts
+      # go.mod to the imported major and the amend would fold that revert into
+      # Renovate's commit, landing a no-op under a "to vN" message. A major needs
+      # the module.toml import bumped in the same PR; until it is, fail loudly.
       - name: Regenerate a complete, tidy go.sum
         env:
           HUGO_ENVIRONMENT: production
         run: |
+          theme_require() { grep -o 'github.com/nunocoracao/blowfish/[^ ]* v[^ ]*' go.mod || true; }
+          before="$(theme_require)"
           hugo mod tidy
           hugo --minify -d "${RUNNER_TEMP}/gosum-build" >/dev/null
-          grep -q 'nunocoracao/blowfish' go.mod \
-            || { echo '::error::theme require missing after hugo mod tidy — aborting'; exit 1; }
+          after="$(theme_require)"
+          [ "${after}" = "${before}" ] || {
+            echo "::error::tidy rewrote the theme require (${before:-none} -> ${after:-none}); bump module.toml to match"
+            exit 1
+          }
 
       - name: Fold the corrected go.sum into the Renovate commit
         run: |
