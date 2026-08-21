@@ -108,7 +108,7 @@ GitHub Actions workflows:
 - `terraform` — `tofu plan` on a PR, applied to live cloud infrastructure on merge.
 - `firebase` — the Hugo site: a preview channel per PR, the live channel on merge.
 
-Actions are pinned by commit SHA. `VAULT_PASSWORD` is the only secret in CI: it unlocks the in-repo vault, which carries the Hetzner and Cloudflare tokens. GCP, and the terraform state bucket, authenticate keylessly through Workload Identity Federation.
+Actions are pinned by commit SHA. No workflow holds a vault password: the Hetzner and Cloudflare tokens CI needs are secrets of their own, so the in-repo vault stays operator-only. GCP, and the terraform state bucket, authenticate keylessly through Workload Identity Federation.
 
 ## Secrets
 
