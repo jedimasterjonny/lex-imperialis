@@ -21,9 +21,6 @@ dev_packages:
   - python3-uv
   - ripgrep
 
-# npm ships with the role; disable on hosts that do no Node work.
-dev_npm: true
-
 # Claude Code installs per-user via the native installer; the owner is the
 # target and the binary lands under their ~/.local.
 dev_user: jonny
@@ -34,18 +31,8 @@ dev_claude_bin: "{{ dev_user_home }}/.local/bin/claude"
 dev_npm_prefix: "{{ dev_user_home }}/.local"
 dev_npmrc: "{{ dev_user_home }}/.npmrc"
 
-# Install the owner's passwordless-sudo drop-in on the workstation; set false on
-# a host that should keep common's own-password %wheel policy instead.
-dev_passwordless_sudo: true
-
-# A boot-start Claude Code Remote Control session under the owner's own lingering
-# `systemd --user` manager, so the workstation is remotely steerable from
-# claude.ai/code or the Claude app the moment it is up. A system unit can't host
-# it — on the SELinux-enforcing fleet PID 1 cannot exec the owner's home-installed
-# binary. The role pre-seeds workspace trust for the workdir; the one remaining
-# manual step is a one-time interactive `claude` /login (claude.ai OAuth, Pro/Max —
-# API keys and CLAUDE_CODE_OAUTH_TOKEN are rejected) — see README.
-dev_remote_control: true
+# Working directory of the boot-start Remote Control session, whose workspace
+# trust the role pre-seeds. The one-time interactive login is in the README.
 dev_remote_control_workdir: "{{ dev_user_home }}"
 
 # The owner's Claude Code config; the role seeds workspace trust into its projects
