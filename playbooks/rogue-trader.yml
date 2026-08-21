@@ -3,10 +3,6 @@
   hosts: rogue-trader
   vars:
     common_hostname: rogue-trader
-    # Match jonny's uid on the NAS (administratum: 1026; gid 100/users already
-    # matches) so NFS ownership reconciles — the v4 mounts use numeric sec=sys,
-    # which carries raw uids and bypasses name-based idmapping.
-    common_user_uid: 1026
     # Narrower than the fleet list: the owner account here authorises only the
     # control host. The other two declared keys are laptops, one of them
     # employer-controlled, and this is the public VPS — the one host where a
