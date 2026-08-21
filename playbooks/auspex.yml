@@ -3,11 +3,6 @@
   hosts: auspex
   vars:
     common_hostname: auspex
-    # Match jonny's uid on the NAS (administratum: 1026; gid 100/users already
-    # matches) so NFS ownership reconciles, as on every other host — held here
-    # even though auspex mounts no shares, so adding one later needs no uid
-    # migration on a host that already owns files.
-    common_user_uid: 1026
     # The NVMe, by label so a controller renaming the device cannot silently
     # point this at the SD card. It carries podman's whole store — images and
     # every named volume — and on this host that store holds the fleet's entire

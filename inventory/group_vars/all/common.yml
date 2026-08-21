@@ -1,0 +1,9 @@
+---
+# Fleet-wide `common` settings. Vault-held values stay in vault.yml.
+
+# Match jonny's uid on the NAS (administratum: 1026; gid 100/users already
+# matches) so NFS ownership reconciles — the v4 mounts use numeric sec=sys,
+# which carries raw uids and bypasses name-based idmapping. Held for every host,
+# including auspex, which mounts no shares: giving it the uid now means adding a
+# share later needs no migration on a host that already owns files.
+common_user_uid: 1026
