@@ -7,7 +7,8 @@ Cloudflare zones — one `dns-<zone>.tf` per zone, plus an `edge-<zone>.tf` per 
 for its non-DNS config (settings and rulesets): canonical-redirect rulesets for the
 two jonnyoc zones, and `emmasedit.com`'s WordPress TLS, security, caching, and
 login-protection posture — the last a WAF challenge on the login/XML-RPC plus a
-per-IP rate limit. Not
+per-IP rate limit, and Authenticated Origin Pulls so the origin can refuse
+anything that did not come through this edge. Not
 every record or setting is managed: an origin IP with no Terraform-visible source,
 or a setting the provider reports read-only (Email Routing, Tiered Cache on Free),
 is left out and noted in the file's header.

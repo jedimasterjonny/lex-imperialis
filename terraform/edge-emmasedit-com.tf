@@ -207,3 +207,20 @@ resource "cloudflare_ruleset" "emmas_ratelimit" {
     },
   ]
 }
+
+# --- Authenticated Origin Pulls ---
+
+# Make Cloudflare present its Origin Pull client certificate on every connection
+# to rogue-trader, so caddy can refuse anyone else. The Hetzner firewall already
+# narrows callers to Cloudflare's published ranges, but those ranges are shared
+# by every Cloudflare account: without this, anyone who learns the origin IP can
+# proxy their own zone at it and walk past the WAF and rate limit above.
+#
+# Zone-level, so it covers the apex and www alike, and it is inert until the
+# origin asks for a client certificate — enable it here first, then apply the
+# origin side (roles/wordpress's wordpress_origin_pull). Reversing that order
+# takes the site down.
+resource "cloudflare_authenticated_origin_pulls_settings" "emmas_origin_pull" {
+  zone_id = local.emmasedit_com_zone_id
+  enabled = true
+}
