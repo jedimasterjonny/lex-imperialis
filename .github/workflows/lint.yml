@@ -23,27 +23,8 @@ jobs:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Set up Python
-        id: python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
-        with:
-          python-version: "3.14"
-
-      # uv resolves and installs this set an order of magnitude faster than pip,
-      # and owns the wheel cache setup-python's cache: pip used to hold.
-      - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          enable-cache: true
-          cache-dependency-glob: requirements*.txt
-
-      # make pre-commit activates .venv, so mirror the local layout. The venv is
-      # built against setup-python's interpreter, not a uv-managed download, so
-      # the python under test stays the one this job pinned.
-      - name: Install dev tooling
-        run: |
-          uv venv .venv --python '${{ steps.python.outputs.python-path }}'
-          uv pip install --python .venv/bin/python -r requirements-dev.txt
+      - name: Set up the dev venv
+        uses: ./.github/actions/venv
 
       - name: Cache pre-commit environments
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
