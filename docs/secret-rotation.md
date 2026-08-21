@@ -87,16 +87,20 @@ regardless. Vaulting keeps it out of the public repo, not off the box.
 
 ## Tooling tokens (vault vars, not rendered to a host)
 
-Sourced into OpenTofu by `bin/vault-var.sh` at run time — no second copy. Rotate
+Sourced into OpenTofu (and molecule) by `bin/vault-var.sh` at run time. Rotate
 with the mint → `ansible-vault edit` → verify → revoke order, verifying with
-`make tofu-plan` (or a test run). CI reads the same vault, so there is **no
-separate CI update**.
+`make tofu-plan` (or a test run). CI cannot read the vault, so each of these has
+a mirrored CI copy that must be set in the same pass or the next run authenticates
+with the revoked token.
 
-| Vault variable | Mint a new… | Verify |
-| --- | --- | --- |
-| `terraform_cloudflare_api_token` | Cloudflare token, DNS + zone edit over the managed zones | `make tofu-plan` |
-| `hcloud_token_emmas_edit` | Hetzner Read&Write token, **emmas-edit** project | `make tofu-plan` |
-| `hcloud_token` | Hetzner Read&Write token, **molecule test** project | `make test-hetzner ROLE=motd` |
+| Vault variable | Mint a new… | CI copy | Verify |
+| --- | --- | --- | --- |
+| `terraform_cloudflare_api_token` | Cloudflare token, DNS + zone edit over the managed zones | `gh secret set CLOUDFLARE_APPLY_API_TOKEN --env fleet-apply` | `make tofu-plan` |
+| `hcloud_token_emmas_edit` | Hetzner Read&Write token, **emmas-edit** project | `gh secret set HCLOUD_APPLY_TOKEN --env fleet-apply` | `make tofu-plan` |
+| `hcloud_token` | Hetzner Read&Write token, **molecule test** project | `gh secret set MOLECULE_HCLOUD_TOKEN` | `make test-hetzner ROLE=motd` |
+
+The read-only `CLOUDFLARE_PLAN_API_TOKEN` and `HCLOUD_PLAN_TOKEN` repo secrets,
+which a PR plan uses, have no vault copy — mint and `gh secret set` them alone.
 
 `hcloud_token_emmas_edit` has the widest reach — Terraform, `bootstrap/rogue-trader.yml`,
 and the emmasedit apex data source all read it — but it is still one vault var.
@@ -105,16 +109,16 @@ different projects, rotated independently.
 
 ## The vault password (`.vault_pass`)
 
-The master key — it decrypts everything and lives in **four** places that must
-stay in lockstep. Keep the old passphrase until every copy is updated, in one
-pass:
+The master key — it decrypts everything and lives in **three** places that must
+stay in lockstep. CI is deliberately not among them: no workflow holds a vault
+password, so the vault is operator-only. Keep the old passphrase until every copy
+is updated, in one pass:
 
 1. `ansible-vault rekey inventory/group_vars/all/vault.yml` (old → new); commit the re-encrypted vault.
 2. Overwrite the local `.vault_pass`.
-3. `gh secret set VAULT_PASSWORD` — the only CI secret that decrypts the vault, though not the only one CI holds; it lives in the main-only `fleet-apply` environment rather than among the plain repo secrets.
-4. Re-seed scholam's `/etc/arbites/vault_pass` (0600 root), or the next reconcile cannot decrypt.
-5. Update the password manager.
-6. Confirm a CI run, a `make check`, and an arbites reconcile all still decrypt.
+3. Re-seed scholam's `/etc/arbites/vault_pass` (0600 root), or the next reconcile cannot decrypt.
+4. Update the password manager.
+5. Confirm a `make check` and an arbites reconcile both still decrypt.
 
 ## Keyless CI — no rotation
 

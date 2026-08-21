@@ -8,10 +8,11 @@ name: terraform
 # the plan SA can read state, only the apply SA can write it. The Cloudflare and
 # Hetzner provider tokens split by privilege: a PR plans with read-only counterparts
 # held as plain repo secrets (safe for any same-repo PR — they can't mutate); the
-# write tokens stay in the vault, reached only on a push (VAULT_PASSWORD lives in the
-# main-only `fleet-apply` environment), where the plan bakes them into the saved plan
-# the apply runs. So a same-repo PR that edits this workflow can plan but never apply
-# or read a write token. Offline fmt/validate/tflint stay in the lint workflow.
+# write tokens live in the main-only `fleet-apply` environment, so only a push can
+# read them, and its plan bakes them into the saved plan the apply runs. So a
+# same-repo PR that edits this workflow can plan but never apply or read a write
+# token. CI holds no Ansible vault secret at all — the vault is operator-only.
+# Offline fmt/validate/tflint stay in the lint workflow.
 #
 # No PR paths filter: the workflow runs on every PR so terraform-gate (a required
 # check) always reports. discover decides whether the plan actually runs, and a
@@ -111,10 +112,10 @@ jobs:
     # A hung apply holds the GCS state lock until the job dies — 6h on the
     # default. Well above a plan+apply of this config, well below that.
     timeout-minutes: 30
-    # VAULT_PASSWORD lives in the main-only `fleet-apply` environment, so only a
-    # push (the apply step) can decrypt the vault's write tokens. A PR/schedule
-    # run resolves the expression to the empty string — no environment, no
-    # VAULT_PASSWORD — and plans with the read-only repo-secret tokens instead.
+    # The write provider tokens live in the main-only `fleet-apply` environment,
+    # so only a push (which feeds the apply step) can read them. A PR/schedule run
+    # resolves the expression to the empty string — no environment, no write
+    # tokens — and plans with the read-only repo-secret tokens instead.
     environment: ${{ github.event_name == 'push' && 'fleet-apply' || '' }}
     permissions:
       contents: read
@@ -123,26 +124,6 @@ jobs:
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      # The vault (bin/vault-var.sh → ansible-vault) is needed only on a push: the
-      # push plan bakes the write tokens into the saved plan the apply runs. A PR or
-      # schedule plan uses the read-only repo-secret tokens directly. So Python is a
-      # push-only setup.
-      - name: Set up Python
-        if: github.event_name == 'push'
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
-        with:
-          python-version: "3.14"
-          cache: pip
-          cache-dependency-path: requirements.txt
-
-      # requirements.txt (ansible) supplies ansible-vault without the dev toolchain.
-      - name: Install ansible-vault
-        if: github.event_name == 'push'
-        run: |
-          python -m venv .venv
-          . .venv/bin/activate
-          pip install -r requirements.txt
 
       - name: Set up OpenTofu
         uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
@@ -164,23 +145,12 @@ jobs:
             && 'tofu-apply@jonnyoc-infra-shared.iam.gserviceaccount.com'
             || 'tofu-plan@jonnyoc-infra-shared.iam.gserviceaccount.com' }}
 
-      # On a push the plan below feeds the apply and must carry the vault's WRITE
-      # tokens, so decrypt the vault here; VAULT_PASSWORD is present only because
-      # this push run entered the main-only `fleet-apply` environment.
-      - name: Write the vault password file
-        if: github.event_name == 'push'
-        env:
-          VAULT_PASSWORD: ${{ secrets.VAULT_PASSWORD }}
-        run: |
-          printf '%s' "$VAULT_PASSWORD" > .vault_pass
-          chmod 600 .vault_pass
-
       # Plan to a file so the apply below runs exactly this plan, not a fresh
       # re-plan, and so the destructive-action check reads the same plan. Applying a
       # saved plan reuses the plan's recorded variable values, so on a push the plan
-      # must carry the WRITE provider tokens (from the vault, unlocked above) — the
-      # apply then authenticates with them. A PR/schedule/dispatch plan only reads
-      # and has no vault, so it uses the read-only repo-secret tokens. The GCS
+      # must carry the WRITE provider tokens — the apply then authenticates with
+      # them. A PR/schedule/dispatch plan only reads, and never enters the
+      # environment that holds them, so it uses the read-only ones. The GCS
       # backend reads state via the WIF credentials the auth step set up. -lock=false:
       # the plan doesn't write state (apply re-locks and re-checks the saved plan),
       # and cancel-in-progress could otherwise kill it mid-run and orphan the GCS
@@ -192,6 +162,8 @@ jobs:
           EVENT: ${{ github.event_name }}
           CF_PLAN_TOKEN: ${{ secrets.CLOUDFLARE_PLAN_API_TOKEN }}
           HCLOUD_PLAN_TOKEN: ${{ secrets.HCLOUD_PLAN_TOKEN }}
+          CF_APPLY_TOKEN: ${{ secrets.CLOUDFLARE_APPLY_API_TOKEN }}
+          HCLOUD_APPLY_TOKEN: ${{ secrets.HCLOUD_APPLY_TOKEN }}
         run: |
           set +e
           # Scheduled runs only: -detailed-exitcode makes plan exit 2 on any diff,
@@ -199,12 +171,15 @@ jobs:
           # stays a plain plan (exit 0) and must not start failing.
           detail=""
           [ "$EVENT" = "schedule" ] && detail="-detailed-exitcode"
-          # push feeds the apply → the saved plan must carry the write tokens; every
-          # other event reads only, has no vault, and uses the read-only ones. Assign
-          # then export separately so shellcheck (SC2155) can't mask a vault miss.
+          # push feeds the apply → the saved plan must carry the write tokens, which
+          # only a push can read; every other event reads only and uses the
+          # read-only ones. Fail loudly if the environment secrets are missing —
+          # otherwise an empty token surfaces as an opaque provider auth error.
           if [ "$EVENT" = "push" ]; then
-            TF_VAR_cloudflare_api_token="$(bin/vault-var.sh terraform_cloudflare_api_token)"
-            TF_VAR_hcloud_token="$(bin/vault-var.sh hcloud_token_emmas_edit)"
+            : "${CF_APPLY_TOKEN:?not set — add it to the fleet-apply environment}"
+            : "${HCLOUD_APPLY_TOKEN:?not set — add it to the fleet-apply environment}"
+            TF_VAR_cloudflare_api_token="$CF_APPLY_TOKEN"
+            TF_VAR_hcloud_token="$HCLOUD_APPLY_TOKEN"
           else
             TF_VAR_cloudflare_api_token="$CF_PLAN_TOKEN"
             TF_VAR_hcloud_token="$HCLOUD_PLAN_TOKEN"
@@ -298,9 +273,10 @@ jobs:
   # non-infra PR, so this always-running job reports the real result — green there,
   # so a required check doesn't wedge every non-infra PR on a check that never runs.
   # But a fork PR that *does* touch terraform also skips the plan (it can't reach
-  # the vault or WIF), and a green gate would then wave an unplanned, unchecked infra
-  # change past the required check — so fail when discover flagged terraform in scope
-  # yet the plan didn't run. Make this a required check so an automerge waits on it.
+  # the write tokens or WIF), and a green gate would then wave an unplanned,
+  # unchecked infra change past the required check — so fail when discover
+  # flagged terraform in scope yet the plan didn't run. Make this a required
+  # check so an automerge waits on it.
   terraform-gate:
     name: terraform-gate
     if: always()
