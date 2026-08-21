@@ -2,15 +2,9 @@ baseURL = "https://jonnyoc.uk/"
 defaultContentLanguage = "en"
 
 enableRobotsTXT = true
-summaryLength = 0
 
 buildDrafts = false
 buildFuture = false
-
-enableEmoji = true
-
-[pagination]
-  pagerSize = 100
 
 [imaging]
   anchor = 'Center'
@@ -28,33 +22,3 @@ enableEmoji = true
 # the home page's head.
 [outputs]
   home = ["HTML"]
-
-[related]
-  threshold = 0
-  toLower = false
-
-    [[related.indices]]
-        name = "tags"
-        weight = 100
-
-    [[related.indices]]
-        name = "categories"
-        weight = 100
-
-    [[related.indices]]
-        name = "series"
-        weight = 50
-
-    [[related.indices]]
-        name = "authors"
-        weight = 20
-
-    [[related.indices]]
-        name = "date"
-        weight = 10
-
-    [[related.indices]]
-      applyFilter = false
-      name = 'fragmentrefs'
-      type = 'fragments'
-      weight = 10
