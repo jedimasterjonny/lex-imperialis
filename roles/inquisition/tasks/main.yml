@@ -11,6 +11,15 @@
       dest: "{{ inquisition_script }}"
     - src: inquisition-metric.sh.j2
       dest: "{{ inquisition_metric_script }}"
+  # Consumed by inquisition-metric.sh.j2, the shared run-metric template symlinked
+  # in from node_exporter; inquisition.sh.j2 ignores them. The metric is named for
+  # the role but the file is inquisition-run.prom — inquisition.prom is the drift
+  # payload the check itself writes.
+  vars:
+    run_metric_textfile_dir: "{{ inquisition_textfile_dir }}"
+    run_metric_name: inquisition
+    run_metric_file: inquisition-run
+    run_metric_description: drift check
   become: true
 
 - name: Install the drift check service and timer

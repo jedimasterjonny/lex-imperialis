@@ -36,7 +36,25 @@ and the bind can't race the address at boot.
 The role creates `node_exporter_textfile_directory` (default
 `/var/lib/node_exporter/textfile_collector`) and points the textfile collector at
 it through the read-only `/host` bind. Batch jobs drop a world-readable `*.prom`
-file there; `podman_backup` uses this to export its last run's outcome.
+file there.
+
+`templates/run-metric.sh.j2` is the shared `ExecStopPost` hook those jobs use,
+publishing a scheduled unit's `<name>_success` and
+`<name>_last_run_timestamp_seconds`. A consuming role symlinks it into its own
+`templates/` under the name it installs and sets four vars on that template task:
+`run_metric_textfile_dir`, `run_metric_name` (the family prefix),
+`run_metric_file` (the `.prom` basename, which is not always the metric name —
+inquisition writes `inquisition-run.prom`), and `run_metric_description` (prose
+for the `HELP` lines). `autoupdate`, `inquisition`, `restic_backup` and
+`wordpress` (cron and db-dump) consume it; `arbites` keeps its own script, as it
+publishes a third metric.
+
+The hook is not a convenience copy of what systemd already knows. A
+`Persistent=no` timer loses `LastTriggerUSec` across a reboot, and a successful
+autoupdate reboots the host from its own `ExecStartPost` — so on every fleet host
+the last recorded autoupdate run predates that host's boot while systemd reports
+the timer as never triggered. This file is the only surviving record, which is
+what the closing `sync` protects.
 
 ## Systemd collector
 
