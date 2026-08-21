@@ -34,9 +34,8 @@
     - inquisition.timer
   become: true
 
-# daemon_reload picks up unit changes before enabling; it does not itself report
-# changed, so the task stays idempotent. No restart handler: a oneshot timer has
-# nothing to restart, and the next tick reads the new script anyway.
+# No restart handler: a oneshot timer has nothing to restart, and the next tick
+# reads the new script anyway.
 - name: Enable and start the drift check timer
   ansible.builtin.systemd_service:
     name: inquisition.timer

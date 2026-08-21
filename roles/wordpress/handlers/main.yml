@@ -1,10 +1,4 @@
 ---
-# daemon_reload folded into each restart, never a separate fleet-shared "Reload
-# systemd" handler: a duplicate name whose winning definition lives in a later
-# role reorders after this role's restart at the mid-play flush, so the
-# container is recreated from the stale generated unit. The reload regenerates
-# the quadlet-derived unit before the restart.
-#
 # The database before wordpress: wordpress reconnects, but starting them in
 # order spares it the failed first attempts.
 - name: Restart the wordpress database

@@ -18,8 +18,6 @@
   become: true
   notify: Restart node-exporter
 
-# The quadlet unit only exists after the daemon reload, so apply pending
-# restarts before asserting the service is up.
 - name: Apply pending unit changes
   ansible.builtin.meta: flush_handlers
 

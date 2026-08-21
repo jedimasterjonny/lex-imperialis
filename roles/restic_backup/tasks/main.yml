@@ -95,8 +95,6 @@
       dest: "{{ restic_backup_name }}-backup.timer"
   become: true
 
-# daemon_reload picks up unit changes before enabling; it does not itself report
-# changed, so the task stays idempotent.
 - name: Enable and start the backup timer
   ansible.builtin.systemd_service:
     name: "{{ restic_backup_name }}-backup.timer"
