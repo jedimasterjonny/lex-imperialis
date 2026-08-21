@@ -58,6 +58,14 @@
       dest: "{{ restic_backup_script_dir }}/{{ restic_backup_name }}-backup.sh"
     - src: restic-backup-metric.sh.j2
       dest: "{{ restic_backup_script_dir }}/{{ restic_backup_name }}-backup-metric.sh"
+  # Consumed by restic-backup-metric.sh.j2, the shared run-metric template
+  # symlinked in from node_exporter; restic-backup.sh.j2 ignores them. Every name
+  # derives from restic_backup_name, so podman/home each get their own family.
+  vars:
+    run_metric_textfile_dir: "{{ restic_backup_textfile_dir }}"
+    run_metric_name: "{{ restic_backup_name }}_backup"
+    run_metric_file: "{{ restic_backup_name }}-backup"
+    run_metric_description: "{{ restic_backup_name }} backup"
   become: true
 
 # The restore script — the inverse of the backup, for disaster recovery — only

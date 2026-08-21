@@ -176,6 +176,11 @@
     owner: root
     group: root
     mode: "0755"
+  vars:
+    run_metric_textfile_dir: "{{ wordpress_textfile_dir }}"
+    run_metric_name: wordpress_db_dump
+    run_metric_file: wordpress-db-dump
+    run_metric_description: WordPress database dump
   become: true
 
 # wordpress-update-check.service's ExecStart: counts the pending core, plugin,
@@ -213,6 +218,11 @@
     owner: root
     group: root
     mode: "0755"
+  vars:
+    run_metric_textfile_dir: "{{ wordpress_textfile_dir }}"
+    run_metric_name: wordpress_cron
+    run_metric_file: wordpress-cron
+    run_metric_description: WordPress cron
   become: true
 
 # Static units for the role's four timers: wp-cron takes scheduled tasks off

@@ -45,6 +45,13 @@
     - autoupdate-metric.sh
     - autoupdate-holds.sh
     - autoupdate-cleanup.sh
+  # Consumed by autoupdate-metric.sh.j2, the shared run-metric template symlinked
+  # in from node_exporter; the holds and cleanup scripts ignore them.
+  vars:
+    run_metric_textfile_dir: "{{ autoupdate_textfile_dir }}"
+    run_metric_name: autoupdate
+    run_metric_file: autoupdate
+    run_metric_description: unattended update
   become: true
 
 - name: Install the update service
