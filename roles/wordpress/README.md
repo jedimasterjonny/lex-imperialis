@@ -153,6 +153,18 @@ neuters the XML-RPC pingback vector by stripping its methods and their
 `X-Pingback` header (XML-RPC itself stays on for Jetpack). Point DNS for each
 name at the host.
 
+`wordpress_origin_pull` adds Cloudflare's Authenticated Origin Pulls to the
+block: `client_auth` in `require_and_verify` mode against the published origin
+pull CA (`files/`, deployed to `/etc/caddy/cloudflare-origin-pull-ca.pem`,
+expires 2029-11-01), so the origin refuses any handshake that did not come from
+the edge. An origin firewall scoped to Cloudflare's ranges cannot do that —
+every Cloudflare account shares them, so a leaked origin IP is enough to proxy
+past the zone's WAF and rate limit. Caddy also enforces SNI/Host agreement once
+client auth is configured. It needs `wordpress_tls` — asserted, because caddy
+will not parse TLS policies on an `http://` site and an unparsable Caddyfile
+crash-loops every site on the host — and the zone's own AOP setting live first:
+on here while the edge still sends no certificate takes the site down.
+
 ## wp-cli
 
 `/usr/local/bin/wp` runs the official `wordpress:cli` image against the live
@@ -185,7 +197,8 @@ attacker `.htaccess` `AddType` would slip a `.png` webshell past any edge rule.
 Wire it after `podman` and `caddy`. Set `wordpress_domains` to the public names,
 the DB passwords in the vault, and — for TLS (`wordpress_tls`, the default) —
 caddy's `caddy_cloudflare_api_token` scoped to that zone; set
-`wordpress_tls: false` for plain HTTP instead.
+`wordpress_tls: false` for plain HTTP instead. Behind Cloudflare, enable the
+zone's Authenticated Origin Pulls setting, then set `wordpress_origin_pull`.
 
 ```yaml
 roles:

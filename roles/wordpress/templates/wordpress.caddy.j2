@@ -1,5 +1,19 @@
 {% set scheme = '' if wordpress_tls else 'http://' %}
 {{ wordpress_domains | map('regex_replace', '^', scheme) | join(', ') }} {
+{% if wordpress_origin_pull %}
+	# Only Cloudflare's edge holds a certificate signed by this CA, so the origin
+	# refuses the handshake to anyone who found its IP — which an origin firewall
+	# scoped to Cloudflare's published ranges cannot do, as every Cloudflare
+	# account shares them. Caddy also enforces SNI/Host agreement once client auth
+	# is configured.
+	tls {
+		client_auth {
+			mode require_and_verify
+			trust_pool file /etc/caddy/cloudflare-origin-pull-ca.pem
+		}
+	}
+
+{% endif %}
 {% if wordpress_tls %}
 	# HSTS only applies over HTTPS.
 	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
