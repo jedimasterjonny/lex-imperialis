@@ -10,6 +10,13 @@ wordpress_domains:
 # plain HTTP with no ACME.
 wordpress_tls: true
 
+# Require Cloudflare's Authenticated Origin Pulls client certificate on the TLS
+# handshake, so only the edge can reach the site and a leaked origin IP buys
+# nothing. Needs wordpress_tls, and the zone's own AOP setting on first — turned
+# on here while the edge still sends no certificate takes the site down. Off by
+# default: it locks out every caller that is not Cloudflare.
+wordpress_origin_pull: false
+
 wordpress_timezone: Etc/UTC
 
 # Memory ceiling for the valkey object cache; it evicts LRU keys past this and

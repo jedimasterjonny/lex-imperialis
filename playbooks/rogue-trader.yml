@@ -55,6 +55,15 @@
     wordpress_domains:
       - emmasedit.com
       - www.emmasedit.com
+    # Only Cloudflare reaches the site: caddy requires the edge's Authenticated
+    # Origin Pulls certificate on the handshake. The Hetzner cloud firewall
+    # (terraform's vpc-firewall) already narrows 80/443 to Cloudflare's published
+    # ranges, but every Cloudflare account shares them, so the origin IP alone
+    # would otherwise buy a way past the zone's WAF challenge and login rate
+    # limit. The zone setting that makes the edge send that certificate is
+    # terraform's (edge-emmasedit-com.tf) and must already be live — applying
+    # this first takes the site down.
+    wordpress_origin_pull: true
     wordpress_db_password: "{{ rogue_trader_wordpress_db_password }}"
     wordpress_db_root_password: "{{ rogue_trader_wordpress_db_root_password }}"
     # 80/443 for the public site. SSH is not opened here; a rich rule below

@@ -132,6 +132,34 @@
   become: true
   notify: Restart wordpress
 
+# caddy refuses to adapt a Caddyfile that puts TLS connection policies on an
+# http:// site ("server listening on [:80] is HTTP, but attempts to configure TLS
+# connection policies"), and a Caddyfile that will not parse crash-loops the
+# proxy every site on the host sits behind. Fail the play on the typo instead.
+- name: Assert origin pull is only asked for on a TLS vhost
+  ansible.builtin.assert:
+    that:
+      - wordpress_tls
+    fail_msg: >-
+      wordpress_origin_pull needs wordpress_tls — caddy will not parse
+      client_auth on an http:// site
+    quiet: true
+  when: wordpress_origin_pull
+
+# Cloudflare's public Origin Pull CA, the one issuer of the client certificate
+# the edge presents. Expires 2029-11-01; Cloudflare publishes the replacement at
+# developers.cloudflare.com/ssl/static/authenticated_origin_pull_ca.pem.
+- name: Deploy the Cloudflare origin pull CA
+  ansible.builtin.copy:
+    src: cloudflare-origin-pull-ca.pem
+    dest: /etc/caddy/cloudflare-origin-pull-ca.pem
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  when: wordpress_origin_pull
+  notify: Restart caddy for wordpress
+
 # WordPress is public — it serves its own domains, not a wildcard subdomain —
 # so it registers a full site block in /etc/caddy/sites-public, which the caddy
 # role imports at the top level.
