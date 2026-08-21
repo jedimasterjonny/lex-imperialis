@@ -162,8 +162,9 @@ every Cloudflare account shares them, so a leaked origin IP is enough to proxy
 past the zone's WAF and rate limit. Caddy also enforces SNI/Host agreement once
 client auth is configured. It needs `wordpress_tls` — asserted, because caddy
 will not parse TLS policies on an `http://` site and an unparsable Caddyfile
-crash-loops every site on the host — and the zone's own AOP setting live first:
-on here while the edge still sends no certificate takes the site down.
+crash-loops every site on the host — and the zone's `tls_client_auth` setting
+live first: on here while the edge still sends no certificate takes the site
+down, 520 on every request.
 
 ## wp-cli
 
@@ -197,8 +198,10 @@ attacker `.htaccess` `AddType` would slip a `.png` webshell past any edge rule.
 Wire it after `podman` and `caddy`. Set `wordpress_domains` to the public names,
 the DB passwords in the vault, and — for TLS (`wordpress_tls`, the default) —
 caddy's `caddy_cloudflare_api_token` scoped to that zone; set
-`wordpress_tls: false` for plain HTTP instead. Behind Cloudflare, enable the
-zone's Authenticated Origin Pulls setting, then set `wordpress_origin_pull`.
+`wordpress_tls: false` for plain HTTP instead. Behind Cloudflare, turn the
+zone's `tls_client_auth` setting on — not the similarly named per-hostname
+`origin_tls_client_auth` enablement, which sends no certificate — and only then
+set `wordpress_origin_pull`.
 
 ```yaml
 roles:

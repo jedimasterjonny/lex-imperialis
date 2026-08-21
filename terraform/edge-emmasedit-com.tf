@@ -211,16 +211,26 @@ resource "cloudflare_ruleset" "emmas_ratelimit" {
 # --- Authenticated Origin Pulls ---
 
 # Make Cloudflare present its Origin Pull client certificate on every connection
-# to rogue-trader, so caddy can refuse anyone else. The Hetzner firewall already
-# narrows callers to Cloudflare's published ranges, but those ranges are shared
-# by every Cloudflare account: without this, anyone who learns the origin IP can
-# proxy their own zone at it and walk past the WAF and rate limit above.
+# to rogue-trader, which caddy then requires (roles/wordpress's
+# wordpress_origin_pull). firewall-rogue-trader.tf already narrows callers to
+# Cloudflare's published ranges, but those ranges are shared by every Cloudflare
+# account: without this, anyone who learns the origin IP can proxy their own zone
+# at it and walk past the WAF and rate limit above.
 #
-# Zone-level, so it covers the apex and www alike, and it is inert until the
-# origin asks for a client certificate — enable it here first, then apply the
-# origin side (roles/wordpress's wordpress_origin_pull). Reversing that order
-# takes the site down.
+# Zone-level, so it covers the apex and www alike. Turning it off while the
+# origin still demands the certificate takes the site down — every request 520s.
+resource "cloudflare_zone_setting" "emmas_tls_client_auth" {
+  zone_id    = local.emmasedit_com_zone_id
+  setting_id = "tls_client_auth"
+  value      = "on"
+}
+
+# NOT the setting above, despite the name: this is the enablement flag for
+# *per-hostname* authenticated origin pulls, which does nothing without
+# per-hostname certificates uploaded to the zone. Reaching for it instead of
+# tls_client_auth leaves the edge sending no certificate at all while the origin
+# demands one. Pinned off so that mistake cannot be made twice.
 resource "cloudflare_authenticated_origin_pulls_settings" "emmas_origin_pull" {
   zone_id = local.emmasedit_com_zone_id
-  enabled = true
+  enabled = false
 }
