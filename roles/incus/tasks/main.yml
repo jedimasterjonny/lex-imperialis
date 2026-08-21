@@ -88,8 +88,6 @@
     - incus-image-refresh.timer
   become: true
 
-# daemon_reload picks up unit changes before enabling; it does not itself report
-# changed, so the task stays idempotent.
 - name: Enable and start the image refresh timer
   ansible.builtin.systemd_service:
     name: incus-image-refresh.timer

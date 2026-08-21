@@ -116,9 +116,8 @@
     - arbites.timer
   become: true
 
-# daemon_reload picks up unit changes before enabling; it does not itself report
-# changed, so the task stays idempotent. No restart handler: a oneshot timer has
-# nothing to restart, and this way a self-apply never tears down its own run.
+# No restart handler: a oneshot timer has nothing to restart, and this way a
+# self-apply never tears down its own run.
 - name: Enable and start the reconcile timer
   ansible.builtin.systemd_service:
     name: arbites.timer

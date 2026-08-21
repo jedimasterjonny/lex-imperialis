@@ -1,7 +1,4 @@
 ---
-# Named role-uniquely so a later role redefining a shared handler name cannot
-# reorder this one past its flush.
-#
 # Restarting the socket is enough to apply a change to either unit: the service
 # takes its listening fd from systemd, so it cannot be started outside socket
 # activation, and `Requires=` on the socket means this restart stops whatever

@@ -69,8 +69,6 @@
   become: true
   notify: Restart homepage
 
-# Restart-on-change runs at flush; this generates the quadlet unit and asserts it
-# is up even on a converge where nothing changed and no handler fired.
 - name: Apply pending unit changes
   ansible.builtin.meta: flush_handlers
 

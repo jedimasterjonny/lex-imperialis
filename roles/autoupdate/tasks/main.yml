@@ -63,8 +63,6 @@
     mode: "0644"
   become: true
 
-# daemon_reload picks up unit changes before enabling; it does not itself report
-# changed, so the task stays idempotent.
 - name: Enable and start the update timer
   ansible.builtin.systemd_service:
     name: autoupdate.timer
