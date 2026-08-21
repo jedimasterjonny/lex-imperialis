@@ -46,7 +46,6 @@
         masked: true
 
 - name: Provision the owner's npm toolchain
-  when: dev_npm | bool
   become: true
   block:
     - name: Install npm
@@ -176,7 +175,6 @@
     mode: "0440"
     validate: /usr/sbin/visudo -cf %s
   become: true
-  when: dev_passwordless_sudo | bool
 
 # Retire the hand-rolled %wheel NOPASSWD drop-in this supersedes; a no-op on any
 # host that never carried it.
@@ -214,7 +212,6 @@
 # restart-storms with 203/EXEC. The user manager runs in the owner's unconfined
 # domain, where the binary execs.
 - name: Configure the Claude Code Remote Control session
-  when: dev_remote_control | bool
   become: true
   become_user: "{{ dev_user }}"
   block:

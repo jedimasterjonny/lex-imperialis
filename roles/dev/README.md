@@ -1,8 +1,8 @@
 # dev
 
 Developer tooling for the workstation, on top of common (the owner account
-must exist). npm is gated on `dev_npm` for hosts that do no Node work; git
-and nvim dotfiles deploy via the stow role.
+must exist). npm ships with the role; git and nvim dotfiles deploy via the
+stow role.
 
 Claude Code installs once per user through the native installer, guarded by
 `creates:` — the binary self-updates in the background, so the role never
@@ -54,9 +54,9 @@ outranks the cracklib `packer` openSUSE ships — but packer is needed only when
 ## firebase-tools
 
 `firebase-tools` installs as an npm global into the owner's `~/.local` at
-`dev_firebase_tools_version`, behind the same `dev_npm` gate as npm itself. There
-is no zypper package and the CLI does not self-update, so the pin drives the
-install, as tflint's does; it matches the version the deploy workflows `npx`, and
+`dev_firebase_tools_version`. There is no zypper package and the CLI does not
+self-update, so the pin drives the install, as tflint's does; it matches the
+version the deploy workflows `npx`, and
 one renovate custom manager bumps both. The pin covers the operator's hand-run
 `firebase` only — the workflows `npx` their own copy on `ubuntu-latest`, so the
 site's release path never reaches the workstation.
@@ -91,8 +91,8 @@ installing `google-cloud-cli` from it.
 
 ## Passwordless sudo
 
-`dev_passwordless_sudo` (default `true`) grants the owner passwordless sudo on
-the workstation via `/etc/sudoers.d/wheel-<owner>-nopasswd`. The name matters:
+The role grants the owner passwordless sudo on the workstation via
+`/etc/sudoers.d/wheel-<owner>-nopasswd`. The name matters:
 sudoers.d loads in sorted lexical order and the last match wins, so the drop-in
 must sort after common's `wheel` file to override that file's own-password
 `%wheel` rule. It supersedes and removes a legacy hand-rolled `wheel-nopasswd`.
@@ -103,10 +103,10 @@ untouched here.
 
 ## Remote Control
 
-`dev_remote_control` (default `true`) runs `claude remote-control` as `dev_user`
-at boot, so the host is steerable from claude.ai/code or the Claude app the
-moment it is up. Server mode makes outbound HTTPS only — no inbound port, no
-firewall change. The session is auto-named after the machine's hostname;
+The role runs `claude remote-control` as `dev_user` at boot, so the host is
+steerable from claude.ai/code or the Claude app the moment it is up. Server
+mode makes outbound HTTPS only — no inbound port, no firewall change. The
+session is auto-named after the machine's hostname;
 `dev_remote_control_workdir` is its working directory (default the owner's home).
 
 It runs under the owner's own `systemd --user` manager, not a system unit:

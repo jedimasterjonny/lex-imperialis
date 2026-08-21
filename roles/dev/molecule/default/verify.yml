@@ -21,7 +21,6 @@
     # Every check here runs as the owner with their HOME: npm's prefix, the npmrc
     # and the PATH that resolves firebase are all per-user.
     - name: Verify the owner's npm toolchain
-      when: dev_npm | bool
       become: true
       become_user: "{{ dev_user }}"
       environment:
@@ -211,7 +210,6 @@
         quiet: true
 
     - name: Verify the owner's passwordless sudo
-      when: dev_passwordless_sudo | bool
       block:
         - name: Stat the owner's sudoers drop-in
           ansible.builtin.stat:
@@ -238,7 +236,6 @@
           changed_when: false
 
     - name: Verify the Remote Control service
-      when: dev_remote_control | bool
       block:
         # Enablement is the default.target.wants symlink `systemctl --user enable`
         # drops, so a pure stat proves the boot contract without the session
