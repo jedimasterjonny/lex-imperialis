@@ -347,14 +347,6 @@ Recover the appliance with DSM (Hyper Backup / the RAID), then re-export the
 shares the fleet mounts — `solar` and `scholam` name it as their NFS server, and
 those mounts are what the arr stack and the backups run on.
 
-**Temporary, delete after 2026-08-21:** `/volume2/astropath/prometheus` still
-holds the pre-cutover TSDB, kept as the rollback for the move to auspex. Its
-containers are stopped and Docker is uninstalled, so it is inert data — but this
-is the only place left that records it exists, the NAS having left the inventory.
-Rolling back would mean reinstalling Container Manager and `docker compose up -d`
-there. Once the migrated history is trusted, `rm -rf /volume2/astropath/prometheus`
-and delete this paragraph.
-
 The `*-podman-backup` and `*-home-backup` restic repos and the `/scriptorum/photos`
 library are also mirrored off-site to a Hetzner storage box by three Synology Hyper
 Backup tasks (podman Wednesday 02:00, home Thursday 04:00, photos Tuesday 03:00).
