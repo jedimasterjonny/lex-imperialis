@@ -93,14 +93,31 @@ def excluded_roster(expr):
 
 def covered_roster(expr):
     # One node_systemd_unit_state selector per ScheduledJobMetricMissing clause. The
+    # promtool case's input_series carry the same shape, so this reads those too.
     return sorted(
         set(re.findall(r'node_systemd_unit_state\{[^}]*name="([^"]+)\.service"', expr))
     )
 
 
+def catch_all_series(tests):
+    # Located by the alert its cases assert, not by case name, so renaming the case
+    # does not quietly empty this.
+    return {
+        unit
+        for test in tests.get("tests", [])
+        if any(
+            case.get("alertname") == "SystemdUnitFailed"
+            for case in test.get("alert_rule_test", [])
+        )
+        for series in test.get("input_series", [])
+        for unit in covered_roster(series.get("series", ""))
+    }
+
+
 def main():
     rules = declared(yaml.safe_load(RULES.read_text()))
-    cases = asserted(yaml.safe_load(TESTS.read_text()))
+    tests = yaml.safe_load(TESTS.read_text())
+    cases = asserted(tests)
 
     status = 0
     for name in sorted(rules.keys() - cases):
@@ -138,6 +155,21 @@ def main():
             f"on {sorted(set(excluded) ^ set(covered))}. A unit excluded from the "
             "catch-all with no outcome-metric alert behind it is monitored by neither "
             "rule.",
+            file=sys.stderr,
+        )
+        status = 1
+
+    # The roster's third copy. The SystemdUnitFailed case drives one series per
+    # excluded unit; a unit added to both rules but not there leaves that case
+    # asserting nothing about it, which is what it did for wordpress-boost from
+    # dab44a0 until now. A subset, not equality: the case deliberately also drives an
+    # ordinary unit that SHOULD alert.
+    undriven = sorted(set(excluded) - catch_all_series(tests))
+    if undriven:
+        print(
+            f"ERROR: the SystemdUnitFailed case in {TESTS.relative_to(REPO)} drives no "
+            f"series for {undriven}, so it cannot notice them being dropped from the "
+            "exclusion roster; add one input_series per unit.",
             file=sys.stderr,
         )
         status = 1

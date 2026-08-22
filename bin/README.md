@@ -10,6 +10,19 @@ Enforces the test-coverage contract over `roles/`: every role ships a
 scenario requires a `molecule/hetzner` one (its real-VM CI form). Exits
 non-zero listing every gap; runs on every commit, ignoring filenames.
 
+## check-alert-test-coverage.py
+
+Holds `roles/prometheus`'s alert rules and their promtool cases to what `promtool`
+cannot see: every rule has a case, every case names a live rule (promtool passes a
+case naming a dead rule whenever it expects no alerts), and `SystemdUnitFailed`'s
+exclusion roster, `ScheduledJobMetricMissing`'s clauses and the case driving them
+name the same units — a unit excluded from the catch-all but absent from
+`ScheduledJobMetricMissing` is monitored by neither rule. Both rosters are read out
+of the rules' own expressions, so neither can drift from what ships. Parses both
+files as YAML: a rule comment already contains the string `alert:`. Backs the
+`alert-test-coverage` hook, on a change to the rules or the tests. Needs the venv
+(PyYAML).
+
 ## check-jinja-syntax.py
 
 Parses every `*.j2` handed to it, failing on a Jinja syntax error that would

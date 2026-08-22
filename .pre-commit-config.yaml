@@ -204,10 +204,10 @@ repos:
       # files by name in both directions — an uncovered rule, and a case naming a rule
       # that no longer exists, which promtool passes without comment whenever the case
       # expects no alerts. It also holds the two rules that carry the same oneshot
-      # roster in two syntaxes to the same set of units — a static property of the
-      # rules, caught in a fifth of a second here rather than by an assertion inside
-      # the prometheus scenario. Same file pattern as the hook above, for the same
-      # reason.
+      # roster in two syntaxes to the same set of units, and the promtool case that
+      # drives them to naming every one — static properties of these two files, caught
+      # in a fifth of a second here rather than by an assertion inside the prometheus
+      # scenario. Same file pattern as the hook above, for the same reason.
       - id: alert-test-coverage
         name: alert-test-coverage
         entry: python3 bin/check-alert-test-coverage.py

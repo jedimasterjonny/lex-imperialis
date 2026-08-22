@@ -882,7 +882,9 @@ groups:
       # The roster must stay in step with SystemdUnitFailed's exclusion regex above;
       # a further oneshot excluded there and forgotten here is uncovered by both.
       # bin/check-alert-test-coverage.py asserts the two sets are equal rather than
-      # trusting it.
+      # trusting it. It holds the SystemdUnitFailed case in tests/alerts_test.yml to
+      # the same roster too — that case drives one series per excluded unit, and it
+      # asserted nothing about wordpress-boost from dab44a0 until that gate landed.
       #
       # Fires on a newly built host until its first run writes the metric — correct,
       # not noise: the unit is installed and has never recorded a successful run. On a
