@@ -1013,6 +1013,32 @@ tests:
         alertname: SmartmonOverdue
         exp_alerts: []
 
+  # The collector's parse verdict — the only rule that sees a malformed .prom
+  # file, whose family vanishes from the scrape while its writer reports
+  # success.
+  - interval: 5m
+    name: a malformed textfile metric file alerts
+    input_series:
+      - series: 'node_textfile_scrape_error{job="node",instance="solar:9100"}'
+        values: "1x30"
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: TextfileScrapeError
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: solar:9100
+            exp_annotations:
+              summary: "a textfile metric file on solar:9100 is malformed"
+              description: >-
+                node_exporter on solar:9100 failed to parse at least one .prom file in
+                the textfile collector directory — that file's metrics have vanished
+                from the scrape while their writer still reports success.
+      - eval_time: 30m
+        alertname: TextfileScrapeError
+        exp_alerts: []
+
   # InstanceDown and BlackboxExporterDown split one failure mode, and the split is
   # only correct as a pair. Every blackbox target is a probe URL scraped from the one
   # co-located exporter, so an exporter outage takes all of them down at once: without

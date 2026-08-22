@@ -923,6 +923,24 @@ groups:
           description: >-
             Prometheus on {{ $labels.instance }} rejected its last config reload and is
             running the previous config — an arbites-applied change has not taken effect.
+      # Roles write .prom files into the collector directory, and one malformed
+      # sample line drops that whole file from the scrape while the writer's own
+      # *_success metric stays 1 — a class no per-family rule can see, because
+      # an absent family matches nothing. This is the collector's own parse
+      # verdict: the only signal for a malformed payload file, and the earlier
+      # one for a malformed outcome file, whose vanished *_success family
+      # ScheduledJobMetricMissing below then also flags.
+      - alert: TextfileScrapeError
+        expr: node_textfile_scrape_error == 1
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "a textfile metric file on {{ $labels.instance }} is malformed"
+          description: >-
+            node_exporter on {{ $labels.instance }} failed to parse at least one .prom
+            file in the textfile collector directory — that file's metrics have
+            vanished from the scrape while their writer still reports success.
       # The oneshots SystemdUnitFailed excludes are excluded *because* each
       # writes a *_success metric with a bespoke *Failed rule. That trade only holds
       # while the metric is actually published: every one of those rules is `== 0` or
