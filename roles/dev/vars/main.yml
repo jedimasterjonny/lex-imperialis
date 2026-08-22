@@ -6,4 +6,4 @@ dev_tflint_version: "v0.64.0"
 # Pinned to the version the Firebase deploy workflows npx
 # (.github/workflows/firebase-hosting-*.yml), kept in sync by one renovate custom
 # manager. See roles/dev/README.md.
-dev_firebase_tools_version: "15.27.0"
+dev_firebase_tools_version: "15.28.0"
