@@ -21,8 +21,19 @@ both sides of one.
 Both files are parsed as YAML rather than grepped. `alerts.yml` carries long prose
 comments that already contain the string `alert:`, and the tests carry `alertname`
 in theirs, so a line-oriented match reads commentary as declarations.
+
+It also holds the one cross-rule invariant promtool cannot see. SystemdUnitFailed and
+ScheduledJobMetricMissing carry the same roster of oneshot units in two syntaxes, 500
+lines apart: the former excludes them from the catch-all on the grounds that each has
+a bespoke *Failed rule, the latter is what makes that grounds true, and a unit missed
+on either side is monitored by neither, silently. ServiceRestartStorm and
+WireguardTunnelDown are the same shape, but one series drives both, so a promtool case
+pins that pair either way and it needs nothing here. A roster cannot be pinned that
+way — a case only exercises the units it names — so it is read off the file here
+rather than regexed back out of Prometheus's HTTP API by the molecule scenario.
 """
 
+import re
 import sys
 from pathlib import Path
 
@@ -39,8 +50,11 @@ TESTS = REPO / "roles/prometheus/tests/alerts_test.yml"
 def declared(rules):
     # A recording rule carries `record:` where an alert carries `alert:`; the repo
     # ships none, but reading past one beats a KeyError traceback out of a gate.
+    # Keyed by name rather than a bare set so the roster check below can read an
+    # expression without walking the tree a second time; a missing alert yields ""
+    # there and reds the gate through its own message.
     return {
-        rule["alert"]
+        rule["alert"]: rule.get("expr", "")
         for group in rules.get("groups", [])
         for rule in group.get("rules", [])
         if "alert" in rule
@@ -56,22 +70,74 @@ def asserted(tests):
     }
 
 
+# Both rosters are read out of the rule's own expression, so neither can be restated
+# here and drift from what is shipped. Both anchor on the matcher that carries them
+# rather than scanning the expression at large: an unanchored scan picks up any other
+# parenthesised sub-expression (`and on (instance)` yields a phantom `instance`), and —
+# the failure that matters — a unit named outside the scanned alphabet drops out of
+# BOTH rosters at once, so they compare equal and the gate stays green on a real
+# mismatch. Measured: with `[a-z-]+`, a `wordpress-boost2` excluded but uncovered
+# passed.
+def excluded_roster(expr):
+    # One alternation inside SystemdUnitFailed's name!~ matcher. Spaces around !~ are
+    # valid PromQL and are the likely shape of the next edit: the matcher's line is
+    # already 159 characters against yamllint's 160, so a tenth unit cannot go on it.
+    return sorted(
+        {
+            unit
+            for alt in re.findall(r'name\s*!~\s*"\(([^)]+)\)', expr)
+            for unit in alt.split("|")
+        }
+    )
+
+
+def covered_roster(expr):
+    # One node_systemd_unit_state selector per ScheduledJobMetricMissing clause. The
+    return sorted(
+        set(re.findall(r'node_systemd_unit_state\{[^}]*name="([^"]+)\.service"', expr))
+    )
+
+
 def main():
     rules = declared(yaml.safe_load(RULES.read_text()))
     cases = asserted(yaml.safe_load(TESTS.read_text()))
 
     status = 0
-    for name in sorted(rules - cases):
+    for name in sorted(rules.keys() - cases):
         print(
             f"ERROR: alert '{name}' has no case in {TESTS.relative_to(REPO)}; "
             "add one asserting it fires on the fault it names.",
             file=sys.stderr,
         )
         status = 1
-    for name in sorted(cases - rules):
+    for name in sorted(cases - rules.keys()):
         print(
             f"ERROR: {TESTS.relative_to(REPO)} asserts alert '{name}', which "
             f"{RULES.relative_to(REPO)} does not define — a renamed or misspelt rule.",
+            file=sys.stderr,
+        )
+        status = 1
+
+    # Emptiness is checked as well as equality: two rosters that matched nothing
+    # compare equal, and a renamed or rewritten rule is how that would happen.
+    excluded = excluded_roster(rules.get("SystemdUnitFailed", ""))
+    covered = covered_roster(rules.get("ScheduledJobMetricMissing", ""))
+    if not excluded or not covered:
+        print(
+            f"ERROR: in {RULES.relative_to(REPO)}, the roster reads {excluded} out of "
+            f"SystemdUnitFailed and {covered} out of ScheduledJobMetricMissing — one "
+            "matched nothing, so a renamed or rewritten rule has left this check "
+            "asserting nothing at all.",
+            file=sys.stderr,
+        )
+        status = 1
+    elif excluded != covered:
+        print(
+            f"ERROR: in {RULES.relative_to(REPO)}, SystemdUnitFailed excludes "
+            f"{excluded} but ScheduledJobMetricMissing covers {covered} — they differ "
+            f"on {sorted(set(excluded) ^ set(covered))}. A unit excluded from the "
+            "catch-all with no outcome-metric alert behind it is monitored by neither "
+            "rule.",
             file=sys.stderr,
         )
         status = 1

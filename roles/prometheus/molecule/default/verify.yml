@@ -163,40 +163,6 @@
           the 14d window MicroOSBuildStale reads — the rule has no guarantee of the
           history it needs
 
-    # Whether a rule fires on its fault is promtool's job (roles/prometheus/tests).
-    # This is the property promtool cannot see: two rules holding the same roster of
-    # units in two syntaxes, 200 lines apart. SystemdUnitFailed excludes those units
-    # by regex on the grounds that each has a bespoke *Failed rule, and
-    # ScheduledJobMetricMissing is what makes that grounds true. Exclude a ninth
-    # oneshot there and forget it here and the unit is covered by neither — silently,
-    # which is the exact failure this pair exists to prevent. Compare the sets rather
-    # than trusting a comment; both queries are already in the register above.
-    - name: The two rules that share the oneshot roster agree on it
-      vars:
-        prometheus_roster_queries: >-
-          {{ prometheus_loaded_rules.json.data.groups | map(attribute='rules') | flatten
-             | selectattr('name', 'in', ['SystemdUnitFailed', 'ScheduledJobMetricMissing'])
-             | items2dict(key_name='name', value_name='query') }}
-        # SystemdUnitFailed carries the roster as one alternation inside a name!~
-        # matcher, so match each member on the | or ) that follows it — the trailing
-        # member has no pipe. ScheduledJobMetricMissing carries one name= per clause.
-        prometheus_excluded_units: >-
-          {{ prometheus_roster_queries.SystemdUnitFailed
-             | regex_findall('([a-z-]+)(?=[|)])') | sort }}
-        prometheus_covered_units: >-
-          {{ prometheus_roster_queries.ScheduledJobMetricMissing
-             | regex_findall('name="([a-z-]+)[.]service"') | sort }}
-      ansible.builtin.assert:
-        that:
-          - prometheus_excluded_units | length == 9
-          - prometheus_excluded_units == prometheus_covered_units
-        fail_msg: >-
-          SystemdUnitFailed excludes {{ prometheus_excluded_units }} but
-          ScheduledJobMetricMissing covers {{ prometheus_covered_units }} — a unit
-          excluded from the catch-all with no outcome-metric alert behind it is
-          monitored by neither rule
-        quiet: true
-
     - name: Read the loaded runtime config
       ansible.builtin.uri:
         url: http://127.0.0.1:9090/api/v1/status/config

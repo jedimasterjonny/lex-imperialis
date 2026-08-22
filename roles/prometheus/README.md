@@ -222,7 +222,9 @@ picks them up.
 Every rule in `alerts.yml` has cases, and the `alert-test-coverage` hook
 (`bin/check-alert-test-coverage.py`) fails the commit if a new one arrives without
 them — or if a case names a rule that no longer exists, which promtool passes
-without comment whenever that case expects no alerts. Keep each `eval_time` a
+without comment whenever that case expects no alerts. It also holds
+`SystemdUnitFailed`'s exclusion roster and `ScheduledJobMetricMissing`'s clause
+list to the same set of units. Keep each `eval_time` a
 multiple of the file's `evaluation_interval` — promtool floors an off-grid one
 silently, and an assertion that lands a step early passes while meaning something
 else.
