@@ -335,7 +335,7 @@ groups:
       # about, so a service with no bespoke alert fails silently. This keys on the
       # terminal failed state, where ServiceRestartStorm and WireguardTunnelDown key
       # on the restart counter (flapping but still alive) — a unit is in one state or
-      # the other, so they never double-report one fault. The eight exclusions do have
+      # the other, so they never double-report one fault. The excluded units do have
       # a bespoke alert: each writes a *_success metric whose *Failed rule carries a
       # richer description and the right severity (a failed backup or reconcile is
       # critical, this is a warning). group_by is on alertname, so without the
@@ -847,7 +847,7 @@ groups:
           description: >-
             Prometheus on {{ $labels.instance }} rejected its last config reload and is
             running the previous config — an arbites-applied change has not taken effect.
-      # The eight oneshots SystemdUnitFailed excludes are excluded *because* each
+      # The oneshots SystemdUnitFailed excludes are excluded *because* each
       # writes a *_success metric with a bespoke *Failed rule. That trade only holds
       # while the metric is actually published: every one of those rules is `== 0` or
       # `time() - <gauge> > N`, and both match nothing on an empty vector, so a family
@@ -880,8 +880,11 @@ groups:
       # collapses on its own. Both properties are pinned in tests/alerts_test.yml.
       #
       # The roster must stay in step with SystemdUnitFailed's exclusion regex above;
-      # a ninth oneshot excluded there and forgotten here is uncovered by both.
-      # The prometheus scenario asserts the two sets are equal rather than trusting it.
+      # a further oneshot excluded there and forgotten here is uncovered by both.
+      # bin/check-alert-test-coverage.py asserts the two sets are equal rather than
+      # trusting it. It holds the SystemdUnitFailed case in tests/alerts_test.yml to
+      # the same roster too — that case drives one series per excluded unit, and it
+      # asserted nothing about wordpress-boost from dab44a0 until that gate landed.
       #
       # Fires on a newly built host until its first run writes the metric — correct,
       # not noise: the unit is installed and has never recorded a successful run. On a

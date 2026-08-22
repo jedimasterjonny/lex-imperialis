@@ -203,7 +203,11 @@ repos:
       # none, which is how coverage sat at 14 of 44 unnoticed. This one pairs the two
       # files by name in both directions — an uncovered rule, and a case naming a rule
       # that no longer exists, which promtool passes without comment whenever the case
-      # expects no alerts. Same file pattern as the hook above, for the same reason.
+      # expects no alerts. It also holds the two rules that carry the same oneshot
+      # roster in two syntaxes to the same set of units, and the promtool case that
+      # drives them to naming every one — static properties of these two files, caught
+      # in a fifth of a second here rather than by an assertion inside the prometheus
+      # scenario. Same file pattern as the hook above, for the same reason.
       - id: alert-test-coverage
         name: alert-test-coverage
         entry: python3 bin/check-alert-test-coverage.py

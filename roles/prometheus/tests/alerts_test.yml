@@ -1744,16 +1744,18 @@ tests:
               summary: "caddy.service is restarting repeatedly on solar:9100"
               description: "caddy.service on solar:9100 auto-restarted more than 3 times in 15 minutes."
 
-  # The catch-all, whose whole risk is its exclusion roster: eight oneshots are
+  # The catch-all, whose whole risk is its exclusion roster: the oneshots are
   # excluded *because* each has a bespoke *Failed rule carrying a richer description
   # and the right severity, and group_by is on alertname, so a name left in would
-  # page twice for one failed backup. All eight fail at once here alongside an
+  # page twice for one failed backup. Every member fails at once here alongside an
   # ordinary unit, so a name dropped from the regex surfaces as a second alert in
-  # this case rather than as a duplicate page months later. No host runs all eight —
-  # the roster keys on the unit name and the instance is incidental, so one host
-  # keeps the "exactly one alert" assertion legible.
+  # this case rather than as a duplicate page months later. The reverse direction —
+  # a unit added to the roster and not added here — reads as a pass, so
+  # bin/check-alert-test-coverage.py holds this list to the roster rather than trusting
+  # it. No host runs them all: the roster keys on the unit name and the instance is
+  # incidental, so one host keeps the "exactly one alert" assertion legible.
   - interval: 5m
-    name: the eight oneshots with their own rules raise no catch-all alert
+    name: the oneshots with their own rules raise no catch-all alert
     input_series:
       - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="arbites.service",state="failed"}'
         values: "1x10"
@@ -1770,6 +1772,8 @@ tests:
       - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="wordpress-db-dump.service",state="failed"}'
         values: "1x10"
       - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="wordpress-update-check.service",state="failed"}'
+        values: "1x10"
+      - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="wordpress-boost.service",state="failed"}'
         values: "1x10"
       - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="caddy.service",state="failed"}'
         values: "1x10"
