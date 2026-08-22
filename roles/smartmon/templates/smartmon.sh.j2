@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Read SMART health off every disk smartctl can reach and publish it as
+# node_exporter textfile metrics — the early warning a btrfs scrub cannot give.
+# Runs unattended on smartmon.timer; the ExecStopPost hook records the outcome.
+set -euo pipefail
+
+dir="{{ smartmon_textfile_dir }}"
+
+{% raw %}
+# --scan enumerates only SMART-capable transports, so SD cards and loop devices
+# never appear; a host with no real disk (a molecule container) scans empty and
+# publishes a zero denominator, which SmartDevicesDisappeared reads. An empty
+# scan omits the devices key entirely rather than emitting an empty array — the
+# []? swallows that.
+devices="$(smartctl --scan -j | jq -r '.devices[]?.name')"
+
+checked=0
+mkdir -p "$dir"
+# Publish atomically: write a temp file the exporter's *.prom glob ignores, then
+# rename it over the target so no scrape reads a half-written file. 0644 so the
+# exporter's unprivileged user can read it.
+# A run killed between mktemp and mv — a truncated report dying under set -e
+# by design, or systemd's SIGKILL after TimeoutStartSec on a hung disk —
+# orphans its temp file. Sweep predecessors' here rather than trapping EXIT,
+# which a SIGKILL never runs.
+rm -f "$dir"/.smartmon.prom.*
+tmp="$(mktemp "$dir/.smartmon.prom.XXXXXX")"
+{
+    echo '# HELP smartmon_device_healthy SMART overall-health self-assessment (1 passed, 0 failed or unreadable).'
+    echo '# TYPE smartmon_device_healthy gauge'
+    echo '# HELP smartmon_nvme_percentage_used NVMe endurance used, per cent of rated life (may exceed 100).'
+    echo '# TYPE smartmon_nvme_percentage_used gauge'
+    echo '# HELP smartmon_nvme_media_errors NVMe media and data integrity error count.'
+    echo '# TYPE smartmon_nvme_media_errors gauge'
+    while IFS= read -r dev; do
+        [ -n "$dev" ] || continue
+        # Exit bits 0-2 are smartctl itself failing; bits 3+ flag disk trouble
+        # but still print the JSON — so drop the status and judge on the report.
+        # Truncated JSON kills the run via jq under set -e, which the outcome
+        # hook records; *empty* output would not — jq exits 0 printing nothing
+        # on empty input, minting a valueless sample line that drops the whole
+        # file from the scrape (TextfileScrapeError's class) — so it is routed
+        # to the no-verdict path below instead, which classifies the disk
+        # rather than degrading to a generic parse alert. Kernel device names
+        # carry no characters the text format would need escaped.
+        report="$(smartctl -aj "$dev" || true)"
+        [ -n "$report" ] || report='{}'
+        name="${dev##*/}"
+        # No verdict is not health: a device smartctl scanned but cannot assess
+        # reads unhealthy rather than vanishing from the metric.
+        healthy="$(jq -r 'if .smart_status.passed then 1 else 0 end' <<<"$report")"
+        echo "smartmon_device_healthy{device=\"$name\"} $healthy"
+        # The NVMe health log's counters are spec-defined; ATA wear attributes
+        # are vendor-specific and deliberately not parsed — an ATA disk is
+        # covered by the overall verdict alone. Guarded per key, not per
+        # object: a partial log would otherwise print the literal null, and
+        # one bad sample drops the whole file from the scrape. An absent
+        # counter stays absent rather than minting a misleading 0.
+        pct="$(jq -r '.nvme_smart_health_information_log.percentage_used // empty' <<<"$report")"
+        media="$(jq -r '.nvme_smart_health_information_log.media_errors // empty' <<<"$report")"
+        [ -z "$pct" ] || echo "smartmon_nvme_percentage_used{device=\"$name\"} $pct"
+        [ -z "$media" ] || echo "smartmon_nvme_media_errors{device=\"$name\"} $media"
+        checked=$((checked + 1))
+    done <<< "$devices"
+    echo '# HELP smartmon_devices_checked SMART-capable devices this run read.'
+    echo '# TYPE smartmon_devices_checked gauge'
+    echo "smartmon_devices_checked $checked"
+} > "$tmp"
+chmod 0644 "$tmp"
+mv "$tmp" "$dir/smartmon.prom"
+{% endraw %}
