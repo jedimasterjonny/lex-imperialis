@@ -505,5 +505,6 @@
     - podman_backup
     - home_backup
     - node_exporter
+    - smartmon
     - cadvisor
     - inquisition

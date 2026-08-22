@@ -27,7 +27,8 @@ watch the split. Scraper and TSDB on one host need none of it.
   wear it out. The mount is `nofail`, so its absence is silent —
   `ContainerStoreMountMissing` is what says so.
 - **No backup, and no redundancy.** The TSDB sat on a RAID1 pair with a monthly
-  scrub and SMART mail; it now sits on one consumer NVMe with neither. Accepted:
+  scrub and SMART mail; it now sits on one consumer NVMe with no scrub or
+  redundancy — the SMART half is the `smartmon` role's daily check. Accepted:
   it is derived data, so losing it costs dashboards, not recovery.
 - **4 GB of RAM.** The head is trivial at this series count, but a year of
   retention invites a long-range Grafana query that is not.

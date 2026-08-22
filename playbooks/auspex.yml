@@ -153,6 +153,7 @@
     # doing the equivalent job. The role has never been applied here, so there is
     # no orphan to decommission by hand.
     - node_exporter
+    - smartmon
     - cadvisor
     # blackbox_exporter before prometheus so the exporter is up when the blackbox
     # job first scrapes it — Prometheus tolerates a briefly-down target, so this is
