@@ -12,8 +12,10 @@ role's.
 `alertmanager.yml` is Ansible-rendered to `/etc/alertmanager` and bind-mounted
 read-only with `:Z`, so podman relabels it `container_file_t` on each start and
 the container reads it regardless of the host's ambient SELinux label. Every
-alert routes to the `default` receiver, except the always-firing `Watchdog`,
-which a dedicated route sends to the `deadman` receiver:
+alert routes to the `default` receiver; the always-firing `Watchdog` takes two
+dedicated routes — a `continue: true` leg to `default` that periodically
+exercises the Discord webhook (cadence and rationale live with the route), then
+on to the `deadman` receiver:
 
 - With `alertmanager_discord_webhook_url` set, the `default` receiver posts to the
   `proclamator` webhook via a `discord_configs` entry whose `webhook_url_file`
@@ -22,11 +24,12 @@ which a dedicated route sends to the `deadman` receiver:
 - With `alertmanager_deadman_ping_url` set, the `deadman` receiver carries a
   `webhook_configs` entry whose `url_file` points at a 0600 file holding the
   hc-ping URL; every beat POSTs to it (`send_resolved` off, or a resolved POST
-  would read as a healthy beat and mask an outage). The Watchdog route inherits
+  would read as a healthy beat and mask an outage). The deadman route inherits
   the parent's 5m `group_interval` — the beat, as Alertmanager never repeats a
   group faster than that — and overrides only `repeat_interval` to `4m` so every
   flush re-sends. The healthchecks.io check must track this cadence: period 5m,
-  grace 10m. Retune both halves together or the check flaps.
+  grace 10m. Retune both halves together or the check flaps — and the grace must
+  also absorb the inhibition's mute of a short healed Discord blip.
 - Empty (the default), the matching receiver is null: its route fires nothing.
   This keeps molecule self-contained, so set the URLs on the real host.
 
@@ -40,8 +43,10 @@ the monitor (see `roles/CLAUDE.md`). Alertmanager needs no blackbox probe: Prome
 already scrapes it, so `InstanceDown` covers it, and a total outage trips the
 Watchdog deadman — an alert routed through Alertmanager cannot report Alertmanager.
 That same scrape feeds `AlertmanagerNotificationsFailing` (prometheus role), which
-watches Discord delivery in particular: the deadman routes to its own receiver, so a
-Discord-only failure leaves it green.
+watches Discord delivery in particular — and cannot page over the channel that is
+failing, so an `inhibit_rules` entry suppresses the `Watchdog` while it fires,
+and the deadman reports the failure out-of-band (why with the inhibit block;
+mechanics and windows with the rule).
 
 ## Hardening
 

@@ -2001,4 +2001,4 @@ tests:
               severity: none
             exp_annotations:
               summary: "alerting pipeline heartbeat"
-              description: "This alert always fires; if it stops reaching the deadman receiver, the Prometheus -> Alertmanager -> heartbeat pipeline is broken."
+              description: "Always firing; the periodic Discord leg exercises the webhook, and a stopped deadman beat means the pipeline is broken."
