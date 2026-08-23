@@ -1,0 +1,13 @@
+---
+# Two platforms, one per distribution the role deploys to. Neither container
+# has a SMART-capable disk, so converge and the first verify arm exercise the
+# empty-scan path; the parse is driven by verify's stubbed smartctl.
+platforms:
+  - name: "lex-smartmon-incus-${MOLECULE_RUN_ID:-local}"
+    image: images:opensuse/tumbleweed/cloud
+    groups:
+      - opensuse
+  - name: "lex-smartmon-debian-${MOLECULE_RUN_ID:-local}"
+    image: images:debian/13/cloud
+    groups:
+      - debian

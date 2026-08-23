@@ -249,6 +249,82 @@ groups:
             the limit for its class, 95C on the N150s and 80C on the Pi. Check the
             heatsink and that the fan is spinning.
 
+      # smartmon reads SMART daily, so a bad sample stands for ~24h of scrapes;
+      # every for: below debounces the scrape stream, not the check.
+      - alert: SmartDeviceUnhealthy
+        expr: smartmon_device_healthy == 0
+        for: 1h
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.device }} on {{ $labels.instance }} fails its SMART self-assessment"
+          description: >-
+            The firmware on {{ $labels.device }} ({{ $labels.instance }}) reports the
+            disk as failing, or smartctl could not assess it at all. Confirm the
+            backups are current and replace the disk.
+      # 90 leaves ~10% of rated endurance — months of runway at homelab write
+      # rates, so a warning to plan a replacement, not a page.
+      - alert: NvmeWearHigh
+        expr: smartmon_nvme_percentage_used >= 90
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.device }} on {{ $labels.instance }} is near its rated endurance"
+          description: >-
+            The NVMe health log on {{ $labels.device }} ({{ $labels.instance }}) reports
+            {{ $value }}% of rated endurance used — plan a replacement.
+      # delta, not increase: the metric is a gauge republished from a daily
+      # read. Any growth is real — media errors move only when the controller
+      # failed a read or write against its own error correction — and the count
+      # often climbs while the overall verdict stays green, so this is the
+      # earlier of the two signals.
+      - alert: NvmeMediaErrorsIncreasing
+        expr: delta(smartmon_nvme_media_errors[7d]) > 0
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.device }} on {{ $labels.instance }} is accumulating media errors"
+          description: >-
+            {{ $labels.device }} on {{ $labels.instance }} has logged new media and
+            data integrity errors over the last 7 days — the disk is degrading ahead
+            of its own verdict.
+      # Every host running the check has at least one real disk, so a zero
+      # denominator means the scan broke, not that hardware left: every rule
+      # above reads clean by vacuum.
+      - alert: SmartDevicesDisappeared
+        expr: smartmon_devices_checked == 0
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} scanned no SMART-capable devices"
+          description: >-
+            The SMART check on {{ $labels.instance }} found no devices to read — the
+            host is watched but nothing is, so every disk-health rule reads clean by
+            vacuum.
+      - alert: SmartmonFailed
+        expr: smartmon_success == 0
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "SMART check failed on {{ $labels.instance }}"
+          description: >-
+            The last SMART check run on {{ $labels.instance }} failed — often a device
+            that stopped answering smartctl mid-run, which is itself a disk symptom.
+      # The daily timer caps a healthy run at ~1 day old; 2 gives a day's grace
+      # before flagging a run that never fired (the metric stops advancing).
+      - alert: SmartmonOverdue
+        expr: time() - smartmon_last_run_timestamp_seconds > 2 * 86400
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "SMART check overdue on {{ $labels.instance }}"
+          description: "{{ $labels.instance }} has not completed a SMART check in over 2 days."
+
   - name: time
     rules:
       # NTP keeps the fleet's clocks disciplined; drift breaks TLS validation, log
@@ -345,7 +421,7 @@ groups:
       - alert: SystemdUnitFailed
         expr: >-
           node_systemd_unit_state{state="failed",
-          name!~"(arbites|inquisition|podman-backup|home-backup|autoupdate|wordpress-cron|wordpress-db-dump|wordpress-update-check|wordpress-boost)[.]service"}
+          name!~"(arbites|inquisition|smartmon|podman-backup|home-backup|autoupdate|wordpress-cron|wordpress-db-dump|wordpress-update-check|wordpress-boost)[.]service"}
           == 1
         for: 15m
         labels:
@@ -847,6 +923,24 @@ groups:
           description: >-
             Prometheus on {{ $labels.instance }} rejected its last config reload and is
             running the previous config — an arbites-applied change has not taken effect.
+      # Roles write .prom files into the collector directory, and one malformed
+      # sample line drops that whole file from the scrape while the writer's own
+      # *_success metric stays 1 — a class no per-family rule can see, because
+      # an absent family matches nothing. This is the collector's own parse
+      # verdict: the only signal for a malformed payload file, and the earlier
+      # one for a malformed outcome file, whose vanished *_success family
+      # ScheduledJobMetricMissing below then also flags.
+      - alert: TextfileScrapeError
+        expr: node_textfile_scrape_error == 1
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "a textfile metric file on {{ $labels.instance }} is malformed"
+          description: >-
+            node_exporter on {{ $labels.instance }} failed to parse at least one .prom
+            file in the textfile collector directory — that file's metrics have
+            vanished from the scrape while their writer still reports success.
       # The oneshots SystemdUnitFailed excludes are excluded *because* each
       # writes a *_success metric with a bespoke *Failed rule. That trade only holds
       # while the metric is actually published: every one of those rules is `== 0` or
@@ -856,10 +950,11 @@ groups:
       # rule anywhere has a series to fire on.
       #
       # The write is one `mkdir -p` away from silent: the textfile path is an
-      # independent literal in six role defaults (restic_backup, arr, autoupdate,
-      # wordpress, arbites, inquisition), tied to node_exporter_textfile_directory by a
-      # comment and nothing else. A one-character divergence lands the .prom outside
-      # the collector's glob and the family vanishes with every run still green.
+      # independent literal in seven role defaults (restic_backup, arr, autoupdate,
+      # wordpress, arbites, inquisition, smartmon), tied to
+      # node_exporter_textfile_directory by a comment and nothing else. A
+      # one-character divergence lands the .prom outside the collector's glob and
+      # the family vanishes with every run still green.
       #
       # A bare absent() would need the family gone from EVERY host before it fired.
       # Key on unit presence instead: node_exporter's systemd collector runs with
@@ -900,6 +995,7 @@ groups:
           or (group by (instance, name) (node_systemd_unit_state{name="autoupdate.service"}) unless on (instance) autoupdate_success)
           or (group by (instance, name) (node_systemd_unit_state{name="arbites.service"}) unless on (instance) arbites_success)
           or (group by (instance, name) (node_systemd_unit_state{name="inquisition.service"}) unless on (instance) inquisition_success)
+          or (group by (instance, name) (node_systemd_unit_state{name="smartmon.service"}) unless on (instance) smartmon_success)
         for: 1h
         labels:
           severity: warning

@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Daily SMART disk health check
+
+[Timer]
+OnCalendar={{ smartmon_oncalendar }}
+# Persistent, unlike inquisition's: the textfile metric survives a reboot, so a
+# host back from a multi-day outage would otherwise stand SmartmonOverdue until
+# the next tick. A boot-time catch-up read is harmless here.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

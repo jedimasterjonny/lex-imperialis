@@ -47,4 +47,5 @@
     - dev
     - home_backup
     - node_exporter
+    - smartmon
     - arbites

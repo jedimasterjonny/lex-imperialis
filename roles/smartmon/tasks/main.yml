@@ -1,0 +1,60 @@
+---
+- name: Install smartmontools and jq
+  ansible.builtin.package:
+    name:
+      - jq
+      - smartmontools
+    state: present
+  become: true
+
+# The unit exists on both distributions, so one unconditional task beats a
+# when:.
+- name: Disable the packaged smartd poller
+  ansible.builtin.systemd_service:
+    name: "{{ smartmon_smartd_unit }}"
+    enabled: false
+    state: stopped
+  become: true
+
+- name: Install the SMART check and metric scripts
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - src: smartmon.sh.j2
+      dest: "{{ smartmon_script }}"
+    - src: smartmon-metric.sh.j2
+      dest: "{{ smartmon_metric_script }}"
+  # Consumed by smartmon-metric.sh.j2, the shared run-metric template symlinked
+  # in from node_exporter; smartmon.sh.j2 ignores them.
+  vars:
+    run_metric_textfile_dir: "{{ smartmon_textfile_dir }}"
+    run_metric_name: smartmon
+    run_metric_file: smartmon-run
+    run_metric_description: SMART health check
+  become: true
+
+- name: Install the SMART check service and timer
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - smartmon.service
+    - smartmon.timer
+  become: true
+
+# No restart handler: a oneshot timer has nothing to restart, and the next tick
+# reads the new script anyway.
+- name: Enable and start the SMART check timer
+  ansible.builtin.systemd_service:
+    name: smartmon.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true

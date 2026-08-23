@@ -80,8 +80,8 @@ def asserted(tests):
 # passed.
 def excluded_roster(expr):
     # One alternation inside SystemdUnitFailed's name!~ matcher. Spaces around !~ are
-    # valid PromQL and are the likely shape of the next edit: the matcher's line is
-    # already 159 characters against yamllint's 160, so a tenth unit cannot go on it.
+    # valid PromQL and are the likely shape of the next edit, so the whitespace is
+    # matched loosely.
     return sorted(
         {
             unit

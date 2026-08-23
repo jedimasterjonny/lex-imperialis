@@ -856,6 +856,189 @@ tests:
                 for its class, 95C on the N150s and 80C on the Pi. Check the heatsink
                 and that the fan is spinning.
 
+  # The firmware's own verdict. The 30m eval pins the for: 1h — the daily check
+  # republishes a bad sample for ~24h of scrapes, so the window debounces the
+  # scrape stream, not the check.
+  - interval: 5m
+    name: a disk failing its SMART self-assessment alerts
+    input_series:
+      - series: 'smartmon_device_healthy{job="node",instance="solar:9100",device="nvme0"}'
+        values: "0x30"
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: SmartDeviceUnhealthy
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: node
+              instance: solar:9100
+              device: nvme0
+            exp_annotations:
+              summary: "nvme0 on solar:9100 fails its SMART self-assessment"
+              description: >-
+                The firmware on nvme0 (solar:9100) reports the disk as failing, or
+                smartctl could not assess it at all. Confirm the backups are current
+                and replace the disk.
+      - eval_time: 30m
+        alertname: SmartDeviceUnhealthy
+        exp_alerts: []
+
+  # Two devices either side of the threshold in one case: 91 fires, 89 stays
+  # silent, which pins >= 90 to the number it claims.
+  - interval: 5m
+    name: an NVMe near its rated endurance alerts while a fresher one stays silent
+    input_series:
+      - series: 'smartmon_nvme_percentage_used{job="node",instance="solar:9100",device="nvme0"}'
+        values: "91x30"
+      - series: 'smartmon_nvme_percentage_used{job="node",instance="solar:9100",device="nvme1"}'
+        values: "89x30"
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: NvmeWearHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: solar:9100
+              device: nvme0
+            exp_annotations:
+              summary: "nvme0 on solar:9100 is near its rated endurance"
+              description: >-
+                The NVMe health log on nvme0 (solar:9100) reports 91% of rated
+                endurance used — plan a replacement.
+      - eval_time: 30m
+        alertname: NvmeWearHigh
+        exp_alerts: []
+
+  # A step up turns delta over [7d] positive at t=5m, and the for: 1h holds it
+  # pending until the hour — so 65m fires and 30m does not. The flat non-zero
+  # device alongside is the negative control: the rule keys on growth, not on
+  # the count, so an old disk that logged errors once, long ago, is history
+  # rather than degradation — the exhaustive exp_alerts is what asserts its
+  # silence.
+  - interval: 5m
+    name: a rising media error count alerts while a flat one stays silent
+    input_series:
+      - series: 'smartmon_nvme_media_errors{job="node",instance="solar:9100",device="nvme0"}'
+        values: "0 12x20"
+      - series: 'smartmon_nvme_media_errors{job="node",instance="solar:9100",device="nvme1"}'
+        values: "12x20"
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: NvmeMediaErrorsIncreasing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: solar:9100
+              device: nvme0
+            exp_annotations:
+              summary: "nvme0 on solar:9100 is accumulating media errors"
+              description: >-
+                nvme0 on solar:9100 has logged new media and data integrity errors over
+                the last 7 days — the disk is degrading ahead of its own verdict.
+      - eval_time: 30m
+        alertname: NvmeMediaErrorsIncreasing
+        exp_alerts: []
+
+  # The denominator rule: a scan that reads nothing on a host that runs the
+  # check means the scan broke, and every verdict rule above reads clean by
+  # vacuum.
+  - interval: 5m
+    name: a SMART scan that finds no devices alerts
+    input_series:
+      - series: 'smartmon_devices_checked{job="node",instance="solar:9100"}'
+        values: "0x30"
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: SmartDevicesDisappeared
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: solar:9100
+            exp_annotations:
+              summary: "solar:9100 scanned no SMART-capable devices"
+              description: >-
+                The SMART check on solar:9100 found no devices to read — the host is
+                watched but nothing is, so every disk-health rule reads clean by
+                vacuum.
+      - eval_time: 30m
+        alertname: SmartDevicesDisappeared
+        exp_alerts: []
+
+  - interval: 5m
+    name: a failed SMART check run alerts
+    input_series:
+      - series: 'smartmon_success{job="node",instance="solar:9100"}'
+        values: "0x30"
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: SmartmonFailed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: solar:9100
+            exp_annotations:
+              summary: "SMART check failed on solar:9100"
+              description: >-
+                The last SMART check run on solar:9100 failed — often a device that
+                stopped answering smartctl mid-run, which is itself a disk symptom.
+      - eval_time: 30m
+        alertname: SmartmonFailed
+        exp_alerts: []
+
+  # The gauge is negative because promtool's clock starts at zero: -172800
+  # places the last run exactly two days before the test begins, so the
+  # threshold trips at the first tick without simulating two days of scrapes,
+  # and the for: 1h alone separates the 65m fire from the 30m silence.
+  - interval: 5m
+    name: a SMART check silent for over 2 days alerts
+    input_series:
+      - series: 'smartmon_last_run_timestamp_seconds{job="node",instance="solar:9100"}'
+        values: "-172800x30"
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: SmartmonOverdue
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: solar:9100
+            exp_annotations:
+              summary: "SMART check overdue on solar:9100"
+              description: "solar:9100 has not completed a SMART check in over 2 days."
+      - eval_time: 30m
+        alertname: SmartmonOverdue
+        exp_alerts: []
+
+  # The collector's parse verdict — the only rule that sees a malformed .prom
+  # file, whose family vanishes from the scrape while its writer reports
+  # success.
+  - interval: 5m
+    name: a malformed textfile metric file alerts
+    input_series:
+      - series: 'node_textfile_scrape_error{job="node",instance="solar:9100"}'
+        values: "1x30"
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: TextfileScrapeError
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: solar:9100
+            exp_annotations:
+              summary: "a textfile metric file on solar:9100 is malformed"
+              description: >-
+                node_exporter on solar:9100 failed to parse at least one .prom file in
+                the textfile collector directory — that file's metrics have vanished
+                from the scrape while their writer still reports success.
+      - eval_time: 30m
+        alertname: TextfileScrapeError
+        exp_alerts: []
+
   # InstanceDown and BlackboxExporterDown split one failure mode, and the split is
   # only correct as a pair. Every blackbox target is a probe URL scraped from the one
   # co-located exporter, so an exporter outage takes all of them down at once: without
@@ -1760,6 +1943,8 @@ tests:
       - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="arbites.service",state="failed"}'
         values: "1x10"
       - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="inquisition.service",state="failed"}'
+        values: "1x10"
+      - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="smartmon.service",state="failed"}'
         values: "1x10"
       - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="podman-backup.service",state="failed"}'
         values: "1x10"

@@ -1,0 +1,267 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - ../../defaults/main.yml
+  vars:
+    smartmon_prom: "{{ smartmon_textfile_dir }}/smartmon.prom"
+    smartmon_run_prom: "{{ smartmon_textfile_dir }}/smartmon-run.prom"
+    smartmon_stub_dir: /tmp/smartmon-stub
+    # The stub dir first, so the script's bare `smartctl` resolves to it; jq and
+    # bash still resolve to the real binaries behind it.
+    smartmon_stub_path: "{{ smartmon_stub_dir }}:/usr/sbin:/usr/bin:/sbin:/bin"
+  tasks:
+    - name: Stat the SMART check and metric scripts
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ smartmon_script }}"
+        - "{{ smartmon_metric_script }}"
+      register: smartmon_scripts
+      become: true
+
+    - name: The scripts are installed and executable
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.executable
+        fail_msg: "{{ item.item }} is missing or not executable"
+        quiet: true
+      loop: "{{ smartmon_scripts.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    # daemon_reload is a no-op read here: it makes the module gather and return
+    # the unit's systemctl-show properties to assert against.
+    - name: Read the SMART check timer's state
+      ansible.builtin.systemd_service:
+        name: smartmon.timer
+        daemon_reload: true
+      register: smartmon_timer
+      become: true
+
+    - name: The timer is enabled on the daily cadence
+      ansible.builtin.assert:
+        that:
+          - smartmon_timer.status.ActiveState == 'active'
+          - smartmon_timer.status.UnitFileState == 'enabled'
+          - "'06:17' in smartmon_timer.status.TimersCalendar"
+        fail_msg: "the SMART check timer is not enabled on the daily cadence"
+        quiet: true
+
+    # The packaged poller's unit is named smartmontools on Debian and smartd on
+    # openSUSE.
+    - name: Read the packaged smartd poller's state
+      ansible.builtin.systemd_service:
+        name: "{{ 'smartmontools' if 'debian' in group_names else 'smartd' }}"
+      register: smartmon_smartd
+      become: true
+
+    # On Debian the postinst enabled it at converge's package install, so this
+    # asserts the role actually took it back down. ActiveState is not asserted:
+    # ConditionVirtualization=no holds the unit inactive in a container either
+    # way.
+    - name: The packaged poller is disabled
+      ansible.builtin.assert:
+        that:
+          - smartmon_smartd.status.UnitFileState != 'enabled'
+        fail_msg: "the packaged smartd poller is still enabled"
+        quiet: true
+
+    # Started by the role, so a tick could land mid-verify and rewrite the
+    # outcome file under the arms below. The unit stays; only the schedule goes.
+    - name: Stop the timer for the duration of the checks
+      ansible.builtin.systemd_service:
+        name: smartmon.timer
+        state: stopped
+      become: true
+
+    # ── Empty-scan arm: the container has no SMART-capable disk, which is the
+    # vacuum SmartDevicesDisappeared reads. Fired as the unit, not as the
+    # script: starting a oneshot blocks until it exits, so both files below are
+    # what ExecStart and ExecStopPost actually wrote — and a real smartctl and
+    # jq parsed a real (empty) scan. The later arms drive the script directly;
+    # they exercise its parsing, which the wiring no longer has to be asserted
+    # through.
+    - name: Fire the SMART check against the empty scan
+      ansible.builtin.systemd_service:
+        name: smartmon.service
+        state: started
+      become: true
+
+    - name: Read the SMART metrics after the empty-scan run
+      ansible.builtin.slurp:
+        src: "{{ smartmon_prom }}"
+      register: smartmon_empty
+      become: true
+
+    - name: A host with no devices publishes a zero denominator and no verdicts
+      vars:
+        prom: "{{ smartmon_empty.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'smartmon_devices_checked 0\n' in prom"
+          - "'smartmon_device_healthy{' not in prom"
+        fail_msg: "the empty scan did not record a clean zero"
+        quiet: true
+
+    - name: Read the outcome metric the unit's hook wrote
+      ansible.builtin.slurp:
+        src: "{{ smartmon_run_prom }}"
+      register: smartmon_run_unit
+      become: true
+
+    # The ExecStopPost wiring, asserted by its effect rather than by grepping
+    # the unit for a path: a real run recorded its own success.
+    - name: The unit's hook recorded the run as successful
+      vars:
+        prom: "{{ smartmon_run_unit.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'smartmon_success 1' in prom"
+          - "'smartmon_last_run_timestamp_seconds ' in prom"
+        fail_msg: "the service's ExecStopPost hook did not record a successful run"
+        quiet: true
+
+    # ── Stub arms: no tier's instance carries a disk smartctl can read, so the
+    # parse is driven through a stubbed smartctl that answers --scan with one
+    # NVMe device and everything else with a canned report.
+    - name: Create the stub directory
+      ansible.builtin.file:
+        path: "{{ smartmon_stub_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      become: true
+
+    - name: Install the smartctl stub
+      ansible.builtin.copy:
+        content: |
+          #!/bin/sh
+          case "$*" in
+              *--scan*) echo '{"devices":[{"name":"/dev/nvme0","type":"nvme"}]}' ;;
+              *) cat {{ smartmon_stub_dir }}/report.json ;;
+          esac
+        dest: "{{ smartmon_stub_dir }}/smartctl"
+        owner: root
+        group: root
+        mode: "0755"
+      become: true
+
+    - name: Plant a healthy NVMe report
+      ansible.builtin.copy:
+        content: |
+          {"smart_status": {"passed": true},
+           "nvme_smart_health_information_log": {"percentage_used": 3, "media_errors": 0}}
+        dest: "{{ smartmon_stub_dir }}/report.json"
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Run the SMART check against the healthy report
+      ansible.builtin.command: "{{ smartmon_script }}"
+      environment:
+        PATH: "{{ smartmon_stub_path }}"
+      changed_when: false
+      become: true
+
+    - name: Read the SMART metrics after the healthy run
+      ansible.builtin.slurp:
+        src: "{{ smartmon_prom }}"
+      register: smartmon_healthy
+      become: true
+
+    - name: A healthy device records its verdict and both NVMe counters
+      vars:
+        prom: "{{ smartmon_healthy.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'smartmon_device_healthy{device=\"nvme0\"} 1' in prom"
+          - "'smartmon_nvme_percentage_used{device=\"nvme0\"} 3' in prom"
+          - "'smartmon_nvme_media_errors{device=\"nvme0\"} 0' in prom"
+          - "'smartmon_devices_checked 1\n' in prom"
+        fail_msg: "a healthy NVMe report was not published in full"
+        quiet: true
+
+    # ── Empty-report arm: a smartctl that dies printing nothing. jq exits 0 on
+    # empty input printing nothing, which would mint a valueless sample line
+    # the exporter drops whole-file while smartmon_success stays 1 — leaving
+    # only the generic TextfileScrapeError. The guard routes it to the
+    # no-verdict path instead (no verdict is not health, and an absent NVMe log
+    # skips the counters), so this one arm pins both the guard and that path's
+    # classification.
+    - name: Plant an empty report
+      ansible.builtin.copy:
+        content: ""
+        dest: "{{ smartmon_stub_dir }}/report.json"
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Run the SMART check against the empty output
+      ansible.builtin.command: "{{ smartmon_script }}"
+      environment:
+        PATH: "{{ smartmon_stub_path }}"
+      changed_when: false
+      become: true
+
+    - name: Read the SMART metrics after the empty-output run
+      ansible.builtin.slurp:
+        src: "{{ smartmon_prom }}"
+      register: smartmon_emptyreport
+      become: true
+
+    - name: A device answering nothing reads unhealthy, not malformed
+      vars:
+        prom: "{{ smartmon_emptyreport.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'smartmon_device_healthy{device=\"nvme0\"} 0' in prom"
+          - "'smartmon_nvme_percentage_used{' not in prom"
+          - "'smartmon_devices_checked 1\n' in prom"
+        fail_msg: "an empty smartctl report was not routed to the no-verdict path"
+        quiet: true
+
+    # ── Failure arm: the empty-scan unit fire above already recorded the
+    # success path, and an ExecStart failure cannot be forced without a real
+    # disk — so drive the hook the way systemd would on a failed run.
+    - name: Run the metric hook as a failed run would
+      ansible.builtin.command: "{{ smartmon_metric_script }}"
+      environment:
+        SERVICE_RESULT: exit-code
+      changed_when: false
+      become: true
+
+    - name: Read both files after the simulated failure
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - "{{ smartmon_run_prom }}"
+        - "{{ smartmon_prom }}"
+      register: smartmon_after_fail
+      become: true
+
+    # The two-file split: the hook records the failure without zeroing verdicts
+    # it never measured.
+    - name: A failed run records the failure and leaves the payload untouched
+      vars:
+        run_prom: "{{ smartmon_after_fail.results[0].content | b64decode }}"
+        payload: "{{ smartmon_after_fail.results[1].content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'smartmon_success 0' in run_prom"
+          - "payload == (smartmon_emptyreport.content | b64decode)"
+        fail_msg: "the outcome metric did not report a failed run, or the payload moved"
+        quiet: true
+
+    # Restore the schedule the checks stopped, so verify re-runs clean against
+    # the same converged instance.
+    - name: Restart the SMART check timer
+      ansible.builtin.systemd_service:
+        name: smartmon.timer
+        state: started
+      become: true

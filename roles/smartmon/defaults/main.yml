@@ -1,0 +1,20 @@
+---
+# node_exporter textfile-collector directory the metrics are written to
+# (smartmon.prom for the per-device payload, smartmon-run.prom for the run
+# outcome). Must match the node_exporter role's node_exporter_textfile_directory
+# so Prometheus scrapes what this writes.
+smartmon_textfile_dir: /var/lib/node_exporter/textfile_collector
+
+# Check cadence. Daily: wear and media errors move over weeks, and the alert
+# windows in the prometheus role's hardware group are sized against this. The
+# read is milliseconds of local I/O, so the hosts need no staggering.
+smartmon_oncalendar: "*-*-* 06:17:00"
+
+# Installed scripts. /usr/local/sbin: root-only, like the other oneshots.
+smartmon_script: /usr/local/sbin/smartmon.sh
+smartmon_metric_script: /usr/local/sbin/smartmon-metric.sh
+
+# The unit the smartmontools package ships its own poller as — Debian's postinst
+# enables and starts it (a DEVICESCAN sweep every 30m, mailing root), openSUSE
+# ships it inert. The name is the role's one distribution branch.
+smartmon_smartd_unit: "{{ 'smartmontools' if ansible_facts['os_family'] == 'Debian' else 'smartd' }}"
