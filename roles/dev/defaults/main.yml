@@ -13,6 +13,15 @@ dev_packages:
   # prometheus server rides along, as it is one package. See README.
   - golang-github-prometheus-prometheus
   - hugo
+  # Shared libraries the headless Chrome under ~/.cache/puppeteer links against;
+  # puppeteer fetches the browser itself, but not these, and it exits on the
+  # first missing one. Not pulled in by anything else on a headless workstation.
+  - libXcomposite1
+  - libXdamage1
+  - libXrandr2
+  - libatk-1_0-0
+  - libatk-bridge-2_0-0
+  - libatspi0
   - make
   - neovim
   - opentofu
