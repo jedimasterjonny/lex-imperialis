@@ -28,18 +28,43 @@
         fail_msg: alertmanager did not load the templated config
 
     # Empty secret vars leave both receivers null and neither *_file gate firing;
-    # converge sets dummies, so this proves the production render — both secret-file
-    # references present and the Watchdog routed to its own deadman receiver.
-    - name: The secret-gated receivers and Watchdog route are rendered
+    # converge sets dummies, so this proves the production render of both
+    # secret-file references.
+    - name: The secret-gated receivers are rendered
       vars:
         alertmanager_config: "{{ alertmanager_status.json.config.original }}"
       ansible.builtin.assert:
         that:
           - "'webhook_url_file: /etc/alertmanager/discord_webhook_url' in alertmanager_config"
           - "'url_file: /etc/alertmanager/deadman_url' in alertmanager_config"
-          - "'receiver: deadman' in alertmanager_config"
-          - "'alertname=\"Watchdog\"' in alertmanager_config"
-        fail_msg: alertmanager did not render the secret-gated receivers or the Watchdog route
+        fail_msg: alertmanager did not render the secret-gated receivers
+        quiet: true
+
+    # Structural, not substring: both Watchdog routes are unconditional template
+    # text, so what can regress is what each leg SAYS — order, matcher, receiver,
+    # continue, cadence. Swap the legs, typo a matcher, or drop the 4m override
+    # (inheriting the root 4h) and the beat dies or slows past the check's grace
+    # while every substring still matches.
+    - name: The Watchdog legs are ordered Discord-then-deadman and the inhibition targets the Watchdog
+      vars:
+        alertmanager_parsed: "{{ alertmanager_status.json.config.original | from_yaml }}"
+        alertmanager_routes: "{{ alertmanager_parsed.route.routes }}"
+      ansible.builtin.assert:
+        that:
+          # config.original is Alertmanager's re-marshalled config, not the raw
+          # file: durations come back canonicalised (120h would read 5d), which
+          # is why the template writes the canonical form.
+          - alertmanager_routes[0].matchers == ['alertname="Watchdog"']
+          - alertmanager_routes[0].receiver == 'default'
+          - alertmanager_routes[0]['continue'] | default(false)
+          - alertmanager_routes[0].repeat_interval == '5d'
+          - alertmanager_routes[1].matchers == ['alertname="Watchdog"']
+          - alertmanager_routes[1].receiver == 'deadman'
+          - not (alertmanager_routes[1]['continue'] | default(false))
+          - alertmanager_routes[1].repeat_interval == '4m'
+          - alertmanager_parsed.inhibit_rules[0].source_matchers == ['alertname="AlertmanagerNotificationsFailing"']
+          - alertmanager_parsed.inhibit_rules[0].target_matchers == ['alertname="Watchdog"']
+        fail_msg: a Watchdog leg's matcher, order, continue, or cadence — or the deadman inhibition — has regressed
         quiet: true
 
     # A non-zero exit fails the task, proving wget resolves in the image and the

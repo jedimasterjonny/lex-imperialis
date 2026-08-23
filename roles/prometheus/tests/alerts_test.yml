@@ -1982,19 +1982,27 @@ tests:
         exp_alerts: []
 
   # Discord is the only receiver that carries alerts, and the Watchdog cannot see it
-  # fail: the deadman routes to its own receiver, so delivery to Discord can be broken
-  # while the heartbeat stays green. The integration selector keeps this rule on that
-  # receiver rather than on the deadman's webhook, whose failure the deadman already
-  # reports by going silent.
-  - interval: 1m
-    name: failed discord deliveries alert while the deadman webhook's do not
+  # fail: the deadman routes to its own receiver, so delivery to Discord can break
+  # while the heartbeat stays green — which is why this rule's firing also inhibits
+  # the Watchdog (alertmanager role), making the heartbeat stop and the deadman
+  # report it. The integration selector keeps this rule on that receiver rather than
+  # on the deadman's webhook, whose failure the deadman already reports by going
+  # silent — the third series pins that. An outage alternating its failure
+  # reason every flush: each reason series alone reads at most exactly 1.5 —
+  # under the strict > — so only the sum without (reason) fires, which is what
+  # this pins. Active from 10m (pending there), firing from 15m, resolved by
+  # 45m once the last increment ages out of the left-open window.
+  - interval: 5m
+    name: sustained mixed-reason discord failures alert and a healed outage resolves
     input_series:
-      - series: 'alertmanager_notifications_failed_total{job="alertmanager",instance="auspex:9093",integration="discord",reason="clientError"}'
-        values: "0+1x40"
+      - series: 'alertmanager_notifications_failed_total{job="alertmanager",instance="auspex:9093",integration="discord",reason="serverError"}'
+        values: "0 1 1 2 2 3x6"
+      - series: 'alertmanager_notifications_failed_total{job="alertmanager",instance="auspex:9093",integration="discord",reason="other"}'
+        values: "0 0 1 1 2 2 3x5"
       - series: 'alertmanager_notifications_failed_total{job="alertmanager",instance="auspex:9093",integration="webhook",reason="clientError"}'
-        values: "0+1x40"
+        values: "0+1x10"
     alert_rule_test:
-      - eval_time: 25m
+      - eval_time: 15m
         alertname: AlertmanagerNotificationsFailing
         exp_alerts:
           - exp_labels:
@@ -2002,16 +2010,26 @@ tests:
               job: alertmanager
               instance: auspex:9093
               integration: discord
-              reason: clientError
             exp_annotations:
               summary: "alertmanager cannot deliver notifications to discord"
-              description: "Alertmanager on auspex:9093 failed to deliver to Discord (clientError) — alerts may not be reaching the operator."
-      # The counter has already risen by the first evaluation that can see two
-      # samples, so the rule is active here and pending. As with the probe rules
-      # above, a 5m for: is one step of this file's evaluation interval and no
-      # on-grid time separates it from a shorter one; this pins that the wait is
-      # there, which is what makes the alert latency rather than suppression.
-      - eval_time: 5m
+              description: "Alertmanager on auspex:9093 failed to deliver to Discord — alerts may not be reaching the operator."
+      # Active but inside the 5m for:, which pins that the wait is there — what
+      # makes the alert latency rather than suppression.
+      - eval_time: 10m
+        alertname: AlertmanagerNotificationsFailing
+        exp_alerts: []
+      - eval_time: 45m
+        alertname: AlertmanagerNotificationsFailing
+        exp_alerts: []
+
+  # One failed flush reads ~1: under > 1.5, never fires.
+  - interval: 1m
+    name: a single healed delivery failure never alerts
+    input_series:
+      - series: 'alertmanager_notifications_failed_total{job="alertmanager",instance="auspex:9093",integration="discord",reason="clientError"}'
+        values: "0 1x10"
+    alert_rule_test:
+      - eval_time: 10m
         alertname: AlertmanagerNotificationsFailing
         exp_alerts: []
 
@@ -2168,4 +2186,4 @@ tests:
               severity: none
             exp_annotations:
               summary: "alerting pipeline heartbeat"
-              description: "This alert always fires; if it stops reaching the deadman receiver, the Prometheus -> Alertmanager -> heartbeat pipeline is broken."
+              description: "Always firing; the periodic Discord leg exercises the webhook, and a stopped deadman beat means the pipeline is broken."

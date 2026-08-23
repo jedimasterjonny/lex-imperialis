@@ -387,26 +387,37 @@ groups:
         annotations:
           summary: "the wireguard tunnel is down on {{ $labels.instance }}"
           description: "wireguard auto-restarted more than once in 15 minutes — it cannot reach the internet through wg0, so the arr stack has no egress."
-      # Discord is the only receiver that carries alerts, and nothing else watches it:
-      # the Watchdog deadman proves the pipeline is alive, but routes to its own
-      # receiver, so Discord delivery can fail while the deadman stays green. The
-      # counter is pre-registered at 0 per integration, so the series is never sparse,
-      # and it advances only once RetryStage has given up on a flush — one increment
-      # is a flush that failed to deliver, so > 0, unsmoothed, and the 5m for: adds
-      # latency rather than suppression. Warning, not critical: no nflog entry is
-      # written for a failed send, so the group is re-attempted at the next
-      # group_interval (5m) — most trips are a blip already healed by the time it
-      # fires, the delivery delayed rather than lost. That same re-attempt bounds the
-      # honest limitation: this alert is itself routed to Discord, so a total outage
-      # cannot surface it while it lasts, but it lands within ~5m of Discord returning.
+      # Discord is the only receiver that carries alerts, and the Watchdog deadman
+      # proves only that the pipeline is alive — Discord delivery could break while
+      # the deadman stayed green, the gap the alertmanager role's inhibit rule now
+      # closes. The counter is pre-registered at 0 per integration, so the series is
+      # never sparse, and it advances only once RetryStage has given up on a flush —
+      # one increment is a flush that failed to deliver. Summed without reason: the
+      # counter splits per failure reason, and a messy outage alternating reasons
+      # would otherwise leave every series under any threshold. > 1.5, the
+      # half-threshold idiom: one failed flush reads ~1 and two ~2, and no nflog
+      # entry is written for a failed send, so a broken group is re-attempted — and
+      # the counter re-incremented — at every 5m group_interval flush. With the for:
+      # over left-open windows, a single healed flush — most trips, the delivery
+      # delayed rather than lost — never fires at all; a two-flush burst fires
+      # only briefly, muting the beat ~5m, inside the healthchecks.io down
+      # threshold; sustained failure fires ~10m in and holds. That matters doubly
+      # since the inhibition: a firing here mutes the Watchdog, and these
+      # graduated windows keep a short healed blip from gapping the deadman beat
+      # far enough to flap a down/up email pair for nothing — a healed outage of
+      # three-plus flushes (~15m+) still emails one pair, worth it at that length.
+      # The honest limitation stands: this alert is itself routed to Discord, so a
+      # total outage cannot surface it while it lasts, but it lands within ~5m of
+      # Discord returning — and the permanent case, a rotted webhook that never
+      # returns, escapes over the inhibition instead.
       - alert: AlertmanagerNotificationsFailing
-        expr: increase(alertmanager_notifications_failed_total{integration="discord"}[15m]) > 0
+        expr: sum without (reason) (increase(alertmanager_notifications_failed_total{integration="discord"}[15m])) > 1.5
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "alertmanager cannot deliver notifications to discord"
-          description: "Alertmanager on {{ $labels.instance }} failed to deliver to Discord ({{ $labels.reason }}) — alerts may not be reaching the operator."
+          description: "Alertmanager on {{ $labels.instance }} failed to deliver to Discord — alerts may not be reaching the operator."
       # The catch-all: every other unit-level rule names a unit it already knows
       # about, so a service with no bespoke alert fails silently. This keys on the
       # terminal failed state, where ServiceRestartStorm and WireguardTunnelDown key
@@ -1014,10 +1025,12 @@ groups:
       # its ABSENCE is the signal — a missed beat means the pipeline is broken,
       # not that anything here is wrong. No for:, so it fires on the first
       # evaluation; severity none, as a firing Watchdog is never itself a problem.
+      # A second route (alertmanager role, which owns the cadence and the why)
+      # also delivers it to Discord periodically, exercising the webhook.
       - alert: Watchdog
         expr: vector(1)
         labels:
           severity: none
         annotations:
           summary: "alerting pipeline heartbeat"
-          description: "This alert always fires; if it stops reaching the deadman receiver, the Prometheus -> Alertmanager -> heartbeat pipeline is broken."
+          description: "Always firing; the periodic Discord leg exercises the webhook, and a stopped deadman beat means the pipeline is broken."

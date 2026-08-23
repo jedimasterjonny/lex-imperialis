@@ -6,9 +6,20 @@ route:
   group_interval: 5m
   repeat_interval: 4h
   routes:
+    # Also send the beat to Discord every five days: synthetic traffic enough
+    # that a rotted webhook fails a delivery, and so trips the failure counter,
+    # within days of decaying instead of on the first real page. 5d sits at the
+    # image's default nflog retention (--data.retention, 120h), past which
+    # Alertmanager forgets the last send and re-sends anyway — drift in that
+    # default only shifts the cadence, never breaks the exercise. continue, so
+    # the beat still falls through to the deadman route below.
+    - matchers:
+        - 'alertname="Watchdog"'
+      receiver: default
+      repeat_interval: 5d
+      continue: true
     # The Watchdog fires on every evaluation; route it to its own deadman
-    # receiver. continue defaults to false, so it never falls through to the
-    # discord/default receiver. It inherits the parent's 5m group_interval —
+    # receiver, where matching ends. It inherits the parent's 5m group_interval —
     # Alertmanager flushes a group only every group_interval and never repeats
     # faster than that, so 5m is the beat, matched by the healthchecks.io check's
     # 5m expected period. Only repeat_interval is overridden, kept below
@@ -18,6 +29,20 @@ route:
         - 'alertname="Watchdog"'
       receiver: deadman
       repeat_interval: 4m
+
+# A failed Discord delivery cannot page over the channel that is failing, so it
+# escapes over the one path that already leaves the stack: while
+# AlertmanagerNotificationsFailing fires, the Watchdog is suppressed, the
+# deadman beat stops, and healthchecks.io emails after its grace. Sustained
+# breakage keeps the alert firing, so the check stays down until delivery is
+# fixed. A short healed blip stays inside the check's grace; a longer one costs
+# one down/up email — the alert's rule comment owns the mechanism and exact
+# windows. No equal: both alerts are singletons.
+inhibit_rules:
+  - source_matchers:
+      - 'alertname="AlertmanagerNotificationsFailing"'
+    target_matchers:
+      - 'alertname="Watchdog"'
 
 receivers:
   - name: default
