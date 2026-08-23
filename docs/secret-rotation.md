@@ -38,8 +38,8 @@ apply target, and any wrinkle.
 | --- | --- | --- | --- |
 | `caddy_cloudflare_api_token` | Cloudflare token for the solar/home zone (`caddy_domain`; Zone:Read, DNS:Edit) | `PLAY=solar` | Gates the DNS-01 wildcard; homepage TLS depends on it too |
 | `emmasedit_cloudflare_api_token` | Cloudflare token for the emmasedit.com zone | `PLAY=rogue-trader` | caddy DNS-01 for emmasedit.com |
-| `alertmanager_discord_webhook_url` | Discord incoming webhook | `PLAY=auspex` | Fire a test alert to confirm delivery |
-| `alertmanager_deadman_ping_url` | healthchecks.io check ping URL (5m period) | `PLAY=auspex` | Confirm the new check goes green; keep period/grace at the Watchdog 5m |
+| `alertmanager_discord_webhook_url` | Discord incoming webhook | `PLAY=auspex` | Fire a test alert and see it land — a botched rotation otherwise surfaces via the deadman only days later, off the periodic exercise (cadence with the alertmanager role) |
+| `alertmanager_deadman_ping_url` | healthchecks.io check ping URL | `PLAY=auspex` | Confirm the new check goes green; cadence per the alertmanager README — a tighter grace makes Discord blips flap the check |
 | `grafana_admin_password` | self-chosen | `PLAY=solar` | **First-init only** — an already-provisioned Grafana also needs `grafana-cli admin reset-admin-password` in-container to match |
 | `arr_api_keys` | each Servarr app UI (Settings → General → API Key) | `PLAY=solar` | Dict replaced whole — re-supply all keys; then fix prowlarr's stored connections for any rotated app |
 | `arr_transmission_username` / `arr_transmission_password` | self-chosen RPC creds | `PLAY=solar` | Container re-applies auth on restart; verify RPC goes 401 → authed |

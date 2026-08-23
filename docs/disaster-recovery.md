@@ -325,8 +325,14 @@ While auspex is down the fleet is unmonitored rather than noisily broken — eve
 rule matches an empty vector instead of firing, because the process that would
 evaluate them is the one that stopped. Nothing on the fleet can say so, and
 nothing needs to: no evaluation means no `Watchdog`, no heartbeat, and
-healthchecks.io pages on the silence. That deadman is the whole signal, so treat
-a missed beat as this host until proven otherwise.
+healthchecks.io pages on the silence. A missed beat has one other deliberate
+cause: sustained Discord delivery failure inhibits the `Watchdog` (alertmanager
+role). So first check whether auspex answers and whether that alert was firing
+recently — `max_over_time(ALERTS{alertname="AlertmanagerNotificationsFailing",alertstate="firing"}[1h])`
+in Prometheus, history rather than the live alert, because a healed outage
+resolves it before a human looks. A hit means the inhibition was engaged: the
+host is healthy and the fault is the webhook, not this runbook's path.
+Otherwise treat a missed beat as this host.
 
 ## administratum (NAS)
 
