@@ -66,6 +66,12 @@
       - solar:8080
       - auspex:8080
       - 192.168.3.4:8080
+    # unpoller, on this host's loopback: it holds the UniFi controller's API key, so
+    # it binds 127.0.0.1 and only the Prometheus beside it can scrape it. Its URL
+    # and key are vaulted under the role's own variable names, so this play sets
+    # neither.
+    prometheus_unpoller_targets:
+      - 127.0.0.1:9130
     # Both routed to and scraped, from the one var: with the second scraper gone
     # there is no longer any way for this Alertmanager to arrive under two
     # instance labels. By hostname rather than loopback, for the reason the
@@ -159,6 +165,9 @@
     # job first scrapes it — Prometheus tolerates a briefly-down target, so this is
     # ordering for tidiness, not a hard dependency.
     - blackbox_exporter
+    # Exports the network hardware the fleet's own exporters cannot see: the
+    # gateway, the switch and the AP run nothing this repo deploys.
+    - unpoller
     # Replaced prometheus_agent, which this host ran until the TSDB moved here.
     # The agent was decommissioned by hand at the cutover, because deleting its
     # role does not remove it and nothing would ever report the leftover: it binds

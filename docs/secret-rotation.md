@@ -40,6 +40,7 @@ apply target, and any wrinkle.
 | `emmasedit_cloudflare_api_token` | Cloudflare token for the emmasedit.com zone | `PLAY=rogue-trader` | caddy DNS-01 for emmasedit.com |
 | `alertmanager_discord_webhook_url` | Discord incoming webhook | `PLAY=auspex` | Fire a test alert and see it land — a botched rotation otherwise surfaces via the deadman only days later, off the periodic exercise (cadence with the alertmanager role) |
 | `alertmanager_deadman_ping_url` | healthchecks.io check ping URL | `PLAY=auspex` | Confirm the new check goes green; cadence per the alertmanager README — a tighter grace makes Discord blips flap the check |
+| `unpoller_api_key` | UniFi Network API key, in the controller's admin settings | `PLAY=auspex` | Passphrase-grade rather than read-only telemetry — see the role README. Verify on `unpoller_prometheus_cache_age_seconds`: the apply restarts the poller, so it starts at `-1` and leaves it only on the first successful poll — a refused key pins it there. The scrape stays green either way |
 | `grafana_admin_password` | self-chosen | `PLAY=solar` | **First-init only** — an already-provisioned Grafana also needs `grafana-cli admin reset-admin-password` in-container to match |
 | `arr_api_keys` | each Servarr app UI (Settings → General → API Key) | `PLAY=solar` | Dict replaced whole — re-supply all keys; then fix prowlarr's stored connections for any rotated app |
 | `arr_transmission_username` / `arr_transmission_password` | self-chosen RPC creds | `PLAY=solar` | Container re-applies auth on restart; verify RPC goes 401 → authed |
