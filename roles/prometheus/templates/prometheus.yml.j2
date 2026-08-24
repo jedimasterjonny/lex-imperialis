@@ -82,6 +82,38 @@ scrape_configs:
         regex: '/system\.slice/(.+)\.service/libpod-payload-[0-9a-f]+'
         target_label: image
         replacement: podman
+{% if prometheus_unpoller_targets %}
+
+  # UniFi metrics, via unpoller. It polls the controller on its own schedule and
+  # serves the cached result, so scraping faster than that cadence only re-reads
+  # the same snapshot — 60s, matching the poller's own interval.
+  - job_name: unpoller
+    scrape_interval: 60s
+    static_configs:
+      - targets: {{ prometheus_unpoller_targets | to_json }}
+    # Default-deny. unpoller emits three families of unbounded, MAC-keyed
+    # cardinality — unpoller_client_*, unpoller_dhcp_lease_* and the per-edge
+    # unpoller_topology_link_* — with no switch to turn any of them off, so a guest
+    # phone that joins for an evening would otherwise hold a series set for the
+    # whole retention window, a year on this host. A denylist would have to name
+    # each of the three and would leak again on the next upstream collector.
+    #
+    # Each term is load-bearing, so read before narrowing: unpoller_device_* is the
+    # point of the role and what the dashboards graph, unpoller_prometheus_* carries
+    # the cache age UnpollerPollOverdue reads, and unpoller_site_disconnected is the
+    # whole input to UnifiDeviceDisconnected. Named exactly rather than
+    # unpoller_site_*, which would also admit the per-application dpi series.
+    # Anything added to the rules or the dashboards that reads another family must
+    # be added here too, or it silently never fires.
+    #
+    # `up` and the scrape_* series need no term: Prometheus builds those in its
+    # report path (mutateReportSampleLabels), which takes no relabel configs at all,
+    # so metric_relabel_configs cannot reach them.
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: unpoller_device_.*|unpoller_prometheus_.*|unpoller_site_disconnected
+        action: keep
+{% endif %}
 {% if prometheus_probe_targets %}
 
   # Blackbox probes: each target is passed to the blackbox_exporter as ?target=,

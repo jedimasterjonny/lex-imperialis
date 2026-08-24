@@ -12,8 +12,8 @@
   tasks:
     # Only this one var is overridden — the target list is the change under test,
     # so it is stated in full rather than derived from the group_vars value it
-    # shadows, which Ansible reads as a recursive definition. The other three come
-    # from group_vars untouched, so verify still sees the five jobs it asserts and
+    # shadows, which Ansible reads as a recursive definition. The other four come
+    # from group_vars untouched, so verify still sees the six jobs it asserts and
     # nothing here can drift away from converge.
     - name: Re-apply prometheus with an added sentinel target
       ansible.builtin.include_role:

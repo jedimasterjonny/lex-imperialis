@@ -43,6 +43,11 @@ prometheus_node_targets: []
 # housekeeping interval.
 prometheus_cadvisor_targets: []
 
+# unpoller scrape targets, each "host:9130". Loopback where the poller is
+# co-located, which it must be: it binds 127.0.0.1 because it holds the UniFi
+# controller's API key. Must match the unpoller role's unpoller_listen_address.
+prometheus_unpoller_targets: []
+
 # Blackbox probe targets: each entry pairs a prober module with the full URLs to
 # run it against, and the same module may appear in more than one entry.
 prometheus_probe_targets: []
