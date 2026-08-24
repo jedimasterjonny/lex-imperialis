@@ -1,0 +1,41 @@
+---
+- name: Create the config directory
+  ansible.builtin.file:
+    path: /etc/unpoller
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+# The API key is a credential the container reads from its environment, so the
+# file is 0600 and never rendered into the world-readable quadlet.
+- name: Deploy the environment file
+  ansible.builtin.template:
+    src: env.j2
+    dest: /etc/unpoller/env
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  no_log: true
+  notify: Restart unpoller
+
+- name: Install the unpoller container unit
+  ansible.builtin.template:
+    src: unpoller.container.j2
+    dest: /etc/containers/systemd/unpoller.container
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart unpoller
+
+- name: Apply pending unit changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Start unpoller
+  ansible.builtin.systemd_service:
+    name: unpoller
+    state: started
+  become: true

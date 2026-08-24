@@ -1,0 +1,30 @@
+[Unit]
+Description=UniFi Poller
+
+[Container]
+ContainerName=unpoller
+Image={{ unpoller_image }}
+# Host network so the poller reaches the controller exactly as the host does. The
+# bind address comes from the environment file, and is loopback, so only the
+# co-located scraper reaches /metrics — never the LAN.
+Network=host
+NoNewPrivileges=true
+DropCapability=all
+{# Distroless static image with no USER, so the process runs as root; it opens
+   ordinary sockets and needs no capability back. #}
+# The controller URL and API key, kept out of this world-readable unit.
+EnvironmentFile=/etc/unpoller/env
+# The image ships a HEALTHCHECK at a 30s interval, which podman inherits. That is
+# an OCI exec every 30s on a Raspberry Pi to assert what the co-located
+# Prometheus already reports as up{job="unpoller"} — see the health convention in
+# roles/CLAUDE.md. Disabled rather than widened: the scrape is the monitor, and a
+# wedged poller shows up as a stale /metrics, which an exec check would not catch
+# either.
+HealthCmd=none
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,26 @@
+---
+# UniFi controller URL, no path after the host. Vaulted rather than set in a
+# play: it is a private-network address, and this repo is public. Empty so the
+# role degrades with no vault.
+unpoller_url: ""
+
+# UniFi Network API key, minted in the controller's admin settings. Exclusive of
+# user/pass auth — unpoller sends it as X-API-Key and never logs in. Empty so the
+# role degrades with no vault. See the README for why it is credential-grade.
+unpoller_api_key: ""
+
+# Address /metrics binds. Loopback so only the co-located scraper reaches it: the
+# poller holds the controller's API key and has no business answering the LAN.
+# Must match the scraper's prometheus_unpoller_targets.
+unpoller_listen_address: 127.0.0.1:9130
+
+# Verify the controller's TLS certificate. False because a UniFi gateway serves
+# its own self-signed cert. Stated rather than inherited: it is a trust decision,
+# and upstream's default is not this role's to assume.
+unpoller_verify_ssl: false
+
+# How often the poller refreshes the cache it serves. Upstream decouples this from
+# the scrape, so it is what actually drives API calls against the gateway; the
+# unpoller job scrapes at the same 60s, and UnpollerPollOverdue's 30m threshold is
+# sized in multiples of it.
+unpoller_interval: 60s
