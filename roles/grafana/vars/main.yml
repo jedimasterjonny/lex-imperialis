@@ -1,4 +1,9 @@
 ---
+# uid of the datasource this role provisions. A constant rather than a tunable:
+# it is written into the datasource file and substituted into each dashboard's
+# __inputs placeholder, and those two must agree or every panel fails to resolve.
+grafana_datasource_uid: prometheus
+
 # renovate's image manager bumps the tag.
 grafana_image: docker.io/grafana/grafana-oss:13.0.2@sha256:5dad0df181cb644a14e13617b913b261a54f7d4fd4510721dba420929f35bea2
 

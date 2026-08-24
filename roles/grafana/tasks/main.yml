@@ -33,24 +33,49 @@
   become: true
   notify: Restart grafana
 
-# Fetched at the pinned revision (renovate-managed) rather than vendored. force
-# re-fetches the immutable revision but only rewrites it on a real change, so a
-# revision bump propagates while converge stays idempotent. Skipped under --check:
-# get_url probes the URL to plan the fetch and grafana.com's download endpoint
-# rejects that probe (405), so this external fetch cannot be dry-run.
-- name: Download the dashboards
-  ansible.builtin.get_url:
+# Fetched at the pinned revision (renovate-managed) rather than vendored, and
+# held in the register rather than written to disk, because the next task rewrites
+# it on the way in. Skipped under --check: uri declares no check-mode support, so
+# the explicit guard only states what would happen anyway, and mirrors the copy
+# below, which does need it.
+- name: Fetch the dashboards
+  ansible.builtin.uri:
     url: https://grafana.com/api/dashboards/{{ item.id }}/revisions/{{ item.revision }}/download
-    dest: /etc/grafana/dashboards/{{ item.file }}
-    owner: root
-    group: root
-    mode: "0644"
-    force: true
-  become: true
+    return_content: true
   when: not ansible_check_mode
+  register: grafana_fetched
   loop: "{{ grafana_dashboards }}"
   loop_control:
     label: "{{ item.file }}"
+
+# A grafana.com export names its datasource with an __inputs placeholder —
+# "${DS_PROMETHEUS}" on every panel — which the UI's import form substitutes and
+# the FILE PROVISIONER does not. Provisioned as published, such a dashboard reaches
+# Grafana with a datasource reference naming a variable it does not declare, and
+# every panel on it fails to resolve one. The dashboard still lists and still
+# opens, so nothing short of reading a panel notices.
+#
+# This is not only the unpoller dashboards: of the six pinned here, 1860 and 16124
+# declare a real templating datasource variable and carry no placeholder, while
+# 15798 carries one on all 24 of its panel and target references — so "Docker
+# monitoring" has been provisioning broken for as long as it has been deployed,
+# and this rewrite is what fixes it.
+#
+# The pattern is uppercase-only deliberately: 1860's panels reference
+# ${ds_prometheus}, which IS a declared variable, and a case-insensitive match
+# would break the one family of dashboards that was working.
+- name: Provision the dashboards, resolving the export's datasource placeholders
+  ansible.builtin.copy:
+    content: "{{ item.content | regex_replace('\\$\\{DS_[A-Z0-9_.-]+\\}', grafana_datasource_uid) }}"
+    dest: /etc/grafana/dashboards/{{ item.item.file }}
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  when: not ansible_check_mode
+  loop: "{{ grafana_fetched.results }}"
+  loop_control:
+    label: "{{ item.item.file }}"
   notify: Restart grafana
 
 # Keeps the password out of the world-readable unit; grafana reads it from the
