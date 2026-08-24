@@ -59,6 +59,201 @@ groups:
           summary: "TLS certificate for {{ $labels.instance }} expiring soon"
           description: "The TLS certificate served by {{ $labels.instance }} expires in under 14 days — auto-renewal may have stalled."
 
+  - name: unifi
+    rules:
+      # up{job="unpoller"} does not cover this. The poller serves /metrics from a
+      # snapshot it refreshes in the background, so a revoked API key, a controller
+      # reboot or a firmware upgrade that moves an endpoint leaves the scrape green
+      # and every unpoller_* series frozen at its last good value — silently wrong,
+      # which is worse than absent.
+      #
+      # cache_age, not unpoller_controller_up: that gauge is only written on a
+      # SUCCESSFUL fetch, so it is absent — not 0 — for exactly the failure this
+      # alerts on. Confirmed against a running poller with an unreachable
+      # controller, which exports no such series at all. -1 is upstream's sentinel
+      # for "no refresh has ever succeeded", so it is caught explicitly rather than
+      # left to pass a > threshold it never can.
+      #
+      # 30 missed refreshes at the poller's 60s interval, then 5m: the controller
+      # reboots itself for its own auto-updates and the poller picks straight back
+      # up, so only a stall that outlasts a firmware update is worth raising.
+      - alert: UnpollerPollOverdue
+        expr: unpoller_prometheus_cache_age_seconds > 30 * 60 or unpoller_prometheus_cache_age_seconds < 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "unpoller has not polled the UniFi controller in over 30 minutes"
+          description: "unpoller is serving a stale snapshot, so the unpoller_* series are frozen at their last values rather than absent."
+
+      # Read from the controller's own health endpoint rather than inferred from
+      # the device series. unpoller ships /stat/health as unpoller_site_disconnected,
+      # one gauge per subsystem — wlan, wan and lan, alongside the AP, gateway and
+      # switch counts for each — so this is the controller stating how many of its
+      # adopted devices are not talking to it, which is exactly the fault.
+      #
+      # The device series cannot answer it. unpoller skips a device only on
+      # `!Adopted || Locating`, with no filter on its state, so whether a
+      # powered-off AP vanishes from unpoller_device_* or lingers at uptime 0 is
+      # upstream's choice and not observable from here — molecule has no controller,
+      # and a promtool case only replays whichever assumption it was written with.
+      # A rule built on either guess is half a rule.
+      #
+      # Bounded to one series per subsystem, which is also why it needs no guard on
+      # the unpoller scrape: a single site gauge cannot fan out into one alert per
+      # device, and when the poller stops the series goes absent and stops matching.
+      #
+      # Nothing else on the fleet notices this fault: every host is wired and stays
+      # up, so Prometheus goes on scraping them happily while the AP serving the
+      # house is dead. The cost is naming a subsystem rather than a device.
+      #
+      # `without (status)` because that label is UniFi's health string, and it
+      # changes value on exactly the transition this rule is timing: the second
+      # switch to fail moves the series from warning to error, which is a different
+      # series — the pending for: would restart, and on partial recovery the firing
+      # alert would resolve and re-fire fifteen minutes later. Nothing reads the
+      # label, so dropping it from the identity costs nothing.
+      - alert: UnifiDeviceDisconnected
+        expr: max without (status) (unpoller_site_disconnected) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value }} UniFi {{ $labels.subsystem }} device(s) disconnected"
+          description: "The controller reports {{ $value }} adopted {{ $labels.subsystem }} device(s) not talking to it — powered off, or the uplink is dead."
+      # Uptime resets are reboots. One is a firmware update or a power blip; three
+      # in a day is a device power-cycling, which on a PoE-fed AP or switch means
+      # the injector, the cable or the supply is failing — a fault that otherwise
+      # surfaces only as intermittent WiFi nobody can pin down.
+      #
+      # No for:. The 24h range is the smoothing — once the third reset lands the
+      # expression stays true for a day — so a wait would only add latency. The
+      # promtool cases pin that by asserting the evaluation the third reset lands on.
+      - alert: UnifiDeviceRebootLoop
+        expr: resets(unpoller_device_uptime_seconds[24h]) > 2
+        labels:
+          severity: warning
+        annotations:
+          summary: "UniFi device {{ $labels.name }} has rebooted {{ $value }} times in 24 hours"
+          description: "{{ $labels.name }} ({{ $labels.type }}) is power-cycling rather than running — check its injector, its cable and its supply."
+      # The outcome check on UniFi's own auto-update. That schedule cannot be read
+      # back over any documented API — the console's per-component rows are
+      # authoritative, and the Site Manager field that looks like it says whether
+      # applications update does not — so this asserts the result instead. Any
+      # 8-day span contains a scheduled window, so an update still pending across
+      # one has sat through that window without landing.
+      #
+      # min_over_time rather than a for: of the same length. auspex reboots weekly
+      # for its own autoupdate and a restart resets every pending for: timer, so a
+      # for: 8d would be wiped each Tuesday and could never fire; reading the range
+      # out of the TSDB survives it. The second term requires the series to have
+      # existed 8 days ago too, so a newly-published update cannot alert on a min
+      # taken over the handful of samples it has.
+      #
+      # present_over_time rather than a bare instant selector at offset, which a
+      # single missed scrape eight days ago would defeat — same shape and same
+      # reason as MicroOSBuildStale below.
+      - alert: UnifiFirmwareUpdatePending
+        expr: |
+          min_over_time(unpoller_device_upgradable[8d]) == 1
+            and present_over_time(unpoller_device_upgradable[1d] offset 8d)
+        labels:
+          severity: warning
+        annotations:
+          summary: "UniFi firmware update pending on {{ $labels.name }} for over 8 days"
+          description: "{{ $labels.name }} ({{ $labels.type }}) has had a firmware update available across a full auto-update window without it landing."
+      # Airtime: the one radio measure that explains bad WiFi rather than merely
+      # describing it. A saturated channel is slow for every client on it, and no
+      # host-side exporter can see the medium at all.
+      #
+      # 0.5, not 70. unpoller divides UniFi's 0-100 cu_total by 100, so this is a
+      # RATIO — a threshold written as 70 would never fire, and nothing else in the
+      # file would say so.
+      #
+      # Calibrated from live readings rather than history, because the controller
+      # keeps none: its 5minutes/hourly/daily .ap report tables span a week and
+      # carry no cu_* field at all, so airtime exists only as the instantaneous
+      # value in stat/device. The two points that do exist are the busiest radio
+      # here sitting at 0.17, and the incident this rule was written for — a
+      # crashed device in a null packet storm, which held a radio at 0.70 for most
+      # of a day and was found only by eye, in a dashboard. 0.5 is ~3x the observed
+      # normal and clear of the known-bad. Worth revisiting once the TSDB holds a
+      # few weeks of it.
+      #
+      # That the fault was a crashed device is why this rule is not redundant with
+      # UnifiDeviceDisconnected: the device stayed adopted and stayed talking to the
+      # controller. It was flooding, not absent, so the site health count never
+      # moved. Airtime is the only signal that saw it.
+      #
+      # avg_over_time rather than a for: of the same length. Airtime is a sampled
+      # instantaneous gauge and a noisy one, so a for: — which demands every
+      # evaluation in the window exceed — resets on a single dip and can leave a
+      # genuinely congested radio alerting late or not at all. The mean over the
+      # window is what "sustained" means here, and it also rides out the legitimate
+      # spike of one large transfer. It cannot flap either: over a full window a 15m
+      # mean of 60s samples moves by at most (new-old)/15 per evaluation, so the
+      # smoothing is also the hysteresis — the same argument UnifiDeviceRebootLoop
+      # makes for its 24h range.
+      #
+      # 15m and not 30m. The known incident ran for hours, so any window would have
+      # caught it and the window is not calibrated against it — it is chosen so a
+      # SHORTER recurrence is caught too. At 30m a ten-minute event at 0.70 against
+      # this background averages 0.35 and would pass unremarked; at 15m it reaches
+      # 0.52 and fires. The other side is bounded by test rather than by argument:
+      # a five-minute transfer spike at 0.80 averages 0.37 over 15m, and the
+      # promtool case fails if that ever starts alerting.
+      - alert: UnifiRadioAirtimeHigh
+        expr: avg_over_time(unpoller_device_radio_channel_utilization_total_ratio[15m]) > 0.5
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.name }} {{ $labels.band }} GHz airtime at {{ $value | humanizePercentage }}"
+          description: >-
+            The {{ $labels.band }} GHz radio on {{ $labels.name }} has averaged
+            {{ $value | humanizePercentage }} airtime over 15 minutes — every client on
+            that channel is slow. Compare its receive and transmit ratios against
+            total: close to it is our own saturation, far below is a neighbouring
+            network, and the remedy differs.
+      # Wired packet loss, from the only place the fleet can see it. There is no
+      # per-client loss metric — and the client families are filtered out at ingest
+      # anyway — so the switch port is the instrument: an erroring port is a
+      # physical fault, and every wired client behind it suffers.
+      #
+      # Errors and not drops. Measured across every up port on this fleet, the two
+      # error counters are zero everywhere bar a single port carrying 2 in its
+      # lifetime against 3.2M packets, so any sustained error rate is abnormal and
+      # needs no baseline subtracted. The dropped counters are the opposite: four
+      # ports carry them permanently, at 1e-5 to 4e-5 of their traffic, because a
+      # switch drops legitimately — a rule on those would fire forever.
+      #
+      # A rate, not the counter: these are lifetime totals that only ever climb, so
+      # a threshold on the raw value fires once and never clears. rate() also
+      # absorbs the reset when a switch reboots.
+      #
+      # Summed rather than two rules, because a fault shows on whichever direction
+      # it happens to hit and both counters carry the same label set, so the
+      # addition matches one-to-one and yields one alert per port. The promtool
+      # cases fault each direction separately, so dropping either term fails.
+      #
+      # 0.1/s — about 90 errors across the window — is the one threshold on this
+      # branch with no observed bad case behind it: the fleet has never recorded an
+      # erroring port, so it is set from the zero baseline plus room for a duplex
+      # renegotiation rather than measured against a fault. Worth revisiting the
+      # first time a cable does go bad.
+      - alert: UnifiPortErrorsHigh
+        expr: |
+          rate(unpoller_device_port_receive_errors_total[15m])
+            + rate(unpoller_device_port_transmit_errors_total[15m]) > 0.1
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.port_id }} is logging {{ printf \"%.2f\" $value }} errors/s"
+          description: >-
+            {{ $labels.port_id }} has logged {{ printf "%.2f" $value }} receive and
+            transmit errors a second for 15 minutes, where every port on this fleet
+            normally sits at zero. That is a physical fault, not congestion: reseat
+            or replace the cable, and check the link has not negotiated down.
+
   - name: backups
     rules:
       - alert: PodmanBackupFailed

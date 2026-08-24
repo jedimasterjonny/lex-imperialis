@@ -91,7 +91,7 @@ and a `rule_files` glob, copies its `files/rules/` into `rules/` under
 the targets.
 
 The rules are in `files/rules/alerts.yml`, grouped by concern: `availability`,
-`probes`, `backups`, `filesystem`, `memory`, `hardware`, `time`, `services`,
+`probes`, `unifi`, `backups`, `filesystem`, `memory`, `hardware`, `time`, `services`,
 `maintenance`, `arbites`, `drift`, `music`, `monitoring` and `watchdog`. Where a
 threshold or a `for:` window was calibrated against a measurement or a past
 failure, the comment above that rule records it. That file is the roster, and the
