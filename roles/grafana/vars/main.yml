@@ -24,3 +24,27 @@ grafana_dashboards:
     # renovate: datasource=custom.grafana-dashboards depName=blackbox-exporter packageName=16124
     revision: 6
     file: blackbox-exporter.json
+  # unpoller's own dashboards, one per UniFi device class. 11313 is the right one
+  # for the gateway despite being named for a USG: the controller reports it as
+  # type udm, and exportUDM calls exportUSGstats and exportWANPorts, so it lands in
+  # the same unpoller_device_* WAN and uplink series that dashboard reads.
+  #
+  # Two of the five are deliberately absent. "Network Sites" (11311) aggregates
+  # across sites, and there is one. "Client Insights" (11315) reads nothing but
+  # unpoller_client_* — all fifteen of its metrics — which the prometheus role
+  # drops at ingest as unbounded cardinality, so it would provision as a page of
+  # empty panels. 11314 keeps five client panels that go blank for the same
+  # reason (rssi, roam count, uptime and the two rate series); the other
+  # twenty-six of its metrics are device-level and unaffected.
+  - id: 11313
+    # renovate: datasource=custom.grafana-dashboards depName=unpoller-usg packageName=11313
+    revision: 9
+    file: unpoller-usg.json
+  - id: 11312
+    # renovate: datasource=custom.grafana-dashboards depName=unpoller-usw packageName=11312
+    revision: 9
+    file: unpoller-usw.json
+  - id: 11314
+    # renovate: datasource=custom.grafana-dashboards depName=unpoller-uap packageName=11314
+    revision: 10
+    file: unpoller-uap.json

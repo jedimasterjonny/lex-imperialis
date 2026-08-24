@@ -2,10 +2,12 @@
 
 Grafana as a Podman quadlet container, behind caddy, provisioned with a
 Prometheus datasource and canned dashboards: **Node Exporter Full**
-([grafana.com 1860](https://grafana.com/grafana/dashboards/1860)), **Docker monitoring**
-([grafana.com 15798](https://grafana.com/grafana/dashboards/15798)), and
-**Blackbox Exporter**
-([grafana.com 16124](https://grafana.com/grafana/dashboards/16124)).
+([1860](https://grafana.com/grafana/dashboards/1860)), **Docker monitoring**
+([15798](https://grafana.com/grafana/dashboards/15798)), **Blackbox Exporter**
+([16124](https://grafana.com/grafana/dashboards/16124)), and unpoller's
+**USG** ([11313](https://grafana.com/grafana/dashboards/11313)), **USW**
+([11312](https://grafana.com/grafana/dashboards/11312)) and **UAP**
+([11314](https://grafana.com/grafana/dashboards/11314)) Insights.
 
 ## Behind caddy
 
@@ -29,9 +31,9 @@ sites dir).
   the UI's import form substitutes and the **file provisioner does not**, so the
   dashboard provisions pointing at a variable it never declares. It still lists and
   still opens, so nothing short of reading a panel notices. The role rewrites those
-  to `grafana_datasource_uid`. 15798 carries them, so **Docker monitoring** had been
-  provisioning broken until this landed. Upper case only, deliberately; the task's
-  comment says why.
+  to `grafana_datasource_uid`. All three unpoller dashboards carry them, and so
+  does 15798 — **Docker monitoring** had been provisioning broken until this
+  landed. Upper case only, deliberately; the task's comment says why.
 
 State lives in the `grafana-data` named volume, handed to the image's `grafana`
 user (472) with `:U`.
