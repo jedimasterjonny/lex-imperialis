@@ -145,7 +145,13 @@ mkdir -p "$repo" "$RESTIC_CACHE_DIR"
 retry restic snapshots >/dev/null 2>&1 || retry restic init
 require_mounted
 retry restic backup --tag "$tag" "${exclude_args[@]}" "${sources[@]}"
-retry restic forget --tag "$tag" \
+# Group by host,tags rather than restic's default host,paths. In podman-volumes
+# mode the paths are the volume mountpoints, so adding or removing a container
+# opens a fresh retention group and freezes the old one: its snapshots become that
+# group's newest weeklies and never age out, growing the repo — and the off-site
+# mirror — without bound. The tag is fixed per consumer role where the source set
+# is not, so grouping on it keeps one retention lineage per repository.
+retry restic forget --tag "$tag" --group-by host,tags \
     --keep-weekly "$keep_weekly" --keep-monthly "$keep_monthly" --prune
 
 {% if restic_backup_podman_volumes %}
