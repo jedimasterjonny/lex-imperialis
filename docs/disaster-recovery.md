@@ -25,7 +25,7 @@ first (below), or drive the others from any machine meeting the above.
 
 ## What is and isn't backed up
 
-The full backup architecture — all four layers — is in [`backups.md`](backups.md);
+The full backup architecture — all six layers — is in [`backups.md`](backups.md);
 this is the recovery-relevant summary.
 
 `podman_backup` runs on `solar` and `rogue-trader` only, writing a per-host
