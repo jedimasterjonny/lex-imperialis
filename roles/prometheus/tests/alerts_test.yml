@@ -1407,6 +1407,215 @@ tests:
         alertname: ArbitesStale
         exp_alerts: []
 
+  # The off-site mirror's six rules read a probe on auspex rather than a unit on the
+  # host being protected, so every series below carries auspex's instance label and
+  # the NAS task's name. The first case is the fault the whole family exists for and
+  # the only one no notification on the NAS can raise: a task still reporting success
+  # while a repo has quietly fallen out of it. Two families, declared and observed,
+  # are compared — so the case also pins that a task whose manifest names everything
+  # it should raises nothing.
+  - interval: 5m
+    name: a repo dropped from an off-site mirror task alerts while a complete task does not
+    input_series:
+      - series: 'offsite_mirror_task_expected{job="node",instance="auspex:9100",task="home-backup",folder="/astropath/solar-home-backup"}'
+        values: "1x20"
+      - series: 'offsite_mirror_task_expected{job="node",instance="auspex:9100",task="home-backup",folder="/astropath/rogue-trader-home-backup"}'
+        values: "1x20"
+      - series: 'offsite_mirror_task_covered{job="node",instance="auspex:9100",task="home-backup",folder="/astropath/solar-home-backup"}'
+        values: "1x20"
+      - series: 'offsite_mirror_task_status{job="node",instance="auspex:9100",task="home-backup"}'
+        values: "1x20"
+      - series: 'offsite_mirror_task_expected{job="node",instance="auspex:9100",task="photos-backup",folder="/scriptorum/photos"}'
+        values: "1x20"
+      - series: 'offsite_mirror_task_covered{job="node",instance="auspex:9100",task="photos-backup",folder="/scriptorum/photos"}'
+        values: "1x20"
+      - series: 'offsite_mirror_task_status{job="node",instance="auspex:9100",task="photos-backup"}'
+        values: "1x20"
+    alert_rule_test:
+      - eval_time: 1h5m
+        alertname: OffsiteMirrorCoverageMissing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: node
+              instance: auspex:9100
+              task: home-backup
+              folder: /astropath/rogue-trader-home-backup
+            exp_annotations:
+              summary: "the home-backup off-site mirror no longer covers /astropath/rogue-trader-home-backup"
+              description: >-
+                /astropath/rogue-trader-home-backup is declared as covered by the
+                home-backup Hyper Backup task but is absent from the manifest its last
+                run wrote — that data has no off-site copy, and the task is still
+                reporting success.
+      - eval_time: 55m
+        alertname: OffsiteMirrorCoverageMissing
+        exp_alerts: []
+      # Both tasks published a status, so the companion below has nothing to claim —
+      # the two rules partition the fault rather than both reporting it.
+      - eval_time: 1h5m
+        alertname: OffsiteMirrorTaskUnverified
+        exp_alerts: []
+      # And a task reporting success raises neither failure rule.
+      - eval_time: 1h5m
+        alertname: OffsiteMirrorTaskFailed
+        exp_alerts: []
+
+  # The absent() companion. A task the probe found no manifest for publishes no
+  # status at all, which every other rule in the family matches an empty vector on —
+  # the trap ScheduledJobMetricMissing exists for, one layer further out. The second
+  # assertion is the gate on OffsiteMirrorCoverageMissing: without it this one fault
+  # would raise a coverage alert per declared folder as well.
+  - interval: 5m
+    name: a task with no cached manifest alerts as unverified and raises no coverage alert
+    input_series:
+      - series: 'offsite_mirror_task_expected{job="node",instance="auspex:9100",task="photos-backup",folder="/scriptorum/photos"}'
+        values: "1x20"
+    alert_rule_test:
+      - eval_time: 1h5m
+        alertname: OffsiteMirrorTaskUnverified
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: auspex:9100
+              task: photos-backup
+            exp_annotations:
+              summary: "the photos-backup off-site mirror cannot be verified"
+              description: >-
+                No cached manifest on the NAS names the photos-backup Hyper Backup task,
+                so neither its coverage nor its last run can be checked from here.
+      - eval_time: 1h5m
+        alertname: OffsiteMirrorCoverageMissing
+        exp_alerts: []
+      - eval_time: 55m
+        alertname: OffsiteMirrorTaskUnverified
+        exp_alerts: []
+
+  - interval: 5m
+    name: an off-site mirror task reporting failure alerts
+    input_series:
+      - series: 'offsite_mirror_task_status{job="node",instance="auspex:9100",task="podman-backup"}'
+        values: "0x10"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: OffsiteMirrorTaskFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: node
+              instance: auspex:9100
+              task: podman-backup
+            exp_annotations:
+              summary: "the podman-backup off-site mirror failed"
+              description: >-
+                The last run of the podman-backup Hyper Backup task did not report
+                success — the off-site copy it maintains is no longer advancing.
+      - eval_time: 10m
+        alertname: OffsiteMirrorTaskFailed
+        exp_alerts: []
+
+  # 8 days, a day's grace over the weekly cadence, read off the NAS's own record of
+  # the run rather than a systemd timer. One gauge a day inside the threshold and one
+  # a day past it, so the case fails the moment the grace is tightened onto the
+  # cadence itself. Negative values place the runs before promtool's zero clock.
+  - interval: 5m
+    name: an off-site mirror task past its weekly grace alerts while one inside it does not
+    input_series:
+      - series: 'offsite_mirror_task_last_success_timestamp_seconds{job="node",instance="auspex:9100",task="home-backup"}'
+        values: "-604800x20"
+      - series: 'offsite_mirror_task_last_success_timestamp_seconds{job="node",instance="auspex:9100",task="podman-backup"}'
+        values: "-694800x20"
+    alert_rule_test:
+      - eval_time: 1h5m
+        alertname: OffsiteMirrorTaskOverdue
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: auspex:9100
+              task: podman-backup
+            exp_annotations:
+              summary: "the podman-backup off-site mirror is overdue"
+              description: "The podman-backup Hyper Backup task has not completed a successful run in over 8 days."
+      - eval_time: 55m
+        alertname: OffsiteMirrorTaskOverdue
+        exp_alerts: []
+
+  # The probe's own failure, which is the state a fresh deploy sits in until the
+  # operator installs its public key on the NAS — and the state that makes every rule
+  # above evaluate a stale payload while saying nothing. 25h is what turns this into
+  # "two consecutive daily runs": the assertion at 24h is the whole point of the
+  # number, not a routine for: check.
+  - interval: 5m
+    name: two consecutive failed probe runs alert
+    input_series:
+      - series: 'offsite_mirror_success{job="node",instance="auspex:9100"}'
+        values: "0x320"
+    alert_rule_test:
+      - eval_time: 25h5m
+        alertname: OffsiteMirrorProbeFailed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: auspex:9100
+            exp_annotations:
+              summary: "the off-site mirror probe failed on auspex:9100"
+              description: >-
+                auspex:9100 could not read the NAS's Hyper Backup manifest cache on two
+                consecutive days, so the coverage and freshness rules above are
+                evaluating the last payload it managed to write, however old.
+      - eval_time: 24h
+        alertname: OffsiteMirrorProbeFailed
+        exp_alerts: []
+
+  # The other half of that window, and the reason it is not 15m: one failed run that
+  # the next morning's clears must never page. The metric flips at 24h, inside the
+  # for:, and the rule is still silent six hours later.
+  - interval: 5m
+    name: a failed probe run that the next day clears never alerts
+    input_series:
+      - series: 'offsite_mirror_success{job="node",instance="auspex:9100"}'
+        values: "0x287 1x100"
+    alert_rule_test:
+      - eval_time: 30h
+        alertname: OffsiteMirrorProbeFailed
+        exp_alerts: []
+
+  # The daily timer caps a healthy run at ~1 day old; the two gauges here sit either
+  # side of the 2-day threshold, so a probe still firing stays silent and one that
+  # stopped alerts. Both are auspex because only auspex runs the probe, so they are
+  # separated by nothing but the value — which is what the rule reads.
+  - interval: 5m
+    name: a probe still firing daily stays silent
+    input_series:
+      - series: 'offsite_mirror_last_run_timestamp_seconds{job="node",instance="auspex:9100"}'
+        values: "-86400x20"
+    alert_rule_test:
+      - eval_time: 1h5m
+        alertname: OffsiteMirrorProbeOverdue
+        exp_alerts: []
+
+  - interval: 5m
+    name: a probe silent for over two days alerts
+    input_series:
+      - series: 'offsite_mirror_last_run_timestamp_seconds{job="node",instance="auspex:9100"}'
+        values: "-183600x20"
+    alert_rule_test:
+      - eval_time: 1h5m
+        alertname: OffsiteMirrorProbeOverdue
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: auspex:9100
+            exp_annotations:
+              summary: "the off-site mirror probe is overdue on auspex:9100"
+              description: "auspex:9100 has not read the NAS's Hyper Backup manifest cache in over 2 days."
+      - eval_time: 55m
+        alertname: OffsiteMirrorProbeOverdue
+        exp_alerts: []
+
   # arbites is the unattended path from main to the fleet: when it fails, every merged
   # change stops arriving and nothing else says so — the fleet keeps serving the last
   # good apply, indefinitely and quietly. 15m is one timer cycle, so this lands on the
@@ -1945,6 +2154,8 @@ tests:
       - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="inquisition.service",state="failed"}'
         values: "1x10"
       - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="smartmon.service",state="failed"}'
+        values: "1x10"
+      - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="offsite-mirror.service",state="failed"}'
         values: "1x10"
       - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="podman-backup.service",state="failed"}'
         values: "1x10"

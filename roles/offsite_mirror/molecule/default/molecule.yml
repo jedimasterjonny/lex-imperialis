@@ -1,0 +1,34 @@
+---
+# Debian only. auspex is the one host this role runs on and the role branches on
+# nothing, so a Tumbleweed platform would test a distribution it is deployed to
+# nowhere — the same reasoning the prometheus scenario carries.
+platforms:
+  - name: "lex-offsite-mirror-incus-${MOLECULE_RUN_ID:-local}"
+    image: images:debian/13/cloud
+# The declaration under test. converge's input only — verify asserts the rendered
+# literals rather than re-deriving them, since a play's vars_files outranks
+# inventory group_vars and would hand it this role's empty default. Three tasks,
+# because the interesting cases are between them: one whose manifest names every
+# folder it should, one missing a folder and carrying a stale duplicate from a
+# previous endpoint, and one with no manifest at all.
+#
+# The NAS is named as an RFC 2606 .invalid host so the unreachable arm resolves
+# nowhere rather than reaching the real NAS from a throwaway container.
+provisioner:
+  inventory:
+    group_vars:
+      all:
+        offsite_mirror_nas_host: nas.invalid
+        offsite_mirror_tasks:
+          - name: home-backup
+            folders:
+              - /astropath/solar-home-backup
+              - /astropath/scholam-home-backup
+              - /astropath/rogue-trader-home-backup
+          - name: podman-backup
+            folders:
+              - /astropath/solar-podman-backup
+              - /astropath/rogue-trader-podman-backup
+          - name: photos-backup
+            folders:
+              - /scriptorum/photos

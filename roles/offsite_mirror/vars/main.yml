@@ -1,0 +1,7 @@
+---
+# DSM's own paths on the NAS, not tunables. The cache lives under @tmp, which DSM
+# clears on a reboot, so a task's manifest is absent until its next run —
+# OffsiteMirrorTaskUnverified is what reports that gap rather than a coverage
+# claim of zero.
+offsite_mirror_cache_dir: /volume1/@tmp/synobackup_cache
+offsite_mirror_nas_sqlite3: /usr/bin/sqlite3

@@ -44,8 +44,10 @@ sounds. Hetzner enforces External Reachability inside sshd rather than at the
 packet layer: a source the box refuses still completes the handshake, reads the
 banner and retrieves the host key, and is only then offered an empty
 authentication method list. So a revoked `rogue-trader` would leave this probe
-green while every mirror failed, and the signal would be a Hyper Backup failure
-mail up to a week later.
+green while every mirror failed. The signal is a Hyper Backup failure mail, or
+the `offsite_mirror` probe on auspex, which reads each task's cached manifest
+daily — `OffsiteMirrorTaskFailed` if DSM records the refusal there, and otherwise
+`OffsiteMirrorTaskOverdue` once the last success ages past a week.
 
 A box whose address changes behind the same name needs no intervention: the proxy
 resolves its upstream per accepted connection, so the next connection follows

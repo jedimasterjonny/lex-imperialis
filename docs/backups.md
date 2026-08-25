@@ -130,10 +130,12 @@ Routing through `rogue-trader` makes it a single point of failure for all three.
 `ProbeDown` covers the forward's reachability (auspex, `tcp_ssh_banner`) but not
 its authorisation: the box enforces its source restriction inside sshd, so a
 refused source still answers with a banner and the probe stays green while every
-mirror fails — only the Hyper Backup task notification catches that. Its
-`autoupdate` reboot moved from Wed 03:00 to 06:00 so a transactional reboot
-cannot cut the Wed 02:00 mirror — see `playbooks/rogue-trader.yml` for the
-four-hour assumption.
+mirror fails. The Hyper Backup task notification catches that, and so does the
+probe below — as `OffsiteMirrorTaskFailed` if DSM records the refusal in each
+task's cached manifest, and otherwise as `OffsiteMirrorTaskOverdue` once the last
+success ages past a week. Its `autoupdate` reboot moved from Wed 03:00 to
+06:00 so a transactional reboot cannot cut the Wed 02:00 mirror — see
+`playbooks/rogue-trader.yml` for the four-hour assumption.
 
 A failed run alerts by email. This is the only geographic redundancy: the media
 library is not mirrored (it is re-acquirable), so a total NAS loss keeps the
@@ -142,3 +144,28 @@ container state, the home backups, and the photos, not the media,
 (the laptop itself is unaffected). `restic check` proves the repos are
 structurally sound and their packs re-hash clean; it does not prove a restore
 works end to end, and no restore drill is scheduled or recorded.
+
+### What a task notification cannot see
+
+A Hyper Backup task that stops copying a folder does not fail. It finishes,
+reports success and mails nothing, so a repo can fall out of the off-site copy
+with every run green and every notification clean —
+`rogue-trader-home-backup` was absent from the `home-backup` task for five weeks
+that way, and nothing on either side noticed. The covered set is observable only
+in the manifest DSM caches beside each task, which the `offsite_mirror` role on
+`auspex` reads daily over SSH as an unprivileged account and republishes as
+node_exporter textfile metrics: what each task last copied, when it last
+succeeded, and how long it took.
+
+`playbooks/auspex.yml` declares what each task must cover, so
+`OffsiteMirrorCoverageMissing` fires on a repo that is declared and absent from
+the manifest — the alert that would have caught those five weeks.
+`OffsiteMirrorTaskFailed` and `OffsiteMirrorTaskOverdue` read the same manifest
+for the failure and freshness DSM's mail also reports, on the fleet's own alerting
+path rather than an inbox. `OffsiteMirrorTaskUnverified` covers a task the cache
+says nothing about, and the `OffsiteMirrorProbeFailed` / `OffsiteMirrorProbeOverdue`
+pair the probe itself losing the NAS: a probe that cannot read the cache leaves the
+last payload standing, so the other four rules go stale rather than wrong, and that
+pair is the only thing that says so. Nothing here touches the NAS — the probe's
+public key is installed on it by hand, and until that is done no metric flows.
+Role mechanics: [`roles/offsite_mirror/README.md`](../roles/offsite_mirror/README.md).

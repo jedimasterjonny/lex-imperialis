@@ -313,6 +313,122 @@ groups:
           summary: "WordPress database dump overdue on {{ $labels.instance }}"
           description: "{{ $labels.instance }} has not produced a WordPress database dump in over 2 days."
 
+      # The three rules above watch the copy that lands on the NAS. The six below
+      # watch the copy that leaves it — three DSM Hyper Backup tasks mirroring the
+      # restic repos and the photo library off-site — where the fault that matters
+      # is one DSM's own task notification cannot see: a task that stops copying a
+      # folder still finishes and still reports success, so a repo falls out of the
+      # off-site copy with every run green. rogue-trader-home-backup was out of the
+      # home task for five weeks that way, and nothing in this file could have said
+      # so.
+      #
+      # The covered set is observable only in the manifest DSM caches beside each
+      # task, which the offsite_mirror probe on auspex reads and republishes. Every
+      # series below therefore carries auspex's instance label and the NAS task's
+      # name: the probe runs there, and the NAS runs no exporter of its own.
+      #
+      # The declared coverage is published as a series too, rather than restated as
+      # a literal here — this file is static and ships as data, so the set the play
+      # declares could not otherwise reach it.
+      #
+      # Gated on the task having been read at all. Without that gate a task whose
+      # manifest is missing entirely would raise one of these per declared folder
+      # on top of OffsiteMirrorTaskUnverified below — two alertnames, and so two
+      # pages, for one fault. This rule means "a folder is missing from a manifest
+      # that was read"; a manifest that is not there at all is the next rule's.
+      - alert: OffsiteMirrorCoverageMissing
+        expr: >-
+          (offsite_mirror_task_expected unless on (instance, task, folder) offsite_mirror_task_covered)
+          and on (instance, task) offsite_mirror_task_status
+        for: 1h
+        labels:
+          severity: critical
+        annotations:
+          summary: "the {{ $labels.task }} off-site mirror no longer covers {{ $labels.folder }}"
+          description: >-
+            {{ $labels.folder }} is declared as covered by the {{ $labels.task }} Hyper
+            Backup task but is absent from the manifest its last run wrote — that data
+            has no off-site copy, and the task is still reporting success.
+      # The absent() companion, in the shape ScheduledJobMetricMissing uses: the
+      # declared set is itself a published family, so a task the probe found no
+      # manifest for shows as an expectation with no status behind it. Nothing else
+      # would say so — every other rule here keys on a series the manifest
+      # produces, and a task deleted, retargeted or never run against the current
+      # target produces none of them. A warning, not a critical: this is the loss
+      # of the check, not evidence of a failed backup, and DSM clearing its cache
+      # on a reboot reads the same way until the task's next weekly run.
+      - alert: OffsiteMirrorTaskUnverified
+        expr: group by (instance, task) (offsite_mirror_task_expected) unless on (instance, task) offsite_mirror_task_status
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "the {{ $labels.task }} off-site mirror cannot be verified"
+          description: >-
+            No cached manifest on the NAS names the {{ $labels.task }} Hyper Backup
+            task, so neither its coverage nor its last run can be checked from here.
+      # This and the rule below read every task the manifest cache names, declared
+      # or not: what is failing or stalled is a property of what the NAS is
+      # running, and gating it on the declaration would let a task quietly dropped
+      # from the play stop being watched. Coverage above is the other way round —
+      # it is only ever measured against the declaration.
+      - alert: OffsiteMirrorTaskFailed
+        expr: offsite_mirror_task_status == 0
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "the {{ $labels.task }} off-site mirror failed"
+          description: >-
+            The last run of the {{ $labels.task }} Hyper Backup task did not report
+            success — the off-site copy it maintains is no longer advancing.
+      # All three tasks are weekly, so a healthy run caps the gauge at ~7 days old;
+      # 8 gives a day's grace, as the two rules above it do. The gauge is written
+      # only for a successful run, so this rule and the one above partition the
+      # fault rather than one decaying into the other: a task DSM records as
+      # failed loses the gauge entirely and raises only OffsiteMirrorTaskFailed,
+      # while a task that has simply stopped running keeps its last success and
+      # ages into this one. Neither can fire for the other's fault.
+      - alert: OffsiteMirrorTaskOverdue
+        expr: time() - offsite_mirror_task_last_success_timestamp_seconds > 8 * 86400
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "the {{ $labels.task }} off-site mirror is overdue"
+          description: "The {{ $labels.task }} Hyper Backup task has not completed a successful run in over 8 days."
+      # The probe's own outcome, which is what a NAS it cannot reach or authenticate
+      # to looks like: the payload it last managed to write stands untouched, so
+      # every rule above goes on evaluating it and saying the mirror is fine. This
+      # is also the state a fresh deploy sits in until the operator installs the
+      # probe's public key on the NAS by hand — see roles/offsite_mirror.
+      #
+      # 25h, not the 15m the other *Failed rules carry. The probe is daily and does
+      # not retry, so a window a shade over one cycle is what makes this "two
+      # consecutive failed runs": a single failure the next morning clears breaks
+      # the for: before it elapses and never pages.
+      - alert: OffsiteMirrorProbeFailed
+        expr: offsite_mirror_success == 0
+        for: 25h
+        labels:
+          severity: warning
+        annotations:
+          summary: "the off-site mirror probe failed on {{ $labels.instance }}"
+          description: >-
+            {{ $labels.instance }} could not read the NAS's Hyper Backup manifest cache
+            on two consecutive days, so the coverage and freshness rules above are
+            evaluating the last payload it managed to write, however old.
+      # The daily timer caps a healthy run at ~1 day old; 2 gives a day's grace
+      # before flagging a probe that stopped firing.
+      - alert: OffsiteMirrorProbeOverdue
+        expr: time() - offsite_mirror_last_run_timestamp_seconds > 2 * 86400
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "the off-site mirror probe is overdue on {{ $labels.instance }}"
+          description: "{{ $labels.instance }} has not read the NAS's Hyper Backup manifest cache in over 2 days."
+
   - name: filesystem
     rules:
       - alert: FilesystemSpaceLow
@@ -627,7 +743,7 @@ groups:
       - alert: SystemdUnitFailed
         expr: >-
           node_systemd_unit_state{state="failed",
-          name!~"(arbites|inquisition|smartmon|podman-backup|home-backup|autoupdate|wordpress-cron|wordpress-db-dump|wordpress-update-check|wordpress-boost)[.]service"}
+          name!~"(arbites|inquisition|smartmon|offsite-mirror|podman-backup|home-backup|autoupdate|wordpress-cron|wordpress-db-dump|wordpress-update-check|wordpress-boost)[.]service"}
           == 1
         for: 15m
         labels:
@@ -1156,8 +1272,8 @@ groups:
       # rule anywhere has a series to fire on.
       #
       # The write is one `mkdir -p` away from silent: the textfile path is an
-      # independent literal in seven role defaults (restic_backup, arr, autoupdate,
-      # wordpress, arbites, inquisition, smartmon), tied to
+      # independent literal in eight role defaults (restic_backup, arr, autoupdate,
+      # wordpress, arbites, inquisition, smartmon, offsite_mirror), tied to
       # node_exporter_textfile_directory by a comment and nothing else. A
       # one-character divergence lands the .prom outside the collector's glob and
       # the family vanishes with every run still green.
@@ -1202,6 +1318,7 @@ groups:
           or (group by (instance, name) (node_systemd_unit_state{name="arbites.service"}) unless on (instance) arbites_success)
           or (group by (instance, name) (node_systemd_unit_state{name="inquisition.service"}) unless on (instance) inquisition_success)
           or (group by (instance, name) (node_systemd_unit_state{name="smartmon.service"}) unless on (instance) smartmon_success)
+          or (group by (instance, name) (node_systemd_unit_state{name="offsite-mirror.service"}) unless on (instance) offsite_mirror_success)
         for: 1h
         labels:
           severity: warning

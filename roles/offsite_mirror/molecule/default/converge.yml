@@ -1,0 +1,9 @@
+---
+- name: Converge
+  hosts: all
+  tasks:
+    # No vars: the task declaration comes from the scenario's group_vars, so this
+    # and verify read the same set and cannot drift apart.
+    - name: Apply the offsite_mirror role
+      ansible.builtin.include_role:
+        name: offsite_mirror

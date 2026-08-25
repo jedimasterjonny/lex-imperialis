@@ -1,0 +1,88 @@
+---
+- name: The expected coverage is declared
+  ansible.builtin.assert:
+    that:
+      - offsite_mirror_tasks | length > 0
+    fail_msg: offsite_mirror_tasks is empty — declare the tasks and their folders in the play (README)
+    quiet: true
+
+- name: Install the SSH client
+  ansible.builtin.package:
+    name: openssh-client
+    state: present
+  become: true
+
+- name: Create the probe's key directory
+  ansible.builtin.file:
+    path: "{{ offsite_mirror_ssh_key | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  become: true
+
+# ssh-keygen rather than community.crypto.openssh_keypair: the key is the probe's
+# own, is never rotated from here and never leaves the host, so there is no state
+# to reconcile — `creates` makes this a one-shot mint the next converge skips. The
+# public half is for the operator to install on the NAS by hand (README); nothing
+# in this repo may touch DSM.
+- name: Mint the probe's SSH key
+  ansible.builtin.command:
+    cmd: ssh-keygen -q -t ed25519 -N '' -C offsite-mirror@{{ inventory_hostname }} -f {{ offsite_mirror_ssh_key }}
+    creates: "{{ offsite_mirror_ssh_key }}"
+  become: true
+
+# force: false so this creates the file once and never rewrites it — the script
+# fills it on its first connection and must keep what it pinned.
+- name: Create the probe's known_hosts
+  ansible.builtin.copy:
+    content: ""
+    dest: "{{ offsite_mirror_known_hosts }}"
+    force: false
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+
+- name: Install the probe and metric scripts
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - src: offsite-mirror.sh.j2
+      dest: "{{ offsite_mirror_script }}"
+    - src: offsite-mirror-metric.sh.j2
+      dest: "{{ offsite_mirror_metric_script }}"
+  # Consumed by offsite-mirror-metric.sh.j2, the shared run-metric template
+  # symlinked in from node_exporter; offsite-mirror.sh.j2 ignores them.
+  vars:
+    run_metric_textfile_dir: "{{ offsite_mirror_textfile_dir }}"
+    run_metric_name: offsite_mirror
+    run_metric_file: offsite-mirror-run
+    run_metric_description: off-site mirror coverage probe
+  become: true
+
+- name: Install the probe service and timer
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - offsite-mirror.service
+    - offsite-mirror.timer
+  become: true
+
+# No restart handler: a oneshot timer has nothing to restart, and the next tick
+# reads the new script anyway.
+- name: Enable and start the probe timer
+  ansible.builtin.systemd_service:
+    name: offsite-mirror.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true
