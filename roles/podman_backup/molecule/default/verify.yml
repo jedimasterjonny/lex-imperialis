@@ -488,3 +488,62 @@
         path: /var/tmp/lex-probe.container.staged
         state: absent
       become: true
+
+    # Retention grouping, proved here rather than in the engine's own scenario
+    # because this is the mode whose source set moves at run time: the paths are
+    # the volume mountpoints, so a container added or removed changes them.
+    # restic's default --group-by host,paths would make that a fresh retention
+    # group and freeze the old one — its snapshots pinned as that group's newest
+    # weeklies, never ageing out and growing the repo, and the off-site mirror,
+    # without bound. Every snapshot here falls in one ISO week, so keep-weekly
+    # collapses a group to a single snapshot: the count must not move when the
+    # volume set does.
+    - name: Count the snapshots before the volume set changes
+      ansible.builtin.command: "restic --password-file /etc/restic/password --repo {{ podman_backup_repo }} snapshots --json"
+      register: podman_backup_snapshots_before
+      changed_when: false
+      become: true
+
+    - name: Add a second volume so the next run snapshots a different path set
+      ansible.builtin.command:
+        cmd: podman volume create lex-probe-two
+      register: podman_backup_probe_two
+      changed_when: "'lex-probe-two' in podman_backup_probe_two.stdout"
+      failed_when:
+        - podman_backup_probe_two.rc != 0
+        - "'already exists' not in podman_backup_probe_two.stderr"
+      become: true
+
+    - name: Fire the backup service over the changed volume set
+      ansible.builtin.systemd_service:
+        name: podman-backup.service
+        state: started
+      become: true
+
+    - name: Count the snapshots after the volume set changed
+      ansible.builtin.command: "restic --password-file /etc/restic/password --repo {{ podman_backup_repo }} snapshots --json"
+      register: podman_backup_snapshots_after
+      changed_when: false
+      become: true
+
+    - name: A changed volume set does not open a second retention group
+      ansible.builtin.assert:
+        that:
+          - >-
+            (podman_backup_snapshots_after.stdout | from_json | length)
+            == (podman_backup_snapshots_before.stdout | from_json | length)
+          - >-
+            'lex-probe-two' in
+            ((podman_backup_snapshots_after.stdout | from_json | last).paths | join(' '))
+        fail_msg: >-
+          the volume set changed and retention forked:
+          {{ podman_backup_snapshots_before.stdout | from_json | length }} snapshots before,
+          {{ podman_backup_snapshots_after.stdout | from_json | length }} after — the
+          old path set's snapshots are frozen in a retention group of their own
+        quiet: true
+
+    - name: Remove the second volume so the scenario re-runs from one
+      ansible.builtin.command:
+        cmd: podman volume rm lex-probe-two
+      changed_when: true
+      become: true

@@ -38,8 +38,8 @@ home_backup_excludes:
   - .vault_pass
 
 # Weekly, on a slot no other scheduled job uses — a day after the podman backup
-# (Wed 01:00) and its off-site mirror (Wed 02:00), so the two restic runs never
-# contend for the NFS mount. This is solar's slot; scholam's play staggers to
-# Thu 02:00 so the two hosts don't hit the astropath export at once. Confirm
+# (Wed 00:00 on solar) and its off-site mirror (Wed 02:00), so the two restic runs
+# never contend for the NFS mount. This is solar's slot; scholam's play staggers
+# to Thu 02:00 so the two hosts don't hit the astropath export at once. Confirm
 # against the off-site home mirror when it is scheduled.
 home_backup_oncalendar: "Thu *-*-* 01:00:00"

@@ -17,6 +17,13 @@ subset. Set the var empty (or 0) to revert to a metadata-only check. Each restic
 call is retried: the astropath NFS mount intermittently serves a spurious ENOENT
 mid-run that would otherwise fail an isolated operation.
 
+Retention groups snapshots by `host,tags`, not restic's default `host,paths`: in
+podman-volumes mode the paths are the volume mountpoints, so adding or removing a
+container would otherwise open a fresh retention group and freeze the old one,
+its snapshots pinned as that group's newest weeklies and never ageing out.
+`restic_backup_tag` is fixed per consumer where the source set is not, so one
+repository keeps one retention lineage.
+
 The repo lives at `<restic_backup_root>/<hostname>-<restic_backup_name>-backup`,
 unlocked by a password rendered to `restic_backup_password_file` (0600 root) from
 a host-scoped vault var. One key per host, not one per fleet: the export carries
