@@ -117,10 +117,21 @@ containers, and the failed unit trips the usual `*BackupFailed` alert.
   only for the swap, which is a local rename (restic has already restored
   ownership, mode and SELinux label), and are restarted only if the swap
   completed: one that fails part-way deliberately leaves them down and keeps the
-  scratch copy rather than serving half-restored data. It confirms before wiping
-  when run from a terminal, and leaves alone any volume the snapshot does not
-  contain rather than emptying it. Peak disk use is roughly double the restored
-  set for the duration.
+  scratch copy rather than serving half-restored data. Peak disk use is roughly
+  double the restored set for the duration.
+
+  The volume sets are compared both ways, once the scratch copy is in hand and
+  before anything live is touched. A volume the host has and the snapshot does
+  not is left alone rather than emptied; one the snapshot has and the host does
+  not is the direction that loses data — nothing here creates a volume, so it
+  would be restored nowhere — and it is named, in a block above the confirmation,
+  and skipped. The confirmation sits at that point rather than before the read,
+  so it can report what will actually be swapped, `n` of this host's `m`, plus
+  the skip count: from a terminal it wipes nothing without a `y`, and with no
+  terminal to name an absent volume to, it stops there instead of swapping the
+  rest and exiting 0. A `y` is then never spent on a repository that turns out to
+  be unreadable, at the cost of a session dropped at the prompt discarding the
+  scratch copy — run it under `tmux`.
 
 ## Alerting
 

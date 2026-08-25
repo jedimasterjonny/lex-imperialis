@@ -462,15 +462,20 @@
       register: podman_backup_probe_after_noquadlet
       become: true
 
+    # On the message, not just the return code: the script refuses on several
+    # grounds before the swap, so a bare non-zero would no longer say it was this
+    # one that fired.
     - name: A restore that would quiesce nothing refuses to swap
       ansible.builtin.assert:
         that:
           - podman_backup_noquadlet_restore.rc != 0
+          - "'no .container quadlets' in podman_backup_noquadlet_restore.stderr"
           - podman_backup_probe_after_noquadlet.stat.exists
         fail_msg: >-
           the restore swapped volumes without quiescing anything
           (rc={{ podman_backup_noquadlet_restore.rc }},
-          probe present={{ podman_backup_probe_after_noquadlet.stat.exists }})
+          probe present={{ podman_backup_probe_after_noquadlet.stat.exists }}) —
+          stderr: {{ podman_backup_noquadlet_restore.stderr | default('') }}
         quiet: true
 
     - name: Put the probe quadlet back after the restore check
@@ -486,6 +491,159 @@
     - name: Discard the staged copy from the restore check
       ansible.builtin.file:
         path: /var/tmp/lex-probe.container.staged
+        state: absent
+      become: true
+
+    # Every other restore here runs without a terminal, so nothing yet proves the
+    # confirmation still gates the wipe — and it moved, from before the repository
+    # read to after it. script(1) gives the script a pty so `[ -t 0 ]` is true;
+    # the command module's stdin feeds the answer. Anything but y or Y must abort
+    # before a live volume is touched.
+    - name: Drop a marker a confirmed restore would wipe
+      ansible.builtin.copy:
+        content: "tty\n"
+        dest: /var/lib/containers/storage/volumes/lex-probe/_data/tty-marker.txt
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Decline the restore at its confirmation prompt
+      ansible.builtin.command:
+        cmd: "script -qec {{ podman_backup_restore_script }} /dev/null"
+        stdin: "n"
+      register: podman_backup_declined_restore
+      changed_when: false
+      failed_when: false
+      become: true
+
+    - name: Stat the marker after the declined restore
+      ansible.builtin.stat:
+        path: /var/lib/containers/storage/volumes/lex-probe/_data/tty-marker.txt
+      register: podman_backup_declined_marker
+      become: true
+
+    - name: Read the probe unit's state after the declined restore
+      ansible.builtin.systemd_service:
+        name: lex-probe
+      register: podman_backup_unit_after_declined
+      become: true
+
+    # The prompt text pins that the prompt was reached at all — without it, any
+    # early failure (a missing script(1), say) has the same shape as an abort and
+    # would be read as one. The scratch path pins where: the run ends AT the
+    # prompt, so restic's own output can only be there if the repository read
+    # happened first, which is the ordering this change introduced.
+    - name: A declined confirmation aborts before anything is swapped
+      ansible.builtin.assert:
+        that:
+          - podman_backup_declined_restore.rc != 0
+          - "'aborted' in podman_backup_declined_restore.stdout"
+          - "'Restore ' in podman_backup_declined_restore.stdout"
+          - "'/var/tmp/podman-restore.' in podman_backup_declined_restore.stdout"
+          - podman_backup_declined_marker.stat.exists
+          - podman_backup_unit_after_declined.status.ActiveState == 'active'
+        fail_msg: >-
+          the restore swapped without a confirmed prompt, or never reached one
+          (rc={{ podman_backup_declined_restore.rc }},
+          marker present={{ podman_backup_declined_marker.stat.exists }},
+          unit={{ podman_backup_unit_after_declined.status.ActiveState }}) —
+          output: {{ podman_backup_declined_restore.stdout | default('') }}
+        quiet: true
+
+    - name: Discard the marker from the declined restore
+      ansible.builtin.file:
+        path: /var/lib/containers/storage/volumes/lex-probe/_data/tty-marker.txt
+        state: absent
+      become: true
+
+    # The volume set is compared BOTH ways. A volume the snapshot holds that the
+    # host does not is the data-loss direction — nothing here creates one, so it
+    # is restored nowhere — and it is not hypothetical: solar's repo holds an
+    # alertmanager-data the host lost with the role. Driving off the host's
+    # volumes alone never looked, so the run swapped the rest and exited 0 having
+    # dropped it. Snapshot a volume, remove it, and the newest snapshot holds one
+    # this host does not: unattended, the restore must refuse outright rather
+    # than proceed with no one to read a warning.
+    - name: Create a volume that will exist only in the snapshot
+      ansible.builtin.command:
+        cmd: podman volume create lex-gone
+      register: podman_backup_gone
+      changed_when: "'lex-gone' in podman_backup_gone.stdout"
+      failed_when:
+        - podman_backup_gone.rc != 0
+        - "'already exists' not in podman_backup_gone.stderr"
+      become: true
+
+    - name: Seed the doomed volume so the snapshot holds data, not just a directory
+      ansible.builtin.copy:
+        content: "gone\n"
+        dest: /var/lib/containers/storage/volumes/lex-gone/_data/gone.txt
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Snapshot the host while the doomed volume is still present
+      ansible.builtin.systemd_service:
+        name: podman-backup.service
+        state: started
+      become: true
+
+    - name: Remove the volume, leaving the snapshot holding one the host lacks
+      ansible.builtin.command:
+        cmd: podman volume rm lex-gone
+      changed_when: true
+      become: true
+
+    - name: Drop a marker the restore would wipe if it swapped anyway
+      ansible.builtin.copy:
+        content: "orphan\n"
+        dest: /var/lib/containers/storage/volumes/lex-probe/_data/orphan-marker.txt
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Run the restore against a snapshot holding a volume the host lacks
+      ansible.builtin.command: "{{ podman_backup_restore_script }}"
+      register: podman_backup_orphan_restore
+      changed_when: false
+      failed_when: false
+      become: true
+
+    - name: Stat the marker after the refused restore
+      ansible.builtin.stat:
+        path: /var/lib/containers/storage/volumes/lex-probe/_data/orphan-marker.txt
+      register: podman_backup_orphan_marker
+      become: true
+
+    - name: Read the probe unit's state after the refused restore
+      ansible.builtin.systemd_service:
+        name: lex-probe
+      register: podman_backup_unit_after_orphan
+      become: true
+
+    # Names the volume, not just a count: a message the operator cannot act on is
+    # the same silence in a longer form.
+    - name: A snapshot volume with no host counterpart is named and stops the run
+      ansible.builtin.assert:
+        that:
+          - podman_backup_orphan_restore.rc != 0
+          - "'lex-gone' in podman_backup_orphan_restore.stderr"
+          - podman_backup_orphan_marker.stat.exists
+          - podman_backup_unit_after_orphan.status.ActiveState == 'active'
+        fail_msg: >-
+          the restore dropped a snapshot volume the host does not have
+          (rc={{ podman_backup_orphan_restore.rc }},
+          marker present={{ podman_backup_orphan_marker.stat.exists }},
+          unit={{ podman_backup_unit_after_orphan.status.ActiveState }}) —
+          stderr: {{ podman_backup_orphan_restore.stderr | default('') }}
+        quiet: true
+
+    - name: Discard the marker
+      ansible.builtin.file:
+        path: /var/lib/containers/storage/volumes/lex-probe/_data/orphan-marker.txt
         state: absent
       become: true
 
@@ -542,6 +700,11 @@
           old path set's snapshots are frozen in a retention group of their own
         quiet: true
 
+    # Removing it leaves the newest snapshot holding a volume the host no longer
+    # has — the very state the restore now refuses on. Harmless because both
+    # side_effect and this play fire the backup before their first restore, and
+    # retention collapses a same-week repo to that one snapshot; keep that
+    # ordering if either play is rearranged.
     - name: Remove the second volume so the scenario re-runs from one
       ansible.builtin.command:
         cmd: podman volume rm lex-probe-two

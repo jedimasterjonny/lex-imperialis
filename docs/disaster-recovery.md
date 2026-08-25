@@ -84,13 +84,28 @@ The tasks reach the box through the `storagebox_gateway` forward on
    sudo /usr/local/sbin/podman-restore.sh
    ```
 
-   It restores the latest snapshot to a scratch target first, and only once that
-   has fully succeeded does it quiesce the quadlet units, swap the restored data
-   into each volume (ownership, mode and SELinux label preserved) and restart
-   them. A repository that is unreachable or unreadable therefore costs nothing:
-   the volumes are untouched and the containers never stop. The
-   freshly-initialised data from step 3's first start is replaced wholesale, so
-   no app-level reconciliation is needed — the volumes return as last backed up.
+   It restores the latest snapshot to a scratch target first, then stops and
+   asks: run from a terminal it prints how many of this host's volumes it is
+   about to swap and waits for a `y`, and does nothing without one. Only then
+   does it quiesce the quadlet units, swap the restored data into each volume
+   (ownership, mode and SELinux label preserved) and restart them. A repository
+   that is unreachable or unreadable therefore costs nothing: the volumes are
+   untouched and the containers never stop. The freshly-initialised data from
+   step 3's first start is replaced wholesale, so no app-level reconciliation is
+   needed — the volumes return as last backed up.
+
+   Run it under `tmux`. The prompt comes after a read that can take a while, and
+   a session dropped at it takes the scratch copy with it — the whole read again
+   for nothing.
+
+   The swap goes onto volumes the host already has, so one the snapshot holds and
+   this host does not — a decommissioned workload's, and solar's snapshots still
+   carry `alertmanager-data` — is named above the prompt and **skipped**: nothing
+   in the script creates a volume. To take one back, `sudo podman volume create
+   <name>` and run the restore again, which re-reads the snapshot in full. With
+   stdin not a terminal there is no prompt and nobody to read that warning, so
+   the run stops there instead — after the read, before the swap — rather than
+   swapping the rest and exiting 0 having dropped it.
 
    Pass a snapshot ID to restore something other than the newest —
    `sudo /usr/local/sbin/podman-restore.sh <id>`, with IDs from
