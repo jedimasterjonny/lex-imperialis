@@ -4,6 +4,10 @@
   gather_facts: false
   vars_files:
     - ../../defaults/main.yml
+    # For grafana_dashboards, the roster the count assertion pins against. Safe to
+    # add here because vars/ carries no name the scenario's group_vars also set,
+    # which a vars_files would otherwise outrank.
+    - ../../vars/main.yml
   tasks:
     # Everything is reached through caddy with the vhost Host header: grafana
     # has no published port, only the caddy network.
@@ -46,24 +50,51 @@
         url_username: admin
         url_password: admin
         force_basic_auth: true
-      register: grafana_dashboards
+      register: grafana_dashboards_listed
+      # Grafana's file provisioner runs alongside the HTTP server rather than before
+      # it, so /api/health answers ok while dashboards are still loading. Polling for
+      # the full roster is therefore both the wait and the assertion: a dashboard
+      # Grafana rejects on load — which it logs rather than failing startup for —
+      # never arrives, and this exhausts its retries and fails the play.
+      until: grafana_dashboards_listed.json | length == grafana_dashboards | length
+      retries: 30
+      delay: 2
 
     - name: The canned dashboards are provisioned
       ansible.builtin.assert:
         that:
           - >-
-            grafana_dashboards.json
+            grafana_dashboards_listed.json
             | selectattr('title', 'eq', 'Node Exporter Full')
             | list | length > 0
           - >-
-            grafana_dashboards.json
+            grafana_dashboards_listed.json
             | selectattr('title', 'eq', 'Docker monitoring')
             | list | length > 0
           - >-
-            grafana_dashboards.json
+            grafana_dashboards_listed.json
             | selectattr('title', 'eq', 'Blackbox Exporter')
             | list | length > 0
         fail_msg: The Node Exporter Full, Docker monitoring, and Blackbox Exporter dashboards are not all provisioned
+
+    # The failure this cannot be allowed to ship again: a grafana.com export carries
+    # its datasource as an __inputs placeholder, the file provisioner does not
+    # substitute it, and the dashboard provisions with every panel unable to resolve
+    # a datasource. It looks entirely healthy from the API — it lists, it opens —
+    # so nothing short of reading a panel notices.
+    #
+    # Read off the provisioned files rather than back out of Grafana's API. The API
+    # form needs credentials, and a looped uri carrying them trips ansible-lint's
+    # no-log-password; adding no_log then censors `content` in the REGISTERED result
+    # as well as the log, which silently empties the match and leaves an assertion
+    # that cannot fail. These files are what Grafana provisions from, so a clean set
+    # here is the property that matters. grep exits 1 on no match, which is the pass.
+    - name: No provisioned dashboard retains a datasource placeholder
+      ansible.builtin.command: grep -rlE '\$\{DS_[A-Z0-9_.-]+\}' /etc/grafana/dashboards
+      become: true
+      register: grafana_placeholders
+      changed_when: false
+      failed_when: grafana_placeholders.rc != 1
 
     # A non-zero exit fails the task, proving curl resolves in the image and the
     # health endpoint reports ok.

@@ -2167,6 +2167,277 @@ tests:
         alertname: BeetsPipelineQuarantineBacklog
         exp_alerts: []
 
+  # The -1 arm, which the rule's comment explains: it is upstream's sentinel for
+  # "no poll has ever succeeded", and the one value a bare > threshold can never
+  # reach, so it needs a case of its own.
+  - interval: 1m
+    name: a poller that never reaches the controller alerts while its scrape stays green
+    input_series:
+      - series: 'unpoller_prometheus_cache_age_seconds{job="unpoller",instance="127.0.0.1:9130"}'
+        values: "-1x20"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: UnpollerPollOverdue
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: unpoller
+              instance: 127.0.0.1:9130
+            exp_annotations:
+              summary: "unpoller has not polled the UniFi controller in over 30 minutes"
+              description: "unpoller is serving a stale snapshot, so the unpoller_* series are frozen at their last values rather than absent."
+      # Inside for:, so pending rather than firing — the sentinel matches from the
+      # first sample, and without this the case above would pass a rule with no
+      # for: at all.
+      - eval_time: 0m
+        alertname: UnpollerPollOverdue
+        exp_alerts: []
+
+  # The other arm: a poller that polled successfully once and then stopped, so the
+  # age climbs rather than sitting at the sentinel. Starts under the threshold and
+  # crosses it, which is also this rule's fresh-snapshot control — at 0m the age is
+  # a healthy 1700s and the rule must be silent, so a dropped or inverted threshold
+  # fails here.
+  - interval: 1m
+    name: a snapshot that goes stale alerts, and a fresh one does not
+    input_series:
+      - series: 'unpoller_prometheus_cache_age_seconds{job="unpoller",instance="127.0.0.1:9130"}'
+        values: "1700+60x40"
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: UnpollerPollOverdue
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: UnpollerPollOverdue
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: unpoller
+              instance: 127.0.0.1:9130
+            exp_annotations:
+              summary: "unpoller has not polled the UniFi controller in over 30 minutes"
+              description: "unpoller is serving a stale snapshot, so the unpoller_* series are frozen at their last values rather than absent."
+
+  # The controller's own count of adopted devices that have stopped talking to
+  # it, one gauge per subsystem. Two properties in one case.
+  #
+  # First, the rule discriminates: written as a bare `unpoller_site_disconnected`
+  # with no comparison it would fire on the healthy wlan series too, which is what
+  # that series is here to catch.
+  #
+  # Second, and the reason for `without (status)`: a second switch failing moves
+  # UniFi's health string from warning to error, which is a DIFFERENT series. The
+  # lan input below does exactly that at 41m. Aggregated, the count is continuous
+  # from 21m and the alert is firing by 50m; keyed on status it would see a series
+  # that only began at 41m, still be inside its for:, and report nothing — so this
+  # case fails if the aggregation is dropped.
+  - interval: 1m
+    name: a disconnected UniFi device alerts on its own subsystem across a status change
+    input_series:
+      - series: 'unpoller_site_disconnected{subsystem="lan",status="warning",site_name="Default",source="unifi"}'
+        values: "0x20 1x20 _x40"
+      - series: 'unpoller_site_disconnected{subsystem="lan",status="error",site_name="Default",source="unifi"}'
+        values: "_x40 2x39"
+      - series: 'unpoller_site_disconnected{subsystem="wlan",status="ok",site_name="Default",source="unifi"}'
+        values: "0x80"
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: UnifiDeviceDisconnected
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              subsystem: lan
+              site_name: Default
+              source: unifi
+            exp_annotations:
+              summary: "2 UniFi lan device(s) disconnected"
+              description: "The controller reports 2 adopted lan device(s) not talking to it — powered off, or the uplink is dead."
+      # Inside for:, so the count is already non-zero and only the wait keeps it
+      # quiet — without this the case above would equally pass a rule with no for:,
+      # which would then alert on a device rebooting between two scrapes.
+      - eval_time: 25m
+        alertname: UnifiDeviceDisconnected
+        exp_alerts: []
+
+  # Three uptime resets in a day against one, which is what separates a device
+  # power-cycling from a device taking a firmware update. The single-reboot series
+  # is the whole point of the threshold: written as `> 0` this rule would fire on
+  # every scheduled UniFi update the fleet takes.
+  - interval: 5m
+    name: a device power-cycling alerts while one clean reboot does not
+    input_series:
+      - series: 'unpoller_device_uptime_seconds{type="uap",site_name="Default",name="Upstairs AP",source="unifi"}'
+        values: "3000+300x10 300+300x10 300+300x10 300+300x10"
+      - series: 'unpoller_device_uptime_seconds{type="usw",site_name="Default",name="Core",source="unifi"}'
+        values: "500000+300x20 300+300x22"
+    alert_rule_test:
+      # The third reset lands at 165m, and the rule carries no for:, so this is the
+      # first evaluation that can fire — asserting it here pins the absence of a
+      # wait, which a later edit could otherwise reintroduce unnoticed.
+      - eval_time: 165m
+        alertname: UnifiDeviceRebootLoop
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              type: uap
+              site_name: Default
+              name: Upstairs AP
+              source: unifi
+            exp_annotations:
+              summary: "UniFi device Upstairs AP has rebooted 3 times in 24 hours"
+              description: "Upstairs AP (uap) is power-cycling rather than running — check its injector, its cable and its supply."
+      # One evaluation earlier only two resets are in the window, so this pins the
+      # threshold at >2 rather than >1 — the line between a fault and a device that
+      # took a firmware update and then lost power once.
+      - eval_time: 160m
+        alertname: UnifiDeviceRebootLoop
+        exp_alerts: []
+
+  # The window is read out of the TSDB rather than waited out by a for:, so the
+  # case has to run the full 8 days for the rule to mean anything. The second
+  # series is absent until 50h in and pending every sample after: its min over the
+  # window is 1, so only the offset term keeps it quiet — which is exactly the
+  # newly-published update that must not alert before it has had a window.
+  - interval: 5m
+    name: a firmware update that sits through an auto-update window alerts
+    input_series:
+      - series: 'unpoller_device_upgradable{type="uap",site_name="Default",name="Upstairs AP",source="unifi"}'
+        values: "1x2600"
+      - series: 'unpoller_device_upgradable{type="usw",site_name="Default",name="Core",source="unifi"}'
+        values: "_x600 1x2000"
+    alert_rule_test:
+      - eval_time: 216h
+        alertname: UnifiFirmwareUpdatePending
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              type: uap
+              site_name: Default
+              name: Upstairs AP
+              source: unifi
+            exp_annotations:
+              summary: "UniFi firmware update pending on Upstairs AP for over 8 days"
+              description: "Upstairs AP (uap) has had a firmware update available across a full auto-update window without it landing."
+      # Before the window has passed there is nothing at offset 8d to compare
+      # against, so neither device alerts — the property that keeps a fresh deploy
+      # from raising one of these for every pending update it inherits.
+      - eval_time: 100h
+        alertname: UnifiFirmwareUpdatePending
+        exp_alerts: []
+
+  # The operator's two calibration points, encoded so neither can drift: a radio
+  # that sustains congestion must alert, and a radio that briefly spikes ABOVE the
+  # incident level must not. The second is what the mean buys over a for: — one
+  # large transfer takes a channel to 0.8 for five minutes, and that is not a
+  # fault. The third series is the busiest radio's real idle reading, so a
+  # threshold dropped anywhere near normal fails here.
+  - interval: 1m
+    name: a congested radio alerts while a brief spike and a normal one do not
+    input_series:
+      - series: 'unpoller_device_radio_channel_utilization_total_ratio{name="Upstairs AP",band="2.4",radio="ng",radio_name="wifi0"}'
+        values: "0.6x20 0.3x0 0.6x39"
+      # The incident this rule was written for, at the level and duration the
+      # calibration comment cites: ten minutes at 0.70 over a 0.17 background. Its
+      # 15m mean is 0.5233 and it fires; at 30m the same event averages under 0.4
+      # and does not. This series is the only thing pinning the window's UPPER
+      # bound — without it the range can be widened back to 30m, silently losing
+      # the very event that motivated the rule, while the description still reads
+      # "over 15 minutes".
+      - series: 'unpoller_device_radio_channel_utilization_total_ratio{name="Downstairs AP",band="2.4",radio="ng",radio_name="wifi0"}'
+        values: "0.17x15 0.7x9 0.17x34"
+      - series: 'unpoller_device_radio_channel_utilization_total_ratio{name="Downstairs AP",band="5",radio="na",radio_name="wifi1"}'
+        values: "0.15x20 0.8x4 0.15x34"
+      - series: 'unpoller_device_radio_channel_utilization_total_ratio{name="Upstairs AP",band="5",radio="na",radio_name="wifi1"}'
+        values: "0.17x60"
+    alert_rule_test:
+      # 25m is the one evaluation that carries every property at once, and it is on
+      # the file's 5m grid — an off-grid time would be floored silently. Here the
+      # spiking radio reads 0.8 instantaneously, ABOVE the incident level, while its
+      # 15m mean is at its own peak of 0.37 — the spike ends here deliberately, so
+      # the window holds all five of its samples rather than one. The congested
+      # radio also dips to 0.3 for one sample inside the window, which min_over_time
+      # would swallow: that dip is what makes the MEAN load-bearing rather than any
+      # aggregation over the range. Written against the
+      # instantaneous gauge instead of the mean, this rule pages every time someone
+      # starts a large download, and this evaluation is what says so.
+      - eval_time: 25m
+        alertname: UnifiRadioAirtimeHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              name: Downstairs AP
+              band: "2.4"
+              radio: ng
+              radio_name: wifi0
+            exp_annotations:
+              summary: "Downstairs AP 2.4 GHz airtime at 52.33%"
+              description: >-
+                The 2.4 GHz radio on Downstairs AP has averaged 52.33% airtime over 15
+                minutes — every client on that channel is slow. Compare its receive
+                and transmit ratios against total: close to it is our own saturation,
+                far below is a neighbouring network, and the remedy differs.
+          - exp_labels:
+              severity: warning
+              name: Upstairs AP
+              band: "2.4"
+              radio: ng
+              radio_name: wifi0
+            exp_annotations:
+              summary: "Upstairs AP 2.4 GHz airtime at 58%"
+              description: >-
+                The 2.4 GHz radio on Upstairs AP has averaged 58% airtime over 15
+                minutes — every client on that channel is slow. Compare its receive
+                and transmit ratios against total: close to it is our own saturation,
+                far below is a neighbouring network, and the remedy differs.
+
+  # Each direction is faulted on its own port, so dropping either term of the sum
+  # leaves that port silent and fails here. The third port is the control that
+  # matters: a one-off burst of 10 errors is a duplex renegotiation, not a bad
+  # cable, and a threshold set anywhere near zero would page for it. Its jump sits
+  # INSIDE the evaluated window on purpose — at the edge the rate computes to a
+  # flat zero and the case stops discriminating a low threshold at all.
+  - interval: 1m
+    name: an erroring switch port alerts in either direction while a one-off burst does not
+    input_series:
+      - series: 'unpoller_device_port_receive_errors_total{port_id="Study Switch Port 4",port_num="4"}'
+        values: "0+12x60"
+      - series: 'unpoller_device_port_transmit_errors_total{port_id="Study Switch Port 4",port_num="4"}'
+        values: "0x60"
+      - series: 'unpoller_device_port_receive_errors_total{port_id="Lounge Switch Port 4",port_num="4"}'
+        values: "0x60"
+      - series: 'unpoller_device_port_transmit_errors_total{port_id="Lounge Switch Port 4",port_num="4"}'
+        values: "0+12x60"
+      - series: 'unpoller_device_port_receive_errors_total{port_id="Cupboard Switch Port 4",port_num="4"}'
+        values: "0x18 10x42"
+      - series: 'unpoller_device_port_transmit_errors_total{port_id="Cupboard Switch Port 4",port_num="4"}'
+        values: "0x60"
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: UnifiPortErrorsHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              port_id: Lounge Switch Port 4
+              port_num: "4"
+            exp_annotations:
+              summary: "Lounge Switch Port 4 is logging 0.20 errors/s"
+              description: >-
+                Lounge Switch Port 4 has logged 0.20 receive and transmit errors a second for 15
+                minutes, where every port on this fleet normally sits at zero. That is
+                a physical fault, not congestion: reseat or replace the cable, and
+                check the link has not negotiated down.
+          - exp_labels:
+              severity: warning
+              port_id: Study Switch Port 4
+              port_num: "4"
+            exp_annotations:
+              summary: "Study Switch Port 4 is logging 0.20 errors/s"
+              description: >-
+                Study Switch Port 4 has logged 0.20 receive and transmit errors a second for 15
+                minutes, where every port on this fleet normally sits at zero. That is
+                a physical fault, not congestion: reseat or replace the cable, and
+                check the link has not negotiated down.
+
   # The deadman's beat, whose entire value is that it never stops. Two properties hold
   # it, and the single evaluation at zero pins both: it fires on the very first one,
   # where a for: of any length would open a window in which the pipeline looks dead to

@@ -69,6 +69,12 @@ watch the split. Scraper and TSDB on one host need none of it.
   identical sample that would be rejected as out-of-order and store no point at
   all. The job's `metric_relabel_configs` rebuild the `container` and `image`
   labels the Grafana 15798 dashboard groups by out of the cgroup id.
+- `prometheus_unpoller_targets` — `host:9130` unpoller scrape targets, scraped at
+  60s. The poller refreshes its own cache in the background and serves that, so a
+  faster cadence re-reads the same snapshot. It binds loopback because it holds the
+  UniFi API key, so the target must be co-located; must match the `unpoller` role's
+  `unpoller_listen_address`. The job's `metric_relabel_configs` are a default-deny
+  `keep`; the job's comment says why.
 - `prometheus_probe_targets` — blackbox probe targets: each entry pairs a prober
   module with the URLs to run it against, so the module is per target rather than
   per job, and the same module may appear more than once.
@@ -85,7 +91,7 @@ and a `rule_files` glob, copies its `files/rules/` into `rules/` under
 the targets.
 
 The rules are in `files/rules/alerts.yml`, grouped by concern: `availability`,
-`probes`, `backups`, `filesystem`, `memory`, `hardware`, `time`, `services`,
+`probes`, `unifi`, `backups`, `filesystem`, `memory`, `hardware`, `time`, `services`,
 `maintenance`, `arbites`, `drift`, `music`, `monitoring` and `watchdog`. Where a
 threshold or a `for:` window was calibrated against a measurement or a past
 failure, the comment above that rule records it. That file is the roster, and the

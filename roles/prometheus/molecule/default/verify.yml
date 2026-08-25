@@ -5,8 +5,9 @@
   # Both resolved lazily, at the point of use, so they can name a register set
   # further down. Each is read by two tasks that would otherwise restate it.
   vars:
-    prometheus_expected_jobs: ['alertmanager', 'blackbox', 'cadvisor', 'node', 'prometheus']
+    prometheus_expected_jobs: ['alertmanager', 'blackbox', 'cadvisor', 'node', 'prometheus', 'unpoller']
     prometheus_inspected: "{{ prometheus_inspect.stdout | from_json | first }}"
+    prometheus_loaded_jobs: "{{ (prometheus_loaded_config.json.data.yaml | from_yaml).scrape_configs }}"
   tasks:
     - name: Wait for prometheus to be ready
       ansible.builtin.uri:
@@ -50,7 +51,7 @@
     # targets. Waits for PRESENCE only, deliberately weaker than the assertion
     # below — an extra job would satisfy this, and must fail rather than be waited
     # out.
-    - name: Wait for all five scrape jobs to register
+    - name: Wait for all six scrape jobs to register
       ansible.builtin.uri:
         url: http://127.0.0.1:9090/api/v1/targets
         return_content: true
@@ -71,7 +72,7 @@
     # series that then have two sources. The self-scrape is load-bearing twice
     # over: PrometheusRuleEvaluationFailing and PrometheusConfigReloadFailed read
     # it, and nothing off this host reports on the rule evaluator's health.
-    - name: The scraped job set is exactly the five the role renders
+    - name: The scraped job set is exactly the six the role renders
       vars:
         prometheus_scraped_jobs: >-
           {{ prometheus_targets.json.data.activeTargets
@@ -211,7 +212,6 @@
     # silently as empty panels.
     - name: The cadvisor job stamps at scrape time and rebuilds the container labels
       vars:
-        prometheus_loaded_jobs: "{{ (prometheus_loaded_config.json.data.yaml | from_yaml).scrape_configs }}"
         prometheus_cadvisor_job: "{{ prometheus_loaded_jobs | selectattr('job_name', 'eq', 'cadvisor') | first }}"
         prometheus_node_job: "{{ prometheus_loaded_jobs | selectattr('job_name', 'eq', 'node') | first }}"
       ansible.builtin.assert:
@@ -231,6 +231,36 @@
           gains no point — or the override leaked to the other jobs, or the
           metric_relabel_configs that rebuild the dashboard's container and image
           labels from the cgroup id did not reach the loaded config.
+
+    # Asserted on the config the PROCESS loaded, not the rendered file. Without
+    # this filter every device that has ever associated to the WiFi keeps a series
+    # set — under unpoller_client_*, and under the MAC-keyed unpoller_dhcp_lease_*
+    # and unpoller_topology_link_* families a denylist would miss — for the full
+    # retention window, a year on the host that runs this. Nothing else in the file
+    # would notice it being removed: the series would simply start arriving.
+    #
+    # The regex string, not the whole normalised rule: Prometheus fills in
+    # separator and replacement defaults on the way out, so asserting the entire
+    # dict would break on a release that adds another such field, and would say
+    # nothing more than this does.
+    - name: The unpoller job keeps only the bounded metric families
+      vars:
+        prometheus_unpoller_keeps: >-
+          {{ (prometheus_loaded_jobs | selectattr('job_name', 'eq', 'unpoller') | first).metric_relabel_configs
+             | default([], true) | selectattr('action', 'eq', 'keep') | list }}
+      ansible.builtin.assert:
+        that:
+          - prometheus_unpoller_keeps | length == 1
+          - (prometheus_unpoller_keeps | first).source_labels == ['__name__']
+          - >-
+            (prometheus_unpoller_keeps | first).regex
+            == 'unpoller_device_.*|unpoller_prometheus_.*|unpoller_site_disconnected'
+        fail_msg: >-
+          the unpoller job does not keep exactly the bounded families, so either an
+          unbounded per-client family now reaches the TSDB or something the fleet
+          reads — the dashboards' device series, the cache age UnpollerPollOverdue
+          reads, or UnifiDeviceDisconnected's whole input — is filtered out of it.
+        quiet: true
 
     - name: Read prometheus's security posture
       ansible.builtin.command: podman inspect prometheus

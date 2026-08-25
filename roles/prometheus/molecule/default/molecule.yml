@@ -20,7 +20,7 @@ platforms:
 # by side_effect as the set the sentinel is added to. Stated here rather than in
 # converge because include_role vars replace rather than merge: restating them in
 # side_effect would drift the first time a target changes, and verify asserts the
-# job set is exactly the five these render.
+# job set is exactly the six these render.
 #
 # Nothing listens on any of them. Each target need only be discovered for its job
 # to register, which is what verify asserts — not that a scrape succeeded.
@@ -34,6 +34,8 @@ provisioner:
           - localhost:9100
         prometheus_cadvisor_targets:
           - localhost:8080
+        prometheus_unpoller_targets:
+          - localhost:9130
         prometheus_probe_targets:
           - module: http_2xx
             targets:

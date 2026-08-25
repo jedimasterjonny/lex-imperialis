@@ -1,0 +1,12 @@
+---
+- name: Converge
+  hosts: all
+  tasks:
+    - name: Apply the podman role
+      ansible.builtin.include_role:
+        name: podman
+
+    # No vars: the controller URL and key come from the scenario's group_vars.
+    - name: Apply the unpoller role
+      ansible.builtin.include_role:
+        name: unpoller

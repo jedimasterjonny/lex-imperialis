@@ -1,0 +1,115 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  vars:
+    unpoller_inspected: "{{ unpoller_inspect.stdout | from_json | first }}"
+  tasks:
+    - name: Wait for unpoller to serve metrics
+      ansible.builtin.uri:
+        url: http://{{ unpoller_listen_address }}/metrics
+        return_content: true
+        status_code: 200
+      register: unpoller_metrics
+      until: unpoller_metrics.status == 200
+      retries: 30
+      delay: 2
+
+    # The gauge UnpollerPollOverdue reads. It is the only signal that the poller
+    # has lost the controller: /metrics keeps answering from the last snapshot, so
+    # the scrape stays green on a revoked API key and every unpoller_* series simply
+    # stops moving. Not unpoller_controller_up, which upstream writes only on a
+    # SUCCESSFUL fetch and so never appears for the failure that matters — this
+    # instance, with no controller to reach, exports no such series at all.
+    #
+    # -1 is upstream's sentinel for "no refresh has ever succeeded", which is
+    # exactly this scenario's state, so the value is asserted too: it is the arm of
+    # the alert expression a threshold comparison alone would never reach.
+    - name: The cache-staleness gauge is exported, and reports no successful poll
+      ansible.builtin.assert:
+        that:
+          - "'\nunpoller_prometheus_cache_age_seconds -1' in unpoller_metrics.content"
+        fail_msg: >-
+          unpoller_prometheus_cache_age_seconds is absent, or does not report -1
+          against a controller that cannot be reached — UnpollerPollOverdue has lost
+          its input, and a poller frozen on a stale snapshot would go unreported.
+
+    - name: Read the environment file's permissions
+      ansible.builtin.stat:
+        path: /etc/unpoller/env
+      become: true
+      register: unpoller_env
+
+    - name: The environment file holding the API key is not world-readable
+      ansible.builtin.assert:
+        that:
+          - unpoller_env.stat.exists
+          - unpoller_env.stat.mode == "0600"
+          - unpoller_env.stat.pw_name == "root"
+        fail_msg: >-
+          /etc/unpoller/env is {{ unpoller_env.stat.mode | default('absent') }}, not
+          0600 root — the UniFi API key is readable off the host account.
+
+    - name: Read unpoller's container configuration
+      ansible.builtin.command: podman inspect unpoller
+      become: true
+      register: unpoller_inspect
+      changed_when: false
+
+    # The whole secret path in one assertion: the template rendered, the 0600 file
+    # landed, and the quadlet's EnvironmentFile wired it into the process. Nothing
+    # in the world-readable unit carries the key, so without this the chain is
+    # unverified end to end. quiet, and the fail_msg names no value — the sentinel
+    # authenticates nothing, but CI logs are no place for a variable named api key.
+    - name: The environment file reached the container's environment
+      vars:
+        unpoller_env_vars: "{{ unpoller_inspected.Config.Env | default([], true) }}"
+      ansible.builtin.assert:
+        that:
+          - "('UP_UNIFI_DEFAULT_API_KEY=' ~ unpoller_api_key) in unpoller_env_vars"
+          - "('UP_PROMETHEUS_HTTP_LISTEN=' ~ unpoller_listen_address) in unpoller_env_vars"
+          - "'UP_INFLUXDB_DISABLE=true' in unpoller_env_vars"
+          - "'UP_UNIFI_DEFAULT_SAVE_SPEEDTEST=false' in unpoller_env_vars"
+        fail_msg: >-
+          the rendered environment file did not reach the container — the poller is
+          running on the example config baked into the image: pointed at a
+          non-existent InfluxDB, binding every interface, and making a speedtest
+          API call a minute whose result nothing keeps.
+        quiet: true
+
+    # The image ships a HEALTHCHECK on a 30s interval, which podman inherits
+    # silently. That is an OCI exec every 30 seconds on a Raspberry Pi to assert
+    # what the co-located scrape already reports; the quadlet disables it, and this
+    # is what proves the disable took.
+    - name: The image's 30s exec healthcheck is disabled
+      vars:
+        unpoller_healthcheck: "{{ unpoller_inspected.Config.Healthcheck.Test | default([], true) }}"
+      ansible.builtin.assert:
+        that:
+          - unpoller_healthcheck | length == 0 or unpoller_healthcheck[0] == 'NONE'
+        fail_msg: >-
+          unpoller inherited the image's healthcheck ({{ unpoller_healthcheck }}) — an
+          exec into the container every 30s, on a Raspberry Pi, for a liveness signal
+          the Prometheus scrape already carries.
+
+    # This image sets no USER, so the container runs as root — which is what makes
+    # EffectiveCaps meaningful here. A non-root container's effective set is empty
+    # whatever the drop says, so asserting on it alone would be a check that cannot
+    # fail; asserted alongside BoundingCaps, which reflects DropCapability=all.
+    - name: Unpoller keeps no capabilities and bars privilege escalation
+      ansible.builtin.assert:
+        that:
+          - unpoller_inspected.BoundingCaps | default([], true) | sort == []
+          - unpoller_inspected.EffectiveCaps | default([], true) | sort == []
+          - "'no-new-privileges' in (unpoller_inspected.HostConfig.SecurityOpt | default([], true))"
+        fail_msg: "unpoller's capability or no-new-privileges posture has regressed"
+        quiet: true
+
+    # The inquisition's `unpinned` class reads exactly this, and a quadlet whose
+    # Image lost its digest is a container that silently drifts on the next pull.
+    - name: The quadlet pins its image by digest
+      ansible.builtin.command: grep -E '^Image=.*@sha256:[0-9a-f]{64}$' /etc/containers/systemd/unpoller.container
+      become: true
+      register: unpoller_pin
+      changed_when: false
+      failed_when: unpoller_pin.rc != 0
