@@ -362,9 +362,8 @@ Hetzner, and a rebuilt NAS is outside it, so a restored Hyper Backup task pointe
 straight at the box will fail. First get one of the two routes back:
 
 - `rogue-trader` up with `storagebox_gateway` running, and the tasks' destination
-  set to `192.168.3.4` port 23. This repo does not hold that destination — it
-  exists only in DSM's Hyper Backup config, so a NAS rebuilt without that config
-  needs it set by hand; or
+  set to `192.168.3.4` port 23. DSM's Hyper Backup config is the only place that
+  setting lives, so a NAS rebuilt without it needs it set by hand; or
 - a throwaway Hetzner VM running the same forward, if rogue-trader is gone; or
 - External Reachability re-enabled in the Hetzner Console (Prerequisites), the
   escape hatch when there is no Hetzner host at all. Turn it back off afterwards.
