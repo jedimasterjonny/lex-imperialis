@@ -4,10 +4,12 @@ Weekly restic backup of this host's podman named volumes to
 `<hostname>-podman-backup` on the astropath NFS share (`/nfs/astropath`). A thin
 consumer of the [`restic_backup`](../restic_backup/README.md) engine in
 podman-volumes mode: it sets the engine vars and includes it. The
-timer (Wednesday 01:00, persistent — clear of every other scheduled job)
-quiesces the quadlet container units, snapshots every volume, restarts the
-units, then runs a verifying `restic check`; the engine README covers the
-snapshot, prune, integrity-check, retry, and metric mechanics.
+timer (persistent, clear of every other scheduled job — `rogue-trader` Wednesday
+01:00 and `solar` staggered to 00:00, so a Europe/London host and a UTC one do
+not write to the astropath export at once each winter) quiesces the quadlet
+container units, snapshots every volume, restarts the units, then runs a verifying
+`restic check`; the engine README covers the snapshot, prune, integrity-check,
+retry, and metric mechanics.
 
 Assumes `podman` is installed and the `nfs` role has mounted the target. Runs on
 `solar` and `rogue-trader`; `scholam`'s only podman workload (`node_exporter`) is

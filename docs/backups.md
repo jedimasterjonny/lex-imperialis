@@ -9,7 +9,7 @@ off-site, since the laptop is its own second copy. Six layers:
 
 | Layer | Protects | On the NAS | Cadence | Owned by |
 | --- | --- | --- | --- | --- |
-| Podman volume backup | container state on `solar` and `rogue-trader` | per-host restic repo under `astropath` | weekly, Wed 01:00 | `podman_backup` role — this repo |
+| Podman volume backup | container state on `solar` and `rogue-trader` | per-host restic repo under `astropath` | weekly, Wed 00:00 / 01:00 | `podman_backup` role — this repo |
 | Home directory backup | `/home` on `solar`, `scholam`, and `rogue-trader` | per-host restic repo under `astropath` | weekly, Thu 01:00 / 02:00 / 03:00 | `home_backup` role — this repo |
 | Photo library | the Google Photos archive | `/scriptorum/photos` | on demand | [`negative-space`](https://github.com/jedimasterjonny/negative-space) — external |
 | Laptop Time Machine | the operator's laptop | `time-machine` SMB share, a sibling of `scriptorum` on the same array (1 TB cap) | hourly when the laptop is on the network | macOS + DSM — external |
@@ -30,13 +30,18 @@ derived data. Recovery is in [`disaster-recovery.md`](disaster-recovery.md).
 `podman_backup` snapshots every podman named volume on `solar` and
 `rogue-trader` — databases, app config, the Plex library and history, the
 WordPress site — with restic to `/nfs/astropath/<hostname>-podman-backup`,
-weekly (Wed 01:00), keeping 8 weekly then 6 monthly snapshots. Every container
-on the host is stopped for the snapshot — under two minutes — and restarted
-before the integrity check, so the databases are quiesced rather than caught
-mid-write. Each run `restic check`s the repo and re-reads a rotating slice of
-the data packs — the whole repo over successive runs — so structural corruption
-and bit-rot inside the repo page as `PodmanBackupFailed` instead of surfacing at
-restore; a missed run raises `PodmanBackupOverdue`. `scholam` carries no podman
+weekly, keeping 8 weekly then 6 monthly snapshots. Every container on the host
+is stopped for the snapshot — under two minutes — and restarted before the
+integrity check, so the databases are quiesced rather than caught mid-write.
+Each run `restic check`s the repo and re-reads a rotating slice of the data
+packs — the whole repo over successive runs — so structural corruption and
+bit-rot inside the repo page as `PodmanBackupFailed` instead of surfacing at
+restore; a missed run raises `PodmanBackupOverdue`. The two hosts are staggered
+— `solar` Wednesday 00:00 and `rogue-trader` Wednesday 01:00 — because their
+clocks differ: `solar` is on Europe/London and `rogue-trader` on UTC year-round,
+so one shared slot would put both on the astropath export at the same instant
+for the whole GMT half of the year. Staggered, both finish well inside the
+Wednesday 02:00 UTC off-site mirror window below. `scholam` carries no podman
 repo: its only podman workload, `node_exporter`, defines no named volume, so
 `podman_backup` is left off its play. Container media on the NFS shares is
 deliberately out of the repo — it lives on the NAS and is re-acquirable. Role
@@ -116,7 +121,7 @@ weekly slots so they don't contend on the uplink, each after the run it copies
 so it never captures a mid-write repo:
 
 - **`podman-backup`** — the two `*-podman-backup` restic repos (`solar`,
-  `rogue-trader`), Wednesday 02:00, an hour or more after the restic run.
+  `rogue-trader`), Wednesday 02:00, after both hosts' Wednesday runs.
 - **`home-backup`** — the `*-home-backup` restic repos (`solar`, `scholam`,
   `rogue-trader`), Thursday 04:00, after the hosts' Thursday runs.
 - **`photos-backup`** — the `/scriptorum/photos` library, Tuesday 03:00.
