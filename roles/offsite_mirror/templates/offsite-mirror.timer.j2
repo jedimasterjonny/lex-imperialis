@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Daily off-site mirror coverage check
+
+[Timer]
+OnCalendar={{ offsite_mirror_oncalendar }}
+# Persistent, like smartmon's: the textfile metric survives a reboot, so a host
+# back from a multi-day outage would otherwise stand OffsiteMirrorProbeOverdue
+# until the next tick.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

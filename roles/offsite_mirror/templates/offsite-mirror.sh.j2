@@ -1,0 +1,190 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Publish what the off-site mirror actually covers, and when each task last
+# succeeded, as node_exporter textfile metrics. Runs unattended on
+# offsite-mirror.timer; the ExecStopPost hook records the outcome.
+#
+# A Hyper Backup task that quietly stops copying a folder still finishes, still
+# reports success and still mails nothing, so DSM's own task notification cannot
+# see a coverage regression — rogue-trader-home-backup was absent from the home
+# task for five weeks and every run in that window was green. The covered set is
+# observable only in the manifest DSM caches beside each task, which is what this
+# reads.
+set -euo pipefail
+
+dir="{{ offsite_mirror_textfile_dir }}"
+
+# One connection for the whole cache rather than one per task. The manifest also
+# carries the storage box account name, so it is held in a shell variable, never
+# written to disk, and only the four keys the parse below names are ever copied
+# out of it.
+#
+# Every cache directory is read, and the parse below picks the live manifest per
+# task. DSM keys a cache directory on the endpoint, so a changed endpoint leaves
+# the previous set behind — six directories for three tasks here, half of them
+# months stale — and a glob that takes any match reads one of those and reports
+# false freshness. The task is read out of the manifest rather than off the
+# directory name, which is frozen at task creation and no longer has to match it:
+# photos-backup's directory still ends "photos-backups".
+raw="$(ssh -F none \
+    -i "{{ offsite_mirror_ssh_key }}" \
+    -o BatchMode=yes \
+    -o ConnectTimeout=10 \
+    -o StrictHostKeyChecking=accept-new \
+    -o UserKnownHostsFile="{{ offsite_mirror_known_hosts }}" \
+    "{{ offsite_mirror_nas_user }}@{{ offsite_mirror_nas_host }}" \
+    sh -s -- "{{ offsite_mirror_cache_dir }}" "{{ offsite_mirror_nas_sqlite3 }}" <<'REMOTE'
+cache="$1"
+sqlite="$2"
+n=0
+for d in $(ls -dt "$cache"/* 2>/dev/null); do
+    [ -f "$d/synobkpinfo.db" ] || continue
+    n=$((n + 1))
+    "$sqlite" "file:$d/synobkpinfo.db?mode=ro" \
+        "select '$n', info_name, info_value from backup_info_tb;" 2>/dev/null
+done
+# Always zero. A cache directory that is absent, unreadable or not a manifest is a
+# gap in coverage the metrics express; reserving a non-zero exit for ssh's own
+# failures is what keeps "the probe cannot reach the NAS" apart from "a task
+# cannot be verified". Read-only throughout: the DB is opened mode=ro and nothing
+# is installed on the NAS, which this repo does not manage.
+exit 0
+REMOTE
+)"
+
+{% raw %}
+# Which task each cache directory's manifest describes, and when the run it
+# records finished. The empty-$group guard is load-bearing on both loops: a here
+# string is a line even when $raw is empty, and an associative array rejects an
+# empty subscript outright — without it a NAS whose cache DSM has just cleared
+# kills the script rather than publishing the declared-only payload that
+# OffsiteMirrorTaskUnverified reads.
+declare -A group_task=() group_time=()
+while IFS='|' read -r group key value; do
+    [ -n "$group" ] || continue
+    case "$key" in
+        bkpTaskName)
+            if [ -n "$value" ]; then group_task["$group"]="$value"; fi
+            ;;
+        # Digits only, here and for the duration below. A value that is not a
+        # number reaches the payload as a malformed sample and drops the whole
+        # file from the scrape — TextfileScrapeError's class — and this one is
+        # also compared numerically just below.
+        lastBkpTime)
+            if [ -n "${value##*[!0-9]*}" ]; then group_time["$group"]="$value"; fi
+            ;;
+    esac
+done <<<"$raw"
+
+# The live manifest per task is the one recording the most recent run — not the
+# newest directory. Directory mtime is a property of the file, so a DSM restart or
+# a restore that touches a stale endpoint's cache would promote a months-old
+# manifest into a current coverage claim; lastBkpTime is a property of the backup
+# and is already parsed above. A manifest with no usable lastBkpTime sorts last.
+declare -A task_group=()
+for group in "${!group_task[@]}"; do
+    task="${group_task[$group]}"
+    best="${task_group[$task]:-}"
+    if [ -z "$best" ] || [ "${group_time[$group]:-0}" -gt "${group_time[$best]:-0}" ]; then
+        task_group["$task"]="$group"
+    fi
+done
+
+declare -A group_of=()
+for task in "${!task_group[@]}"; do
+    group_of["${task_group[$task]}"]="$task"
+done
+
+# Only the keys below are read. bkpAuthUser, which is the storage box account
+# name, is deliberately not among them: it arrives in $raw and dies with it.
+declare -A status=() duration=() folders=()
+while IFS='|' read -r group key value; do
+    [ -n "$group" ] || continue
+    task="${group_of[$group]:-}"
+    [ -n "$task" ] || continue
+    case "$key" in
+        bkpStatus) status["$task"]="$value" ;;
+        lastBkpTotalTime)
+            if [ -n "${value##*[!0-9]*}" ]; then duration["$task"]="$value"; fi
+            ;;
+        # Newline-joined, not space-joined: a share path may contain a space, and
+        # splitting on it would emit two label values that match no declared
+        # folder — a permanent OffsiteMirrorCoverageMissing for data that is in
+        # fact being copied.
+        bkpFolder)
+            if [ -n "$value" ]; then
+                folders["$task"]="${folders[$task]:-}${folders[$task]:+$'\n'}$value"
+            fi
+            ;;
+    esac
+done <<<"$raw"
+
+# Called once per task the manifest cache names, declared in the play or not.
+# Failure and freshness are properties of what the NAS is actually running, so
+# they must not be gated on the declaration: a task dropped from
+# offsite_mirror_tasks would otherwise stop being watched with nothing saying so.
+# Coverage is the other way round — it is only ever measured against the
+# declaration, which is published unconditionally below.
+emit_task() {
+    local task="$1" group folder ok
+
+    group="${task_group[$task]}"
+    ok=0
+    [ "${status[$task]:-}" = success ] && ok=1
+    echo "offsite_mirror_task_status{task=\"$task\"} $ok"
+    # Written only for a successful run, so the freshness gauge cannot advance on
+    # a failure — the two faults are reported by different rules rather than one
+    # decaying into the other: a task DSM records as failed raises
+    # OffsiteMirrorTaskFailed and publishes no age at all, while a task that has
+    # simply stopped running keeps its last success and ages into
+    # OffsiteMirrorTaskOverdue.
+    if [ "$ok" = 1 ] && [ -n "${group_time[$group]:-}" ]; then
+        echo "offsite_mirror_task_last_success_timestamp_seconds{task=\"$task\"} ${group_time[$group]}"
+    fi
+    if [ -n "${duration[$task]:-}" ]; then
+        echo "offsite_mirror_task_duration_seconds{task=\"$task\"} ${duration[$task]}"
+    fi
+    if [ -n "${folders[$task]:-}" ]; then
+        while IFS= read -r folder; do
+            echo "offsite_mirror_task_covered{task=\"$task\",folder=\"$folder\"} 1"
+        done <<<"${folders[$task]}"
+    fi
+}
+
+mkdir -p "$dir"
+# Publish atomically: write a temp file the exporter's *.prom glob ignores, then
+# rename it over the target so no scrape reads a half-written file. 0644 so the
+# exporter's unprivileged user can read it. A run killed between mktemp and mv
+# orphans its temp file, so sweep predecessors' here rather than trapping EXIT,
+# which a SIGKILL never runs.
+rm -f "$dir"/.offsite-mirror.prom.*
+tmp="$(mktemp "$dir/.offsite-mirror.prom.XXXXXX")"
+{% endraw %}
+{
+    echo '# HELP offsite_mirror_task_expected A folder this task is declared to cover.'
+    echo '# TYPE offsite_mirror_task_expected gauge'
+    echo '# HELP offsite_mirror_task_covered A folder the cached manifest says the task last copied.'
+    echo '# TYPE offsite_mirror_task_covered gauge'
+    echo '# HELP offsite_mirror_task_status Whether the task last reported success (1) or not (0).'
+    echo '# TYPE offsite_mirror_task_status gauge'
+    echo '# HELP offsite_mirror_task_last_success_timestamp_seconds Unix time the task last succeeded.'
+    echo '# TYPE offsite_mirror_task_last_success_timestamp_seconds gauge'
+    echo '# HELP offsite_mirror_task_duration_seconds How long the task last ran for.'
+    echo '# TYPE offsite_mirror_task_duration_seconds gauge'
+    # The declared set, published as series rather than restated in an alert
+    # expression: the rules file is static, and a comparison Prometheus can make
+    # between two families is one the operator can also see in a graph. It is
+    # published whatever the manifest said, so a declared task the cache knows
+    # nothing about is an expectation with no status behind it, which is what
+    # OffsiteMirrorTaskUnverified reads — not a claim that it covers nothing.
+{% for task in offsite_mirror_tasks %}
+{% for folder in task.folders %}
+    echo 'offsite_mirror_task_expected{task="{{ task.name }}",folder="{{ folder }}"} 1'
+{% endfor %}
+{% endfor %}
+    for task in "${!task_group[@]}"; do
+        emit_task "$task"
+    done
+} > "$tmp"
+chmod 0644 "$tmp"
+mv "$tmp" "$dir/offsite-mirror.prom"

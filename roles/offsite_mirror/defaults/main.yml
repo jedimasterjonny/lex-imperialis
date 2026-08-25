@@ -1,0 +1,51 @@
+---
+# The NAS account the probe reads DSM's Hyper Backup manifest cache as. The cache
+# files and their directories are world-readable, so an unprivileged account with
+# no sudo and no share access is the whole authorisation this needs.
+offsite_mirror_nas_user: jonny
+
+# The NAS, by the name that resolves on the LAN — the one auspex's tcp_connect
+# probe already names.
+offsite_mirror_nas_host: administratum
+
+# The tasks the off-site mirror is expected to run, and the NAS-side folders each
+# must cover. Empty by default and rejected at converge: this declaration is the
+# set OffsiteMirrorCoverageMissing measures the manifest against, so it belongs in
+# the play beside the hosts whose repos it names rather than in a role default
+# nobody revisits. Each entry is {name, folders}; name is the DSM task name, which
+# every metric carries as its `task` label.
+offsite_mirror_tasks: []
+
+# SSH identity the probe authenticates with, minted on first converge. Installing
+# its public half on the NAS is a manual operator step — the NAS is not in the
+# inventory and nothing here touches it. Until that is done every run fails and
+# OffsiteMirrorProbeFailed is what says so. See the README.
+offsite_mirror_ssh_key: /etc/offsite-mirror/id_ed25519
+
+# known_hosts the probe pins the NAS to: created empty and filled on the first
+# connection, so a later host-key change is refused rather than followed.
+offsite_mirror_known_hosts: /etc/offsite-mirror/known_hosts
+
+# node_exporter textfile-collector directory the metrics are written to
+# (offsite-mirror.prom for the per-task payload, offsite-mirror-run.prom for the
+# run outcome). Must match the node_exporter role's
+# node_exporter_textfile_directory so Prometheus scrapes what this writes.
+offsite_mirror_textfile_dir: /var/lib/node_exporter/textfile_collector
+
+# Probe cadence, daily against weekly tasks, and the alert windows in the
+# prometheus role's backups group are sized against it.
+#
+# Midday rather than the morning slot the other oneshots take, and that is the
+# whole reason for the time. The mirror windows start Tue 03:00, Wed 02:00 and
+# Thu 04:00 UTC; auspex is on Europe/London, so 11:17 local is at worst 7h17m
+# after the latest of them. Nothing establishes what bkpStatus reads while a task
+# is still running, so a probe that could overlap a window could publish a
+# task_status of 0 for a task that is merely mid-copy. Runs measured on the NAS
+# take 87-157s, so the margin is three orders of magnitude clear;
+# offsite_mirror_task_duration_seconds is published unalerted so that stays
+# checkable.
+offsite_mirror_oncalendar: "*-*-* 11:17:00"
+
+# Installed scripts. /usr/local/sbin: root-only, like the other oneshots.
+offsite_mirror_script: /usr/local/sbin/offsite-mirror.sh
+offsite_mirror_metric_script: /usr/local/sbin/offsite-mirror-metric.sh

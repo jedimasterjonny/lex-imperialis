@@ -1,0 +1,387 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - ../../defaults/main.yml
+  vars:
+    offsite_mirror_prom: "{{ offsite_mirror_textfile_dir }}/offsite-mirror.prom"
+    offsite_mirror_run_prom: "{{ offsite_mirror_textfile_dir }}/offsite-mirror-run.prom"
+    offsite_mirror_stub_dir: /tmp/offsite-mirror-stub
+    # The stub dir first, so the script's bare `ssh` resolves to it; bash and the
+    # coreutils it calls still resolve to the real binaries behind it.
+    offsite_mirror_stub_path: "{{ offsite_mirror_stub_dir }}:/usr/sbin:/usr/bin:/sbin:/bin"
+    # What the NAS would answer with, one group per cache directory in the order
+    # the remote walked them — newest directory first. Group 1 is a previous
+    # endpoint's, months stale, and it deliberately sorts *ahead* of the live
+    # home-backup manifest in group 3: taking the first directory would publish
+    # its lone folder and its failed status as current, which is the whole trap
+    # the probe exists to avoid. home-backup is missing
+    # rogue-trader-home-backup, the five-week regression this role was built for;
+    # photos-backup is declared and has no manifest at all, and group 4 is the
+    # mirror of that — a task the NAS runs and the play does not declare, with a
+    # folder carrying a space. bkpAuthUser is the storage box account name and
+    # must reach no metric.
+    offsite_mirror_stub_manifest: |
+      1|bkpStatus|failed
+      1|bkpAuthUser|stub-account-name
+      1|bkpTaskName|home-backup
+      1|bkpFolder|/astropath/legacy-endpoint-only
+      1|lastBkpTime|1600000000
+      1|lastBkpTotalTime|999
+      2|bkpStatus|success
+      2|bkpAuthUser|stub-account-name
+      2|bkpTaskName|podman-backup
+      2|bkpFolder|/astropath/solar-podman-backup
+      2|bkpFolder|/astropath/rogue-trader-podman-backup
+      2|lastBkpTime|1787104954
+      2|lastBkpTotalTime|153
+      3|bkpStatus|success
+      3|bkpAuthUser|stub-account-name
+      3|bkpTaskName|home-backup
+      3|bkpType|netbkp
+      3|bkpApp|
+      3|bkpFolder|/astropath/solar-home-backup
+      3|bkpFolder|/astropath/scholam-home-backup
+      3|lastBkpTime|1787198558
+      3|lastBkpTotalTime|157
+      4|bkpStatus|success
+      4|bkpTaskName|undeclared-backup
+      4|bkpFolder|/astropath/undeclared path
+      4|lastBkpTime|1787000000
+      4|lastBkpTotalTime|42
+  tasks:
+    - name: Stat the probe's scripts, key and known_hosts
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ offsite_mirror_script }}"
+        - "{{ offsite_mirror_metric_script }}"
+        - "{{ offsite_mirror_ssh_key }}"
+        - "{{ offsite_mirror_ssh_key }}.pub"
+        - "{{ offsite_mirror_known_hosts }}"
+      register: offsite_mirror_files
+      become: true
+
+    - name: The scripts are executable and the key pair exists
+      ansible.builtin.assert:
+        that:
+          - offsite_mirror_files.results[0].stat.executable
+          - offsite_mirror_files.results[1].stat.executable
+          - offsite_mirror_files.results[2].stat.exists
+          - offsite_mirror_files.results[2].stat.mode == '0600'
+          - offsite_mirror_files.results[3].stat.exists
+          - offsite_mirror_files.results[4].stat.exists
+        fail_msg: "the probe's scripts, private key or known_hosts are missing or wrongly moded"
+        quiet: true
+
+    # daemon_reload is a no-op read here: it makes the module gather and return
+    # the unit's systemctl-show properties to assert against.
+    - name: Read the probe timer's state
+      ansible.builtin.systemd_service:
+        name: offsite-mirror.timer
+        daemon_reload: true
+      register: offsite_mirror_timer
+      become: true
+
+    - name: The timer is enabled on the daily cadence
+      ansible.builtin.assert:
+        that:
+          - offsite_mirror_timer.status.ActiveState == 'active'
+          - offsite_mirror_timer.status.UnitFileState == 'enabled'
+          - "'11:17' in offsite_mirror_timer.status.TimersCalendar"
+        fail_msg: "the probe timer is not enabled on the daily cadence"
+        quiet: true
+
+    # Started by the role, so a tick could land mid-verify and rewrite the files
+    # under the arms below. The unit stays; only the schedule goes.
+    - name: Stop the timer for the duration of the checks
+      ansible.builtin.systemd_service:
+        name: offsite-mirror.timer
+        state: stopped
+      become: true
+
+    # ── Stub arms: no tier has a Synology to read, so the parse is driven through
+    # a stubbed ssh that drains the remote script off stdin and answers with a
+    # canned manifest.
+    - name: Create the stub directory
+      ansible.builtin.file:
+        path: "{{ offsite_mirror_stub_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      become: true
+
+    - name: Install the ssh stub
+      ansible.builtin.copy:
+        content: |
+          #!/bin/sh
+          cat >/dev/null
+          cat {{ offsite_mirror_stub_dir }}/manifest
+        dest: "{{ offsite_mirror_stub_dir }}/ssh"
+        owner: root
+        group: root
+        mode: "0755"
+      become: true
+
+    - name: Plant the manifest a healthy NAS would answer with
+      ansible.builtin.copy:
+        content: "{{ offsite_mirror_stub_manifest }}"
+        dest: "{{ offsite_mirror_stub_dir }}/manifest"
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Run the probe against the stubbed manifest
+      ansible.builtin.command: "{{ offsite_mirror_script }}"
+      environment:
+        PATH: "{{ offsite_mirror_stub_path }}"
+      changed_when: false
+      become: true
+
+    - name: Read the published metrics
+      ansible.builtin.slurp:
+        src: "{{ offsite_mirror_prom }}"
+      register: offsite_mirror_payload
+      become: true
+
+    # The declared set is published whatever the manifest says, so the coverage
+    # rule has a left-hand side even for a task the NAS knows nothing about.
+    - name: Every declared folder is published as expected coverage
+      vars:
+        prom: "{{ offsite_mirror_payload.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'offsite_mirror_task_expected{task=\"home-backup\",folder=\"/astropath/rogue-trader-home-backup\"} 1' in prom"
+          - "'offsite_mirror_task_expected{task=\"podman-backup\",folder=\"/astropath/solar-podman-backup\"} 1' in prom"
+          - "'offsite_mirror_task_expected{task=\"photos-backup\",folder=\"/scriptorum/photos\"} 1' in prom"
+        fail_msg: "the declared coverage was not published in full"
+        quiet: true
+
+    # The fault this role exists for: the task reports success, and the only
+    # evidence a repo has fallen out of the mirror is that it is expected and not
+    # covered.
+    - name: A dropped repo is expected but not covered, while the task still reads success
+      vars:
+        prom: "{{ offsite_mirror_payload.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'offsite_mirror_task_status{task=\"home-backup\"} 1' in prom"
+          - "'offsite_mirror_task_covered{task=\"home-backup\",folder=\"/astropath/solar-home-backup\"} 1' in prom"
+          - "'offsite_mirror_task_covered{task=\"home-backup\",folder=\"/astropath/rogue-trader-home-backup\"}' not in prom"
+        fail_msg: "a repo missing from the manifest was not visible as a coverage gap"
+        quiet: true
+
+    # The stale-endpoint trap, and the reason selection keys on the manifest's own
+    # lastBkpTime rather than the directory order it arrived in: group 1 comes
+    # first and names home-backup too, with a different folder and a failed
+    # status, so taking the first would report false coverage and a false failure
+    # at once.
+    - name: The manifest recording the most recent run wins, not the first one seen
+      vars:
+        prom: "{{ offsite_mirror_payload.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'legacy-endpoint-only' not in prom"
+          - "'offsite_mirror_task_last_success_timestamp_seconds{task=\"home-backup\"} 1787198558' in prom"
+          - "'offsite_mirror_task_duration_seconds{task=\"home-backup\"} 157' in prom"
+        fail_msg: "a stale endpoint's manifest was read in preference to the current one"
+        quiet: true
+
+    # No verdict is not coverage: a declared task the manifest cache says nothing
+    # about publishes no status at all, which is what OffsiteMirrorTaskUnverified
+    # reads — publishing a zero here would instead claim the task covers nothing.
+    - name: A task with no manifest publishes no status and no coverage
+      vars:
+        prom: "{{ offsite_mirror_payload.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'offsite_mirror_task_status{task=\"photos-backup\"}' not in prom"
+          - "'offsite_mirror_task_covered{task=\"photos-backup\"' not in prom"
+          - "'offsite_mirror_task_status{task=\"podman-backup\"} 1' in prom"
+        fail_msg: "a task with no cached manifest was not left unverified"
+        quiet: true
+
+    # Failure and freshness follow the NAS, not the declaration: a task dropped
+    # from offsite_mirror_tasks — or never in it — would otherwise stop being
+    # watched with nothing saying so. Coverage is the other way round, so the
+    # undeclared task carries a status and no expectation.
+    - name: A task the NAS runs but the play does not declare is still watched
+      vars:
+        prom: "{{ offsite_mirror_payload.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'offsite_mirror_task_status{task=\"undeclared-backup\"} 1' in prom"
+          - "'offsite_mirror_task_last_success_timestamp_seconds{task=\"undeclared-backup\"} 1787000000' in prom"
+          - "'offsite_mirror_task_expected{task=\"undeclared-backup\"' not in prom"
+          # A share path with a space stays one label value; split, it would match
+          # no declared folder and page forever for data that is being copied.
+          - "'offsite_mirror_task_covered{task=\"undeclared-backup\",folder=\"/astropath/undeclared path\"} 1' in prom"
+        fail_msg: "a task outside the declaration was not watched for failure and freshness"
+        quiet: true
+
+    # The manifest carries the storage box account name, and this repo is public.
+    - name: The storage box account name reaches no metric
+      vars:
+        prom: "{{ offsite_mirror_payload.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'stub-account-name' not in prom"
+          - "'bkpAuthUser' not in prom"
+        fail_msg: "the manifest's account name leaked into the published metrics"
+        quiet: true
+
+    # ── Failed-task arm: the same manifest with the live group's status flipped,
+    # so the failure and the freshness gauge are pinned apart — a task that fails
+    # must not carry its previous run's timestamp forward as a fresh success.
+    - name: Plant a manifest whose newest run failed
+      ansible.builtin.copy:
+        content: "{{ offsite_mirror_stub_manifest | replace('3|bkpStatus|success', '3|bkpStatus|failed') }}"
+        dest: "{{ offsite_mirror_stub_dir }}/manifest"
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Run the probe against the failed task
+      ansible.builtin.command: "{{ offsite_mirror_script }}"
+      environment:
+        PATH: "{{ offsite_mirror_stub_path }}"
+      changed_when: false
+      become: true
+
+    - name: Read the metrics after the failed task
+      ansible.builtin.slurp:
+        src: "{{ offsite_mirror_prom }}"
+      register: offsite_mirror_failed
+      become: true
+
+    - name: A failed task reads zero and publishes no success timestamp
+      vars:
+        prom: "{{ offsite_mirror_failed.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'offsite_mirror_task_status{task=\"home-backup\"} 0' in prom"
+          - "'offsite_mirror_task_last_success_timestamp_seconds{task=\"home-backup\"}' not in prom"
+          - "'offsite_mirror_task_status{task=\"podman-backup\"} 1' in prom"
+        fail_msg: "a failed task still advertised a successful run"
+        quiet: true
+
+    # ── Empty-cache arm: DSM keeps its manifests under /volume1/@tmp and clears
+    # that on a reboot, so a NAS that answers with nothing at all is a state the
+    # probe must survive rather than the transport failure below. A here string is
+    # a line even when the answer is empty, and an associative array rejects an
+    # empty subscript, so without the parse's guards this run dies and the
+    # previous payload stands as though it were current.
+    - name: Plant an empty manifest
+      ansible.builtin.copy:
+        content: ""
+        dest: "{{ offsite_mirror_stub_dir }}/manifest"
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Run the probe against an empty cache
+      ansible.builtin.command: "{{ offsite_mirror_script }}"
+      environment:
+        PATH: "{{ offsite_mirror_stub_path }}"
+      changed_when: false
+      become: true
+
+    - name: Read the metrics after the empty cache
+      ansible.builtin.slurp:
+        src: "{{ offsite_mirror_prom }}"
+      register: offsite_mirror_empty
+      become: true
+
+    - name: An empty cache publishes the declaration and no verdict at all
+      vars:
+        prom: "{{ offsite_mirror_empty.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'offsite_mirror_task_expected{task=\"home-backup\",folder=\"/astropath/solar-home-backup\"} 1' in prom"
+          - "'offsite_mirror_task_status{' not in prom"
+          - "'offsite_mirror_task_covered{' not in prom"
+        fail_msg: "an empty manifest cache was not published as an unverifiable task set"
+        quiet: true
+
+    # ── Unreachable arm, fired as the unit rather than the script: starting a
+    # oneshot blocks until it exits, so both files below are what ExecStart and
+    # ExecStopPost actually wrote. nas.invalid resolves nowhere, which is what an
+    # unreachable NAS — or one that has not yet been given the probe's public key
+    # — looks like. failed_when is off because the unit is meant to fail; the unit
+    # state read back below is the assertion.
+    - name: Fire the probe unit against an unreachable NAS
+      ansible.builtin.systemd_service:
+        name: offsite-mirror.service
+        state: started
+      failed_when: false
+      changed_when: false
+      become: true
+
+    - name: Read the probe unit's result
+      ansible.builtin.systemd_service:
+        name: offsite-mirror.service
+      register: offsite_mirror_unit
+      become: true
+
+    - name: Read the outcome metric and the payload after the failed run
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - "{{ offsite_mirror_run_prom }}"
+        - "{{ offsite_mirror_prom }}"
+      register: offsite_mirror_after_fail
+      become: true
+
+    # The degrade contract: a probe that cannot read the NAS records its own
+    # failure and leaves the last payload exactly as it was, so the coverage and
+    # freshness rules keep evaluating known-old data while
+    # OffsiteMirrorProbeFailed says how old.
+    - name: An unreachable NAS records a failed probe and leaves the payload untouched
+      vars:
+        run_prom: "{{ offsite_mirror_after_fail.results[0].content | b64decode }}"
+        payload: "{{ offsite_mirror_after_fail.results[1].content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - offsite_mirror_unit.status.ActiveState == 'failed'
+          - "'offsite_mirror_success 0' in run_prom"
+          - "'offsite_mirror_last_run_timestamp_seconds ' in run_prom"
+          - payload == (offsite_mirror_empty.content | b64decode)
+        fail_msg: "an unreachable NAS did not degrade to a recorded probe failure"
+        quiet: true
+
+    # The success polarity of the outcome hook, which no run in this scenario can
+    # reach on its own: every real fire above is a failure by construction.
+    - name: Run the metric hook as a successful run would
+      ansible.builtin.command: "{{ offsite_mirror_metric_script }}"
+      environment:
+        SERVICE_RESULT: success
+      changed_when: false
+      become: true
+
+    - name: Read the outcome metric after the simulated success
+      ansible.builtin.slurp:
+        src: "{{ offsite_mirror_run_prom }}"
+      register: offsite_mirror_after_success
+      become: true
+
+    - name: The hook records a successful run
+      vars:
+        run_prom: "{{ offsite_mirror_after_success.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'offsite_mirror_success 1' in run_prom"
+        fail_msg: "the outcome hook did not record a successful run"
+        quiet: true
+
+    # Restore the schedule the checks stopped, so verify re-runs clean against the
+    # same converged instance.
+    - name: Restart the probe timer
+      ansible.builtin.systemd_service:
+        name: offsite-mirror.timer
+        state: started
+      become: true
