@@ -21,12 +21,17 @@ Generic mode installs no restore script (that is podman-volumes only, where the
 restore must quiesce quadlets and wipe volumes). Restore a home tree by hand:
 
 ```bash
-restic --password-file /etc/restic/password \
-  --repo /nfs/astropath/<hostname>-home-backup restore latest --target /
+sudo restic --password-file /etc/restic/password \
+  --repo /nfs/astropath/<hostname>-home-backup restore latest --sparse --target /
 ```
 
-Restore to a scratch `--target` and copy across when the live homes must not be
-overwritten wholesale. The full recovery context is in
+`sudo` because the password file is `0600 root`; `--sparse` because restic
+otherwise writes every hole out in full, which costs far more than the repo's
+snapshot size suggests. Where the live homes must not be overwritten wholesale,
+restore to a scratch `--target` and copy across with `rsync -aHAXS --numeric-ids`
+— `-S` so the copy does not re-expand those holes, and `--numeric-ids` so it does
+not remap ownership by name. The full recovery context, with the figures behind
+that space cost, is in
 [`docs/disaster-recovery.md`](../../docs/disaster-recovery.md).
 
 ## Variables
