@@ -42,7 +42,7 @@ Backends publish no host port at all: they sit on caddy's network and drop a sni
 
 `rogue-trader` serves the public WordPress site behind the same caddy role and joins the fleet over WireGuard, which carries both its scrape and its backup. Its root is read-only: packages come from the `packer/` image, not its play.
 
-`auspex` runs Prometheus to scrape the fleet, blackbox_exporter probes the public sites, and Alertmanager sends what fires. Grafana runs on `solar`, pointed at `auspex`. node_exporter runs on every host but the NAS, and cadvisor on the workload hosts. Liveness is a blackbox probe over the network; a container's own healthcheck exists only to restart it when stuck, and anything that must not be killed mid-flight carries none at all.
+`auspex` runs Prometheus to scrape the fleet, blackbox_exporter probes the public sites, and Alertmanager sends what fires. Grafana runs on `solar`, pointed at `auspex`. node_exporter runs on every host but the NAS, and cadvisor on the workload hosts. unpoller polls the UniFi controller, since the network hardware runs no exporter of its own. Liveness is a blackbox probe over the network; a container's own healthcheck exists only to restart it when stuck, and anything that must not be killed mid-flight carries none at all.
 
 Updates run unattended and staggered: `solar` Monday as the canary, `auspex` Tuesday, the VPS midweek, `scholam` last, so one bad update cannot brick the fleet in a single night. One timer per host, with the distribution's own update timers masked, and every run writes its outcome as a metric so a silent failure alerts.
 
