@@ -131,9 +131,11 @@ in `terraform/infra-shared.tf` and apply.
 
 ## Out-of-band secrets
 
-Four secrets are not in the vault:
+Six secrets are not in the vault:
 
 - **Hetzner storage box SSH credential** — held by DSM Hyper Backup on the NAS; nothing in this repo reads it. Rotate in the Hetzner Console and DSM together. Losing it with the NAS blocks an off-site restore, so it is also a `disaster-recovery.md` prerequisite.
+
+- **`/etc/offsite-mirror/id_ed25519`** (auspex) — the off-site coverage probe's own SSH identity, minted by the `offsite_mirror` role and trusted by the NAS account it reads as. It reads Hyper Backup's cached manifests and nothing else — it is not the storage box credential, and grants no access to the off-site copy. Rotate by deleting both halves on auspex and re-applying (the `creates:` guard mints a fresh pair), then replacing the old line in the NAS account's `authorized_keys`; DSM is not managed from here, so that half is by hand. Order does not matter much here because the probe fails closed: until the new key is trusted `offsite_mirror_success` reads 0 and `OffsiteMirrorProbeFailed` raises after 25h.
 
 - **`/etc/arbites/ssh/id_arbites`** — the reconcile timer's own SSH identity, distinct from the operator's key so either rotates alone (it cannot be vaulted: the reconciler needs it to reach the fleet). Rotation is fleet-wide, and the public half is declared, not placed by hand: add the new key to `common_ansible_authorized_keys` in `inventory/group_vars/all/authorized_keys.yml` and apply, re-seed the private half via the arbites bootstrap, then confirm a reconcile. Order matters — authorise before switching, or the first host the timer reaches refuses it. **Removing the old key is not yet automated:** while `common_ansible_authorized_keys_exclusive` is `false` the role only adds, so dropping the entry revokes nothing and the apply still goes green — delete the line from each host's `authorized_keys` by hand until the flag is on. No first-boot seed carries this key, so the declared list and that manual removal are the whole of it. See the role's README.
 
