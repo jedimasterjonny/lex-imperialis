@@ -147,7 +147,10 @@ keeps the container state, the home backups, and the photos, not the media,
 `pathfinder-books`, the DSM `homes` share, or the laptop's Time Machine history
 (the laptop itself is unaffected). `restic check` proves the repos are
 structurally sound and their packs re-hash clean; it does not prove a restore
-works end to end, and no restore drill is scheduled or recorded.
+works end to end. The first drill that did — 2026-08-25, non-destructive, into
+scratch dirs — found both repos clean and the recovery path defective; the
+findings and their fixes are in [`disaster-recovery.md`](disaster-recovery.md).
+No next drill is scheduled.
 
 ### What a task notification cannot see
 

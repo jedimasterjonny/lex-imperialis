@@ -84,13 +84,28 @@ The tasks reach the box through the `storagebox_gateway` forward on
    sudo /usr/local/sbin/podman-restore.sh
    ```
 
-   It restores the latest snapshot to a scratch target first, and only once that
-   has fully succeeded does it quiesce the quadlet units, swap the restored data
-   into each volume (ownership, mode and SELinux label preserved) and restart
-   them. A repository that is unreachable or unreadable therefore costs nothing:
-   the volumes are untouched and the containers never stop. The
-   freshly-initialised data from step 3's first start is replaced wholesale, so
-   no app-level reconciliation is needed — the volumes return as last backed up.
+   It restores the latest snapshot to a scratch target first, then stops and
+   asks: run from a terminal it prints how many of this host's volumes it is
+   about to swap and waits for a `y`, and does nothing without one. Only then
+   does it quiesce the quadlet units, swap the restored data into each volume
+   (ownership, mode and SELinux label preserved) and restart them. A repository
+   that is unreachable or unreadable therefore costs nothing: the volumes are
+   untouched and the containers never stop. The freshly-initialised data from
+   step 3's first start is replaced wholesale, so no app-level reconciliation is
+   needed — the volumes return as last backed up.
+
+   Run it under `tmux`. The prompt comes after a read that can take a while, and
+   a session dropped at it takes the scratch copy with it — the whole read again
+   for nothing.
+
+   The swap goes onto volumes the host already has, so one the snapshot holds and
+   this host does not — a decommissioned workload's, and solar's snapshots still
+   carry `alertmanager-data` — is named above the prompt and **skipped**: nothing
+   in the script creates a volume. To take one back, `sudo podman volume create
+   <name>` and run the restore again, which re-reads the snapshot in full. With
+   stdin not a terminal there is no prompt and nobody to read that warning, so
+   the run stops there instead — after the read, before the swap — rather than
+   swapping the rest and exiting 0 having dropped it.
 
    Pass a snapshot ID to restore something other than the newest —
    `sudo /usr/local/sbin/podman-restore.sh <id>`, with IDs from
@@ -271,10 +286,32 @@ play, run locally, then the home restore.
    what step 3 did not already rebuild:
 
    ```bash
-   restic --password-file /etc/restic/password \
+   sudo restic --password-file /etc/restic/password \
      --repo /nfs/astropath/scholam-home-backup \
-     restore latest --target /var/tmp/home-restore
+     restore latest --sparse --target /var/tmp/home-restore
+   sudo rsync -aHAXS --numeric-ids --exclude=/repos/lex-imperialis \
+     /var/tmp/home-restore/home/jonny/ /home/jonny/
    ```
+
+   `sudo` on both: the password file is `0600 root` in a `0700 root` directory,
+   and the restored tree carries the snapshot's numeric ownership. `--sparse` is
+   not optional either — without it restic writes every hole out in full, and the
+   2026-08-25 drill restored 67.6 GiB from a 45 G `/home` because a 9.6 M
+   `libvirt/images/*.qcow2` landed as 61 G. Size the scratch target for the live
+   tree plus headroom, and check `df` before starting.
+
+   The restore preserves numeric ownership, modes, symlinks and SELinux labels,
+   and the flags carry them back: `-a` the first three, `-X` the labels, `-H`
+   hardlinks and `-A` ACLs, with `--numeric-ids` keeping the ownership numeric
+   (`-a` maps it by name otherwise) and `-S` stopping the copy writing out in
+   full every hole `--sparse` just preserved — that one would put the 61 G into
+   `/home` on top of the scratch copy. No `--delete`: this merges onto what step
+   3 rebuilt rather than replacing it. The exclusion is the trap: the
+   snapshot carries its own stale clone of `repos/lex-imperialis`, which would
+   overwrite the fresh clone step 3 made. Salvage anything unpushed out of
+   `/var/tmp/home-restore/home/jonny/repos/lex-imperialis` by hand, then delete
+   the scratch tree. `.vault_pass` and `.venv` are excluded from the backup, so
+   they are step 3's to restore whatever this copies.
 
 6. To make it the molecule runner again, locally on scholam:
    `ansible-playbook bootstrap/incus.yml --ask-become-pass`.

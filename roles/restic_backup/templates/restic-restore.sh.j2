@@ -11,7 +11,9 @@
 # once that has fully succeeded, so a repository that is unreachable, incomplete
 # or corrupt costs nothing: the live data is untouched and the containers keep
 # running. The units are quiesced only for the swap, and started again only if
-# the swap completed.
+# the swap completed. Only volumes this host has are restored, so one the
+# snapshot holds and the host does not is named before the confirmation and
+# skipped — and with no terminal to name it to, the run stops there instead.
 set -euo pipefail
 
 repo="{{ restic_backup_root }}/$(hostname)-{{ restic_backup_name }}-backup"
@@ -51,13 +53,6 @@ mounts=()
 if ((${#mounts[@]} == 0)); then
     echo "no podman volumes to restore" >&2
     exit 1
-fi
-
-# The swap wipes live volume data, so confirm when run interactively; molecule
-# and other non-TTY callers proceed unattended.
-if [ -t 0 ]; then
-    read -r -p "Restore ${#mounts[@]} podman volume(s) from $repo@$snapshot? [y/N] " reply
-    [ "$reply" = y ] || [ "$reply" = Y ] || { echo "aborted"; exit 1; }
 fi
 
 units=()
@@ -104,11 +99,11 @@ if ((${#restorable[@]} == 0)); then
     exit 1
 fi
 
-# Quiesce only now: the repository read is done, so nothing below needs the NFS
-# share, and the containers were up for all of it. Same zero-match guard as the
-# backup, and load-bearing for the same reason: the swap below wipes and replaces
-# live volumes, so a glob that silently matched nothing would do that underneath
-# running containers.
+# Same zero-match guard as the backup, and load-bearing for the same reason: the
+# swap below wipes and replaces live volumes, so a glob that silently matched
+# nothing would do that underneath running containers. Ahead of the confirmation
+# because it reads nothing from the repository, so it must never be what refuses
+# a run the operator has already agreed to.
 shopt -s nullglob
 unit_files=(/etc/containers/systemd/*.container)
 shopt -u nullglob
@@ -117,6 +112,62 @@ if ((${#unit_files[@]} == 0)); then
     exit 1
 fi
 
+# The other direction, and the one that loses data: a volume the snapshot holds
+# that this host does not. Nothing here creates a volume, so it is restored
+# nowhere — and a loop driven off the host's volumes alone never looks, so the
+# run would exit 0 having dropped it. Every mountpoint is <volume root>/<name>/
+# <leaf>, so both the root the snapshot's copy is globbed at and each volume's
+# name fall out of the paths already in hand — one source, nothing to disagree.
+volume_root="${mounts[0]%/*/*}"
+if [ -z "$volume_root" ]; then
+    echo "cannot derive the volume root from ${mounts[0]} — refusing to guess what the snapshot holds" >&2
+    exit 1
+fi
+declare -A host_volumes=()
+for mount in "${mounts[@]}"; do
+    dir="${mount%/*}"
+    host_volumes["${dir##*/}"]=1
+done
+absent=()
+shopt -s nullglob
+for dir in "$scratch$volume_root"/*/; do
+    name="${dir%/}"
+    name="${name##*/}"
+    [ -n "${host_volumes[$name]:-}" ] || absent+=("$name")
+done
+shopt -u nullglob
+
+skipped=""
+if ((${#absent[@]})); then
+    skipped=" ${#absent[@]} snapshot volume(s) will be SKIPPED."
+    echo >&2
+    echo "!! snapshot $snapshot holds ${#absent[@]} volume(s) this host does not have:" >&2
+    printf '!!   %s\n' "${absent[@]}" >&2
+    echo "!! Nothing here creates a volume, so they will NOT be restored. To get" >&2
+    echo "!! one back, podman volume create it and run this again; if it was" >&2
+    echo "!! decommissioned, this is the expected reading." >&2
+    echo >&2
+fi
+
+# The swap wipes live volume data, so confirm when run interactively. Both
+# directions are known by now and nothing live has been touched yet, so this is
+# the decision point, and both counts belong in it: the volumes a warning above
+# says are staying as they are have scrolled past behind the restore's own
+# output, so "n of this host's m" is what makes that shortfall visible.
+if [ -t 0 ]; then
+    read -r -p "Restore ${#restorable[@]} of this host's ${#mounts[@]} podman volume(s) from $repo@$snapshot?$skipped [y/N] " reply || reply=""
+    [ "$reply" = y ] || [ "$reply" = Y ] || { echo "aborted"; exit 1; }
+elif ((${#absent[@]})); then
+    # Molecule and other non-TTY callers proceed unattended, but not past a
+    # snapshot volume with nowhere to go: there is no one reading the warning
+    # above at a decision point, and proceeding anyway is what made the loss
+    # silent in the first place.
+    echo "refusing to restore unattended while the snapshot holds volumes this host does not — create them, or re-run from a terminal to confirm skipping them" >&2
+    exit 1
+fi
+
+# Quiesce only now: the repository read is done, so nothing below needs the NFS
+# share, and the containers were up for all of it.
 for unit_file in "${unit_files[@]}"; do
     unit="$(basename "${unit_file%.container}").service"
     if systemctl is-active --quiet "$unit"; then
