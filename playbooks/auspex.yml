@@ -82,6 +82,26 @@
     # to.
     prometheus_alertmanager_targets:
       - auspex:9093
+    # What the NAS's three Hyper Backup tasks must mirror off-site, as the
+    # offsite_mirror probe measures each task's cached manifest against. Keep it in
+    # step with docs/backups.md and with the tasks themselves: a repo added to a
+    # host here but not to the DSM task raises OffsiteMirrorCoverageMissing, which
+    # is the point — that is exactly how rogue-trader-home-backup sat out of the
+    # home task for five weeks with every run reporting success. The folders are
+    # NAS-side share paths, and the task names are DSM's.
+    offsite_mirror_tasks:
+      - name: podman-backup
+        folders:
+          - /astropath/solar-podman-backup
+          - /astropath/rogue-trader-podman-backup
+      - name: home-backup
+        folders:
+          - /astropath/solar-home-backup
+          - /astropath/scholam-home-backup
+          - /astropath/rogue-trader-home-backup
+      - name: photos-backup
+        folders:
+          - /scriptorum/photos
     # Blackbox-probe via the co-located exporter. Each entry pairs a prober module
     # with the targets to run it against; the same module may appear more than once.
     prometheus_probe_targets:
@@ -140,7 +160,8 @@
       # address the NAS reaches it on. It covers the path and not authorisation:
       # External Reachability is enforced inside the box's sshd, so a source it
       # refuses still gets a banner — a revoked rogue-trader leaves this green
-      # while every mirror fails, and only the Hyper Backup mail catches it.
+      # while every mirror fails, which the Hyper Backup mail catches, and so
+      # does OffsiteMirrorTaskOverdue off the offsite_mirror probe above.
       # tcp_ssh_banner rather than tcp_connect for the reason in that module's own
       # comment. The cost is a pre-auth connection to the box every 60s, and a
       # Hetzner-side blip now pages: ProbeDown is critical at for: 5m with no
@@ -160,6 +181,11 @@
     # no orphan to decommission by hand.
     - node_exporter
     - smartmon
+    # The only watch on the off-site mirror: it reads the NAS's Hyper Backup
+    # manifest cache over SSH and publishes what each task actually covers. Its
+    # public key has to be installed on the NAS by hand before any metric flows —
+    # see roles/offsite_mirror.
+    - offsite_mirror
     - cadvisor
     # blackbox_exporter before prometheus so the exporter is up when the blackbox
     # job first scrapes it — Prometheus tolerates a briefly-down target, so this is
