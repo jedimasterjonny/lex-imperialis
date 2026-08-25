@@ -96,7 +96,9 @@ mismatch from the array's redundancy, so silent bit-rot in the photo library or
 the restic repos is corrected in place rather than copied to the off-site
 mirror. It complements restic's own data-pack re-read, which covers the podman
 and home repos alike. For the media and the Time Machine share, which have no
-off-site copy at all, the scrub is the only protection there is.
+off-site copy at all, the scrub is the only protection there is. Nothing in this
+repo watches it: reading a scrub's result needs root on the NAS, which this repo
+does not have, so its failure signal is DSM's mail alone.
 
 ## Off-site mirror
 
@@ -137,9 +139,11 @@ success ages past a week. Its `autoupdate` reboot moved from Wed 03:00 to
 06:00 so a transactional reboot cannot cut the Wed 02:00 mirror — see
 `playbooks/rogue-trader.yml` for the four-hour assumption.
 
-A failed run alerts by email. This is the only geographic redundancy: the media
-library is not mirrored (it is re-acquirable), so a total NAS loss keeps the
-container state, the home backups, and the photos, not the media,
+A failed run alerts by email, as does a failed scrub: DSM's notification profile
+routes storage and backup events to the Synology-Account mail, and task
+notification is on for all three tasks. This is the only geographic redundancy:
+the media library is not mirrored (it is re-acquirable), so a total NAS loss
+keeps the container state, the home backups, and the photos, not the media,
 `pathfinder-books`, the DSM `homes` share, or the laptop's Time Machine history
 (the laptop itself is unaffected). `restic check` proves the repos are
 structurally sound and their packs re-hash clean; it does not prove a restore
