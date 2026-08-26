@@ -17,7 +17,9 @@ wordpress_tls: true
 # default: it locks out every caller that is not Cloudflare.
 wordpress_origin_pull: false
 
-wordpress_timezone: Etc/UTC
+# Container only: the site's own timezone is a database option, so this moves log
+# timestamps and mariadb's NOW(), not the times the site displays.
+wordpress_timezone: Europe/London
 
 # Memory ceiling for the valkey object cache; it evicts LRU keys past this and
 # keeps nothing on disk.

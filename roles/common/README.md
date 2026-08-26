@@ -150,8 +150,8 @@ critical.
 
 `common_timezone` holds every host's clock on one zone — `Europe/London` —
 through `community.general.timezone`. Container `TZ=` is a separate setting and
-is not this: `arr`, `homepage` and `wordpress` each keep their own, all on
-`Etc/UTC`.
+is not this: `arr`, `homepage` and `wordpress` each keep their own, on the same
+zone.
 
 The module dispatches on `timedatectl` rather than on the distribution, so the
 task needs no OS branch, and the systemd arm it then takes writes nothing but
