@@ -16,8 +16,12 @@ off-site, since the laptop is its own second copy. Six layers:
 | Bit-rot scrub | every block on both arrays | `scriptorum` + `astropath` | monthly | DSM — NAS-side |
 | Off-site mirror | the podman + home restic repos and the photo library | Hetzner storage box, via rogue-trader | podman Wed 02:00 · home Thu 04:00 · photos Tue 03:00 | DSM Hyper Backup — NAS-side |
 
-Times are each host's local clock — `solar`, `scholam` and `auspex` on
-Europe/London, `rogue-trader` and the NAS on UTC year-round.
+Times are each host's local clock. Every fleet host keeps `Europe/London`, held
+by the `common` role rather than left to the image. The NAS does not: it is on
+GMT year-round and never observes BST, and it is out of the inventory, so its
+clock is DSM's. That asymmetry is what the schedule below is built around — the
+fleet's runs move an hour against the NAS's fixed mirror windows each summer,
+while keeping their spacing from each other.
 
 The first two are Ansible-managed — `podman_backup` and `home_backup`, both thin
 consumers of the shared `restic_backup` engine. The rest are DSM tasks on the
@@ -37,11 +41,13 @@ Each run `restic check`s the repo and re-reads a rotating slice of the data
 packs — the whole repo over successive runs — so structural corruption and
 bit-rot inside the repo page as `PodmanBackupFailed` instead of surfacing at
 restore; a missed run raises `PodmanBackupOverdue`. The two hosts are staggered
-— `solar` Wednesday 00:00 and `rogue-trader` Wednesday 01:00 — because their
-clocks differ: `solar` is on Europe/London and `rogue-trader` on UTC year-round,
-so one shared slot would put both on the astropath export at the same instant
-for the whole GMT half of the year. Staggered, both finish well inside the
-Wednesday 02:00 UTC off-site mirror window below. `scholam` carries no podman
+— `solar` Wednesday 00:00 and `rogue-trader` Wednesday 01:00 — so neither is on
+the astropath export while the other is. Both keep Europe/London, so that hour
+holds year-round: in GMT the runs land 00:00 and 01:00 UTC, in BST 23:00 Tuesday
+and 00:00 Wednesday UTC. Either way both finish well inside the Wednesday 02:00
+UTC off-site mirror window below — an hour of clearance in winter, two in
+summer. That clearance is the reason the stagger runs earlier rather than later:
+the mirror's window is the NAS's and does not move. `scholam` carries no podman
 repo: its only podman workload, `node_exporter`, defines no named volume, so
 `podman_backup` is left off its play. Container media on the NFS shares is
 deliberately out of the repo — it lives on the NAS and is re-acquirable. Role
@@ -62,8 +68,11 @@ recovery, not an output of it. Each run `restic check`s the repo (the same
 rotating data-pack re-read), so corruption pages as `HomeBackupFailed` rather
 than surfacing at restore; a missed run raises `HomeBackupOverdue`. The hosts
 are staggered (`solar` Thu 01:00, `scholam` Thu 02:00, `rogue-trader` Thu 03:00)
-so they don't snapshot to the astropath export at once. Its off-site mirror is a
-NAS-side Hyper Backup task at Thu 04:00, after all three runs. Role mechanics:
+so they don't snapshot to the astropath export at once. All three keep
+Europe/London, so the hour between them holds in either season and the chain
+shifts as one: 01:00–03:00 UTC in GMT, 00:00–02:00 UTC in BST. Its off-site
+mirror is a NAS-side Hyper Backup task at Thu 04:00 UTC, an hour clear of the
+last run in winter and two in summer. Role mechanics:
 [`roles/home_backup/README.md`](../roles/home_backup/README.md).
 
 ## Photo library — negative-space
@@ -135,9 +144,11 @@ refused source still answers with a banner and the probe stays green while every
 mirror fails. The Hyper Backup task notification catches that, and so does the
 probe below — as `OffsiteMirrorTaskFailed` if DSM records the refusal in each
 task's cached manifest, and otherwise as `OffsiteMirrorTaskOverdue` once the last
-success ages past a week. Its `autoupdate` reboot moved from Wed 03:00 to
-06:00 so a transactional reboot cannot cut the Wed 02:00 mirror — see
-`playbooks/rogue-trader.yml` for the four-hour assumption.
+success ages past a week. Its `autoupdate` reboot sits at Wed 07:00 so a
+transactional reboot cannot cut the Wed 02:00 UTC mirror: with the timer's
+two-hour randomised delay it lands 06:00–08:00 UTC in summer and 07:00–09:00 in
+winter, so the mirror is guaranteed four hours in summer and five in winter — see
+`playbooks/rogue-trader.yml` for the four-hour assumption that sets the slot.
 
 A failed run alerts by email, as does a failed scrub: DSM's notification profile
 routes storage and backup events to the Synology-Account mail, and task

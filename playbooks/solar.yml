@@ -488,11 +488,11 @@
       TRANSMISSION_PASSWORD: "{{ arr_transmission_password }}"
       GRAFANA_PASSWORD: "{{ grafana_admin_password }}"
     # An hour clear of rogue-trader's podman backup, which takes the role default
-    # (Wed 01:00) on a host whose clock is UTC. This host's is Europe/London, so
-    # the shared default put both runs at 01:00 UTC for the whole GMT half of the
-    # year, writing to the same astropath export at once. 00:00 here is 23:00 UTC
-    # in summer and 00:00 UTC in winter, always ahead of it, and both runs still
-    # finish well inside the NAS-side Wed 02:00 UTC mirror window.
+    # (Wed 01:00). Both hosts keep Europe/London, so that hour holds in either
+    # season rather than closing up in one of them, and neither writes to the
+    # astropath export while the other does. Ahead of it, so both runs finish
+    # well inside the NAS-side Wed 02:00 UTC mirror window: 00:00 here is 23:00
+    # UTC in summer and 00:00 UTC in winter.
     podman_backup_oncalendar: "Wed *-*-* 00:00:00"
     # This host's restic key. One per host, so a host that is compromised can
     # open only its own repos — the astropath export carries every host's.

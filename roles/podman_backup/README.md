@@ -5,8 +5,8 @@ Weekly restic backup of this host's podman named volumes to
 consumer of the [`restic_backup`](../restic_backup/README.md) engine in
 podman-volumes mode: it sets the engine vars and includes it. The
 timer (persistent, clear of every other scheduled job — `rogue-trader` Wednesday
-01:00 and `solar` staggered to 00:00, so a Europe/London host and a UTC one do
-not write to the astropath export at once each winter) quiesces the quadlet
+01:00 and `solar` staggered to 00:00, so two hosts on one timezone do not write
+to the astropath export at once) quiesces the quadlet
 container units, snapshots every volume, restarts the units, then runs a verifying
 `restic check`; the engine README covers the snapshot, prune, integrity-check,
 retry, and metric mechanics.
