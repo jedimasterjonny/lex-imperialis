@@ -15,7 +15,8 @@ curl -fsSL https://raw.githubusercontent.com/jedimasterjonny/lex-imperialis/main
 ```
 
 Installs the minimum for the control host to connect — the key-only,
-NOPASSWD-sudo `ansible` account (seeded with the operator's GitHub keys) and
+NOPASSWD-sudo `ansible` account (seeded with the two fleet admin keys, inlined
+from `common_ansible_authorized_keys` rather than fetched from GitHub) and
 sshd. Both lockout-risk inputs are validated before they land (`visudo -cf`,
 `ssh-keygen -lf`), so a bad sudoers policy or a failed key fetch aborts rather
 than locking out the host. Everything past "Ansible can log in and escalate" is
