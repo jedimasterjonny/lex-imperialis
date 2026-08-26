@@ -171,6 +171,29 @@
       loop_control:
         label: "{{ item.item }}"
 
+    # See the container TZ convention in roles/CLAUDE.md, which fixes the zone — so
+    # the expectation is spelled out rather than derived from wordpress_timezone,
+    # which would assert nothing. valkey reads neither env file and takes no TZ=,
+    # so it is not checked.
+    - name: Read the zone each container resolved
+      ansible.builtin.command: podman exec {{ item }} date +%Z
+      become: true
+      loop:
+        - wordpress
+        - wordpress-db
+      register: wordpress_zones
+      changed_when: false
+
+    - name: Each container resolved the zone it was given
+      ansible.builtin.assert:
+        that:
+          - item.stdout in ['GMT', 'BST']
+        fail_msg: "{{ item.item }} reports {{ item.stdout }}, expected GMT or BST"
+        quiet: true
+      loop: "{{ wordpress_zones.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
     # The split env files exist so the database root password reaches only the
     # database container. coreutils printenv exits 0 when it finds
     # MARIADB_ROOT_PASSWORD and 1 when the variable is absent, so assert the exact
