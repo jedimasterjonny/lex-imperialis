@@ -4,7 +4,7 @@
 # at the host.
 arr_domain: "{{ caddy_domain | default('home.arpa') }}"
 
-arr_timezone: Etc/UTC
+arr_timezone: Europe/London
 
 # NAS-backed media root; each app that stores media gets <root>/<data type>.
 arr_data_root: /nfs/administratum/scriptorum

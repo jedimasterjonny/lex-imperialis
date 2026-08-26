@@ -101,6 +101,29 @@
           - arr_recyclarr_id.stdout_lines == [arr_apps.recyclarr.uid | string, arr_apps.recyclarr.uid | string]
         quiet: true
 
+    # See the container TZ convention in roles/CLAUDE.md, which fixes the zone — so
+    # the expectation is spelled out rather than derived from arr_timezone, which
+    # would assert nothing. One arr_timezone covers every app image, so each is
+    # checked.
+    - name: Read the zone each app's container resolved
+      ansible.builtin.command: podman exec {{ item.key }} date +%Z
+      become: true
+      loop: "{{ arr_apps | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+      register: arr_app_zones
+      changed_when: false
+
+    - name: Each app resolved the zone it was given
+      ansible.builtin.assert:
+        that:
+          - item.stdout in ['GMT', 'BST']
+        fail_msg: "{{ item.item.key }} reports {{ item.stdout }}, expected GMT or BST"
+        quiet: true
+      loop: "{{ arr_app_zones.results }}"
+      loop_control:
+        label: "{{ item.item.key }}"
+
     # The checks above prove each app works; they can't prove its capability set
     # is minimal. Assert the posture directly so a regression that widens the caps
     # or drops NoNewPrivileges fails here, not silently in production. The lscr.io
