@@ -148,6 +148,48 @@ then the assert halts `common`, the first role of each openSUSE play, so that ho
 converges no further, `site.yml` stops there, and `ArbitesFailed` goes
 critical.
 
+`common_timezone` holds every host's clock on one zone — `Europe/London` —
+through `community.general.timezone`. Container `TZ=` is a separate setting and
+is not this: `arr`, `homepage` and `wordpress` each keep their own, all on
+`Etc/UTC`.
+
+The module dispatches on `timedatectl` rather than on the distribution, so the
+task needs no OS branch, and the systemd arm it then takes writes nothing but
+`/etc/localtime` — which is why MicroOS takes the change outside a snapshot. That
+dispatch is by exit status and not by host: `timedatectl` exits non-zero for the
+first second or two of a boot, before dbus activates timedated, so a converge
+landing that early takes the other arm instead.
+
+Which matters, because that arm needs `hwclock`: auspex ships none, so it would
+fail outright there, but all three openSUSE hosts carry it, and on them it sets
+the right zone with `cp --remove-destination` and a stray `/etc/sysconfig/clock`
+nothing later removes. `date` and every `OnCalendar=` stay correct through it —
+libc reads the tzfile whether it is a link or a copy — so the only thing that
+shows it is `timedatectl`, which resolves the zone through the symlink and has no
+answer without one. That is what `verify.yml` asserts. It reads `/etc/localtime`
+once and does not watch it, so on a live host it can also report a zone the file
+no longer has.
+
+Held rather than observed because every schedule in the repo is an `OnCalendar=`
+in the host's local time. One zone does not stop the fleet moving against the
+NAS's fixed-GMT mirror windows each summer — it puts every host in one frame, so
+the stagger between them holds its spacing year-round instead of opening and
+closing with the seasons, and the clearances against those windows are then a
+property of the schedule rather than of which host is on which clock.
+`docs/backups.md` works that asymmetry through.
+
+systemd re-arms every calendar timer on the change itself, so the role notifies
+nothing — but a `Persistent=` timer whose slot the shift moves into the past
+fires its catch-up run at that moment, which on a host running `podman_backup`
+means stopping every container mid-play. Only a host whose zone actually changes
+is exposed, and only for the hour before each such slot — but `arbites` reaches
+`main` within 15 minutes, so it is the **merge** that picks the moment, not a
+hand-apply. Land a zone change clear of those windows, or pause the reconciler
+and apply it deliberately.
+
+Debian's legacy `/etc/timezone` is not held: `systemd-timedated` neither reads
+nor writes it, so auspex's cloud-init copy is right only by coincidence.
+
 `common_ntp_sources` adds NTP sources through
 `{{ common_chrony_conf_dir }}/common-ntp.conf`, one `pool` line each, alongside
 whatever the install left in the packaged `pool.conf` — `time.cloudflare.com` by

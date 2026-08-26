@@ -12,15 +12,17 @@
       - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDHpcn9yrjN0+bAFrmfGo7X4qMdklxvJ3bqdSiyJf5ju jonny@scholam
     # Staggered autoupdate: the public VPS updates mid-week, after solar's canary
     # run, so one bad rolling snapshot can't brick the whole fleet in one night.
-    # 06:00 rather than 03:00 because storagebox_gateway below puts this host on
+    # 07:00 rather than 03:00 because storagebox_gateway below puts this host on
     # the NAS's off-site mirror path: a transactional reboot now severs whatever
     # Hyper Backup is copying, and its windows (Tue 03:00 photos, Wed 02:00
-    # podman, Thu 04:00 home — docs/backups.md) are DSM's, invisible from here.
-    # With the timer's RandomizedDelaySec=2h the reboot lands 06:00–08:00, so it
-    # clears a Wed 02:00 mirror that runs under four hours. A first full mirror
-    # can exceed that; pause the timer for that one run rather than schedule
-    # around a one-off.
-    autoupdate_oncalendar: "Wed *-*-* 06:00:00"
+    # podman, Thu 04:00 home — docs/backups.md) are DSM's, fixed GMT, and
+    # invisible from here. With the timer's RandomizedDelaySec=2h the reboot lands
+    # 07:00–09:00 local, which is 06:00–08:00 UTC once this host keeps British
+    # summer time — still clearing a Wed 02:00 UTC mirror that runs under four
+    # hours. 06:00 bought that clearance only while the clock here was UTC. A
+    # first full mirror can exceed four hours; pause the timer for that one run
+    # rather than schedule around a one-off.
+    autoupdate_oncalendar: "Wed *-*-* 07:00:00"
     # The tunnel definition, in wg-quick's format. It stays in that format because
     # the same text is what /etc/wireguard/wg0.conf holds, so re-enabling
     # wg-quick@wg0 remains a working rollback from a NetworkManager that will not

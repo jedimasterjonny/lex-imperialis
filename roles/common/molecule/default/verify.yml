@@ -17,6 +17,10 @@
     common_expected_chrony_dir: "{{ '/etc/chrony/conf.d' if 'debian' in group_names else '/etc/chrony.d' }}"
     common_expected_pool: "{{ 'debian.pool.ntp.org' if 'debian' in group_names else 'opensuse.pool.ntp.org' }}"
     common_expected_bash_package: "{{ 'bash-ubuntu' if 'debian' in group_names else 'bash-suse' }}"
+    # Converge's zone, spelled out rather than read from the role's defaults:
+    # vars_files outranks vars, so the default would win here and the assertion
+    # would hold however the task was wired.
+    common_expected_timezone: America/New_York
   vars_files:
     - ../../defaults/main.yml
     - ../../vars/main.yml
@@ -346,6 +350,29 @@
         that:
           - common_expected_pool in common_chrony_config.stdout
         fail_msg: "the drop-in displaced the packaged {{ common_expected_pool }} source"
+
+    - name: Ask timedated which zone /etc/localtime resolves to
+      ansible.builtin.command: timedatectl show --property=Timezone --value
+      register: common_timezone_cmd
+      changed_when: false
+
+    # timedated rather than `date`, because it is the stricter reader and so
+    # catches two faults at once: it resolves the zone through the symlink and
+    # has no answer without one, where libc reads the tzfile either way. So this
+    # fails on a wrong zone and on the module silently taking its other arm
+    # alike — that arm `cp --remove-destination`s a regular tzfile, leaving
+    # `date` and every OnCalendar= still resolving correctly. It needs hwclock,
+    # which every openSUSE host carries; the Debian platform ships none, so it
+    # cannot reach it. timedated reads the file once and does not watch it, so
+    # its answer is either empty or the zone from before — both fail the compare.
+    - name: The declared zone is set, through the module's systemd arm
+      ansible.builtin.assert:
+        that:
+          - common_timezone_cmd.stdout == common_expected_timezone
+        fail_msg: >-
+          timedated resolves /etc/localtime to
+          {{ common_timezone_cmd.stdout | default('no zone at all', true) }},
+          expected {{ common_expected_timezone }}
 
     - name: Stat the stowed bashrc
       ansible.builtin.stat:
