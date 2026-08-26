@@ -33,8 +33,10 @@ homepage_bookmarks: []
 # it is rendered order-preserving rather than sorted.
 homepage_layout: {}
 
-# Container timezone, for the dashboard's date/time display.
-homepage_timezone: Etc/UTC
+# Container timezone, carried for uniformity and nothing more: the dashboard is
+# rendered client-side, so its clock follows the viewer's browser, and homepage's
+# own log lines are ISO-8601 Z. Nothing here consumes it, so nothing asserts it.
+homepage_timezone: Europe/London
 
 # Least-privilege host id the container drops to (PUID/PGID). Avoids 1000, which
 # the cloud image's default user holds.

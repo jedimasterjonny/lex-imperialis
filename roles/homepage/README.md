@@ -98,7 +98,7 @@ as a failed healthcheck.
 - `homepage_theme`, `homepage_color`, `homepage_header_style`, `homepage_status_style` — presentation, rendered into `settings.yaml`.
 - `homepage_services`, `homepage_widgets`, `homepage_bookmarks` — the dashboard's content, serialised into the matching config file.
 - `homepage_layout` — per-group style and columns, keyed by the group names in `homepage_services`; declaration order is the dashboard's group order.
-- `homepage_timezone` — container timezone for date/time display.
+- `homepage_timezone` — container timezone; carried for uniformity, since the dashboard clock is client-side.
 - `homepage_uid` — host id the container runs as (PUID/PGID).
 - `homepage_secrets` — widget credentials, keyed by the bare name the configs reference as `{{HOMEPAGE_VAR_<NAME>}}`; rendered to the 0600 `/etc/homepage/env`.
 
