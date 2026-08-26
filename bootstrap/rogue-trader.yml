@@ -106,8 +106,10 @@
     # spec. No ssh_keys: without cloud-init nothing performs Hetzner's key
     # injection, so passing one would be inert config that reads as a way in.
     # firewalls is omitted (unmanaged here) so terraform's apply_to owns the
-    # attachment: run `tofu apply` right after a from-zero rebuild, which is
-    # otherwise firewall-less (all inbound open) until it does.
+    # attachment: a from-zero rebuild is firewall-less (all inbound open) until
+    # `tofu apply` runs. Merge the temporary inbound-22 rule before that apply —
+    # it attaches a firewall with no inbound 22, and the tunnel does not exist
+    # until the converge. See docs/disaster-recovery.md.
     - name: Create or rebuild the server
       hetzner.hcloud.server:
         api_token: "{{ hcloud_token_emmas_edit }}"

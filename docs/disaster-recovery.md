@@ -11,14 +11,29 @@ Recovery is driven from a control host with:
 - The repo (public, on GitHub) — clone it.
 - `.vault_pass` — gitignored, so restore it from the password manager. It
   unlocks every other secret in the repo.
-- The venv: `python -m venv .venv && . .venv/bin/activate && pip install -r requirements-dev.txt`.
+- The venv: `python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements-dev.txt`.
+- The operator's fleet SSH key (`~jonny/.ssh/id_ed25519`) — the `ansible`
+  account is key-only and its `authorized_keys` is exclusive, so nothing
+  connects without it and a hand-made replacement is stripped by the next
+  converge. Restore it from the password manager, or out of
+  `scholam-home-backup` (see scholam step 4).
 - SSH reach to the host being recovered — over the LAN, or over WireGuard for a
   rogue-trader that still has its tunnel. A rebuilt rogue-trader has neither
-  until step 3, so it is reached at its public address instead.
+  until step 5, so it is reached at its public address instead.
 - The Hetzner Console login for the **storage box project** (password manager;
   a separate project from emmas-edit, and in neither the vault nor terraform).
   Needed to recover the off-site copy: it is the way back to both External
   Reachability and the box's sub-account password.
+- The NAS volume encryption key — both `/volume1` and `/volume2` are LUKS2,
+  auto-unlocked from a key store on DSM's system partition. A RAID rebuild with
+  DSM intact unlocks itself and a from-scratch Hyper Backup restore makes a
+  fresh volume, but intact disks under a reinstalled DSM — or moved to a new
+  chassis — need the key. It is in no Hyper Backup task and no DSM config
+  backup, so keep it in the password manager.
+- `hcloud-cli`, for the two optional Hetzner commands in the rogue-trader
+  section (`zypper in hcloud-cli`, then
+  `export HCLOUD_TOKEN=$(bin/vault-var.sh hcloud_token_emmas_edit)`) — or do
+  both from the Console instead.
 
 `scholam` is the usual control host. If `scholam` itself is lost, recover it
 first (below), or drive the others from any machine meeting the above.
@@ -35,7 +50,8 @@ Plex library and history, the WordPress site) travels in it. Media on the NFS
 shares is not in the repo; it lives on the NAS and is the NAS's own concern.
 
 `home_backup` runs on `solar`, `scholam`, and `rogue-trader`, writing a per-host
-restic repo to `/nfs/astropath/<hostname>-home-backup` holding that host's `/home`.
+restic repo to `/nfs/astropath/<hostname>-home-backup` holding that host's `/home`
+minus re-acquirable churn and `.vault_pass` (see [`backups.md`](backups.md)).
 It shares the `restic_backup` engine with `podman_backup`, and both sets of repos
 sit under `astropath`.
 
@@ -45,18 +61,25 @@ no podman repo; its recoverable state is the git repo, `.vault_pass`, and its
 DSM's job (see below).
 
 `auspex` runs no backup role either, and unlike scholam it is not stateless: its
-Prometheus TSDB is a year of the fleet's monitoring history on a single NVMe with
-no RAID, no scrub and no repo. That is accepted rather than overlooked — it is
-derived data, so losing it costs dashboards and not recovery — but it is the one
-piece of fleet state with no copy anywhere.
+Prometheus TSDB is set to retain a year of the fleet's monitoring history on a
+single NVMe with no RAID, no scrub and no repo. That is accepted rather than
+overlooked — it is derived data, so losing it costs dashboards and not recovery —
+but that NVMe, which carries Alertmanager's state beside the TSDB, is the one part
+of the fleet with no copy anywhere.
 
 **Off-site copy:** three Synology Hyper Backup tasks mirror the on-NAS backups
 off-site to a Hetzner storage box over rsync, each a plain true mirror (latest
 state only, no version history): the `*-podman-backup` repos on Wednesday 02:00,
 the `*-home-backup` repos on Thursday 04:00, and the `/scriptorum/photos` library
 on Tuesday 03:00 — each an hour or more after the run it copies. A failed run
-alerts by email, so a stalled copy surfaces rather than drifting unnoticed. A lost
-NAS is recoverable from it — see [administratum](#administratum-nas).
+alerts by email, but a task that silently stops copying a folder does not fail:
+it finishes, reports success and mails nothing. The watch on that is the
+`offsite_mirror` probe on `auspex` — `OffsiteMirrorCoverageMissing` fires on a
+declared folder absent from a task's manifest, alongside `OffsiteMirrorTaskFailed`,
+`TaskOverdue`, `TaskUnverified` and the `OffsiteMirrorProbe*` pair. Check those
+before trusting the off-site copy in a recovery, and judge coverage against a run
+that postdates any change to a task: the manifest only refreshes when it next runs.
+A lost NAS is recoverable from it — see [administratum](#administratum-nas).
 
 The tasks reach the box through the `storagebox_gateway` forward on
 `rogue-trader`, so it is on the restore path as well as the backup path — see
@@ -64,11 +87,25 @@ The tasks reach the box through the `storagebox_gateway` forward on
 
 ## solar (and any openSUSE podman host)
 
-1. Reinstall openSUSE Tumbleweed. Keep the hostname and the DHCP lease so the
-   name and the NFS numeric identity (`common_user_uid: 1026`) still match.
+1. Reinstall openSUSE Tumbleweed. Keep the hostname so the
+   `<hostname>-podman-backup` repo path still resolves, and keep the DHCP lease
+   because the NAS exports are per-client-IP — a rebuilt solar on a new address
+   is refused the mount, failing the `nfs` role and blocking steps 3-5.
 2. As root on the box: `bootstrap/host.sh` (creates the `ansible` account and
    sshd). Either pipe it from GitHub (see the script header) or run a local copy.
-3. From the control host, confirm the inventory entry, then run the play —
+3. The reinstall gave solar new host keys, and two files pin the old ones. Drop
+   both before converging — the second matters more than the first, because
+   `site.yml` imports `solar.yml` first, so a stale pin there aborts every fleet
+   reconcile at the connect until it is re-seeded:
+
+   ```bash
+   ssh-keygen -R solar                      # your own known_hosts
+   # on scholam, as root
+   sudo ssh-keygen -f /etc/arbites/ssh/known_hosts -R solar
+   sudo sh -c 'ssh-keyscan -H solar >>/etc/arbites/ssh/known_hosts'
+   ```
+
+   Then, from the control host, confirm the inventory entry and run the play —
    installs podman, mounts astropath, deploys the quadlets (volumes are
    auto-created and registered on first container start) and installs the restore
    script:
@@ -77,10 +114,15 @@ The tasks reach the box through the `storagebox_gateway` forward on
    make apply PLAY=solar
    ```
 
-4. Once step 3 has converged clean — `podman volume ls` shows the expected
-   volumes — restore them over the fresh ones:
+4. Once step 3 has converged clean — `sudo podman volume ls` shows the expected
+   volumes — pause the reconciler and hold the backup timer, then restore over
+   the fresh ones. An unpaused reconciler re-applies `site.yml` and restarts
+   these units mid-swap; an unmasked timer can snapshot the freshly-initialised
+   state as `latest`, which is what a later restore would then read back:
 
    ```bash
+   sudo touch /var/lib/arbites/pause
+   sudo systemctl mask --now podman-backup.timer
    sudo /usr/local/sbin/podman-restore.sh
    ```
 
@@ -114,18 +156,28 @@ The tasks reach the box through the `storagebox_gateway` forward on
    suspect. If the swap fails part-way the script leaves the containers **down**
    on purpose and keeps the restored copy under `/var/tmp/podman-restore.*`;
    that is a half-restored volume set, so recover it by hand rather than starting
-   the units.
+   the units. That hold is indefinite and the reconciler does not respect it, so
+   keep the pause from step 4 in place while investigating — otherwise the next
+   merge to `main` starts these units on the half-restored volumes.
 
-5. `solar` also carries a `solar-home-backup` repo. If its `/home` is wanted back,
-   restore it by hand as in [scholam](#scholam-control-host) step 5 (restic to a
+5. Once the restore is verified, lift the holds:
+
+   ```bash
+   sudo systemctl unmask podman-backup.timer
+   sudo systemctl start podman-backup.timer
+   sudo rm /var/lib/arbites/pause
+   ```
+
+6. `solar` also carries a `solar-home-backup` repo. If its `/home` is wanted back,
+   restore it by hand as in [scholam](#scholam-control-host) step 6 (restic to a
    scratch target — path mode ships no restore script).
 
 ## rogue-trader (Hetzner VM)
 
 The VM is re-imaged from the MicroOS snapshot `packer/` builds, not reinstalled.
 Ignition supplies the first-boot identity, so there is no `bootstrap/host.sh`
-step. The image carries no console password for `root` or `ansible`, so the
-console is not a way in — Hetzner **rescue mode** is.
+step. The image carries no console password for `root` or `ansible`, so there is no
+console *login* — Hetzner **rescue mode** is the way in.
 
 On the rebuild path the server survives, and so does its firewall — which
 carries no inbound 22, while the tunnel dies with the disk. So first merge a
@@ -134,7 +186,8 @@ the workstation's **public egress** address, and let CI apply it; adding it in
 the Hetzner console instead is a trap, since the next merge to `main`
 auto-applies terraform over the top of it. From zero there is nothing to open
 and no server for `data.hcloud_server.rogue_trader` to read, so terraform cannot
-plan at all until step 3 has created one.
+plan the rule until step 3 has created one — merge it then, before the apply,
+not never. The rule is deferred on that path, not unneeded.
 
 The host firewall goes the other way. The stock `public` zone ships the `ssh`
 service and `roles/firewalld` only ever adds, so the removal that scopes SSH to
@@ -146,9 +199,10 @@ cannot lock itself out at this layer, and why step 6 puts the removal back.
 throwaway, never on this server.** So step 7 is mandatory, not optional, and step
 8 where the raw copy will not start.
 
-1. Pause the reconciler on scholam. It applies `site.yml` every 15 minutes, so
-   an unpaused one races the converge below and re-applies the play into a
-   half-restored box:
+1. Pause the reconciler on scholam. It fires every 15 minutes and applies
+   `site.yml` whenever `main` has advanced — which Renovate does unattended at
+   any hour — so an unpaused one races the converge below and re-applies the
+   play into a half-restored box:
 
    ```bash
    sudo touch /var/lib/arbites/pause
@@ -182,8 +236,17 @@ throwaway, never on this server.** So step 7 is mandatory, not optional, and ste
 
    From zero — no server at all — drop `rogue_trader_state` and pass a
    `rogue_trader_server_type` matching what the box should be; the default is
-   the spike's size. Then `make tofu-apply`: it attaches the firewall, and from
-   zero it also re-points the A/AAAA records at the new IP.
+   the spike's size.
+
+   Then merge the temporary inbound-22 rule the preamble deferred — it is
+   plannable now that a server exists — and let CI apply it *before* you run
+   `make tofu-apply`. Without it the firewall attaches with no inbound 22 and
+   steps 4 and 5 cannot reach the box: the tunnel does not exist until step 5,
+   and rescue mode is on the same closed port. Then `make tofu-apply`: it
+   attaches the firewall, and from zero it also re-points the A/AAAA records at
+   the new IP. That runs locally, so it needs `tofu`, `gcloud`, a current
+   `gcloud auth application-default login` and a prior `tofu -chdir=terraform
+   init`; see [`terraform/README.md`](../terraform/README.md).
 4. The play does not wait on this path. The rehearsal came back up on its own —
    `hcloud server poweron rogue-trader` if this one does not. Then drop the
    old host keys, which went with the disk, and confirm it is up in one step:
@@ -210,7 +273,7 @@ throwaway, never on this server.** So step 7 is mandatory, not optional, and ste
    # on rogue-trader
    sudo firewall-cmd --permanent --remove-service=ssh
    sudo firewall-cmd --reload
-   sudo firewall-cmd --list-services  # http https — the reload makes runtime match
+   sudo firewall-cmd --list-services  # dhcpv6-client http https — the reload makes runtime match
    # on scholam
    sudo ssh-keygen -f /etc/arbites/ssh/known_hosts -R 192.168.3.4
    sudo sh -c 'ssh-keyscan -H 192.168.3.4 >>/etc/arbites/ssh/known_hosts'
@@ -219,15 +282,34 @@ throwaway, never on this server.** So step 7 is mandatory, not optional, and ste
    The reconciler pins each host against that file and never re-seeds it, so
    until this runs every reconcile aborts at the connect — permanently, and
    reading like a machine-in-the-middle rather than a missing step.
-7. Once its play has converged, on rogue-trader:
-   `sudo /usr/local/sbin/podman-restore.sh` — restores the WordPress and
-   database volumes. Until it has run, WordPress is a blank install, so
-   `wordpress-cron.service` fails and `WordpressCronFailed` fires; that clears
-   with the restore and is not a fault to chase.
+7. Once its play has converged, restore on rogue-trader. A rebuild has no
+   `wordpress-db-dump` volume — nothing creates it but the first dump run, and
+   its timer will not have fired — so create it first, or the restore names it
+   absent and skips it and step 8's fallback has nothing to load. Hold the
+   backup timer for the same reason as solar step 4:
+
+   ```bash
+   sudo systemctl mask --now podman-backup.timer
+   sudo podman volume create wordpress-db-dump
+   sudo /usr/local/sbin/podman-restore.sh
+   ```
+
+   That restores the WordPress and database volumes. Until it has run, WordPress
+   is a blank install, so `wordpress-cron.service` fails and
+   `WordpressCronFailed` fires; that clears with the restore and is not a fault
+   to chase.
 8. The database travels as a raw `/var/lib/mysql` copy, which a newer mariadb
    than it was taken on may refuse to start. If it does, recover the database
-   from the logical dump instead. Step 7 restored the raw copy into
-   `wordpress-db`, so wipe that volume first:
+   from the logical dump instead. Quiesce the timers first —
+   `wordpress-cron.service` carries `Requires=wordpress.service`, which requires
+   the database, so a fire during the swap or the load brings WordPress up on
+   the empty database and caches that "not installed" state in valkey:
+
+   ```bash
+   sudo systemctl disable --now wordpress-cron.timer wordpress-db-dump.timer
+   ```
+
+   Step 7 restored the raw copy into `wordpress-db`, so wipe that volume first:
 
    ```bash
    sudo systemctl stop wordpress-db
@@ -235,31 +317,38 @@ throwaway, never on this server.** So step 7 is mandatory, not optional, and ste
    sudo systemctl start wordpress-db
    ```
 
-   Once it is healthy (`podman healthcheck run wordpress-db`), load
+   Once it is healthy (`sudo podman healthcheck run wordpress-db`), load
    `wordpress-db-dump`'s engine-portable `wordpress.sql` — the wordpress role's
    `wp-db-dump` runs on a daily timer, so this fallback restores the last
    completed dump, not a point-in-time state, and loses up to a day's writes
    (more if the dump had been failing) — into it as root, under the same mariadb the role pins (`wordpress_db_image`), so the load runs on a compatible engine:
 
    ```bash
-   podman run --rm --network caddy --env-file /etc/wordpress/db.env \
+   sudo podman run --rm --network caddy --env-file /etc/wordpress/db.env \
      --volume wordpress-db-dump:/dump:ro docker.io/library/mariadb:12.3.3@sha256:dd9b303aed4f4890ed09f766d8ca9ddfd176c0c6f6267feff53b3192ec65a979 \
      sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" exec mariadb -h wordpress-db -uroot < /dump/wordpress.sql'
    ```
 
-   Finally, restart the WordPress container, which the database stop took down
-   with it (`Requires=`):
+   Finally, restart the WordPress stack — the database stop took it down with it
+   (`Requires=`) — flush the cache that may hold the empty-database state, and
+   put the timers back:
 
    ```bash
-   sudo systemctl start wordpress
+   sudo systemctl restart wordpress wordpress-valkey
+   sudo systemctl enable --now wordpress-cron.timer wordpress-db-dump.timer
+   sudo systemctl unmask podman-backup.timer
+   sudo systemctl start podman-backup.timer
    ```
 
-9. Resume the reconciler on scholam: `sudo rm /var/lib/arbites/pause`.
-   Confirm the next fire applies rather than assuming it did —
-   `/var/lib/arbites/last-applied-sha` should reach `main`'s HEAD.
+9. Resume the reconciler on scholam: `sudo rm /var/lib/arbites/pause`. Confirm
+   the next fire *applied* — `journalctl -u arbites.service` should show an
+   `applying <sha>` line, not `origin/main unchanged`. `last-applied-sha`
+   reaching HEAD is necessary, not sufficient: on a static `main` the
+   short-circuit satisfies it without connecting to anything, so a botched
+   step 6 re-pin would still read as healthy.
 10. `rogue-trader` also carries a `rogue-trader-home-backup` repo (its `/home` is
    minimal — service-account skeletons only); restore it by hand as in
-   [scholam](#scholam-control-host) step 5 if wanted.
+   [scholam](#scholam-control-host) step 6 if wanted.
 
 ## scholam (control host)
 
@@ -268,19 +357,50 @@ throwaway, never on this server.** So step 7 is mandatory, not optional, and ste
 `/home` does, from the `scholam-home-backup` repo. Recovery is bootstrap plus its
 play, run locally, then the home restore.
 
-1. Reinstall openSUSE Tumbleweed (keep the hostname).
+1. Reinstall openSUSE Tumbleweed. Keep the hostname, and create the owner
+   account as uid 1026 with primary group `users` — the fleet pins
+   `common_user_uid: 1026`, and `usermod -u` on a logged-in account is refused,
+   so an installer default of 1000 halts step 5 in its first role and needs an
+   offline root console to fix.
 2. As root: `bootstrap/host.sh`.
 3. Restore the control-host workspace: clone the repo, drop `.vault_pass` back in
    from the password manager, build the venv (see Prerequisites), then
-   `make hooks`. Replace `arbites`'s two secrets too (see its README) —
-   its guard fails the apply below without them.
-4. Apply its play locally (it targets `this_host` at loopback):
+   `make hooks`. Replace `arbites`'s two secrets and re-seed
+   `/etc/arbites/ssh/known_hosts` over the trusted LAN, including scholam's own
+   loopback (see its README) — its guard fails the apply below without all
+   three. If you generate a fresh arbites key rather than restoring the old one,
+   add its public half to `inventory/group_vars/all/authorized_keys.yml` and
+   apply it to the other hosts *before* step 5: that step arms the timer, and
+   the declared list is exclusive, so an unadvertised key fails at every connect.
+4. Restore the operator's SSH key, which step 5 cannot connect without: the
+   `ansible` account is key-only, and a hand-made replacement is stripped by the
+   converge unless its public half is committed first. Step 5 is what installs
+   restic, mounts astropath and renders `/etc/restic/password`, so none of them
+   exist yet — do all three by hand, taking the repo key from the vault that
+   step 3 restored:
+
+   ```bash
+   sudo zypper in -y restic
+   sudo mkdir -p /mnt/astropath
+   sudo mount -t nfs -o vers=4.1 administratum:/volume2/astropath /mnt/astropath
+   sudo env RESTIC_PASSWORD="$(bin/vault-var.sh scholam_restic_password)" \
+     restic --repo /mnt/astropath/scholam-home-backup \
+     restore latest --include /home/jonny/.ssh --target /var/tmp/key-restore
+   sudo install -D -m 0600 -o jonny -g users \
+     /var/tmp/key-restore/home/jonny/.ssh/id_ed25519 /home/jonny/.ssh/id_ed25519
+   sudo install -D -m 0644 -o jonny -g users \
+     /var/tmp/key-restore/home/jonny/.ssh/id_ed25519.pub \
+     /home/jonny/.ssh/id_ed25519.pub
+   sudo umount /mnt/astropath
+   ```
+
+5. Apply its play locally (it targets `this_host` at loopback):
 
    ```bash
    make apply PLAY=scholam
    ```
 
-5. Step 4 mounted astropath, so the home repo is reachable. There is no restore
+6. Step 5 mounted astropath, so the home repo is reachable. There is no restore
    script (that is podman-only); restore `/home` by hand to a scratch target — so
    it does not overwrite the workspace you are recovering from — then copy back
    what step 3 did not already rebuild:
@@ -313,29 +433,33 @@ play, run locally, then the home restore.
    the scratch tree. `.vault_pass` and `.venv` are excluded from the backup, so
    they are step 3's to restore whatever this copies.
 
-6. To make it the molecule runner again, locally on scholam:
-   `ansible-playbook bootstrap/incus.yml --ask-become-pass`.
-
 ## auspex (Raspberry Pi 5)
 
 No NFS mount and no backup role, so nothing here is restored from a repo. What it
-does hold is the fleet's entire monitoring history: Prometheus's TSDB, a year of
-it, on the NVMe mounted at `/var/lib/containers`. There is no copy of that
+does hold is the fleet's entire monitoring history: Prometheus's TSDB, retained
+for up to a year, on the NVMe mounted at `/var/lib/containers`. There is no copy of that
 anywhere — accepted, because it is derived data whose loss costs dashboards
 rather than recovery, but it means the card and the drive fail differently.
 
 **A card rebuild does not touch the NVMe.** Reflashing the SD card and re-applying
 the play remounts the existing store, so the TSDB, Alertmanager's silences and
 every other named volume survive the procedure below. Losing the NVMe itself is
-what loses the history, and nothing restores it — fit a replacement, partition it
-`LABEL=containers`, and the fleet starts recording again from empty.
+what loses the history, and nothing restores it — fit a replacement, then give it
+an **ext4** filesystem labelled `containers` (`sudo mkfs.ext4 -L containers
+/dev/<partition>`), and the fleet starts recording again from empty. `LABEL=` is
+the filesystem label, not the partition name: a partition merely *named*
+`containers` never resolves, and because the mount carries `nofail` the play then
+reports green while the whole container store lands on the SD card. Confirm with
+`findmnt /var/lib/containers` before trusting the apply.
 
 1. Write Raspberry Pi OS Lite arm64 to a fresh card, then put
    `bootstrap/auspex-user-data.yaml` on the card's FAT partition as `user-data`,
    with a fresh `instance-id` in the `meta-data` beside it — `bootstrap/README.md`
    has the procedure and the trap, which is that letting Raspberry Pi Imager apply
    its own customisation silently overwrites the seed.
-2. Boot it. `ssh ansible@auspex` answering, with `id jonny` reporting uid 1026 and
+2. Boot it. The reflash gave it new host keys, so `ssh-keygen -R auspex` before
+   connecting or both this step and step 3 abort on the stale pin.
+   `ssh ansible@auspex` answering, with `id jonny` reporting uid 1026 and
    gid 100, is the signal cloud-init consumed the seed rather than its own default.
 3. Apply its play:
 
@@ -352,6 +476,19 @@ what loses the history, and nothing restores it — fit a replacement, partition
    ssh-keygen -f /etc/arbites/ssh/known_hosts -R auspex
    ssh-keyscan -H auspex >>/etc/arbites/ssh/known_hosts
    ```
+
+5. Re-authorise the off-site coverage probe. Its key lives on the SD card, not
+   the NVMe, so the reflash destroyed it and the play minted a fresh pair while
+   the NAS still authorises the old public half. Until the new one is installed
+   the only watch on off-site coverage stays down (`OffsiteMirrorProbeFailed`):
+
+   ```bash
+   sudo cat /etc/offsite-mirror/id_ed25519.pub
+   ```
+
+   Paste that into the `jonny` account's `authorized_keys` on the NAS — nothing
+   in this repo may configure DSM. See
+   [`roles/offsite_mirror/README.md`](../roles/offsite_mirror/README.md).
 
 Anything deliberately silenced before a loss that took the NVMe with it starts
 firing again after step 3. The outage itself is a hole in the history rather than
@@ -386,9 +523,22 @@ signal that the NAS is gone is the blackbox `tcp_connect` probe of its NFS port,
 raising `ProbeDown`; it holds no monitoring data, so losing it is no longer a
 monitoring outage.
 
-Recover the appliance with DSM (Hyper Backup / the RAID), then re-export the
-shares the fleet mounts — `solar` and `scholam` name it as their NFS server, and
-those mounts are what the arr stack and the backups run on.
+Recover the appliance with DSM (Hyper Backup / the RAID) — intact disks under a
+reinstalled DSM need the volume encryption key from Prerequisites — then re-export
+the shares the fleet mounts, **with the same options**, which are part of what has
+to be recreated and are in no backup. `astropath` maps root to the `admin` account
+(DSM's "Map root to admin"): both share roots are ACL-gated to `jonny` and
+`administrators`, so any other squash identity is refused and restic silently
+cannot write its repos. `scriptorum` keeps "No mapping", which is what lets rootful
+podman traverse it at container start. `solar`, `scholam` and `rogue-trader` all
+mount `astropath`; `solar` and `scholam` also mount `scriptorum`. Those mounts are
+what the arr stack and the backups run on.
+
+The off-site coverage probe on `auspex` breaks too: re-add its public key
+(`/etc/offsite-mirror/id_ed25519.pub`) to the `jonny` account's `authorized_keys`
+on the rebuilt NAS, and `rm /etc/offsite-mirror/known_hosts` on auspex — the role
+creates that pin once with `force: false` and will not re-pin the new host key on
+its own.
 
 The `*-podman-backup` and `*-home-backup` restic repos and the `/scriptorum/photos`
 library are also mirrored off-site to a Hetzner storage box by three Synology Hyper
@@ -423,7 +573,9 @@ loose: a branch need not be up to date to merge, for the reasons in
 `.github/workflows/README.md`. Recreate `protect main` (requires the
 `pre-commit`, `secret-scan`, `molecule-gate`, `terraform-gate`, and `site-gate`
 checks, plus a PR before any merge to `main`; blocks force-push and deletion)
-from the repo root:
+from the repo root. This needs a GitHub credential with **Administration: write**
+on the repo; the restored `gh` token does not have it, so grant it to the PAT
+first or recreate the ruleset in the web UI:
 
 ```bash
 gh api --method POST \
@@ -438,11 +590,15 @@ gh api --method POST \
     { "type": "deletion" },
     { "type": "non_fast_forward" },
     { "type": "pull_request",
-      "parameters": { "required_approving_review_count": 0, "allowed_merge_methods": ["merge"] } },
+      "parameters": { "required_approving_review_count": 0,
+        "dismiss_stale_reviews_on_push": false, "require_code_owner_review": false,
+        "require_last_push_approval": false, "required_review_thread_resolution": false,
+        "allowed_merge_methods": ["merge"] } },
     { "type": "required_status_checks",
       "parameters": { "strict_required_status_checks_policy": false, "required_status_checks": [
         { "context": "pre-commit" }, { "context": "secret-scan" }, { "context": "molecule-gate" },
-        { "context": "terraform-gate" }, { "context": "site-gate" }
+        { "context": "terraform-gate", "integration_id": 15368 },
+        { "context": "site-gate", "integration_id": 15368 }
       ] } }
   ]
 }
