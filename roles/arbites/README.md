@@ -45,7 +45,7 @@ restore the secrets from the password manager on a rebuild, like `.vault_pass`:
 
 ```bash
 ssh-keygen -t ed25519 -N '' -C 'arbites@scholam' -f /etc/arbites/ssh/id_arbites
-install -D -m 0600 -o root -g root ~jonny/lex-imperialis/.vault_pass /etc/arbites/vault_pass
+install -D -m 0600 -o root -g root ~jonny/repos/lex-imperialis/.vault_pass /etc/arbites/vault_pass
 ```
 
 The key is generated here rather than restored: it is the reconciler's own
