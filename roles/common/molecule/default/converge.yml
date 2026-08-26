@@ -10,6 +10,12 @@
     # leaves nothing to unload, so this proves the drop-in alone.
     common_blacklisted_modules:
       - lex_absent_module
+    # A non-default zone, so verify proves common_timezone is what drives the
+    # task rather than the role agreeing with itself. Distinct from the image's
+    # Etc/UTC too, so the converge has real work to do. No timer is installed
+    # here, so the catch-up a zone change can fire on a real host has nothing to
+    # fire.
+    common_timezone: America/New_York
     # Two entries, so the template's loop is exercised rather than assumed. The
     # second never resolves, which costs nothing: chronyd -p expands the config
     # without contacting a source.

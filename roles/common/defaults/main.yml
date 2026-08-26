@@ -57,6 +57,13 @@ common_bash_stow_package: >-
      if ansible_facts['os_family'] == 'Debian'
      else 'bash-suse' }}
 
+# The host clock's zone, one for the whole fleet, declared rather than left to
+# whatever each image was installed with. Every schedule in the repo is an
+# OnCalendar= in that clock, so one frame is what keeps the backup stagger's
+# spacing constant across the seasons — see the README and docs/backups.md. A
+# container's TZ= is its own role's var and is not this.
+common_timezone: Europe/London
+
 # NTP sources added as chrony pool lines alongside whichever the distro
 # installed. See the README for what a second source does and does not buy.
 common_ntp_sources:

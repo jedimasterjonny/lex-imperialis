@@ -25,6 +25,9 @@ manage_etc_hosts: false
 # NetworkManager owns resolv.conf on this fleet.
 manage_resolv_conf: false
 
+# common_timezone from roles/common/defaults/main.yml. The role holds it from the
+# first converge on, so this only covers the boot before one — keep the two in
+# step rather than let this drift, as with the key list below.
 timezone: Europe/London
 keyboard:
   model: pc105
