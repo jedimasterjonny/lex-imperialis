@@ -11,6 +11,10 @@ Secrets section; for recovery see [disaster-recovery.md](disaster-recovery.md).
 verify, and only then revoke the old.** Revoking before a clean apply leaves the
 host authenticating with a value you just killed.
 
+Commands run from the repo root with the venv active
+(`. .venv/bin/activate`) — `ansible-vault` and `ansible-playbook` are not on PATH
+otherwise, though every `make` target sources it for you.
+
 Standard rotation for a host-rendered vault secret:
 
 1. Mint the replacement at the issuer; leave the old value active.
