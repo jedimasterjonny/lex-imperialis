@@ -137,25 +137,49 @@ basis — topology, not credentials — and rotate only if the thing they name m
 
 ## Tooling tokens (vault vars, not rendered to a host)
 
-Sourced into OpenTofu (and molecule) by `bin/vault-var.sh` at run time. Rotate
-with the mint → `ansible-vault edit` → verify → revoke order, verifying with
-`make tofu-plan` (or a test run). CI cannot read the vault, so each of these has
-a mirrored CI copy that must be set in the same pass or the next run authenticates
-with the revoked token.
+Resolved from the vault at run time by `bin/vault-var.sh`, so one
+`ansible-vault edit` covers every consumer at once — no host holds a copy. Rotate
+with the mint → `ansible-vault edit` → verify → revoke order.
+
+`make tofu-plan` proves only that the new value authenticates and can **read**. It
+will not catch a Hetzner token minted read-only or a Cloudflare token short a
+ruleset permission, and it never touches the CI copies — so land a real terraform
+change and watch that apply go green before revoking. Run
+`tofu -chdir=terraform init` first: a merged provider bump leaves `.terraform/`
+stale, and a `Required plugins`/`invalid_grant` failure there is that or expired
+gcloud ADC, not the new token.
+
+CI cannot read the vault, so each of these has a mirrored CI copy that must be set
+in the same pass or the next run authenticates with the revoked token.
 
 | Vault variable | Mint a new… | CI copy | Verify |
 | --- | --- | --- | --- |
-| `terraform_cloudflare_api_token` | Cloudflare token, DNS + zone edit over the managed zones | `gh secret set CLOUDFLARE_APPLY_API_TOKEN --env fleet-apply` | `make tofu-plan` |
+| `terraform_cloudflare_api_token` | Cloudflare token over jonnyoc.uk, jonnyoc.co.uk and emmasedit.com — Zone: DNS Edit, Zone Settings Edit, Single Redirect Edit, Zone WAF Edit, Cache Rules Edit, SSL and Certificates Edit | `gh secret set CLOUDFLARE_APPLY_API_TOKEN --env fleet-apply` | `make tofu-plan`, then a real apply |
 | `hcloud_token_emmas_edit` | Hetzner Read&Write token, **emmas-edit** project | `gh secret set HCLOUD_APPLY_TOKEN --env fleet-apply` | `make tofu-plan` |
 | `hcloud_token` | Hetzner Read&Write token, **molecule test** project | `gh secret set MOLECULE_HCLOUD_TOKEN` | `make test-hetzner ROLE=motd` |
 
-The read-only `CLOUDFLARE_PLAN_API_TOKEN` and `HCLOUD_PLAN_TOKEN` repo secrets,
-which a PR plan uses, have no vault copy — mint and `gh secret set` them alone.
+The read-only `CLOUDFLARE_PLAN_API_TOKEN` and `HCLOUD_PLAN_TOKEN` repo secrets
+have no vault copy — mint and `gh secret set` them alone. They serve every
+non-push event, not just PR plans: `workflow_dispatch` and the weekly drift check
+too. They must mirror the write tokens' scope in *read* form, because a plan
+refreshes rulesets, zone settings, DNSSEC and the Hetzner firewall — DNS read
+alone is not enough. Verify with `gh workflow run terraform.yml`, not by re-running
+an open PR: `discover` skips the plan job for any PR whose non-`.md` diff misses
+`terraform/`, and the gate still reports green.
 
-`hcloud_token_emmas_edit` has the widest reach — Terraform, `bootstrap/rogue-trader.yml`,
-and the emmasedit apex data source all read it — but it is still one vault var.
-Do not confuse it with `hcloud_token`: two distinct Hetzner tokens for two
-different projects, rotated independently.
+The two `--env fleet-apply` rows need Environments: write on the workstation PAT —
+without it `gh secret set --env` 403s on the public-key fetch it must make first.
+Grant it, or set those two in Settings → Environments → fleet-apply.
+
+`hcloud_token_emmas_edit` has the widest reach — every OpenTofu run (including the
+`hcloud_server` data source behind the emmasedit apex, and rogue-trader's
+firewall), `bootstrap/rogue-trader.yml`, `bin/packer.sh`'s MicroOS build and any
+ad-hoc `hcloud` CLI read it — but every one resolves the vault at run time, so the
+single `ansible-vault edit` covers them all and only the CI copy needs setting
+separately. Do not confuse it with `hcloud_token`: two distinct Hetzner tokens for
+two different projects, rotated independently. `make test-hetzner` honours an
+already-exported `HCLOUD_TOKEN` over the vault, so unset it first or the run proves
+nothing about the token you just rotated.
 
 ## The vault password (`.vault_pass`)
 
@@ -177,13 +201,19 @@ is updated, in one pass:
    unchanged HEAD short-circuits to success without ever reading the vault, so
    "the reconcile went green" is not by itself proof it can decrypt.
 
-## Keyless CI — no rotation
+## Keyless GCP auth — no rotation
 
 GCP auth (the Firebase deploy and the `tofu` plan/apply jobs) is Workload
 Identity Federation: GitHub's OIDC token is exchanged for short-lived
-credentials each run. There is **no stored key to rotate**. To revoke access,
-remove the service account's `workloadIdentityUser` binding (or disable the SA)
-in `terraform/infra-shared.tf` and apply.
+credentials each run. There is **no stored key to rotate** — this covers GCP only;
+the stored provider tokens above and the repo secrets below are separate.
+
+To revoke access, set `disabled = true` on the service account: an in-place update,
+so it lands through the normal PR → merge apply. Removing its `workloadIdentityUser`
+binding in `terraform/infra-shared.tf` instead is a *delete*, which CI's
+destructive-plan gate refuses and branch protection then blocks — that one needs a
+local `make tofu-apply`. Note `tofu_apply_wif` is self-revoking: it strips the
+binding CI's own apply identity depends on.
 
 ## Out-of-band secrets
 
