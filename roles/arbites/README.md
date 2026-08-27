@@ -75,7 +75,10 @@ re-applied every 15 minutes with `ArbitesFailed` standing throughout. Re-seed be
 the change merges, not after. The SSH key is the reconciler's own, not the
 operator's: `common` authorises it on each host's connection user (`ansible`)
 from the declared list, so the fleet change is that list rather than anything
-placed by hand. Keeping the two identities apart is what lets either be rotated
+placed by hand — and the list is exclusive, so dropping the entry is itself the
+revocation. Three bootstrap seeds carry the key as well
+(`bootstrap/host.sh`, `bootstrap/rogue-trader.bu`, `bootstrap/auspex-user-data.yaml`),
+and a rotation has to commit to each. Keeping the two identities apart is what lets either be rotated
 without the other, and means a compromise of the operator's interactive key is
 not also fleet-wide unattended root. Then wire the role into `playbooks/scholam.yml` and run
 `make apply PLAY=scholam` once: it installs the clone, venv, scripts, and units
@@ -91,9 +94,9 @@ never drops its own in-flight run).
 
 Scholam already holds `.vault_pass` and fleet-wide NOPASSWD root (control host and
 molecule runner). The new exposure is *temporal*: fleet-apply is now always-armed
-via a root timer rather than operator-gated, and a second at-rest copy of the SSH
-key and vault password lives under `/etc/arbites/` (0600 root). A scholam
-compromise was already game-over for the fleet. `arbites_host_key_checking`
+via a root timer rather than operator-gated, and the reconciler's own SSH key and
+a second at-rest copy of the vault password live under `/etc/arbites/` (0600 root).
+A scholam compromise was already game-over for the fleet. `arbites_host_key_checking`
 is on by default: the reconcile pins each host against the seeded `known_hosts`, so
 a machine-in-the-middle on the LAN/WireGuard path impersonating a fleet host aborts
 the connect rather than receiving that host's rendered secrets. Set it false to run
