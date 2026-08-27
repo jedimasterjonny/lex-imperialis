@@ -11,6 +11,12 @@
 # expression fires on the fault it names is a property of the file, and promtool
 # evaluates for: windows, labels and annotations in milliseconds without a
 # container tier.
+#
+# Not the only case file: promtool fixes evaluation_interval per file, so the
+# multi-day-window cases that pin no for: finer than an hour sit in
+# alerts_long_window_test.yml on an hourly grid, which is 16s of hook runtime.
+# Anything needing the 5m grid below belongs here. Coverage spans both —
+# bin/check-alert-test-coverage.py globs them.
 rule_files:
   - ../files/rules/alerts.yml
 
@@ -476,24 +482,6 @@ tests:
                 fortnight — two update cycles have changed nothing, so it is unpatched and not
                 updating itself. A failed boot most likely rolled it back to the previous
                 snapshot: check `journalctl -u health-checker` and `snapper list`.
-
-  # The offset conjunct, which the rule's comment explains: without it a series younger
-  # than the window has a minimum that is trivially its own current value, and fires.
-  #
-  # Just under the offset's own length, not a token day or two, so the case pins how far
-  # back the guard reaches and not merely that it is there: any shortening leaves a rule
-  # as noisy as having no guard at all, and a series that stops short of the real offset
-  # would pass every one of them. Evaluated three hours past where a shortened guard
-  # would go active, since one that is merely pending still asserts nothing.
-  - interval: 5m
-    name: a host with less history than the window does not alert
-    input_series:
-      - series: 'node_os_version{job="node",instance="rogue-trader:9100",id="opensuse-microos",name="openSUSE MicroOS"}'
-        values: "20260724x3790"
-    alert_rule_test:
-      - eval_time: 315h
-        alertname: MicroOSBuildStale
-        exp_alerts: []
 
   # The drift rules' for: windows are sized to the inquisition's hourly cadence:
   # one bad run poisons a whole hour of scrapes, so every window spans at least
@@ -2502,38 +2490,6 @@ tests:
       # took a firmware update and then lost power once.
       - eval_time: 160m
         alertname: UnifiDeviceRebootLoop
-        exp_alerts: []
-
-  # The window is read out of the TSDB rather than waited out by a for:, so the
-  # case has to run the full 8 days for the rule to mean anything. The second
-  # series is absent until 50h in and pending every sample after: its min over the
-  # window is 1, so only the offset term keeps it quiet — which is exactly the
-  # newly-published update that must not alert before it has had a window.
-  - interval: 5m
-    name: a firmware update that sits through an auto-update window alerts
-    input_series:
-      - series: 'unpoller_device_upgradable{type="uap",site_name="Default",name="Upstairs AP",source="unifi"}'
-        values: "1x2600"
-      - series: 'unpoller_device_upgradable{type="usw",site_name="Default",name="Core",source="unifi"}'
-        values: "_x600 1x2000"
-    alert_rule_test:
-      - eval_time: 216h
-        alertname: UnifiFirmwareUpdatePending
-        exp_alerts:
-          - exp_labels:
-              severity: warning
-              type: uap
-              site_name: Default
-              name: Upstairs AP
-              source: unifi
-            exp_annotations:
-              summary: "UniFi firmware update pending on Upstairs AP for over 8 days"
-              description: "Upstairs AP (uap) has had a firmware update available across a full auto-update window without it landing."
-      # Before the window has passed there is nothing at offset 8d to compare
-      # against, so neither device alerts — the property that keeps a fresh deploy
-      # from raising one of these for every pending update it inherits.
-      - eval_time: 100h
-        alertname: UnifiFirmwareUpdatePending
         exp_alerts: []
 
   # The operator's two calibration points, encoded so neither can drift: a radio

@@ -18,7 +18,7 @@ asserted correctly somewhere and misspelt in one further assertion still appears
 both sides and goes unreported. Renames are the case it does catch, and it names
 both sides of one.
 
-Both files are parsed as YAML rather than grepped. `alerts.yml` carries long prose
+Every file is parsed as YAML rather than grepped. `alerts.yml` carries long prose
 comments that already contain the string `alert:`, and the tests carry `alertname`
 in theirs, so a line-oriented match reads commentary as declarations.
 
@@ -40,11 +40,15 @@ from pathlib import Path
 import yaml
 
 REPO = Path(__file__).resolve().parent.parent
-# Named outright, as the promtool-test hook names the same test file. prometheus is
-# the only role that ships rules, and the fleet runs one of it, so there is no pair
-# to discover.
+# The rule file is named outright: prometheus is the only role that ships rules, and
+# the fleet runs one of it, so there is no pair to discover.
 RULES = REPO / "roles/prometheus/files/rules/alerts.yml"
-TESTS = REPO / "roles/prometheus/tests/alerts_test.yml"
+# The tests are a set rather than one file. promtool fixes evaluation_interval per
+# file, so the cases whose grid has to differ live in their own — and coverage is a
+# property of the rules against ALL of them, so a glob is what keeps a case from
+# going missing by being moved. Sorted for stable messages.
+TESTS = sorted((REPO / "roles/prometheus/tests").glob("*_test.yml"))
+TESTS_LABEL = ", ".join(str(path.relative_to(REPO)) for path in TESTS)
 
 
 def declared(rules):
@@ -115,21 +119,37 @@ def catch_all_series(tests):
 
 
 def main():
+    if not TESTS:
+        print(
+            "ERROR: no *_test.yml under roles/prometheus/tests — every check below "
+            "would pass by having nothing to compare the rules against.",
+            file=sys.stderr,
+        )
+        return 1
+
     rules = declared(yaml.safe_load(RULES.read_text()))
-    tests = yaml.safe_load(TESTS.read_text())
+    # Merged, not compared file by file: which file a case sits in is a matter of the
+    # grid it needs, and says nothing about what it covers.
+    tests = {
+        "tests": [
+            group
+            for path in TESTS
+            for group in (yaml.safe_load(path.read_text()) or {}).get("tests", [])
+        ]
+    }
     cases = asserted(tests)
 
     status = 0
     for name in sorted(rules.keys() - cases):
         print(
-            f"ERROR: alert '{name}' has no case in {TESTS.relative_to(REPO)}; "
+            f"ERROR: alert '{name}' has no case in {TESTS_LABEL}; "
             "add one asserting it fires on the fault it names.",
             file=sys.stderr,
         )
         status = 1
     for name in sorted(cases - rules.keys()):
         print(
-            f"ERROR: {TESTS.relative_to(REPO)} asserts alert '{name}', which "
+            f"ERROR: a case in {TESTS_LABEL} asserts alert '{name}', which "
             f"{RULES.relative_to(REPO)} does not define — a renamed or misspelt rule.",
             file=sys.stderr,
         )
@@ -167,7 +187,7 @@ def main():
     undriven = sorted(set(excluded) - catch_all_series(tests))
     if undriven:
         print(
-            f"ERROR: the SystemdUnitFailed case in {TESTS.relative_to(REPO)} drives no "
+            f"ERROR: the SystemdUnitFailed case in {TESTS_LABEL} drives no "
             f"series for {undriven}, so it cannot notice them being dropped from the "
             "exclusion roster; add one input_series per unit.",
             file=sys.stderr,

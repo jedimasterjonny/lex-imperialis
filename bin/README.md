@@ -34,10 +34,11 @@ case naming a dead rule whenever it expects no alerts), and `SystemdUnitFailed`'
 exclusion roster, `ScheduledJobMetricMissing`'s clauses and the case driving them
 name the same units — a unit excluded from the catch-all but absent from
 `ScheduledJobMetricMissing` is monitored by neither rule. Both rosters are read out
-of the rules' own expressions, so neither can drift from what ships. Parses both
-files as YAML: a rule comment already contains the string `alert:`. Backs the
-`alert-test-coverage` hook, on a change to the rules or the tests. Needs the venv
-(PyYAML).
+of the rules' own expressions, so neither can drift from what ships. Parses every
+file as YAML: a rule comment already contains the string `alert:`. Globs
+`tests/*_test.yml` rather than naming one, so a case moved between them for its
+evaluation grid stays counted. Backs the `alert-test-coverage` hook, on a change to
+the rules or the tests. Needs the venv (PyYAML).
 
 ## check-jinja-syntax.py
 
