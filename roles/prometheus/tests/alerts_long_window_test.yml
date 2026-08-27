@@ -1,0 +1,77 @@
+---
+# The long-window half of the alert unit tests, split out for its evaluation grid.
+#
+# promtool sets evaluation_interval per file, not per test group, and these two
+# cases cost what they do because of it: each evaluation recomputes an aggregate
+# over a multi-day window, and the case has to run the full window out before the
+# rule means anything. At the 5m grid alerts_test.yml needs, the pair spent 18 of
+# the hook's 40 seconds. An hourly grid runs them in 2.
+#
+# What stays in alerts_test.yml is the MicroOSBuildStale case that pins for: 3h to
+# within five minutes either side. That precision is the grid, so it cannot come
+# here: at an hourly grid a for: silently shortened to 2h30m still passes it.
+# Checked by mutation rather than argued — the same mutation is caught at 5m.
+#
+# Neither case below pins anything the coarser grid can lose. UnifiFirmwareUpdatePending
+# carries no for: at all, and the MicroOSBuildStale case here asserts a shortened
+# offset guard would have gone active AND run its for: out hours before the single
+# evaluation it makes.
+#
+# The 5m series interval is not the same knob and does not move: a series sampled
+# sparser than the lookback reads as stale between evaluations, so no rule could
+# fire at all. Only the grid the rules are evaluated on is coarser here.
+rule_files:
+  - ../files/rules/alerts.yml
+
+evaluation_interval: 1h
+
+tests:
+  # The offset conjunct, which the rule's comment explains: without it a series younger
+  # than the window has a minimum that is trivially its own current value, and fires.
+  #
+  # Just under the offset's own length, not a token day or two, so the case pins how far
+  # back the guard reaches and not merely that it is there: any shortening leaves a rule
+  # as noisy as having no guard at all, and a series that stops short of the real offset
+  # would pass every one of them. Evaluated three hours past where a shortened guard
+  # would go active, since one that is merely pending still asserts nothing.
+  - interval: 5m
+    name: a host with less history than the window does not alert
+    input_series:
+      - series: 'node_os_version{job="node",instance="rogue-trader:9100",id="opensuse-microos",name="openSUSE MicroOS"}'
+        values: "20260724x3790"
+    alert_rule_test:
+      - eval_time: 315h
+        alertname: MicroOSBuildStale
+        exp_alerts: []
+
+  # The window is read out of the TSDB rather than waited out by a for:, so the
+  # case has to run the full 8 days for the rule to mean anything. The second
+  # series is absent until 50h in and pending every sample after: its min over the
+  # window is 1, so only the offset term keeps it quiet — which is exactly the
+  # newly-published update that must not alert before it has had a window.
+  - interval: 5m
+    name: a firmware update that sits through an auto-update window alerts
+    input_series:
+      - series: 'unpoller_device_upgradable{type="uap",site_name="Default",name="Upstairs AP",source="unifi"}'
+        values: "1x2600"
+      - series: 'unpoller_device_upgradable{type="usw",site_name="Default",name="Core",source="unifi"}'
+        values: "_x600 1x2000"
+    alert_rule_test:
+      - eval_time: 216h
+        alertname: UnifiFirmwareUpdatePending
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              type: uap
+              site_name: Default
+              name: Upstairs AP
+              source: unifi
+            exp_annotations:
+              summary: "UniFi firmware update pending on Upstairs AP for over 8 days"
+              description: "Upstairs AP (uap) has had a firmware update available across a full auto-update window without it landing."
+      # Before the window has passed there is nothing at offset 8d to compare
+      # against, so neither device alerts — the property that keeps a fresh deploy
+      # from raising one of these for every pending update it inherits.
+      - eval_time: 100h
+        alertname: UnifiFirmwareUpdatePending
+        exp_alerts: []

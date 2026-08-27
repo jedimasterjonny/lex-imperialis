@@ -3,6 +3,22 @@
 Scripts backing the pre-commit hooks (`.pre-commit-config.yaml`, run by `make
 pre-commit` in the lint CI gate) and the Makefile.
 
+## ansible-lint-scoped.sh
+
+Runs `ansible-lint --strict` over the lint targets the changed paths map to — a
+role directory, a playbook, a molecule tier — rather than the whole repo. The gate
+costs one `ansible-playbook --syntax-check` subprocess per role, playbook and
+scenario file, ~107s of them, and the hook paid all of it on every commit whatever
+the diff held; a one-role commit is now ~6s. With no arguments it lints everything,
+which is what `make ansible-lint` and pre-commit's `--all-files` (so CI) do. Paths
+under `inventory/` and `bootstrap/` map to the directory, since `.ansible-lint`'s
+`exclude_paths` apply while walking one but not to a file named outright, and a
+change to `.ansible-lint`, `ansible.cfg` or the requirements files widens to the
+whole repo. Also drops the duplicate-collection warnings a venv's `lib64 -> lib`
+symlink provokes — 92 lines per run, every other warning kept. What scoping gives
+up is a cross-file break the diff does not name: a role deleted without the play
+that runs it being edited in the same commit. `make lint` and CI still lint whole.
+
 ## check-role-test-coverage.sh
 
 Enforces the test-coverage contract over `roles/`: every role ships a
@@ -18,10 +34,11 @@ case naming a dead rule whenever it expects no alerts), and `SystemdUnitFailed`'
 exclusion roster, `ScheduledJobMetricMissing`'s clauses and the case driving them
 name the same units — a unit excluded from the catch-all but absent from
 `ScheduledJobMetricMissing` is monitored by neither rule. Both rosters are read out
-of the rules' own expressions, so neither can drift from what ships. Parses both
-files as YAML: a rule comment already contains the string `alert:`. Backs the
-`alert-test-coverage` hook, on a change to the rules or the tests. Needs the venv
-(PyYAML).
+of the rules' own expressions, so neither can drift from what ships. Parses every
+file as YAML: a rule comment already contains the string `alert:`. Globs
+`tests/*_test.yml` rather than naming one, so a case moved between them for its
+evaluation grid stays counted. Backs the `alert-test-coverage` hook, on a change to
+the rules or the tests. Needs the venv (PyYAML).
 
 ## check-jinja-syntax.py
 

@@ -82,11 +82,23 @@ repos:
         types: [yaml]
       - id: ansible-lint
         name: ansible-lint
-        # --strict: promote warnings to failures on top of the production profile.
-        entry: ansible-lint --strict
-        language: system
-        pass_filenames: false
-        always_run: true
+        # Scoped to the paths the commit touches, and de-noised — see
+        # bin/ansible-lint-scoped.sh, which also carries --strict (promote
+        # warnings to failures on top of the production profile). It used to run
+        # the whole repo on every commit, ~107s regardless of the diff. Under
+        # --all-files pre-commit hands it every tracked YAML, so `make pre-commit`
+        # and CI still lint the repo whole.
+        entry: bin/ansible-lint-scoped.sh
+        language: script
+        # The config files are here because they decide how every other file
+        # lints; the script widens to the whole repo when it sees one.
+        files: '\.ya?ml$|^(\.ansible-lint|ansible\.cfg|requirements(-dev)?\.txt)$'
+        # ansible-lint takes a global lock, so pre-commit's default fan-out across
+        # jobs has every chunk but the first die on "Timeout waiting for another
+        # instance to release the lock" (exit 4). Serial also keeps --all-files to
+        # one invocation: each chunk maps to most of the tree anyway, so a split
+        # run costs the full sweep twice over.
+        require_serial: true
       - id: codespell
         name: codespell
         # Spell-checks prose and comments. Dictionaries, skips, and the
@@ -195,7 +207,12 @@ repos:
       # so editing an expression re-runs them rather than only editing a test.
       - id: promtool-test
         name: promtool test
-        entry: promtool test rules roles/prometheus/tests/alerts_test.yml
+        # Globbed through sh rather than naming the files: promtool fixes
+        # evaluation_interval per file, so the cases needing a coarser grid sit in
+        # alerts_long_window_test.yml, and a named list is how the next such split
+        # would go unrun while check-alert-test-coverage.py — which globs — still
+        # counted its cases as coverage. An unexpanded glob fails loudly.
+        entry: sh -c 'promtool test rules roles/prometheus/tests/*_test.yml'
         language: system
         pass_filenames: false
         files: '^roles/prometheus/(files/rules|tests)/.*\.ya?ml$'

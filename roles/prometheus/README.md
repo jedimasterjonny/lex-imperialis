@@ -106,7 +106,7 @@ rest on, and `ScheduledJobMetricMissing` is what notices a family that stops bei
 written — which would otherwise disable its own `*Failed` and `*Overdue` rules
 silently.
 
-`tests/alerts_test.yml` holds `promtool test rules` cases, run by the `promtool-test`
+`tests/*_test.yml` hold `promtool test rules` cases, run by the `promtool-test`
 pre-commit hook on a change to either the rules or the tests. They point at the
 shipped `files/rules/alerts.yml`, so an expression is driven through both polarities
 of the fault it names, with `for:`, labels and annotations evaluated. The division is
@@ -115,6 +115,14 @@ never fire parses perfectly, while the molecule scenario proves the rules load i
 real Prometheus — the deployment half rather than the semantic one. The tests live
 outside `files/` so neither the `promtool` hook's glob nor the rules directory mount
 picks them up.
+
+Two files, because promtool fixes `evaluation_interval` per file and the cost of a
+case is its horizon divided by that grid. `alerts_long_window_test.yml` carries the
+multi-day-window cases that pin no `for:` finer than an hour, on an hourly grid;
+`alerts_test.yml` keeps everything needing the 5m one, including the
+`MicroOSBuildStale` case that pins `for: 3h` to within five minutes. Splitting them
+took the hook from 40s to 24s. Which file a case sits in is a matter of the grid it
+needs and nothing else — coverage is checked across both.
 
 Every rule in `alerts.yml` has cases, and the `alert-test-coverage` hook
 (`bin/check-alert-test-coverage.py`) fails the commit if a new one arrives without
