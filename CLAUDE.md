@@ -50,7 +50,7 @@ Three standing authorisations, none of them inheritable: the **operator** invoki
 
 Run the gates yourself before presenting or committing — never hand back unverified work.
 
-- `make lint` for lint, `make pre-commit` for the full hook set.
+- `make lint` for lint, `make pre-commit` for the full hook set. The commit-time `ansible-lint` hook is scoped to the paths in the diff (`bin/ansible-lint-scoped.sh`), so a bare `git commit` does not prove the repo lints whole — `make lint` and CI do.
 - `make test ROLE=<role>` drives a role's incus scenario (local containers, on a host bootstrapped once via `bootstrap/incus.yml`); `make test-vm ROLE=<role>` the libvirt VM; `make test-hetzner ROLE=<role>` the real Hetzner VM (needs `.vault_pass` to decrypt the API token) — bills real money, so reserve it for pre-merge confidence. `ROLE` defaults to `motd`.
 - Every task must be idempotent — molecule's idempotence check (a second converge reporting zero changed) enforces it.
 - Fix failures at the root, don't suppress them. Show the command output as evidence.

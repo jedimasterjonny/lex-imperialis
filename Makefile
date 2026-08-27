@@ -46,8 +46,10 @@ lint: yamllint ansible-lint codespell
 yamllint:
 	. .venv/bin/activate && yamllint --strict .
 
+# Through the wrapper for its collection-noise filter; with no arguments it
+# lints the whole repo, as this target always should. --strict lives inside it.
 ansible-lint:
-	. .venv/bin/activate && ansible-lint --strict
+	. .venv/bin/activate && bin/ansible-lint-scoped.sh
 
 codespell:
 	. .venv/bin/activate && git ls-files -z | xargs -0 codespell

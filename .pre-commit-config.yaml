@@ -82,11 +82,23 @@ repos:
         types: [yaml]
       - id: ansible-lint
         name: ansible-lint
-        # --strict: promote warnings to failures on top of the production profile.
-        entry: ansible-lint --strict
-        language: system
-        pass_filenames: false
-        always_run: true
+        # Scoped to the paths the commit touches, and de-noised — see
+        # bin/ansible-lint-scoped.sh, which also carries --strict (promote
+        # warnings to failures on top of the production profile). It used to run
+        # the whole repo on every commit, ~107s regardless of the diff. Under
+        # --all-files pre-commit hands it every tracked YAML, so `make pre-commit`
+        # and CI still lint the repo whole.
+        entry: bin/ansible-lint-scoped.sh
+        language: script
+        # The config files are here because they decide how every other file
+        # lints; the script widens to the whole repo when it sees one.
+        files: '\.ya?ml$|^(\.ansible-lint|ansible\.cfg|requirements(-dev)?\.txt)$'
+        # ansible-lint takes a global lock, so pre-commit's default fan-out across
+        # jobs has every chunk but the first die on "Timeout waiting for another
+        # instance to release the lock" (exit 4). Serial also keeps --all-files to
+        # one invocation: each chunk maps to most of the tree anyway, so a split
+        # run costs the full sweep twice over.
+        require_serial: true
       - id: codespell
         name: codespell
         # Spell-checks prose and comments. Dictionaries, skips, and the
