@@ -41,7 +41,10 @@ PLAY ?= scholam
 
 .PHONY: lint ansible-lint yamllint codespell hooks pre-commit converge verify destroy test test-vm test-hetzner destroy-hetzner check apply tofu-fmt tofu-validate tofu-lint tofu-plan tofu-apply packer-fmt packer-validate image hugo-serve hugo-build
 
-lint: yamllint ansible-lint codespell
+# ansible-lint last: it is ~107s against yamllint's 3.5s and codespell's 0.4s,
+# so running the cheap gates first surfaces their failures in seconds rather
+# than behind it.
+lint: yamllint codespell ansible-lint
 
 yamllint:
 	. .venv/bin/activate && yamllint --strict .
