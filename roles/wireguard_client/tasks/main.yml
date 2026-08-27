@@ -4,6 +4,9 @@
     name: "{{ wireguard_client_packages }}"
     state: present
   become: true
+  # The check is what costs: on a transactional host the package module answers
+  # it inside a root snapshot (roles/CLAUDE.md). Absent the fact, this just runs.
+  when: wireguard_client_packages | difference(ansible_facts['packages'] | default({}) | list) | length > 0
 
 # NetworkManager owns the tunnel, so every task that talks to it is gated on it
 # actually running -- the molecule containers have no NetworkManager, and there

@@ -156,6 +156,17 @@
   when: ansible_facts['os_family'] == 'Debian'
   become: true
 
+# Read the installed set once, so every package task in this play can skip itself
+# when there is nothing to install. The check is the expensive half: on a
+# transactional host the zypper module wraps each invocation in
+# `transactional-update run`, which snapshots the root and drops it again — 5.3s
+# to confirm a package that is already there, against ~1s to read the whole rpm
+# database here, once. Ahead of the install below and so ahead of every later
+# role's in the play, exactly as the apt refresh above is.
+- name: Read the installed package set
+  ansible.builtin.package_facts:
+  become: true
+
 # package, not zypper: it dispatches to the zypper module on openSUSE, whose
 # disable_recommends already defaults true, so this is behaviour-preserving there
 # and works on Debian besides. Every name in common_packages exists under both.
