@@ -14,8 +14,8 @@ host authenticating with a value you just killed.
 Standard rotation for a host-rendered vault secret:
 
 1. Mint the replacement at the issuer; leave the old value active.
-2. `ansible-vault edit inventory/group_vars/all/vault.yml --vault-password-file .vault_pass` — replace the variable; commit the re-encrypted vault.
-3. `make apply PLAY=<host>` — re-renders the 0600 `EnvironmentFile`/config and restarts the workload.
+2. `ansible-vault edit inventory/group_vars/all/vault.yml --vault-password-file .vault_pass` — replace the variable, then **merge the re-encrypted vault to `main` before applying**. `arbites` hard-resets its clone to `origin/main` every 15 minutes, so a commit sitting on a branch is invisible to it and the next reconcile re-renders the old value fleet-wide. If a rotation must be applied from a branch, hold the reconciler with `sudo touch /var/lib/arbites/pause` and remove it after step 5 — not `systemctl disable --now`, which freezes the timestamp metric and trips `ArbitesStale`.
+3. `make apply PLAY=<host>` — re-renders the 0600 `EnvironmentFile`/config and restarts the workload where there is one. The restic rows have no service to restart; their check is in the row.
 4. Verify the service is healthy on the new value.
 5. Revoke the old value at the provider.
 
@@ -47,12 +47,40 @@ apply target, and any wrinkle.
 | `arr_wireguard_conf` | commercial VPN provider portal (new WG key/peer) | `PLAY=solar` | Confirm the tunnel handshakes and egress is the VPN IP; the kill-switch holds if it fails |
 | `rogue_trader_wordpress_db_password` | self-chosen MariaDB app password | `PLAY=rogue-trader` | **First-init only** — also `ALTER USER` in the `wordpress-db` container to match |
 | `rogue_trader_wordpress_db_root_password` | self-chosen MariaDB root password | `PLAY=rogue-trader` | Same first-init `ALTER USER` caveat |
-| `solar_restic_password` / `scholam_restic_password` / `rogue_trader_restic_password` | self-chosen, one per host | `PLAY=<host>` | **Repo-side too** — `restic key add` the new one and `restic key remove` the old on that host's repos, or the backup locks itself out. One key per host by design: a host must not be able to open another's repos |
+| `solar_restic_password` / `scholam_restic_password` / `rogue_trader_restic_password` | self-chosen, one per host | `PLAY=<host>` | **Repo-side, and the order is inverted — see below.** One key per host by design: a host must not be able to open another's repos |
 
 **First-init caveat.** MariaDB and Grafana bake the password in on first
 container init, so a vault edit + apply alone will not change an already-running
 store — pair it with the in-service change (`ALTER USER` / `grafana-cli reset`),
 or reset the volume (destroys data).
+
+**The restic rows invert the standard order.** `restic key add` authenticates
+with the repository's *current* key, and step 3 overwrites `/etc/restic/password`
+with the new one — so an add attempted afterwards cannot open the repo, and
+`restic key remove` is then unreachable too, because restic refuses to remove the
+key it is currently using. On an exposure rotation the compromised key stays valid
+permanently. Note also that step 2 is enough on its own to trigger this: arbites
+applies `main` within ~15 minutes, so the merge *is* the apply.
+
+Add first, and split the add from the remove across a mirror run:
+
+1. While the old key is still the rendered one, add the new one to every repo that
+   host owns — two on solar and rogue-trader (podman and home, one host key opens
+   both), one on scholam; paths in [backups.md](backups.md), and `/etc/restic` is
+   `0700 root` so these need sudo:
+   `sudo restic -r <repo> --password-file /etc/restic/password key add --new-password-file <file>`.
+2. Edit the vault and merge it; the reconcile applies it.
+3. Wait for `offsite_mirror_task_last_success_timestamp_seconds` to advance. The
+   Hyper Backup tasks are plain mirrors of the repo root, `keys/` included, and run
+   weekly — until one runs, the off-site copy holds only the old key while the vault
+   holds only the new passphrase, so the one protection against losing the NAS opens
+   to neither.
+4. `restic key list`, then `restic key remove <old ID>`. That it succeeds is the
+   check — there is no service to restart, so step 4's health check does not apply.
+   Revocation reaches the off-site copy on the mirror run after that.
+
+If the new password is ever lost mid-rotation, the old one is still in git:
+`git show <prev>:inventory/group_vars/all/vault.yml | ansible-vault view -`.
 
 `rogue_trader_wireguard_conf` is rendered by `roles/wireguard_client` on every
 converge, so it does have an apply path — but it is the one rotation that can
@@ -60,22 +88,39 @@ lock the operator out of a public box, because SSH to it rides the tunnel being
 re-keyed and applying the new key flaps that tunnel. So it is driven at the
 public address, never over the tunnel:
 
-1. Open a path that does not depend on the tunnel: a rich rule for the
-   workstation's public egress address on the host (`firewall-cmd --permanent
-   --add-rich-rule=… && firewall-cmd --reload`, over the tunnel while it still
-   works), and a temporary inbound-22 rule merged into
-   `terraform/firewall-rogue-trader.tf`.
+0. Pause the reconciler on scholam for the whole procedure:
+   `sudo touch /var/lib/arbites/pause`. It applies `site.yml`, and so this play,
+   whenever `main` advances — which Renovate does unattended at any hour. Off a
+   stale `main` it re-renders the *old* conf and the tunnel comes back on the old
+   peer, so step 4 confirms a handshake that is about to die with the peer
+   removal. A paused run still exits a clean success, so nothing alerts.
+1. Open a path that does not depend on the tunnel. On the host, over the tunnel
+   while it still works (`firewall-cmd` needs root as `ansible`):
+   `sudo firewall-cmd --permanent --add-rich-rule='rule family=ipv4 source
+   address=<workstation public egress>/32 service name=ssh accept' && sudo
+   firewall-cmd --reload`. That address is the home WAN address, which is
+   dynamic. Then a temporary inbound-22 rule in
+   `terraform/firewall-rogue-trader.tf` — that half is a PR and a merge, since the
+   apply is CI's.
 2. Mint the peer on the home router, which generates the keypair itself rather
    than taking one — so the private key comes from its exported config, not from
-   `wg genkey`. Keep the same tunnel address, or the exporter binds, the NFS
-   export allowlist and the scrape targets all move with it.
+   `wg genkey`. Keep the same tunnel address, or the exporter binds, the
+   storage-box forward, the NFS export allowlist and the scrape targets all move
+   with it.
 3. `ansible-vault edit`, then converge at the public address:
    `ansible-playbook playbooks/rogue-trader.yml --vault-password-file .vault_pass
    -e ansible_host=<public IPv4>`.
-4. Confirm the handshake (`sudo wg show`) and that the NFS mount and both
-   exporter binds recover, then remove the old peer on the router.
+4. On rogue-trader, confirm the handshake (`sudo wg show`) and that the NFS mount,
+   the storage-box forward and both exporter binds recover, then remove the old
+   peer on the router. The forward fails silently — its socket sets `FreeBind` —
+   so check it rather than waiting to be told.
 5. Revoke both openings from step 1 explicitly — `roles/firewalld` only ever
-   adds, so re-converging without the rich rule leaves it in place.
+   adds, so re-converging without the rich rule leaves it in place. Read the rule
+   back from `--list-rich-rules` rather than retyping it: if the WAN address moved
+   mid-procedure, retyping revokes nothing and leaves a stranger's address
+   admitted. The terraform half is another PR and merge.
+6. Merge the re-encrypted vault, confirm `main` carries it, then
+   `sudo rm /var/lib/arbites/pause`.
 
 `rogue_trader_storagebox_endpoint` is vaulted for topology, not secrecy: it names
 the storage box account, which is what an attacker would need to aim at the box.
@@ -115,11 +160,18 @@ stay in lockstep. CI is deliberately not among them: no workflow holds a vault
 password, so the vault is operator-only. Keep the old passphrase until every copy
 is updated, in one pass:
 
-1. `ansible-vault rekey inventory/group_vars/all/vault.yml` (old → new); commit the re-encrypted vault.
-2. Overwrite the local `.vault_pass`.
-3. Re-seed scholam's `/etc/arbites/vault_pass` (0600 root), or the next reconcile cannot decrypt.
-4. Update the password manager.
-5. Confirm a `make check` and an arbites reconcile both still decrypt.
+0. `sudo touch /var/lib/arbites/pause`. Arbites reads `origin/main`, never the
+   working tree, so between the rekey and the merge it holds one password and the
+   vault another — and a reconcile that cannot decrypt aborts before its first
+   task, fleet-wide, raising `ArbitesFailed`.
+1. `ansible-vault rekey inventory/group_vars/all/vault.yml` (old → new).
+2. Overwrite the local `.vault_pass`, and confirm `make check` decrypts.
+3. Commit and merge the re-encrypted vault, so `origin/main` and the new password agree.
+4. Re-seed scholam's `/etc/arbites/vault_pass` (0600 root), or the next reconcile cannot decrypt.
+5. Update the password manager.
+6. `sudo rm /var/lib/arbites/pause`, then confirm the journal shows an *apply* — an
+   unchanged HEAD short-circuits to success without ever reading the vault, so
+   "the reconcile went green" is not by itself proof it can decrypt.
 
 ## Keyless CI — no rotation
 
