@@ -44,7 +44,8 @@ binds regardless of host owner.
 The three content files are pass-throughs — `homepage_services`,
 `homepage_widgets` and `homepage_bookmarks` serialised as-is — because a
 dashboard is a host's spec, not a role's: the fleet's tiles live in
-`playbooks/solar.yml`, as prometheus's probe targets live in `playbooks/auspex.yml`.
+`playbooks/vars/solar-homepage.yml`, read by `playbooks/solar.yml`, as prometheus's
+probe targets live in `playbooks/auspex.yml`.
 A host that declares none gets an empty dashboard, not homepage's shipped
 examples. Every render is `sort_keys=False`: homepage lays groups and tiles out
 in file order, and `settings.yaml`'s `layout:` orders the groups, so an

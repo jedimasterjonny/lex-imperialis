@@ -16,6 +16,10 @@ descriptive:
   Alertmanager notifies.
 - **rogue-trader** — the Hetzner VPS serving the public WordPress site.
 
+`vars/` holds spec a play reads with `vars_files:` instead of carrying inline:
+solar's homepage dashboard, which alone runs several times the length of the
+rest of that play. Still the host's spec, just not in the way of it.
+
 ## site.yml
 
 The whole fleet in one run — the `arbites` timer's entry point and
