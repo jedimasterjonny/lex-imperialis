@@ -8,6 +8,8 @@ set -euo pipefail
 
 dir="{{ arbites_textfile_dir }}"
 last_applied="{{ arbites_last_applied_file }}"
+github_repo="{{ arbites_github_repo }}"
+deployment_id_file="{{ arbites_deployment_id_file }}"
 success=0
 [ "${SERVICE_RESULT:-}" = success ] && success=1
 
@@ -33,3 +35,25 @@ arbites_applied_commit{sha="$sha"} 1
 EOF
 chmod 0644 "$tmp"
 mv "$tmp" "$dir/arbites.prom"
+
+# Close the GitHub deployment the reconcile opened, if it opened one — only a run
+# that actually applied writes an id here, so a paused or unchanged-HEAD cycle posts
+# nothing. Deliberately after the metric: the .prom file is what the ArbitesFailed
+# alert reads, and it must never wait on a network call. Best-effort, and the id is
+# dropped whatever the post did, so a failed close cannot leak this run's outcome
+# onto the next run's record.
+if [ -n "${ARBITES_GITHUB_TOKEN:-}" ] && [ -s "$deployment_id_file" ]; then
+    state=failure
+    [ "$success" = 1 ] && state=success
+    jq -nc --arg state "$state" --arg sha "$sha" \
+        '{state: $state, description: ("fleet at " + $sha)}' \
+        | curl --silent --show-error --fail --max-time 15 \
+            --header "Authorization: Bearer ${ARBITES_GITHUB_TOKEN:-}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            --data @- \
+            "https://api.github.com/repos/$github_repo/deployments/$(cat "$deployment_id_file")/statuses" \
+            >/dev/null \
+        || echo "warning: could not close the GitHub deployment record"
+    rm -f "$deployment_id_file"
+fi

@@ -4,10 +4,12 @@
 # install the matching flavour's package (e.g. python313-packaging for 3.13).
 # ansible.cfg pins that interpreter, so the flavour follows the distro rather
 # than whichever python is newest on disk.
-- name: Install git, the venv builder, and the pip module's packaging dependency
+- name: Install git, the venv builder, the deployment API tools, and the pip module's packaging dependency
   community.general.zypper:
     name:
+      - curl
       - git
+      - jq
       - python3-pip
       - "python{{ ansible_facts['python']['version']['major'] }}{{ ansible_facts['python']['version']['minor'] }}-packaging"
     state: present
@@ -89,6 +91,20 @@
     virtualenv: "{{ arbites_venv_dir }}"
     virtualenv_command: python3 -m venv
   become: true
+
+# The deployment token reaches both scripts through a 0600 EnvironmentFile rather
+# than the world-readable unit or the 0755 scripts. Rendered even when the token is
+# empty, so clearing the vault var revokes it on the next apply instead of leaving
+# the last one on disk.
+- name: Install the reconcile environment file
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ arbites_env_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  no_log: true
 
 - name: Install the reconcile and metric scripts
   ansible.builtin.template:

@@ -8,8 +8,8 @@ name: terraform
 # the plan SA can read state, only the apply SA can write it. The Cloudflare and
 # Hetzner provider tokens split by privilege: a PR plans with read-only counterparts
 # held as plain repo secrets (safe for any same-repo PR — they can't mutate); the
-# write tokens live in the main-only `fleet-apply` environment, so only a push can
-# read them, and its plan bakes them into the saved plan the apply runs. So a
+# write tokens live in the main-only `Segmentum Obscurus` environment, so only a
+# push can read them, and its plan bakes them into the saved plan the apply runs. So a
 # same-repo PR that edits this workflow can plan but never apply or read a write
 # token. CI holds no Ansible vault secret at all — the vault is operator-only.
 # Offline fmt/validate/tflint stay in the lint workflow.
@@ -112,11 +112,11 @@ jobs:
     # A hung apply holds the GCS state lock until the job dies — 6h on the
     # default. Well above a plan+apply of this config, well below that.
     timeout-minutes: 30
-    # The write provider tokens live in the main-only `fleet-apply` environment,
+    # The write provider tokens live in the main-only `Segmentum Obscurus` environment,
     # so only a push (which feeds the apply step) can read them. A PR/schedule run
     # resolves the expression to the empty string — no environment, no write
     # tokens — and plans with the read-only repo-secret tokens instead.
-    environment: ${{ github.event_name == 'push' && 'fleet-apply' || '' }}
+    environment: ${{ github.event_name == 'push' && 'Segmentum Obscurus' || '' }}
     permissions:
       contents: read
       pull-requests: write
@@ -176,8 +176,8 @@ jobs:
           # read-only ones. Fail loudly if the environment secrets are missing —
           # otherwise an empty token surfaces as an opaque provider auth error.
           if [ "$EVENT" = "push" ]; then
-            : "${CF_APPLY_TOKEN:?not set — add it to the fleet-apply environment}"
-            : "${HCLOUD_APPLY_TOKEN:?not set — add it to the fleet-apply environment}"
+            : "${CF_APPLY_TOKEN:?not set — add it to the Segmentum Obscurus environment}"
+            : "${HCLOUD_APPLY_TOKEN:?not set — add it to the Segmentum Obscurus environment}"
             TF_VAR_cloudflare_api_token="$CF_APPLY_TOKEN"
             TF_VAR_hcloud_token="$HCLOUD_APPLY_TOKEN"
           else

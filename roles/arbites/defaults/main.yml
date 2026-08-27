@@ -50,3 +50,21 @@ arbites_textfile_dir: /var/lib/node_exporter/textfile_collector
 # — it only applies main, never reboots.
 arbites_oncalendar: "*:0/15"
 arbites_randomized_delay: "2m"
+
+# GitHub deployment record for each apply, mirroring the terraform workflow's
+# environment badge in the repo UI (`Segmentum Obscurus` there, the cloud estate;
+# this is the fleet). Telemetry only — every API call is best-effort, so a GitHub
+# outage or an expired token never fails a reconcile. Empty token (the default,
+# and molecule) skips the API entirely; set `arbites_github_token` in the vault to
+# turn it on. A fine-grained PAT with Deployments: read and write, or a classic one
+# scoped `repo_deployment`, and nothing else (README).
+arbites_github_token: ""
+arbites_deployment_environment: Segmentum Solar
+# Derived so the clone URL stays the single declaration of which repo this is.
+arbites_github_repo: "{{ arbites_clone_url | regex_replace('^https://github\\.com/|\\.git$', '') }}"
+# Carries the in-flight deployment's id from the reconcile script to the
+# ExecStopPost hook that posts its final state.
+arbites_deployment_id_file: "{{ arbites_state_dir }}/deployment-id"
+# The token reaches both scripts through this 0600 EnvironmentFile — never the
+# world-readable unit, never the 0755 scripts.
+arbites_env_file: "{{ arbites_config_dir }}/env"

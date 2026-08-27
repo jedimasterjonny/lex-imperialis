@@ -52,6 +52,7 @@ apply target, and any wrinkle.
 | `solar_plex_token` | not portal-minted — read `PlexOnlineToken` from the Plex server's `Preferences.xml` | `PLAY=solar` | No per-token revoke: step 5 is a device sign-out, and signing out everywhere signs the *server* out too, so the replacement has to be read back afterwards. Homepage's Plex widget is the only consumer — its `/identity` monitor is unauthenticated and stays green, only the widget body empties |
 | `rogue_trader_wordpress_db_password` | self-chosen MariaDB app password | `PLAY=rogue-trader` | **First-init only, and the apply misses the live copy** — the play rewrites `db.env`/`app.env`, which only the nightly dump reads; the migrated `wp-config.php` holds its own literal the image entrypoint never rewrites. Keep the site up with MariaDB multi-auth: `ALTER USER 'wordpress'@'%' IDENTIFIED VIA mysql_native_password USING PASSWORD('<old>') OR mysql_native_password USING PASSWORD('<new>')`, apply, `sudo wp config set DB_PASSWORD '<new>'` on the host, verify, then re-`ALTER` to the new password alone. A straight cutover takes emmasedit.com down until `wp-config.php` is edited, and step 4 will not catch it |
 | `rogue_trader_wordpress_db_root_password` | self-chosen MariaDB root password | `PLAY=rogue-trader` | Same first-init caveat, but root exists **twice** — `ALTER USER 'root'@'localhost', 'root'@'%'`. Nothing authenticates as root at runtime (the healthcheck has its own account), so missing the `'%'` half is silent until `disaster-recovery.md`'s dump-load step, which connects remotely as root |
+| `arbites_github_token` | GitHub PAT — fine-grained with Deployments: read and write on this repo, or classic scoped `repo_deployment` | `PLAY=scholam` | Telemetry only: it posts the reconcile's deployment record to the `Segmentum Solar` environment and nothing else, so a lapsed or revoked token degrades to a journal warning while applies carry on — no alert fires, and the environment simply stops gaining deployments. Verify by merging anything and watching the record appear. A fine-grained token expires on a fixed date, so it rotates on GitHub's calendar rather than on exposure |
 | `solar_restic_password` / `scholam_restic_password` / `rogue_trader_restic_password` | self-chosen, one per host | `PLAY=<host>` | **Repo-side, and the order is inverted — see below.** One key per host by design: a host must not be able to open another's repos |
 
 **First-init caveat.** MariaDB and Grafana bake the password in on first
@@ -158,8 +159,8 @@ in the same pass or the next run authenticates with the revoked token.
 
 | Vault variable | Mint a new… | CI copy | Verify |
 | --- | --- | --- | --- |
-| `terraform_cloudflare_api_token` | Cloudflare token over jonnyoc.uk, jonnyoc.co.uk and emmasedit.com — Zone: DNS Edit, Zone Settings Edit, Single Redirect Edit, Zone WAF Edit, Cache Rules Edit, SSL and Certificates Edit | `gh secret set CLOUDFLARE_APPLY_API_TOKEN --env fleet-apply` | `make tofu-plan`, then a real apply |
-| `hcloud_token_emmas_edit` | Hetzner Read&Write token, **emmas-edit** project | `gh secret set HCLOUD_APPLY_TOKEN --env fleet-apply` | `make tofu-plan` |
+| `terraform_cloudflare_api_token` | Cloudflare token over jonnyoc.uk, jonnyoc.co.uk and emmasedit.com — Zone: DNS Edit, Zone Settings Edit, Single Redirect Edit, Zone WAF Edit, Cache Rules Edit, SSL and Certificates Edit | `gh secret set CLOUDFLARE_APPLY_API_TOKEN --env 'Segmentum Obscurus'` | `make tofu-plan`, then a real apply |
+| `hcloud_token_emmas_edit` | Hetzner Read&Write token, **emmas-edit** project | `gh secret set HCLOUD_APPLY_TOKEN --env 'Segmentum Obscurus'` | `make tofu-plan` |
 | `hcloud_token` | Hetzner Read&Write token, **molecule test** project | `gh secret set MOLECULE_HCLOUD_TOKEN` | `make test-hetzner ROLE=motd` |
 
 The read-only `CLOUDFLARE_PLAN_API_TOKEN` and `HCLOUD_PLAN_TOKEN` repo secrets
@@ -171,9 +172,9 @@ alone is not enough. Verify with `gh workflow run terraform.yml`, not by re-runn
 an open PR: `discover` skips the plan job for any PR whose non-`.md` diff misses
 `terraform/`, and the gate still reports green.
 
-The two `--env fleet-apply` rows need Environments: write on the workstation PAT —
+The two `--env 'Segmentum Obscurus'` rows need Environments: write on the workstation PAT —
 without it `gh secret set --env` 403s on the public-key fetch it must make first.
-Grant it, or set those two in Settings → Environments → fleet-apply.
+Grant it, or set those two in Settings → Environments → Segmentum Obscurus.
 
 `hcloud_token_emmas_edit` has the widest reach — every OpenTofu run (including the
 `hcloud_server` data source behind the emmasedit apex, and rogue-trader's
