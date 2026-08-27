@@ -36,22 +36,23 @@ apply target, and any wrinkle.
 
 | Vault variable | Mint a new… | Apply | Wrinkle |
 | --- | --- | --- | --- |
-| `caddy_cloudflare_api_token` | Cloudflare token for the solar/home zone (`caddy_domain`; Zone:Read, DNS:Edit) | `PLAY=solar` | Gates the DNS-01 wildcard; homepage TLS depends on it too |
-| `emmasedit_cloudflare_api_token` | Cloudflare token for the emmasedit.com zone | `PLAY=rogue-trader` | caddy DNS-01 for emmasedit.com |
+| `caddy_cloudflare_api_token` | Cloudflare token on the `jonnyoc.uk` zone, which holds `caddy_domain` (Zone:Read, DNS:Edit) | `PLAY=solar` | Gates the DNS-01 wildcard; homepage TLS depends on it too. caddy serves persisted certs from the `caddy-data` volume and touches the token only at renewal, so it stays healthy for weeks on a dead one — verify at Cloudflare before revoking, not by a green container |
+| `emmasedit_cloudflare_api_token` | Cloudflare token for the emmasedit.com zone | `PLAY=rogue-trader` | caddy DNS-01 for emmasedit.com; same persisted-cert caveat as the row above |
 | `alertmanager_discord_webhook_url` | Discord incoming webhook | `PLAY=auspex` | Fire a test alert and see it land — a botched rotation otherwise surfaces via the deadman only days later, off the periodic exercise (cadence with the alertmanager role) |
 | `alertmanager_deadman_ping_url` | healthchecks.io check ping URL | `PLAY=auspex` | Confirm the new check goes green; cadence per the alertmanager README — a tighter grace makes Discord blips flap the check |
-| `unpoller_api_key` | UniFi Network API key, in the controller's admin settings | `PLAY=auspex` | Passphrase-grade rather than read-only telemetry — see the role README. Verify on `unpoller_prometheus_cache_age_seconds`: the apply restarts the poller, so it starts at `-1` and leaves it only on the first successful poll — a refused key pins it there. The scrape stays green either way |
-| `grafana_admin_password` | self-chosen | `PLAY=solar` | **First-init only** — an already-provisioned Grafana also needs `grafana-cli admin reset-admin-password` in-container to match |
-| `arr_api_keys` | each Servarr app UI (Settings → General → API Key) | `PLAY=solar` | Dict replaced whole — re-supply all keys; then fix prowlarr's stored connections for any rotated app |
-| `arr_transmission_username` / `arr_transmission_password` | self-chosen RPC creds | `PLAY=solar` | Container re-applies auth on restart; verify RPC goes 401 → authed |
+| `unpoller_api_key` | UniFi Network API key, in the controller's admin settings | `PLAY=auspex` | Passphrase-grade rather than read-only telemetry — see the role README. Verify on `unpoller_prometheus_cache_age_seconds`: the apply restarts the poller, so it starts at `-1` and leaves it only on the first successful poll — a refused key pins it there. The scrape stays green either way. The integration API returns WiFi passphrases in plaintext to any holder that can reach the controller, so an *exposed* key means rotating the WiFi passphrase at the controller too — off-repo, and every client re-joins |
+| `grafana_admin_password` | self-chosen | `PLAY=solar` | **First-init only** — an already-provisioned Grafana also needs `podman exec grafana grafana cli admin reset-admin-password <new>` to match (`grafana cli`, a subcommand; there is no `grafana-cli` binary in the image). The same apply re-renders homepage's env, so its Grafana widget 401s until the reset lands — the tile stays green, since its monitor is `/api/health` |
+| `arr_api_keys` | self-chosen, 32 hex chars, one per app | `PLAY=solar` | The repo owns the key — `<APP>__AUTH__APIKEY` from the env file wins over `config.xml`, so the UI's "Reset API Key" writes a value the running app ignores. Dict replaced whole: re-supply all keys, then fix prowlarr's stored connections for any rotated app. Rotating **prowlarr's own** key breaks the other way — every prowlarr-synced indexer in radarr/sonarr/lidarr authenticates to prowlarr with it, and the 6-hourly Application Indexer Sync will not repair it (the app returns the key masked and the equality check treats `********` as a match). Force it: prowlarr → Settings → Apps → Sync App Indexers |
+| `arr_transmission_username` / `arr_transmission_password` | self-chosen RPC creds | `PLAY=solar` | Container re-applies auth on restart; verify RPC goes 401 → authed, then re-enter the creds on radarr's, sonarr's and lidarr's Transmission client — each stores its own copy, no play touches them, and grabs stop silently if they are missed |
 | `arr_wireguard_conf` | commercial VPN provider portal (new WG key/peer) | `PLAY=solar` | Confirm the tunnel handshakes and egress is the VPN IP; the kill-switch holds if it fails |
-| `rogue_trader_wordpress_db_password` | self-chosen MariaDB app password | `PLAY=rogue-trader` | **First-init only** — also `ALTER USER` in the `wordpress-db` container to match |
-| `rogue_trader_wordpress_db_root_password` | self-chosen MariaDB root password | `PLAY=rogue-trader` | Same first-init `ALTER USER` caveat |
+| `solar_plex_token` | not portal-minted — read `PlexOnlineToken` from the Plex server's `Preferences.xml` | `PLAY=solar` | No per-token revoke: step 5 is a device sign-out, and signing out everywhere signs the *server* out too, so the replacement has to be read back afterwards. Homepage's Plex widget is the only consumer — its `/identity` monitor is unauthenticated and stays green, only the widget body empties |
+| `rogue_trader_wordpress_db_password` | self-chosen MariaDB app password | `PLAY=rogue-trader` | **First-init only, and the apply misses the live copy** — the play rewrites `db.env`/`app.env`, which only the nightly dump reads; the migrated `wp-config.php` holds its own literal the image entrypoint never rewrites. Keep the site up with MariaDB multi-auth: `ALTER USER 'wordpress'@'%' IDENTIFIED VIA mysql_native_password USING PASSWORD('<old>') OR mysql_native_password USING PASSWORD('<new>')`, apply, `sudo wp config set DB_PASSWORD '<new>'` on the host, verify, then re-`ALTER` to the new password alone. A straight cutover takes emmasedit.com down until `wp-config.php` is edited, and step 4 will not catch it |
+| `rogue_trader_wordpress_db_root_password` | self-chosen MariaDB root password | `PLAY=rogue-trader` | Same first-init caveat, but root exists **twice** — `ALTER USER 'root'@'localhost', 'root'@'%'`. Nothing authenticates as root at runtime (the healthcheck has its own account), so missing the `'%'` half is silent until `disaster-recovery.md`'s dump-load step, which connects remotely as root |
 | `solar_restic_password` / `scholam_restic_password` / `rogue_trader_restic_password` | self-chosen, one per host | `PLAY=<host>` | **Repo-side, and the order is inverted — see below.** One key per host by design: a host must not be able to open another's repos |
 
 **First-init caveat.** MariaDB and Grafana bake the password in on first
 container init, so a vault edit + apply alone will not change an already-running
-store — pair it with the in-service change (`ALTER USER` / `grafana-cli reset`),
+store — pair it with the in-service change (`ALTER USER` / `grafana cli`),
 or reset the volume (destroys data).
 
 **The restic rows invert the standard order.** `restic key add` authenticates
@@ -130,6 +131,9 @@ which means an `ansible-vault edit` and `make apply PLAY=rogue-trader`
 rendered into `ExecStart=` in a 0644 unit, so the task sets `no_log` to keep it
 out of `--diff`; it is not hidden on the host, since the proxy carries it in argv
 regardless. Vaulting keeps it out of the public repo, not off the box.
+
+`unpoller_url` and `alertmanager_discord_channel_url` are vaulted on the same
+basis — topology, not credentials — and rotate only if the thing they name moves.
 
 ## Tooling tokens (vault vars, not rendered to a host)
 

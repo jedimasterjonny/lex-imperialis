@@ -51,6 +51,10 @@ non-root as its own user (472) on an unprivileged port, so it adds none back.
 - `grafana_prometheus_url` — Prometheus datasource URL (default datasource).
 - `grafana_admin_password` — admin password, vault-sourced, rendered `no_log`
   into `/etc/grafana/env`. Empty leaves the image default (`admin`/`admin`).
+  **First-init only**: it is read when Grafana creates the admin user, so setting
+  it later re-renders the env file and restarts the container while the running
+  instance keeps the password it already has. Changing a live one also needs
+  `podman exec grafana grafana cli admin reset-admin-password <new>`.
 - `grafana_domain` — vhost domain; follows `caddy_domain`.
 
 The image (`grafana_image`) is pinned by digest and each dashboard revision

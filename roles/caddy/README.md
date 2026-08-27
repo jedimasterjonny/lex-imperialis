@@ -102,7 +102,7 @@ The container runs `NoNewPrivileges` and drops every capability except
 
 In the vault:
 
-- `caddy_domain` — a Cloudflare zone.
+- `caddy_domain` — a name under the `jonnyoc.uk` zone, not a zone itself.
 - `caddy_cloudflare_api_token` — scoped to that zone: Zone→Read, DNS→Edit.
 
 Point wildcard DNS for `*.<caddy_domain>` at the host. A malformed token
