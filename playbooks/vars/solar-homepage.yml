@@ -1,0 +1,422 @@
+---
+# solar's homepage dashboard, read by playbooks/solar.yml. Still that host's
+# spec, split out only because it outweighs the rest of the play several times
+# over.
+#
+# href is what the browser opens, so it is the URL the service is actually
+# used over; siteMonitor is fetched by the homepage container itself, so it
+# takes the internal container address — no hairpin DNS, no TLS, and no
+# dependency on caddy, the thing every href already goes through. The
+# container drops CAP_NET_RAW, so homepage's ICMP `ping:` can never work here:
+# every status on this dashboard is an HTTP siteMonitor.
+# A tile's `widget:` block is fetched server-side too, so its url follows
+# siteMonitor's reasoning; its credential is a {{HOMEPAGE_VAR_X}} placeholder
+# resolved from homepage_secrets below, so no key reaches the rendered
+# services.yaml. Those placeholders are matched by literal string replace:
+# the missing spaces inside the braces are load-bearing, and !unsafe is what
+# stops Ansible resolving them here instead of homepage resolving them there.
+# ansible-lint lints a vars file's Jinja and would space them out, hence the
+# noqa on each.
+#
+# This is a convenience dashboard, not a monitor — the alert for each of
+# these is auspex's blackbox probe. Keep the tiles in step with arr_enabled
+# in solar.yml; a stale tile here is a dead link, not a missing alert.
+homepage_title: Strategium
+# stone, not amber: amber is the warmest palette homepage ships but it lands
+# as bright orange on every accent. stone is Tailwind's warm grey — sepia
+# rather than citrus.
+homepage_color: stone
+homepage_services:
+  - Archive:
+      - Plex:
+          icon: plex.png
+          description: Media server
+          href: http://solar:32400/web
+          # Host-networked and unproxied, and /identity answers without a token.
+          siteMonitor: http://solar:32400/identity
+          widget:
+            type: plex
+            url: http://solar:32400
+            key: !unsafe "{{HOMEPAGE_VAR_PLEX_TOKEN}}" # noqa: jinja[spacing]
+      - Sonarr:
+          icon: sonarr.png
+          description: Television
+          href: https://sonarr.{{ caddy_domain }}
+          siteMonitor: http://sonarr:8989/ping
+          widget:
+            type: sonarr
+            url: http://sonarr:8989
+            key: !unsafe "{{HOMEPAGE_VAR_SONARR_KEY}}" # noqa: jinja[spacing]
+      - Radarr:
+          icon: radarr.png
+          description: Film
+          href: https://radarr.{{ caddy_domain }}
+          siteMonitor: http://radarr:7878/ping
+          widget:
+            type: radarr
+            url: http://radarr:7878
+            key: !unsafe "{{HOMEPAGE_VAR_RADARR_KEY}}" # noqa: jinja[spacing]
+      - Lidarr:
+          icon: lidarr.png
+          description: Music
+          href: https://lidarr.{{ caddy_domain }}
+          siteMonitor: http://lidarr:8686/ping
+          # No enableQueue: the lidarr widget has no detailed queue listing.
+          widget:
+            type: lidarr
+            url: http://lidarr:8686
+            key: !unsafe "{{HOMEPAGE_VAR_LIDARR_KEY}}" # noqa: jinja[spacing]
+  - Acquisition:
+      - Prowlarr:
+          icon: prowlarr.png
+          description: Indexers
+          href: https://prowlarr.{{ caddy_domain }}
+          siteMonitor: http://prowlarr:9696/ping
+          widget:
+            type: prowlarr
+            url: http://prowlarr:9696
+            key: !unsafe "{{HOMEPAGE_VAR_PROWLARR_KEY}}" # noqa: jinja[spacing]
+      - Transmission:
+          icon: transmission.png
+          description: BitTorrent
+          href: https://transmission.{{ caddy_domain }}
+          # No siteMonitor: RPC auth is on, so an unauthenticated fetch is a
+          # 401 and the tile would read as down. The widget below is what
+          # holds the credentials — a status dot never gets them. auspex
+          # probes it with http_2xx_or_401 instead.
+          #
+          # rpcUrl is left at the widget's /transmission/ default, which is
+          # the LSIO image's own rpc-url.
+          widget:
+            type: transmission
+            url: http://transmission:9091
+            username: !unsafe "{{HOMEPAGE_VAR_TRANSMISSION_USERNAME}}" # noqa: jinja[spacing]
+            password: !unsafe "{{HOMEPAGE_VAR_TRANSMISSION_PASSWORD}}" # noqa: jinja[spacing]
+      - beets:
+          icon: beets.png
+          description: Tagging pipeline
+          href: https://beets.{{ caddy_domain }}
+          siteMonitor: http://beets:8337/
+          # No widget: homepage ships none for beets. The pipeline's backlog
+          # is a node_exporter textfile metric, so grafana is where it reads.
+  # The same two apps again, this time with enableQueue — the detailed
+  # download listing, which has no fold of its own and would otherwise sit
+  # open down the page. Only a group can collapse, so the listing gets its
+  # own, marked initiallyCollapsed below: homepage keeps collapse state in
+  # memory, so this folds again on every load and opens on a click. The
+  # tiles above stay the always-visible ones and keep the counts; these carry
+  # no description or siteMonitor, which would only duplicate their work.
+  - Manifest:
+      - Sonarr:
+          icon: sonarr.png
+          href: https://sonarr.{{ caddy_domain }}
+          widget:
+            type: sonarr
+            url: http://sonarr:8989
+            key: !unsafe "{{HOMEPAGE_VAR_SONARR_KEY}}" # noqa: jinja[spacing]
+            enableQueue: true
+      - Radarr:
+          icon: radarr.png
+          href: https://radarr.{{ caddy_domain }}
+          widget:
+            type: radarr
+            url: http://radarr:7878
+            key: !unsafe "{{HOMEPAGE_VAR_RADARR_KEY}}" # noqa: jinja[spacing]
+            enableQueue: true
+  - Vigil:
+      - Grafana:
+          icon: grafana.png
+          description: Dashboards
+          href: https://grafana.{{ caddy_domain }}
+          siteMonitor: http://grafana:3000/api/health
+          # version 2 because the widget's default speaks the pre-10.4 API
+          # and grafana here is 13.x. Only the two inventory counts: alerting
+          # is Prometheus's and Alertmanager's on auspex, so grafana holds no
+          # rules and its alert fields would read a permanent zero.
+          widget:
+            type: grafana
+            version: 2
+            url: http://grafana:3000
+            # Not a secret: grafana's admin_user is the image default and
+            # the role does not make it settable. The password is.
+            username: admin
+            password: !unsafe "{{HOMEPAGE_VAR_GRAFANA_PASSWORD}}" # noqa: jinja[spacing]
+            fields: [dashboards, datasources]
+      - Prometheus:
+          icon: prometheus.png
+          description: Metrics and alert rules
+          href: http://auspex:9090
+          siteMonitor: http://auspex:9090/-/healthy
+          # The one widget needing no credential: the API is unauthenticated
+          # on the LAN, so it takes no entry in homepage_secrets.
+          widget:
+            type: prometheus
+            url: http://auspex:9090
+      - Alertmanager:
+          icon: alertmanager.png
+          description: Alert routing
+          href: http://auspex:9093
+          siteMonitor: http://auspex:9093/-/healthy
+          # No widget: homepage ships none for alertmanager.
+  # Host health for the whole fleet, read from the Prometheus on auspex
+  # rather than from each host's own exporter: one address to reach, and the
+  # same series the alerts evaluate. RAM and Temp are MemoryLow and
+  # HostCpuTemperatureHigh stated as used rather than free, so a tile and the
+  # alert about it cannot disagree; CPU mirrors no alert, because sustained
+  # load is a fact about a host rather than a fault, and nor does Disk — see
+  # below. Still convenience, not monitoring: nothing here pages, and a host
+  # that stops being scraped empties its tile rather than marking it down.
+  #
+  # Four metrics is the widget's hard cap: it fetches metrics[0:4] and
+  # renders anything past that blank. Disk is the used share of the host's
+  # largest block device: topk picks it by size, and the join brings back
+  # that mountpoint's free space. device=~"/dev/.*" is load-bearing — the NAS
+  # export three of these hosts mount is larger than anything local, so
+  # without it all three would report the array's fill rather than their own
+  # disk. On the btrfs hosts every subvolume reports the pool's size, so the
+  # topk tie between them is broken arbitrarily; harmless, since they all
+  # report the same free space. This is narrower than FilesystemSpaceLow,
+  # which fires on any filesystem under 10% free, so a small partition can
+  # page while this tile still reads low. `instance` is the node job's target
+  # in playbooks/auspex.yml verbatim; renaming one there blanks a tile here.
+  #
+  # No href — there is no per-host page to open, and grafana in Vigil is the
+  # way into the history — and no siteMonitor, which would have homepage
+  # fetch an exporter port it otherwise never touches to report what the four
+  # metrics beside it already show.
+  - Cogitators:
+      - solar:
+          icon: mdi-server
+          description: Media and downloads
+          widget:
+            type: prometheusmetric
+            url: http://auspex:9090
+            # Against the widget's 10s default: these are 15s-scraped gauges
+            # read by four tiles at once, and none of them moves in a minute.
+            refreshInterval: 60000
+            metrics:
+              - label: CPU
+                query: 100 - avg(rate(node_cpu_seconds_total{instance="solar:9100", mode="idle"}[5m])) * 100
+                format:
+                  type: percent
+              - label: RAM
+                query: 100 - node_memory_MemAvailable_bytes{instance="solar:9100"} / node_memory_MemTotal_bytes * 100
+                format:
+                  type: percent
+              - label: Disk
+                query: >-
+                  100 - (node_filesystem_avail_bytes{instance="solar:9100", device=~"/dev/.*"}
+                  / node_filesystem_size_bytes) * 100
+                  and on (instance, mountpoint)
+                  topk(1, node_filesystem_size_bytes{instance="solar:9100", device=~"/dev/.*"})
+                format:
+                  type: percent
+              - label: Temp
+                query: max(node_hwmon_temp_celsius{instance="solar:9100", chip="platform_coretemp_0"})
+                format:
+                  type: number
+                  suffix: "°C"
+                  options:
+                    maximumFractionDigits: 0
+      - scholam:
+          icon: mdi-server
+          description: Control and development
+          widget:
+            type: prometheusmetric
+            url: http://auspex:9090
+            refreshInterval: 60000
+            metrics:
+              - label: CPU
+                query: 100 - avg(rate(node_cpu_seconds_total{instance="scholam:9100", mode="idle"}[5m])) * 100
+                format:
+                  type: percent
+              - label: RAM
+                query: 100 - node_memory_MemAvailable_bytes{instance="scholam:9100"} / node_memory_MemTotal_bytes * 100
+                format:
+                  type: percent
+              - label: Disk
+                query: >-
+                  100 - (node_filesystem_avail_bytes{instance="scholam:9100", device=~"/dev/.*"}
+                  / node_filesystem_size_bytes) * 100
+                  and on (instance, mountpoint)
+                  topk(1, node_filesystem_size_bytes{instance="scholam:9100", device=~"/dev/.*"})
+                format:
+                  type: percent
+              - label: Temp
+                query: max(node_hwmon_temp_celsius{instance="scholam:9100", chip="platform_coretemp_0"})
+                format:
+                  type: number
+                  suffix: "°C"
+                  options:
+                    maximumFractionDigits: 0
+      - auspex:
+          icon: mdi-raspberry-pi
+          description: Monitoring host
+          widget:
+            type: prometheusmetric
+            url: http://auspex:9090
+            refreshInterval: 60000
+            metrics:
+              - label: CPU
+                query: 100 - avg(rate(node_cpu_seconds_total{instance="auspex:9100", mode="idle"}[5m])) * 100
+                format:
+                  type: percent
+              - label: RAM
+                query: 100 - node_memory_MemAvailable_bytes{instance="auspex:9100"} / node_memory_MemTotal_bytes * 100
+                format:
+                  type: percent
+              # The largest device here is the NVMe carrying the TSDB,
+              # which is the one worth watching — the SD card holding / is a
+              # tenth of its size.
+              - label: Disk
+                query: >-
+                  100 - (node_filesystem_avail_bytes{instance="auspex:9100", device=~"/dev/.*"}
+                  / node_filesystem_size_bytes) * 100
+                  and on (instance, mountpoint)
+                  topk(1, node_filesystem_size_bytes{instance="auspex:9100", device=~"/dev/.*"})
+                format:
+                  type: percent
+              # thermal_thermal_zone0, not the N150s' platform_coretemp_0:
+              # this is the Pi, and its chip label is the other one
+              # HostCpuTemperatureHigh matches on.
+              - label: Temp
+                query: max(node_hwmon_temp_celsius{instance="auspex:9100", chip="thermal_thermal_zone0"})
+                format:
+                  type: number
+                  suffix: "°C"
+                  options:
+                    maximumFractionDigits: 0
+      - rogue-trader:
+          icon: mdi-cloud-outline
+          description: Public web host
+          widget:
+            type: prometheusmetric
+            url: http://auspex:9090
+            refreshInterval: 60000
+            # Scraped over the tunnel, so its instance label is the WireGuard
+            # address rather than a name, exactly as playbooks/auspex.yml
+            # declares the target.
+            metrics:
+              - label: CPU
+                query: 100 - avg(rate(node_cpu_seconds_total{instance="192.168.3.4:9100", mode="idle"}[5m])) * 100
+                format:
+                  type: percent
+              - label: RAM
+                query: >-
+                  100 - node_memory_MemAvailable_bytes{instance="192.168.3.4:9100"}
+                  / node_memory_MemTotal_bytes * 100
+                format:
+                  type: percent
+              - label: Disk
+                query: >-
+                  100 - (node_filesystem_avail_bytes{instance="192.168.3.4:9100", device=~"/dev/.*"}
+                  / node_filesystem_size_bytes) * 100
+                  and on (instance, mountpoint)
+                  topk(1, node_filesystem_size_bytes{instance="192.168.3.4:9100", device=~"/dev/.*"})
+                format:
+                  type: percent
+              # Uptime in the slot the others give to temperature: a Hetzner
+              # VM exports no hwmon sensor, and this is the host an
+              # unannounced reboot is most likely to happen to.
+              - label: Uptime
+                query: time() - node_boot_time_seconds{instance="192.168.3.4:9100"}
+                format:
+                  type: duration
+# Group order on the dashboard, so it is declared, not alphabetical.
+homepage_layout:
+  Archive:
+    style: row
+    columns: 4
+  Acquisition:
+    style: row
+    columns: 3
+  # Folded on every load; the group header is all that shows until clicked.
+  Manifest:
+    style: row
+    columns: 2
+    initiallyCollapsed: true
+  Vigil:
+    style: row
+    columns: 3
+  Cogitators:
+    style: row
+    columns: 4
+homepage_widgets:
+  # The visible page title. settings.yaml's title: only sets the browser tab —
+  # homepage renders no heading of its own — so the greeting widget is the
+  # only way to put the name on the page. Declared first, at the largest size.
+  - greeting:
+      text_size: 4xl
+      text: Strategium
+  # Info widgets lay out left to right in declaration order. Weekday and date
+  # without the year: the year is the one component nobody loses track of.
+  - datetime:
+      text_size: xl
+      format:
+        weekday: long
+        day: numeric
+        month: long
+        hour: 2-digit
+        minute: 2-digit
+        hourCycle: h23
+  - search:
+      provider: duckduckgo
+      target: _blank
+homepage_bookmarks:
+  - Fleet:
+      - Repository:
+          - abbr: LI
+            href: https://github.com/jedimasterjonny/lex-imperialis
+      - Synology:
+          - abbr: NAS
+            href: https://nas.{{ caddy_domain }}
+      - UniFi:
+          - abbr: UI
+            href: https://unifi.ui.com
+      # Where alertmanager posts. Vault-sourced: the guild and channel ids
+      # in the path should not sit in a public repo.
+      - Discord alerts:
+          - abbr: DC
+            href: "{{ alertmanager_discord_channel_url }}"
+      # Holds the Watchdog deadman. The service root, not the check itself:
+      # a check's page is keyed by the same uuid as its ping url, so deep
+      # linking would put a credential that can silence the deadman on the
+      # dashboard.
+      - Healthchecks:
+          - abbr: HC
+            href: https://healthchecks.io/
+  - Void:
+      - Hetzner:
+          - abbr: HZ
+            href: https://console.hetzner.cloud
+      - Google Cloud:
+          - abbr: GC
+            href: https://console.cloud.google.com
+      - Cloudflare:
+          - abbr: CF
+            href: https://dash.cloudflare.com
+  - Domains:
+      - emmasedit.com:
+          - abbr: EE
+            href: https://emmasedit.com
+      # Trailing slash deliberately: /wp-admin without it 301s to http://
+      # before landing on the login, and this skips that plain-HTTP hop.
+      - emmasedit admin:
+          - abbr: WP
+            href: https://emmasedit.com/wp-admin/
+      - jonnyoc.uk:
+          - abbr: JO
+            href: https://jonnyoc.uk
+# Widget credentials, delivered to the container as a 0600 EnvironmentFile
+# and substituted into the configs by name. Same keys the services above
+# already own — one credential per service, not a homepage-specific one —
+# so a rotation there is a rotation here.
+homepage_secrets:
+  PLEX_TOKEN: "{{ solar_plex_token }}"
+  SONARR_KEY: "{{ arr_api_keys.sonarr }}"
+  RADARR_KEY: "{{ arr_api_keys.radarr }}"
+  LIDARR_KEY: "{{ arr_api_keys.lidarr }}"
+  PROWLARR_KEY: "{{ arr_api_keys.prowlarr }}"
+  TRANSMISSION_USERNAME: "{{ arr_transmission_username }}"
+  TRANSMISSION_PASSWORD: "{{ arr_transmission_password }}"
+  GRAFANA_PASSWORD: "{{ grafana_admin_password }}"
