@@ -1,6 +1,25 @@
 {% if caddy_cloudflare_api_token %}
 {
-	acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+	# Cloudflare takes minutes, not seconds, to publish an API write to its
+	# authoritative nameservers for this zone: a challenge record created at
+	# 08:48:37 first resolved ~08:58, and until it does the NS return a signed NSEC
+	# denying a record their own API reports. certmagic's default 2m propagation
+	# window expires long before that, so every DNS-01 renewal on solar failed with
+	# "timed out waiting for record to fully propagate ... last error: <nil>"
+	# from 2026-08-19 until this was raised. Two observed publications took ~10m
+	# and <5m; the delay also keeps the first poll out of the publication gap.
+	#
+	# These belong to the ACME issuer, not the DNS provider: as a sub-block of
+	# acme_dns they parse and validate clean but are silently dropped, so the
+	# issuer has to be named explicitly. Naming it also drops the ZeroSSL fallback
+	# caddy carries by default, which cannot be restored without a ZeroSSL
+	# credential — and would not have helped here, since it solves the same DNS-01
+	# challenge against the same zone.
+	cert_issuer acme {
+		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+		propagation_delay 2m
+		propagation_timeout 10m
+	}
 }
 
 {% endif %}

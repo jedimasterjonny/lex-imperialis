@@ -107,11 +107,12 @@
       register: caddy_dns01_render
       become: true
 
-    - name: The token-set branch rendered the global acme_dns block
+    - name: The token-set branch rendered the global issuer block
       ansible.builtin.assert:
         that:
-          - "'acme_dns cloudflare' in (caddy_dns01_render.content | b64decode)"
-        fail_msg: "the DNS-01 branch did not render the acme_dns block"
+          - "'cert_issuer acme' in (caddy_dns01_render.content | b64decode)"
+          - "'dns cloudflare' in (caddy_dns01_render.content | b64decode)"
+        fail_msg: "the DNS-01 branch did not render the cert_issuer block"
         quiet: true
 
     # validate provisions the cloudflare module, which validates the token's format
@@ -124,6 +125,29 @@
         caddy caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile.dns01-probe
       become: true
       changed_when: false
+
+    # validate is not enough on its own: as a sub-block of acme_dns these options
+    # parse and validate clean, then get handed to the DNS provider module, which
+    # drops them — the rendered file and the exit status both look right while
+    # every renewal still times out on the 2m default. Only the adapted JSON shows
+    # whether the issuer actually received them.
+    - name: Adapt the DNS-01 Caddyfile to JSON
+      ansible.builtin.command: >-
+        podman exec --env CLOUDFLARE_API_TOKEN=molecule-dummy-token-molecule-dummy-token
+        caddy caddy adapt --adapter caddyfile --config /etc/caddy/Caddyfile.dns01-probe
+      register: caddy_dns01_adapt
+      changed_when: false
+      become: true
+
+    - name: The propagation options reached the ACME issuer
+      ansible.builtin.assert:
+        that:
+          - "'propagation_delay' in caddy_dns01_adapt.stdout"
+          - "'propagation_timeout' in caddy_dns01_adapt.stdout"
+        fail_msg: >-
+          the propagation options were dropped between the Caddyfile and the
+          adapted config, so DNS-01 would run on certmagic's 2m default
+        quiet: true
 
     # A non-zero exit fails the task, proving curl resolves in the image and the
     # 204 health endpoint answers.

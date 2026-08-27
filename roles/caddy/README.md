@@ -71,7 +71,7 @@ emmasedit.com, www.emmasedit.com {
 ```
 
 The block author picks the scheme: an `http://` prefix stays off ACME, while a
-bare (HTTPS) address is certified by the global `acme_dns` via DNS-01 (so the
+bare (HTTPS) address is certified by the global `cert_issuer` via DNS-01 (so the
 cert is issued before any A record points here) — which needs
 `caddy_cloudflare_api_token` scoped to that zone, or issuance fails at startup.
 
@@ -83,6 +83,15 @@ Gated on `caddy_cloudflare_api_token`:
   the cloudflare module in `ghcr.io/caddybuilds/caddy-cloudflare`.
 - **Empty** — the default: the same vhost on plain HTTP
   (`http://*.<caddy_domain>`).
+
+The issuer is named explicitly (`cert_issuer acme`) to carry a 2m
+`propagation_delay` and a 10m `propagation_timeout`: Cloudflare can take minutes
+to publish an API write to its authoritative nameservers, and certmagic's 2m
+default expires first, failing every renewal with `timed out waiting for record
+to fully propagate`. As a sub-block of `acme_dns` those options are silently
+dropped, so the molecule scenario asserts them in the *adapted* config, not the
+rendered Caddyfile. Naming the issuer also drops caddy's default ZeroSSL
+fallback, which cannot be restored without a ZeroSSL credential.
 
 ## Hardening
 
