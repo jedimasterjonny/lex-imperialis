@@ -26,10 +26,20 @@ The whole fleet in one run — the `arbites` timer's entry point and
 `make apply PLAY=site`. Imports the host plays with `scholam` last, so a
 reconcile run never restarts its own timer mid-apply.
 
-Order is not cosmetic. Ansible sums failed and unreachable hosts, so a play that
-loses every host aborts the run: a host that cannot converge takes the plays
-imported after it with it, `arbites` never writes `last_applied`, and the fleet
-is re-applied in full every fifteen minutes while `scholam` quietly stops
-converging. So a host joins this file only once its play converges green — until
-then it runs by hand, `make apply PLAY=<host>` — and it must be in `arbites`'s
-`known_hosts` first, or the connect fails and produces that same stall.
+Both entry points reach it through `bin/fleet-apply.sh`, which shards this same
+file by host with `--limit` so the remote hosts converge at once and `scholam`
+still goes last. Run in series the four plays cost their sum — ansible's forks
+never come into a single-host play — and the controller spends most of that idle
+on serial SSH round trips. site.yml stays the one declaration of what the fleet
+is; only the sharding is the driver's.
+
+The fail-fast cascade is what the sharding drops, deliberately. Ansible sums
+failed and unreachable hosts, so a play that loses every host aborts the run: a
+host that could not converge took every play imported after it with it, which is
+what quietly stopped `scholam` converging whenever an earlier host was broken.
+Sharded, each host is attempted on its own. The run still exits non-zero, so
+`arbites` never writes `last_applied` and the fleet is re-applied in full every
+fifteen minutes until the broken host is fixed. A host still joins this file only
+once its play converges green — until then it runs by hand, `make apply
+PLAY=<host>` — and it must be in `arbites`'s `known_hosts` first, or its connect
+fails the same way.

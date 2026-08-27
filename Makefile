@@ -39,6 +39,11 @@ endef
 # PLAY selects which playbook in playbooks/ to run, e.g. make check PLAY=solar.
 PLAY ?= scholam
 
+# site is the whole fleet, and a plain run of site.yml costs the sum of its four
+# single-host plays. bin/fleet-apply.sh shards that same playbook by host so the
+# remote ones converge concurrently; any other PLAY is one host, run directly.
+FLEET_RUN = $(if $(filter site,$(PLAY)),bin/fleet-apply.sh,ansible-playbook playbooks/$(PLAY).yml)
+
 .PHONY: lint ansible-lint yamllint codespell hooks pre-commit converge verify destroy test test-vm test-hetzner destroy-hetzner check apply tofu-fmt tofu-validate tofu-lint tofu-plan tofu-apply packer-fmt packer-validate image hugo-serve hugo-build
 
 # ansible-lint last: it is ~107s against yamllint's 3.5s and codespell's 0.4s,
@@ -94,11 +99,11 @@ destroy-hetzner:
 # unguarded command/shell tasks are skipped, so it under-reports). .vault_pass
 # decrypts vault vars; roles that render secrets set no_log so --diff stays clean.
 check:
-	. .venv/bin/activate && ansible-playbook playbooks/$(PLAY).yml --vault-password-file .vault_pass --check --diff
+	. .venv/bin/activate && $(FLEET_RUN) --vault-password-file .vault_pass --check --diff
 
 # Real apply to the live fleet — the operator's call, not part of any automated flow.
 apply:
-	. .venv/bin/activate && ansible-playbook playbooks/$(PLAY).yml --vault-password-file .vault_pass
+	. .venv/bin/activate && $(FLEET_RUN) --vault-password-file .vault_pass
 
 # OpenTofu (terraform/); tofu and tflint are on PATH, no venv. fmt/validate/lint
 # are the local forms of the pre-commit gates (fmt writes, unlike the -check hook).

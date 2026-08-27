@@ -94,9 +94,10 @@ The tasks reach the box through the `storagebox_gateway` forward on
 2. As root on the box: `bootstrap/host.sh` (creates the `ansible` account and
    sshd). Either pipe it from GitHub (see the script header) or run a local copy.
 3. The reinstall gave solar new host keys, and two files pin the old ones. Drop
-   both before converging — the second matters more than the first, because
-   `site.yml` imports `solar.yml` first, so a stale pin there aborts every fleet
-   reconcile at the connect until it is re-seeded:
+   both before converging — the second matters more than the first, because a
+   stale pin there fails solar's shard of every fleet reconcile at the connect,
+   so `arbites` never records the apply and retries every fifteen minutes until
+   it is re-seeded:
 
    ```bash
    ssh-keygen -R solar                      # your own known_hosts

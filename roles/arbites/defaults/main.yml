@@ -14,8 +14,6 @@ arbites_pause_flag: "{{ arbites_state_dir }}/pause"
 # truth. Public HTTPS — read-only, no deploy key.
 arbites_clone_url: https://github.com/jedimasterjonny/lex-imperialis.git
 arbites_branch: main
-# Played from the clone root; applies the whole fleet, self (scholam) last.
-arbites_playbook: playbooks/site.yml
 
 # Operator-placed secrets the role asserts but never manages: neither can come
 # from the vault (the reconciler needs the password to read the vault) nor the
