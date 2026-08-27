@@ -17,6 +17,14 @@ subset. Set the var empty (or 0) to revert to a metadata-only check. Each restic
 call is retried: the astropath NFS mount intermittently serves a spurious ENOENT
 mid-run that would otherwise fail an isolated operation.
 
+Each run clears stale locks before it starts. restic does not skip a lock whose
+owning process is dead when it takes its own, so an interrupted ad-hoc `restic` —
+a killed `restic ls` is enough — leaves one that refuses the exclusive
+`forget --prune` and fails every scheduled run until it is removed by hand, with
+the snapshot itself already saved. `restic unlock` drops only stale locks, so a
+genuinely concurrent run keeps its own; `--retry-lock` is no use, since it
+re-checks the same lock and refuses just the same.
+
 Retention groups snapshots by `host,tags`, not restic's default `host,paths`: in
 podman-volumes mode the paths are the volume mountpoints, so adding or removing a
 container would otherwise open a fresh retention group and freeze the old one,

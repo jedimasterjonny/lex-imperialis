@@ -143,6 +143,14 @@ exclude_args=()
 require_mounted
 mkdir -p "$repo" "$RESTIC_CACHE_DIR"
 retry restic snapshots >/dev/null 2>&1 || retry restic init
+# Drop locks orphaned by a killed restic — an interrupted ad-hoc `restic ls`
+# against the repo leaves one, and restic does not skip a dead process's lock
+# when taking its own. The exclusive `forget --prune` below is refused, failing
+# the run every week until the lock is cleared by hand, with the snapshot itself
+# already saved. unlock removes only stale locks — one whose owner is still alive
+# survives, so a concurrent run is unaffected. --retry-lock is no use: it
+# re-checks the same lock and refuses just the same.
+retry restic unlock
 require_mounted
 retry restic backup --tag "$tag" "${exclude_args[@]}" "${sources[@]}"
 # Group by host,tags rather than restic's default host,paths. In podman-volumes

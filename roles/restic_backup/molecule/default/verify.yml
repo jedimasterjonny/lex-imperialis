@@ -192,6 +192,62 @@
         fail_msg: "the outcome metric did not report a failed run"
         quiet: true
 
+    # An interrupted ad-hoc restic leaves a lock behind — a killed `restic ls` is
+    # enough — and restic does not skip a dead process's lock when taking its own.
+    # The exclusive forget --prune is refused and every scheduled run fails until
+    # the lock is cleared by hand, with the snapshot itself already saved. Plant one
+    # the way reality does, by killing a restic mid-lock, and assert the run clears
+    # it rather than tripping over it.
+    - name: Plant a stale lock from a killed restic
+      ansible.builtin.shell: |
+        set -u
+        locks={{ restic_backup_repo | quote }}/locks
+        restic --password-file /etc/restic/password \
+            --repo {{ restic_backup_repo | quote }} backup /usr >/dev/null 2>&1 &
+        pid=$!
+        for _ in $(seq 1 200); do
+            [ -n "$(ls -A "$locks" 2>/dev/null)" ] && break
+            sleep 0.1
+        done
+        kill -9 "$pid" 2>/dev/null
+        wait "$pid" 2>/dev/null
+        # Fail loudly rather than leave the assertion below proving nothing: a lock
+        # that never appeared, or that the killed run tidied up, is not a test.
+        [ -n "$(ls -A "$locks" 2>/dev/null)" ]
+      changed_when: true
+      become: true
+
+    # Starting a oneshot blocks until it exits, so a stale lock the engine failed to
+    # clear fails this task outright — which is the regression this guards.
+    - name: Fire the backup service with a stale lock in the repository
+      ansible.builtin.systemd_service:
+        name: probe-backup.service
+        state: started
+      become: true
+
+    - name: Read the outcome metric after the stale-lock run
+      ansible.builtin.slurp:
+        src: "{{ restic_backup_textfile_dir }}/probe-backup.prom"
+      register: restic_backup_metric_stale_lock
+      become: true
+
+    - name: List the locks the stale-lock run left behind
+      ansible.builtin.find:
+        paths: "{{ restic_backup_repo }}/locks"
+        file_type: file
+      register: restic_backup_locks_after
+      become: true
+
+    - name: A stale lock neither fails the run nor survives it
+      ansible.builtin.assert:
+        that:
+          - "'probe_backup_success 1' in (restic_backup_metric_stale_lock.content | b64decode)"
+          - restic_backup_locks_after.files | length == 0
+        fail_msg: >-
+          a stale lock failed the run, or was left in place:
+          {{ restic_backup_locks_after.files | map(attribute='path') | list }}
+        quiet: true
+
     # Assert the integrity check is wired into the installed script, then that the
     # role's invocation is a real gate, not a no-op: the same check must reject a
     # repo whose data is gone. Corrupt a copy, not the live repo, so a standalone
