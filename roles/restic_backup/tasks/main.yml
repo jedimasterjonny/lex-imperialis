@@ -26,6 +26,9 @@
     name: "{{ restic_backup_package }}"
     state: present
   become: true
+  # The check is what costs: on a transactional host the package module answers
+  # it inside a root snapshot (roles/CLAUDE.md). Absent the fact, this just runs.
+  when: restic_backup_package not in ansible_facts['packages'] | default({})
 
 - name: Create the password directory
   ansible.builtin.file:

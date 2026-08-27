@@ -63,3 +63,7 @@
     state: absent
   become: true
   notify: Reload NetworkManager
+  # Inverted against the installs (roles/CLAUDE.md): not knowing the installed
+  # set must still attempt the removal, where there it must still attempt an
+  # install — the fallback has to fail towards doing the work either way.
+  when: ansible_facts['packages'] is not defined or 'openresolv' in ansible_facts['packages']

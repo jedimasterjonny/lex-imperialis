@@ -4,6 +4,9 @@
     name: btrfsmaintenance
     state: present
   become: true
+  # The check is what costs: on a transactional host the package module answers
+  # it inside a root snapshot (roles/CLAUDE.md). Absent the fact, this just runs.
+  when: "'btrfsmaintenance' not in ansible_facts['packages'] | default({})"
 
 # Surgical rather than templated: the file is fillup-generated, and a package
 # upgrade adds new variables to it that owning the whole file would delete.

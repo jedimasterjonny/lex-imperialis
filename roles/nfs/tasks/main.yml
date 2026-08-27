@@ -4,6 +4,9 @@
     name: "{{ nfs_package }}"
     state: present
   become: true
+  # The check is what costs: on a transactional host the package module answers
+  # it inside a root snapshot (roles/CLAUDE.md). Absent the fact, this just runs.
+  when: nfs_package not in ansible_facts['packages'] | default({})
 
 # ansible.posix.mount creates the mount point (and the root above it) when
 # absent, writes the fstab entry, and mounts now — idempotent once the entry and
