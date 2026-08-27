@@ -45,6 +45,48 @@
         fail_msg: "the reconcile script does not enforce host-key checking against the known_hosts"
         quiet: true
 
+    # The deployment record is posted from both scripts, so both must carry the API
+    # calls, and the token must reach them through the 0600 EnvironmentFile rather
+    # than either 0755 script.
+    - name: Read the installed metric hook
+      ansible.builtin.slurp:
+        src: "{{ arbites_metric_script }}"
+      register: arbites_metric_content
+      become: true
+
+    - name: The scripts open and close a GitHub deployment without embedding the token
+      vars:
+        reconcile: "{{ arbites_script_content.content | b64decode }}"
+        hook: "{{ arbites_metric_content.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'api.github.com/repos/' in reconcile"
+          - "'github_api deployments' in reconcile"
+          - "'\"in_progress\"' in reconcile"
+          - "'api.github.com/repos/' in hook"
+          - "'/deployments/' in hook"
+          - "'/statuses' in hook"
+          - "'ARBITES_GITHUB_TOKEN' in reconcile"
+          - "'ARBITES_GITHUB_TOKEN' in hook"
+          - "'ARBITES_GITHUB_TOKEN=' not in reconcile"
+          - "'ARBITES_GITHUB_TOKEN=' not in hook"
+        fail_msg: "the scripts do not post the deployment record, or one embeds the token"
+        quiet: true
+
+    - name: Stat the environment file the token reaches the scripts through
+      ansible.builtin.stat:
+        path: "{{ arbites_env_file }}"
+      register: arbites_env
+      become: true
+
+    - name: The environment file is owner-only
+      ansible.builtin.assert:
+        that:
+          - arbites_env.stat.exists
+          - arbites_env.stat.mode[-2:] == '00'
+        fail_msg: "{{ arbites_env_file }} is missing or readable beyond its owner"
+        quiet: true
+
     - name: The runtime venv runs ansible-playbook
       ansible.builtin.command: "{{ arbites_venv_dir }}/bin/ansible-playbook --version"
       changed_when: false
@@ -80,7 +122,8 @@
         that:
           - "'arbites.sh' in arbites_service.status.ExecStart"
           - "'arbites-metric.sh' in arbites_service.status.ExecStopPost"
-        fail_msg: "the service is not wired to the reconcile script and metric hook"
+          - arbites_env_file in arbites_service.status.EnvironmentFiles
+        fail_msg: "the service is not wired to the reconcile script, metric hook and environment file"
         quiet: true
 
     - name: Run the metric hook as a successful run would

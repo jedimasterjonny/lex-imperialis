@@ -90,6 +90,36 @@ never drops its own in-flight run).
 > requested service" on first introduction — a check-mode artifact (the unit
 > isn't written in check mode); the apply succeeds.
 
+## Deployment record
+
+Set `arbites_github_token` in the vault and each apply also posts a GitHub
+deployment to the **Segmentum Solar** environment: the reconcile opens it against
+the SHA it is applying and marks it `in_progress`, the `ExecStopPost` hook closes
+it `success` or `failure` beside writing the metric. The repo's Environments panel
+then shows the fleet the way it already shows the terraform estate (`Segmentum
+Obscurus`, which GitHub creates for free from the workflow's `environment:` key —
+this is the same Deployments API, called by hand because no workflow is involved).
+
+The token is the one secret here that *can* be vaulted — unlike the vault password
+and SSH key it is needed by neither, so there is no bootstrap step: add it to
+`inventory/group_vars/all/vault.yml` under that exact name and the next apply
+renders it to `/etc/arbites/env` (0600 root), which the unit reads as an
+`EnvironmentFile`. Scope it to nothing but deployments — fine-grained with
+Deployments: read and write on this repo, or classic with `repo_deployment`.
+
+Every API call is best-effort: the reconcile warns to the journal and applies
+anyway if the record can't be opened, and the hook writes the `.prom` file before
+it posts, so a GitHub outage or a lapsed token can neither fail a fleet apply nor
+delay the metric `ArbitesFailed` reads. **This is telemetry, not monitoring** — it
+duplicates in the GitHub UI what the alert rules already catch, and only the alerts
+are load-bearing. Leaving the token unset (the default, and molecule) skips the
+calls entirely.
+
+Only a run that actually applies opens a record, so an idle or paused cycle posts
+nothing and the environment shows one deployment per merge rather than one per
+15-minute tick. The history is public, like the rest of this repo: it discloses the
+SHA applied and when, which is the apply cadence, and nothing about the fleet.
+
 ## Trust model
 
 Scholam already holds `.vault_pass` and fleet-wide NOPASSWD root (control host and
