@@ -41,19 +41,19 @@ it). Both are empty here and set fleet-wide in
 split is by principal: human devices reach a host as the owner, where sudo costs
 a password, while the `ansible` account holds NOPASSWD sudo and so carries only
 the control host and the reconciler. A key that needs only git access belongs on
-GitHub and in neither list. That is the posture the lists declare, not yet the
-fleet's: while both `exclusive` flags are `false` nothing is revoked, and auspex
-in particular still carries its cloud-init seed of five keys on both accounts,
-the corporate laptop among them. A play can also narrow a list — `rogue-trader`
+GitHub and in neither list. Both `exclusive` flags are `true`, so that
+posture is the fleet's: a key absent from a list is removed from that account on
+the next converge, and auspex's cloud-init seed of five keys has already been
+trimmed to the declared set. A play can also narrow a list — `rogue-trader`
 replaces the owner one, since play vars beat `group_vars` rather than extending
 them.
 
-The role manages these because nothing else reconciles them. `bootstrap/host.sh`
-seeds the `ansible` account from the operator's GitHub keys once, at install, and
-never again — so each host froze whatever that list held on the day it was built,
-and a key removed upstream survives on every host predating the removal. That
-seed is still live: until it is trimmed, a rebuilt host is born with the whole
-GitHub list on its `ansible` account, which these additive lists will not undo.
+The role manages these because nothing else reconciles them. Three first-boot
+seeds still write keys this file does not control — `bootstrap/host.sh`,
+`bootstrap/rogue-trader.bu` and `bootstrap/auspex-user-data.yaml` — so a freshly
+built host is briefly wider than the declared set. The next converge strips the
+excess, but a rotation has to reach all three or a later rebuild resurrects the
+retired key in the window before one runs.
 
 `common_authorized_keys_exclusive` and `common_ansible_authorized_keys_exclusive`
 make a list authoritative: anything absent from it is removed. They are separate
