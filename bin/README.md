@@ -1,7 +1,7 @@
 # bin
 
 Scripts backing the pre-commit hooks (`.pre-commit-config.yaml`, run by `make
-pre-commit` in the lint CI gate) and the Makefile.
+pre-commit` in the lint CI gate), the Makefile, and the `arbites` reconciler.
 
 ## ansible-lint-scoped.sh
 
@@ -102,3 +102,23 @@ Prints one top-level variable's value from the ansible-vault, bridging a vault
 secret into a `TF_VAR_` (Terraform can't read the vault). Backs the
 `tofu-plan`/`tofu-apply` make targets and the `terraform.yml` plan workflow.
 Needs the venv and `.vault_pass`.
+
+## fleet-apply.sh
+
+Applies `playbooks/site.yml` to the whole fleet, sharding it by host with
+`--limit` so the remote hosts converge at once and `this_host` goes last. Backs
+`make apply PLAY=site` and `make check PLAY=site` as well as the `arbites`
+reconcile; every argument is passed through to each `ansible-playbook`, and
+ansible is taken off `PATH` so the reconciler's venv wins. Four single-host
+plays leave ansible's forks nothing to parallelise, so running them in series
+costs their sum — ~11 minutes, the controller idle for 77% of it on serial SSH
+round trips. Concurrently the remote hosts cost what the slowest of them does:
+measured, the three together took 307s against 557s in series, and none was
+slower for the other two running beside it.
+
+The host list is read from the inventory, so a host joining the fleet needs no
+edit here, and one not yet in `site.yml` matches no play and costs a no-op.
+Output is prefixed per host to stay attributable once the plays interleave, in a
+terminal and in the reconciler's journal alike. Each host is attempted even when
+another has failed — unlike a plain `site.yml` run, where a host that loses its
+play aborts every play imported after it — and any failure still exits non-zero.

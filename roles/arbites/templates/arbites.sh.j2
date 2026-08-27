@@ -10,7 +10,6 @@ set -euo pipefail
 repo="{{ arbites_repo_dir }}"
 venv="{{ arbites_venv_dir }}"
 branch="{{ arbites_branch }}"
-playbook="{{ arbites_playbook }}"
 vault_pass="{{ arbites_vault_pass_file }}"
 ssh_key="{{ arbites_ssh_key_file }}"
 pause_flag="{{ arbites_pause_flag }}"
@@ -103,14 +102,15 @@ ssh_extra_args=(--ssh-extra-args "-o UserKnownHostsFile={{ arbites_known_hosts_f
 {% else %}
 ssh_extra_args=()
 {% endif %}
-# --diff lands the change set in the journal; the key reaches each host's account;
-# site.yml applies self (scholam) last so this run never restarts its own timer.
-"$venv/bin/ansible-playbook" \
+# --diff lands the change set in the journal; the key reaches each host's account.
+# fleet-apply.sh shards site.yml by host so the remote hosts converge at once and
+# scholam (self) still goes last, so this run never restarts its own timer. It
+# runs ansible off PATH, which is what puts the venv's in front of any system one.
+PATH="$venv/bin:$PATH" bin/fleet-apply.sh \
     --private-key "$ssh_key" \
     --vault-password-file "$vault_pass" \
     "${ssh_extra_args[@]}" \
-    --diff \
-    "$playbook"
+    --diff
 
 # Record the applied SHA only after a clean full apply; a failure leaves the
 # previous value so the next run retries the same target.

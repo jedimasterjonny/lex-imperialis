@@ -21,10 +21,11 @@ jitter; `Persistent`, so a reboot-missed run catches up). The script:
    is read as an inventory source and survives a revert);
 3. short-circuits if `main` has not advanced since the last applied SHA, so an
    idle cycle is near-free;
-4. otherwise runs `ansible-playbook playbooks/site.yml` from the clone root
-   (reusing the repo's `ansible.cfg`) out of `arbites_venv_dir`, with
-   `--diff` to the journal. `site.yml` applies scholam last so the run never
-   restarts its own timer mid-apply;
+4. otherwise runs `bin/fleet-apply.sh` from the clone root (reusing the repo's
+   `ansible.cfg`) with `arbites_venv_dir`'s ansible on `PATH`, and `--diff` to
+   the journal. It shards `playbooks/site.yml` by host so the remote hosts
+   converge at once, scholam last so the run never restarts its own timer
+   mid-apply;
 5. records the applied SHA only on a clean full apply; a failure leaves the old
    value, so the next run retries.
 

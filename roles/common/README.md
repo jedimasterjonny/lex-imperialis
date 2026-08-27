@@ -145,7 +145,7 @@ re-enabled by hand is re-disabled by the next apply that reaches it, and since t
 reconciler skips a run when `main` has not advanced, that is the next commit
 rather than the next timer tick. Unless something has been installed from it —
 then the assert halts `common`, the first role of each openSUSE play, so that host
-converges no further, `site.yml` stops there, and `ArbitesFailed` goes
+converges no further, its shard of the reconcile fails, and `ArbitesFailed` goes
 critical.
 
 `common_timezone` holds every host's clock on one zone — `Europe/London` —
