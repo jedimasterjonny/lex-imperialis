@@ -46,7 +46,7 @@ CLI-driven execution. The backend authenticates like the google provider — you
 gcloud ADC locally, WIF in CI — so there is no state token, and the read-only
 `tofu-plan` SA can read state while only the write `tofu-apply` SA can write it.
 Only the Cloudflare and Hetzner provider tokens come from the vault (locally —
-in CI they are `fleet-apply` environment secrets):
+in CI they are `Segmentum Obscurus` environment secrets):
 
     export TF_VAR_cloudflare_api_token="$(bin/vault-var.sh terraform_cloudflare_api_token)"
     export TF_VAR_hcloud_token="$(bin/vault-var.sh hcloud_token_emmas_edit)"
@@ -105,7 +105,7 @@ in-place bump flows through. A weekly scheduled run plans `main` against live
 infra and fails on any drift. State (GCS) and GCP are keyless via WIF; in CI the
 plan authenticates with read-only Cloudflare/Hetzner tokens (plain repo secrets —
 a PR can't mutate with them), while the apply's write tokens are environment
-secrets gated to the main-only `fleet-apply` environment, so no PR can read one
+secrets gated to the main-only `Segmentum Obscurus` environment, so no PR can read one
 and CI never touches the vault. `make tofu-apply` still
 applies locally for the rare change CI won't: project creation, billing, the
 state bucket, or a deliberate delete/replace.

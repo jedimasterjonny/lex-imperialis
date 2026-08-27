@@ -191,7 +191,7 @@ and fails on any drift.
 
 The Cloudflare/Hetzner provider tokens split by privilege: a PR plans with
 read-only counterparts held as plain repo secrets (a PR that grabbed them still
-can't mutate), while the write tokens live in the main-only `fleet-apply`
+can't mutate), while the write tokens live in the main-only `Segmentum Obscurus`
 environment, reached only on a push — the push plan bakes them into the saved plan
 the apply replays, so no PR can read one. No workflow holds a vault password: the
 Ansible vault is operator-only. State (GCS) and GCP are keyless via Workload Identity Federation —
