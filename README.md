@@ -24,6 +24,7 @@ This has a side effect I never considered before I began: a repo that describes 
 - `auspex` — Raspberry Pi 5 — Monitoring host
 - `rogue-trader` — Hetzner VPS — WordPress host
 - `port-wander` — 1 TB Hetzner Storage Box — Off-site backup
+- `reclusiam` — Cloudflare R2 bucket — Second off-site backup
 
 ### The Retinue
 
@@ -52,8 +53,19 @@ Updates run unattended and staggered: `solar` Monday as the canary, `auspex` Tue
 flowchart TD
   fttp[FTTP] ---|1G| gw[Cloud Gateway]
   gw ---|10G SFP+| core[Core]
-  rogue[rogue-trader] ---|VPN| gw
-  rogue ---|hcloud| pw[port-wander]
+
+  subgraph Hetzner
+    rogue[rogue-trader]
+    pw[port-wander]
+  end
+
+  subgraph Cloudflare
+    reclusiam[reclusiam]
+  end
+
+  rogue ---|VPN| gw
+  rogue ---|hcloud| pw
+  gw ---|S3| reclusiam
 
   core ---|2.5G| study[Study]
   core ---|10G| apu[Upstairs AP]

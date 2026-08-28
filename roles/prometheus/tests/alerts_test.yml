@@ -1604,6 +1604,202 @@ tests:
         alertname: OffsiteMirrorProbeOverdue
         exp_alerts: []
 
+  # The R2 copy's own family. DSM's cloud manifest carries no task name, status or
+  # last-run time, so none of the rules above can see this destination at all —
+  # these read the bucket the probe listed instead. The first case is the one the
+  # family exists for: a declared container the bucket does not hold, checked
+  # alongside a populated one so it also pins that a healthy container is silent.
+  - interval: 5m
+    name: a declared R2 container the bucket does not hold alerts while a populated one does not
+    input_series:
+      - series: 'r2_mirror_container_expected{job="node",instance="auspex:9100",container="home-backup-r2"}'
+        values: "1x20"
+      - series: 'r2_mirror_container_bytes{job="node",instance="auspex:9100",container="home-backup-r2"}'
+        values: "8589934592x20"
+      - series: 'r2_mirror_container_expected{job="node",instance="auspex:9100",container="photos-backup-r2"}'
+        values: "1x20"
+      - series: 'r2_mirror_container_bytes{job="node",instance="auspex:9100",container="photos-backup-r2"}'
+        values: "0x20"
+      # Undeclared and empty — the prefix the probe found but the play never named,
+      # which the scoping exists to keep out. Without it the rule could be written
+      # as a bare bytes == 0 and every case here would still pass.
+      - series: 'r2_mirror_container_bytes{job="node",instance="auspex:9100",container="stray.hbk"}'
+        values: "0x20"
+    alert_rule_test:
+      - eval_time: 1h5m
+        alertname: R2MirrorContainerMissing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              instance: auspex:9100
+              container: photos-backup-r2
+            exp_annotations:
+              summary: "the photos-backup-r2 R2 container holds nothing"
+              description: >-
+                photos-backup-r2 is declared in the play but the bucket holds no object
+                under its prefix — the second off-site copy of those repos does not
+                exist.
+      - eval_time: 55m
+        alertname: R2MirrorContainerMissing
+        exp_alerts: []
+
+  # Why that gate reads bytes and not objects. A zero-byte folder marker — what R2's
+  # dashboard writes for a prefix made by hand, and what emptying a container leaves
+  # behind — counts as an object, so an object gate reads this container as a copy
+  # that exists while it holds nothing at all.
+  - interval: 5m
+    name: a declared R2 container holding nothing but a folder marker alerts
+    input_series:
+      - series: 'r2_mirror_container_expected{job="node",instance="auspex:9100",container="podman-backup-r2"}'
+        values: "1x20"
+      - series: 'r2_mirror_container_objects{job="node",instance="auspex:9100",container="podman-backup-r2"}'
+        values: "1x20"
+      - series: 'r2_mirror_container_bytes{job="node",instance="auspex:9100",container="podman-backup-r2"}'
+        values: "0x20"
+    alert_rule_test:
+      - eval_time: 1h5m
+        alertname: R2MirrorContainerMissing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              instance: auspex:9100
+              container: podman-backup-r2
+            exp_annotations:
+              summary: "the podman-backup-r2 R2 container holds nothing"
+              description: >-
+                podman-backup-r2 is declared in the play but the bucket holds no object
+                under its prefix — the second off-site copy of those repos does not
+                exist.
+      - eval_time: 55m
+        alertname: R2MirrorContainerMissing
+        exp_alerts: []
+
+  # 8 days, a day's grace over the weekly upload, read off the newest object in the
+  # container rather than a status DSM reported — a task that stops running, fails
+  # every run, or has had its key revoked all reach it the same way. One container a
+  # day inside the threshold and one a day past it, so the case fails the moment the
+  # grace is tightened onto the cadence. Negative values place the writes before
+  # promtool's zero clock. The third container is the join the rule carries: the probe
+  # publishes this gauge for every prefix it finds, so a retired task's leftover
+  # objects sit stale for good, and nothing but deleting them out of the last-resort
+  # copy would ever clear the page they would otherwise raise.
+  - interval: 5m
+    name: a stale declared R2 container alerts while one inside its weekly grace and an undeclared prefix do not
+    input_series:
+      - series: 'r2_mirror_container_expected{job="node",instance="auspex:9100",container="home-backup-r2"}'
+        values: "1x20"
+      - series: 'r2_mirror_container_last_write_timestamp_seconds{job="node",instance="auspex:9100",container="home-backup-r2"}'
+        values: "-604800x20"
+      - series: 'r2_mirror_container_expected{job="node",instance="auspex:9100",container="podman-backup-r2"}'
+        values: "1x20"
+      - series: 'r2_mirror_container_last_write_timestamp_seconds{job="node",instance="auspex:9100",container="podman-backup-r2"}'
+        values: "-694800x20"
+      - series: 'r2_mirror_container_last_write_timestamp_seconds{job="node",instance="auspex:9100",container="stray.hbk"}'
+        values: "-694800x20"
+    alert_rule_test:
+      - eval_time: 1h5m
+        alertname: R2MirrorContainerStale
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: auspex:9100
+              container: podman-backup-r2
+            exp_annotations:
+              summary: "the podman-backup-r2 R2 copy is stale"
+              description: "Nothing has been written to podman-backup-r2 in R2 in over 8 days."
+      - eval_time: 55m
+        alertname: R2MirrorContainerStale
+        exp_alerts: []
+
+  # Parts left by an interrupted upload bill as storage and appear in no listing, so
+  # nothing else can report them. 25h is what separates a stranded part from an
+  # upload merely in flight while the probe ran: the assertion just inside it is the
+  # whole point of the number, not a routine for: check.
+  - interval: 5m
+    name: an upload stranded past a second probe alerts, one in flight does not
+    input_series:
+      - series: 'r2_mirror_multipart_pending{job="node",instance="auspex:9100",container="podman-backup-r2"}'
+        values: "1x320"
+    alert_rule_test:
+      - eval_time: 25h5m
+        alertname: R2MirrorStrandedParts
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: auspex:9100
+              container: podman-backup-r2
+            exp_annotations:
+              summary: "podman-backup-r2 has incomplete uploads in R2"
+              description: >-
+                1 multipart upload(s) into podman-backup-r2 were started and never
+                completed. They are billed as storage and do not appear in a bucket
+                listing.
+      - eval_time: 24h55m
+        alertname: R2MirrorStrandedParts
+        exp_alerts: []
+
+  # The other half of that window, and the reason it is not 24h: the gauge holds one
+  # probe's reading until the next run overwrites it, so a for: of exactly the cycle
+  # decides on jitter. The second run here lands half an hour late and reports the
+  # upload completed — the first assertion is where a 24h window would have paged
+  # for it, the second is the eval time the case above fires at.
+  - interval: 5m
+    name: an upload the next probe finds completed never alerts
+    input_series:
+      - series: 'r2_mirror_multipart_pending{job="node",instance="auspex:9100",container="podman-backup-r2"}'
+        values: "1x294 0x100"
+    alert_rule_test:
+      - eval_time: 24h5m
+        alertname: R2MirrorStrandedParts
+        exp_alerts: []
+      - eval_time: 25h5m
+        alertname: R2MirrorStrandedParts
+        exp_alerts: []
+
+  # The probe's own outcome. Without it a revoked key looks like a healthy copy: the
+  # payload it last wrote keeps being evaluated by every rule above. 25h is what
+  # turns the first into "two consecutive daily runs", so the assertion at 24h is
+  # the point of the number rather than a routine check.
+  - interval: 5m
+    name: an R2 probe that fails or stops firing alerts
+    input_series:
+      - series: 'r2_mirror_success{job="node",instance="auspex:9100"}'
+        values: "0x320"
+      - series: 'r2_mirror_last_run_timestamp_seconds{job="node",instance="auspex:9100"}'
+        values: "-180000x320"
+    alert_rule_test:
+      - eval_time: 25h5m
+        alertname: R2MirrorProbeFailed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: auspex:9100
+            exp_annotations:
+              summary: "the R2 copy probe failed on auspex:9100"
+              description: >-
+                auspex:9100 could not read the R2 bucket on two consecutive days, so
+                the rules above are evaluating the last payload it managed to write,
+                however old.
+      - eval_time: 24h
+        alertname: R2MirrorProbeFailed
+        exp_alerts: []
+      - eval_time: 1h5m
+        alertname: R2MirrorProbeOverdue
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: auspex:9100
+            exp_annotations:
+              summary: "the R2 copy probe is overdue on auspex:9100"
+              description: "auspex:9100 has not read the R2 bucket in over 2 days."
+      - eval_time: 55m
+        alertname: R2MirrorProbeOverdue
+        exp_alerts: []
+
   # arbites is the unattended path from main to the fleet: when it fails, every merged
   # change stops arriving and nothing else says so — the fleet keeps serving the last
   # good apply, indefinitely and quietly. 15m is one timer cycle, so this lands on the
@@ -2144,6 +2340,8 @@ tests:
       - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="smartmon.service",state="failed"}'
         values: "1x10"
       - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="offsite-mirror.service",state="failed"}'
+        values: "1x10"
+      - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="r2-mirror.service",state="failed"}'
         values: "1x10"
       - series: 'node_systemd_unit_state{job="node",instance="solar:9100",name="podman-backup.service",state="failed"}'
         values: "1x10"

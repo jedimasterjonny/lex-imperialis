@@ -1,0 +1,73 @@
+---
+- name: The expected containers are declared
+  ansible.builtin.assert:
+    that:
+      - r2_mirror_containers | length > 0
+    fail_msg: >-
+      r2_mirror_containers is empty — declare the bucket's containers in the play
+      (README). An entry missing name or prefix fails when the probe renders.
+    quiet: true
+
+- name: Create the probe's configuration directory
+  ansible.builtin.file:
+    path: "{{ r2_mirror_env_file | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  become: true
+
+# The unit reads this rather than taking the credentials on the command line,
+# where every user on the host could read them out of /proc.
+- name: Deploy the probe's credentials
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ r2_mirror_env_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  no_log: true
+
+- name: Install the probe and metric scripts
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - src: r2-mirror.py.j2
+      dest: "{{ r2_mirror_script }}"
+    - src: r2-mirror-metric.sh.j2
+      dest: "{{ r2_mirror_metric_script }}"
+  # Consumed by r2-mirror-metric.sh.j2, the shared run-metric template symlinked
+  # in from node_exporter; r2-mirror.py.j2 ignores them.
+  vars:
+    run_metric_textfile_dir: "{{ r2_mirror_textfile_dir }}"
+    run_metric_name: r2_mirror
+    run_metric_file: r2-mirror-run
+    run_metric_description: R2 off-site copy probe
+  become: true
+
+- name: Install the probe service and timer
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - r2-mirror.service
+    - r2-mirror.timer
+  become: true
+
+# No restart handler: a oneshot timer has nothing to restart, and the next tick
+# reads the new script anyway.
+- name: Enable and start the probe timer
+  ansible.builtin.systemd_service:
+    name: r2-mirror.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true

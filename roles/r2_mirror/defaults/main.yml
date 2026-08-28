@@ -1,0 +1,52 @@
+---
+# The bucket the Hyper Backup tasks write to.
+r2_mirror_bucket: reclusiam
+
+# S3 endpoint, path style: R2 serves both addressing modes, and the account
+# endpoint with the bucket appended is the form Cloudflare documents. A real
+# default like the bucket name above — one account, one bucket, and the account id
+# in that URL is no more secret than the zone ids in terraform. The molecule
+# scenario points it at a local stub; no bucket is reachable from a container.
+r2_mirror_endpoint: "https://7663931fe9b786a37028a39541dbfa34.r2.cloudflarestorage.com"
+
+# The containers the bucket is expected to hold — one per Hyper Backup task,
+# each {name, prefix}. Empty by default and rejected at converge: this
+# declaration is the set R2MirrorContainerMissing measures the bucket against, so
+# it belongs in the play beside the tasks it names rather than in a role default
+# nobody revisits. `name` is the DSM task name and every metric carries it as the
+# `container` label; `prefix` is the target directory that task writes under.
+r2_mirror_containers: []
+
+# Read-only S3 credentials, rendered to r2_mirror_env_file. Empty placeholders so
+# the role converges with no vault, as molecule does. These are deliberately NOT
+# the pair the Hyper Backup tasks authenticate with: that one can delete every
+# object it can see, and this host does not need — or get — that reach.
+r2_mirror_access_key_id: ""
+r2_mirror_secret_access_key: ""
+
+# 0600 EnvironmentFile the credentials land in, read by the unit rather than the
+# script's command line, where they would be world-readable in /proc.
+r2_mirror_env_file: /etc/r2-mirror/env
+
+# node_exporter textfile-collector directory the metrics are written to
+# (r2-mirror.prom for the per-container payload, r2-mirror-run.prom for the run
+# outcome). Must match the node_exporter role's node_exporter_textfile_directory
+# so Prometheus scrapes what this writes.
+r2_mirror_textfile_dir: /var/lib/node_exporter/textfile_collector
+
+# Probe cadence, daily against weekly uploads, and the alert windows in the
+# prometheus role's backups group are sized against it.
+#
+# 30 minutes after offsite_mirror's 11:17 so the two probes never contend, and
+# hours clear of the uploads themselves: those start 06:00 UTC and finish well
+# inside the hour, against 11:47 on auspex's Europe/London clock — 10:47 UTC at
+# worst. Overlapping one would not corrupt a reading the way it would
+# offsite_mirror's, since this counts what is in the bucket rather than asking
+# DSM how a run went, but it would count a container mid-upload and leave its
+# multipart uploads in flight, which R2MirrorStrandedParts would then have to
+# wait out.
+r2_mirror_oncalendar: "*-*-* 11:47:00"
+
+# Installed scripts. /usr/local/sbin: root-only, like the other oneshots.
+r2_mirror_script: /usr/local/sbin/r2-mirror.py
+r2_mirror_metric_script: /usr/local/sbin/r2-mirror-metric.sh

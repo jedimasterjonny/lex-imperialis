@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Daily R2 off-site copy check
+
+[Timer]
+OnCalendar={{ r2_mirror_oncalendar }}
+# Persistent, like offsite_mirror's: the textfile metric survives a reboot, so a
+# host back from a multi-day outage would otherwise stand R2MirrorProbeOverdue
+# until the next tick.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

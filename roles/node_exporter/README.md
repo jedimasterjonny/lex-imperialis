@@ -45,9 +45,9 @@ publishing a scheduled unit's `<name>_success` and
 `run_metric_textfile_dir`, `run_metric_name` (the family prefix),
 `run_metric_file` (the `.prom` basename, which is not always the metric name —
 inquisition writes `inquisition-run.prom`), and `run_metric_description` (prose
-for the `HELP` lines). `autoupdate`, `inquisition`, `restic_backup`, `smartmon`
-and `wordpress` (cron and db-dump) consume it; `arbites` keeps its own script,
-as it publishes a third metric.
+for the `HELP` lines). `autoupdate`, `inquisition`, `r2_mirror`, `restic_backup`,
+`smartmon` and `wordpress` (cron and db-dump) consume it; `arbites` keeps its own
+script, as it publishes a third metric.
 
 The hook is not a convenience copy of what systemd already knows. A
 `Persistent=no` timer loses `LastTriggerUSec` across a reboot, and a successful

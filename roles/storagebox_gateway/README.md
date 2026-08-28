@@ -56,9 +56,11 @@ within DNS TTL.
 ## Disaster recovery
 
 With External Reachability off, the box is reachable only from inside Hetzner, so
-this host becomes a single point of failure for the off-site copy of every host:
-losing it alone stops all three Hyper Backup mirrors, and it is on the restore
-path as well as the backup path. The routes back are in
+losing this host alone stops all three Hyper Backup mirrors to the box, and it is
+on the restore path as well as the backup path. It is a single point of failure
+for the photo library only: the restic repos keep a second off-site copy in
+Cloudflare R2, which the NAS reaches directly rather than through this forward.
+The routes back are in
 [`docs/disaster-recovery.md`](../../docs/disaster-recovery.md).
 
 ## SELinux

@@ -51,8 +51,9 @@ repository silently stopped receiving snapshots.
 
 Consumers `include_role` this engine and set the vars — `podman_backup` and
 `home_backup` are the two. The on-NAS repos are mirrored off-site out of band by
-three NAS-side Synology Hyper Backup tasks, each covering a named list of repos —
-a new repo under `astropath` does not inherit one. See [`docs/backups.md`](../../docs/backups.md)
+five NAS-side Synology Hyper Backup tasks — three to the Hetzner storage box, two
+to Cloudflare R2 — each covering a named list of repos, so a new repo under
+`astropath` inherits none of them. See [`docs/backups.md`](../../docs/backups.md)
 for the full backup architecture and
 [`docs/disaster-recovery.md`](../../docs/disaster-recovery.md) for recovery.
 

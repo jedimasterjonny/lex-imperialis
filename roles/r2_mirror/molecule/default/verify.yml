@@ -1,0 +1,205 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - ../../defaults/main.yml
+  vars:
+    r2_mirror_prom: "{{ r2_mirror_textfile_dir }}/r2-mirror.prom"
+    r2_mirror_run_prom: "{{ r2_mirror_textfile_dir }}/r2-mirror-run.prom"
+    r2_mirror_stub: /tmp/r2-stub.py
+    r2_mirror_stub_port: 8099
+    # The fixture's newest object per container, as epoch seconds:
+    # home.hbk/two at 2026-08-28T10:00:00Z and podman.hbk/one at
+    # 2026-08-27T06:00:00Z. Spelled out rather than computed — a verify that
+    # re-derives the value from the same expression the probe uses asserts nothing.
+    r2_mirror_home_newest: 1787911200
+    r2_mirror_podman_newest: 1787810400
+  tasks:
+    - name: Stat the probe's script, credentials and units
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ r2_mirror_script }}"
+        - "{{ r2_mirror_metric_script }}"
+        - "{{ r2_mirror_env_file }}"
+        - /etc/systemd/system/r2-mirror.service
+        - /etc/systemd/system/r2-mirror.timer
+      register: r2_mirror_files
+
+    # The credentials reach one 0600 root-owned file and no further — results[2],
+    # the third path stat'd above. A widened mode is the whole failure this
+    # guards: the probe's key is read-only, but it still names the bucket holding
+    # the last-resort copy.
+    - name: Every artefact is installed and the credential file is root-only
+      ansible.builtin.assert:
+        that:
+          - r2_mirror_files.results | rejectattr('stat.exists') | list | length == 0
+          - r2_mirror_files.results[2].stat.mode == '0600'
+          - r2_mirror_files.results[2].stat.pw_name == 'root'
+        quiet: true
+
+    - name: Read the probe timer's state
+      ansible.builtin.systemd_service:
+        name: r2-mirror.timer
+      register: r2_mirror_timer
+      changed_when: false
+
+    - name: The timer is enabled and running
+      ansible.builtin.assert:
+        that:
+          - r2_mirror_timer.status.UnitFileState == 'enabled'
+          - r2_mirror_timer.status.ActiveState == 'active'
+        quiet: true
+
+    # Started by the role, so a tick could land between a unit fire below and the
+    # state and run metric read back off it. The unit stays; only the schedule
+    # goes, and it is started again at the end so verify re-runs clean.
+    - name: Stop the timer for the duration of the checks
+      ansible.builtin.systemd_service:
+        name: r2-mirror.timer
+        state: stopped
+
+    - name: Install the stub S3 endpoint
+      ansible.builtin.copy:
+        src: r2-stub.py
+        dest: "{{ r2_mirror_stub }}"
+        mode: "0644"
+
+    - name: Start the stub
+      ansible.builtin.shell:
+        cmd: nohup python3 {{ r2_mirror_stub }} {{ r2_mirror_stub_port }} >/tmp/r2-stub.log 2>&1 &
+        executable: /bin/bash
+      changed_when: false
+
+    # There is a window between the shell returning and the socket accepting, as
+    # the sshd and storagebox_gateway scenarios note about their own services.
+    - name: Wait for the stub to accept
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: "{{ r2_mirror_stub_port }}"
+        timeout: 10
+
+    # ── Unit arm, success: fired as the unit rather than the script, because the
+    # unit is the only thing that reads the EnvironmentFile — the probe raises on
+    # an unset key, so a run that completes proves the credentials reached it from
+    # that file and nowhere else. Starting a oneshot blocks until it exits, so the
+    # unit state, the run metric and the payload read back below are all what
+    # ExecStart and ExecStopPost actually left behind.
+    - name: Fire the probe unit against the stub
+      ansible.builtin.systemd_service:
+        name: r2-mirror.service
+        state: started
+      changed_when: false
+
+    - name: Read the probe unit's result
+      ansible.builtin.systemd_service:
+        name: r2-mirror.service
+      register: r2_mirror_unit
+      changed_when: false
+
+    - name: Read the run metric after the successful run
+      ansible.builtin.slurp:
+        src: "{{ r2_mirror_run_prom }}"
+      register: r2_mirror_run_ok
+
+    # The metric names are spelled out rather than read back off the role's
+    # run_metric_name/run_metric_file: those two strings are what R2MirrorProbeFailed,
+    # R2MirrorProbeOverdue and the ScheduledJobMetricMissing clause all select on,
+    # and a typo in either leaves every one of those rules watching a series
+    # nothing writes — the one failure mode that looks exactly like a healthy fleet.
+    # The timestamp is checked for presence only: its value comes from the shared
+    # run-metric hook, which eight other scenarios cover exactly this way.
+    - name: The unit succeeded and recorded a successful run
+      ansible.builtin.assert:
+        that:
+          - r2_mirror_unit.status.ActiveState == 'inactive'
+          - r2_mirror_unit.status.Result == 'success'
+          - "'r2_mirror_success 1' in run_prom"
+          - "'r2_mirror_last_run_timestamp_seconds ' in run_prom"
+        quiet: true
+      vars:
+        run_prom: "{{ r2_mirror_run_ok.content | b64decode }}"
+
+    - name: Read the payload that run published
+      ansible.builtin.slurp:
+        src: "{{ r2_mirror_prom }}"
+      register: r2_mirror_payload
+
+    - name: The payload tallies every container the bucket holds
+      ansible.builtin.assert:
+        that:
+          # Declared, whatever the bucket turned out to hold.
+          - "'r2_mirror_container_expected{container=\"home-backup-r2\"} 1' in prom"
+          - "'r2_mirror_container_expected{container=\"photos-backup-r2\"} 1' in prom"
+          # Two objects, one per page — the tally spans the continuation token.
+          - "'r2_mirror_container_bytes{container=\"home-backup-r2\"} 3000' in prom"
+          - "'r2_mirror_container_objects{container=\"home-backup-r2\"} 2' in prom"
+          - "'r2_mirror_container_last_write_timestamp_seconds{container=\"home-backup-r2\"} ' ~ r2_mirror_home_newest in prom"
+          # The second page's container, and its stranded upload.
+          - "'r2_mirror_container_bytes{container=\"podman-backup-r2\"} 4000' in prom"
+          - "'r2_mirror_container_last_write_timestamp_seconds{container=\"podman-backup-r2\"} ' ~ r2_mirror_podman_newest in prom"
+          - "'r2_mirror_multipart_pending{container=\"podman-backup-r2\"} 1' in prom"
+          - "'r2_mirror_multipart_pending{container=\"home-backup-r2\"} 0' in prom"
+          # Declared but absent. bytes is the series R2MirrorContainerMissing
+          # evaluates, so this is the case the rule exists for; the freshness
+          # series is deliberately absent, since publishing it would age into a
+          # stale-copy alert saying the wrong thing.
+          - "'r2_mirror_container_bytes{container=\"photos-backup-r2\"} 0' in prom"
+          - "'r2_mirror_container_objects{container=\"photos-backup-r2\"} 0' in prom"
+          - "'r2_mirror_container_last_write_timestamp_seconds{container=\"photos-backup-r2\"' not in prom"
+          # Present but undeclared — storage the declaration cannot tell you about.
+          - "'r2_mirror_container_bytes{container=\"stray.hbk\"} 8000' in prom"
+          - "'r2_mirror_container_expected{container=\"stray.hbk\"' not in prom"
+        quiet: true
+      vars:
+        prom: "{{ r2_mirror_payload.content | b64decode }}"
+
+    # ── Unit arm, failure: the same fire with the stub gone, so every request
+    # errors. ExecStart exits non-zero and the hook must still run and flip the
+    # metric — that zero is what R2MirrorProbeFailed reads, and a hook that only
+    # ran on success would leave the last good reading standing as though the probe
+    # were still healthy. The probe fails closed alongside it, leaving the payload
+    # it last wrote byte-identical rather than publishing a bucket that appears to
+    # have lost every object. failed_when is off because the unit is meant to fail;
+    # the state read back is the assertion.
+    - name: Stop the stub
+      ansible.builtin.command:
+        cmd: pkill -f "{{ r2_mirror_stub }}"
+      changed_when: false
+
+    - name: Fire the probe unit with the endpoint unreachable
+      ansible.builtin.systemd_service:
+        name: r2-mirror.service
+        state: started
+      failed_when: false
+      changed_when: false
+
+    - name: Read the probe unit's result after the failed run
+      ansible.builtin.systemd_service:
+        name: r2-mirror.service
+      register: r2_mirror_unit_failed
+      changed_when: false
+
+    - name: Read the run metric and the payload after the failed run
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - "{{ r2_mirror_run_prom }}"
+        - "{{ r2_mirror_prom }}"
+      register: r2_mirror_after_fail
+
+    - name: A failed run is recorded as failed and leaves the last payload untouched
+      ansible.builtin.assert:
+        that:
+          - r2_mirror_unit_failed.status.ActiveState == 'failed'
+          - "'r2_mirror_success 0' in (r2_mirror_after_fail.results[0].content | b64decode)"
+          - r2_mirror_after_fail.results[1].content == r2_mirror_payload.content
+        quiet: true
+
+    # Restore the schedule the checks stopped, so verify re-runs against the same
+    # converged instance.
+    - name: Restart the probe timer
+      ansible.builtin.systemd_service:
+        name: r2-mirror.timer
+        state: started

@@ -1,0 +1,248 @@
+#!/usr/bin/env python3
+# {{ ansible_managed }}
+# Publishes what the R2 off-site copy actually holds, as node_exporter textfile
+# metrics. The offsite_mirror probe cannot cover this destination: DSM writes a
+# different, near-empty manifest for a cloud Hyper Backup target — no task name,
+# no status, no last-run time, no folder list — so every OffsiteMirror* task rule
+# is inert for it. This reads the bucket instead, which is the destination itself
+# rather than the NAS's account of it.
+#
+# Python, where every other script in this repo is bash: the probe has to sign
+# AWS SigV4 requests, and the HMAC chain in bash means marshalling binary keys
+# through `openssl dgst -macopt hexkey:` at every step. The stdlib does it in a
+# dozen readable lines. See the role README.
+ENDPOINT = {{ r2_mirror_endpoint | to_json }}
+BUCKET = {{ r2_mirror_bucket | to_json }}
+TEXTFILE_DIR = {{ r2_mirror_textfile_dir | to_json }}
+# Rendered as pairs, not dumped as objects: reading .name and .prefix here means a
+# declaration missing either fails the apply, where a dict unpacked at run time
+# would fail at the next tick and surface 25h later as R2MirrorProbeFailed.
+CONTAINERS = [
+{% for container in r2_mirror_containers %}
+    ({{ container.name | to_json }}, {{ container.prefix | to_json }}),
+{% endfor %}
+]
+{% raw %}
+import collections
+import datetime
+import hashlib
+import hmac
+import os
+import sys
+import tempfile
+import urllib.error
+import urllib.parse
+import urllib.request
+import xml.etree.ElementTree as ET
+
+REGION = "auto"
+SERVICE = "s3"
+TIMEOUT = 30
+
+
+def _sign(key, msg):
+    return hmac.new(key, msg.encode(), hashlib.sha256).digest()
+
+
+def get(params):
+    """One signed GET against the bucket, returning the parsed XML body."""
+    access_key = os.environ["R2_MIRROR_ACCESS_KEY_ID"]
+    secret_key = os.environ["R2_MIRROR_SECRET_ACCESS_KEY"]
+    if not access_key or not secret_key:
+        raise RuntimeError("R2_MIRROR_ACCESS_KEY_ID/SECRET_ACCESS_KEY are empty")
+
+    parsed = urllib.parse.urlsplit(ENDPOINT)
+    host = parsed.netloc
+    path = f"/{BUCKET}"
+    # The canonical query string is sorted by key and percent-encoded. Sorting is
+    # not cosmetic: an unsorted one signs a different string from the one the
+    # server reconstructs and comes back 403 AccessDenied, which reads exactly
+    # like a permissions fault.
+    query = "&".join(
+        f"{urllib.parse.quote(k, safe='-_.~')}={urllib.parse.quote(v, safe='-_.~')}"
+        for k, v in sorted(params.items())
+    )
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    amzdate = now.strftime("%Y%m%dT%H%M%SZ")
+    datestamp = now.strftime("%Y%m%d")
+    payload_hash = hashlib.sha256(b"").hexdigest()
+    signed_headers = "host;x-amz-content-sha256;x-amz-date"
+
+    canonical = "\n".join([
+        "GET", path, query,
+        f"host:{host}",
+        f"x-amz-content-sha256:{payload_hash}",
+        f"x-amz-date:{amzdate}",
+        "",
+        signed_headers,
+        payload_hash,
+    ])
+    scope = f"{datestamp}/{REGION}/{SERVICE}/aws4_request"
+    to_sign = "\n".join([
+        "AWS4-HMAC-SHA256", amzdate, scope,
+        hashlib.sha256(canonical.encode()).hexdigest(),
+    ])
+    signing_key = _sign(
+        _sign(_sign(_sign(f"AWS4{secret_key}".encode(), datestamp), REGION), SERVICE),
+        "aws4_request",
+    )
+    signature = hmac.new(signing_key, to_sign.encode(), hashlib.sha256).hexdigest()
+
+    request = urllib.request.Request(
+        f"{parsed.scheme}://{host}{path}?{query}",
+        headers={
+            "Host": host,
+            "x-amz-content-sha256": payload_hash,
+            "x-amz-date": amzdate,
+            "Authorization": (
+                f"AWS4-HMAC-SHA256 Credential={access_key}/{scope}, "
+                f"SignedHeaders={signed_headers}, Signature={signature}"
+            ),
+        },
+    )
+    with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+        return ET.fromstring(response.read())
+
+
+def text(element, tag):
+    found = element.find(f"{{*}}{tag}")
+    return found.text if found is not None else None
+
+
+def objects():
+    """Every object in the bucket: (key, bytes, last-modified epoch)."""
+    out, token = [], None
+    # The bucket holds a few hundred objects against S3's 1000-key page default,
+    # so a run is normally one request. The loop is for growth, and the scenario's
+    # fixture spans a page boundary to keep it exercised.
+    while True:
+        params = {"list-type": "2"}
+        if token:
+            params["continuation-token"] = token
+        root = get(params)
+        for contents in root.findall("{*}Contents"):
+            modified = text(contents, "LastModified")
+            # fromisoformat, not strptime: it takes the trailing Z and both the
+            # fractional and whole-second forms. The probe fails closed, so a
+            # strict parse would let one unexpected stamp take out every metric.
+            stamp = datetime.datetime.fromisoformat(modified)
+            out.append((text(contents, "Key"), int(text(contents, "Size")),
+                        stamp.timestamp()))
+        if text(root, "IsTruncated") != "true":
+            return out
+        token = text(root, "NextContinuationToken")
+        if not token:
+            return out
+
+
+def multipart():
+    """Keys with an upload started and never completed."""
+    out, key_marker, id_marker = [], None, None
+    while True:
+        params = {"uploads": ""}
+        if key_marker:
+            params["key-marker"] = key_marker
+        if id_marker:
+            params["upload-id-marker"] = id_marker
+        root = get(params)
+        for upload in root.findall("{*}Upload"):
+            out.append(text(upload, "Key"))
+        if text(root, "IsTruncated") != "true":
+            return out
+        key_marker = text(root, "NextKeyMarker")
+        id_marker = text(root, "NextUploadIdMarker")
+        if not key_marker:
+            return out
+
+
+def bucket_of(key):
+    """Which container a key belongs to: a declared prefix, else its own."""
+    for name, prefix in CONTAINERS:
+        if key.startswith(prefix):
+            return name
+    # An undeclared container is still reported, the way offsite_mirror publishes
+    # a status for every task the manifest names: storage nobody declared is
+    # exactly the thing a declaration cannot tell you about.
+    return key.split("/")[0]
+
+
+def main():
+    # Primed from the declared set so a container the bucket does not hold still
+    # publishes zeroes — that is what R2MirrorContainerMissing reads. An
+    # undeclared prefix found in the listing adds itself.
+    tally = collections.defaultdict(
+        lambda: {"bytes": 0, "objects": 0, "newest": 0.0, "parts": 0})
+    for name, _ in CONTAINERS:
+        tally[name]
+
+    for key, size, modified in objects():
+        entry = tally[bucket_of(key)]
+        entry["bytes"] += size
+        entry["objects"] += 1
+        entry["newest"] = max(entry["newest"], modified)
+
+    for key in multipart():
+        tally[bucket_of(key)]["parts"] += 1
+
+    lines = [
+        "# HELP r2_mirror_container_expected A container the bucket is declared to hold.",
+        "# TYPE r2_mirror_container_expected gauge",
+        "# HELP r2_mirror_container_bytes Bytes the container holds.",
+        "# TYPE r2_mirror_container_bytes gauge",
+        "# HELP r2_mirror_container_objects Objects the container holds.",
+        "# TYPE r2_mirror_container_objects gauge",
+        "# HELP r2_mirror_container_last_write_timestamp_seconds Unix time of the newest object in the container.",
+        "# TYPE r2_mirror_container_last_write_timestamp_seconds gauge",
+        "# HELP r2_mirror_multipart_pending Uploads started into the container and never completed.",
+        "# TYPE r2_mirror_multipart_pending gauge",
+    ]
+    # The declared set, published as series rather than restated in an alert
+    # expression, as offsite_mirror does: the rules file is static, and a
+    # comparison Prometheus can make between two families is one that also shows
+    # up in a graph.
+    for name, _ in CONTAINERS:
+        lines.append(f'r2_mirror_container_expected{{container="{name}"}} 1')
+    for name in sorted(tally):
+        entry = tally[name]
+        lines.append(f'r2_mirror_container_bytes{{container="{name}"}} {entry["bytes"]}')
+        lines.append(f'r2_mirror_container_objects{{container="{name}"}} {entry["objects"]}')
+        lines.append(f'r2_mirror_multipart_pending{{container="{name}"}} {entry["parts"]}')
+        # Written only for a container that holds something. An empty one has no
+        # last write to report, and publishing 0 would age instantly into a
+        # freshness alert that says the wrong thing — R2MirrorContainerMissing is
+        # what covers that case, off the byte count.
+        if entry["objects"]:
+            lines.append(
+                "r2_mirror_container_last_write_timestamp_seconds"
+                f'{{container="{name}"}} {entry["newest"]:.0f}'
+            )
+
+    os.makedirs(TEXTFILE_DIR, exist_ok=True)
+    # Publish atomically: write a temp file the exporter's *.prom glob ignores,
+    # then rename it over the target so no scrape reads a half-written file. A run
+    # killed between the two orphans its temp file, so sweep predecessors' here
+    # rather than trapping exit, which a SIGKILL never runs.
+    for stale in os.listdir(TEXTFILE_DIR):
+        if stale.startswith(".r2-mirror.prom."):
+            os.unlink(os.path.join(TEXTFILE_DIR, stale))
+    handle, tmp = tempfile.mkstemp(prefix=".r2-mirror.prom.", dir=TEXTFILE_DIR)
+    with os.fdopen(handle, "w") as out:
+        out.write("\n".join(lines) + "\n")
+        out.flush()
+        os.fsync(out.fileno())
+    os.chmod(tmp, 0o644)
+    os.rename(tmp, os.path.join(TEXTFILE_DIR, "r2-mirror.prom"))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as error:  # every failure here is the same failure
+        # Fail closed and write nothing. The previous payload stands, deliberately:
+        # the run metric the unit's ExecStopPost writes is what says this run
+        # failed, and R2MirrorProbeFailed reads that. Half a payload would instead
+        # look like a bucket that had lost objects.
+        print(f"r2-mirror: {type(error).__name__}: {error}", file=sys.stderr)
+        sys.exit(1)
+{% endraw %}
