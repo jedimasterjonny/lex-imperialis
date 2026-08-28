@@ -14,12 +14,14 @@ DropCapability=all
    ordinary sockets and needs no capability back. #}
 # The controller URL and API key, kept out of this world-readable unit.
 EnvironmentFile=/etc/unpoller/env
-# The image ships a HEALTHCHECK at a 30s interval, which podman inherits. That is
-# an OCI exec every 30s on a Raspberry Pi to assert what the co-located
-# Prometheus already reports as up{job="unpoller"} — see the health convention in
-# roles/CLAUDE.md. Disabled rather than widened: the scrape is the monitor, and a
-# wedged poller shows up as a stale /metrics, which an exec check would not catch
-# either.
+# Upstream's Dockerfile declares a 30s HEALTHCHECK, but no published image carries
+# one: the release is built by goreleaser to OCI media types, and HEALTHCHECK is a
+# Docker-only config extension BuildKit drops on that export path, so podman has
+# nothing to inherit. Kept as a guard against upstream changing exporter, since an
+# inherited check would be an OCI exec every 30s on a Raspberry Pi to assert what
+# the co-located Prometheus already reports as up{job="unpoller"} — see the health
+# convention in roles/CLAUDE.md. The scrape is the monitor either way, and a wedged
+# poller shows up as a stale /metrics, which an exec check would not catch.
 HealthCmd=none
 
 [Service]

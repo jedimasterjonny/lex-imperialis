@@ -63,10 +63,15 @@ so the `user`/`pass` the shipped config still carries are inert while it is set.
   so the container runs as root — which is why `verify` asserts `EffectiveCaps` as
   well as `BoundingCaps`, where a non-root container's effective set is empty
   regardless of the drop and asserting on it would be a check that cannot fail.
-- **`HealthCmd=none`.** The image ships a `HEALTHCHECK` on a 30s interval, which
-  podman inherits silently — an OCI exec every 30 seconds on a Raspberry Pi, to
-  assert what the co-located scrape already reports. Disabled rather than
-  widened: a poller frozen on a stale snapshot passes an exec check anyway (below).
+- **`HealthCmd=none`.** No published image carries a `HEALTHCHECK`, though
+  upstream's `Dockerfile` declares one: the release is built by goreleaser to OCI
+  media types, and `HEALTHCHECK` is a Docker-only config extension BuildKit drops on
+  that export path — `podman inspect` reports `Config.Healthcheck` as null. The
+  directive stays as a guard against upstream changing exporter, since an inherited
+  check would be an OCI exec every 30 seconds on a Raspberry Pi to assert what the
+  co-located scrape already reports — and a poller frozen on a stale snapshot passes
+  an exec check anyway (below). `verify` asserts the directive in the unit, not the
+  container's healthcheck, which is empty whether or not the quadlet disables it.
 - **A green scrape does not mean a healthy poll.** `/metrics` is served from a
   snapshot refreshed in the background, so a revoked key or an unreachable
   controller leaves `up{job="unpoller"}` green and every `unpoller_*` series frozen at

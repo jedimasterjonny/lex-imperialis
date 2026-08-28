@@ -77,20 +77,19 @@
           API call a minute whose result nothing keeps.
         quiet: true
 
-    # The image ships a HEALTHCHECK on a 30s interval, which podman inherits
-    # silently. That is an OCI exec every 30 seconds on a Raspberry Pi to assert
-    # what the co-located scrape already reports; the quadlet disables it, and this
-    # is what proves the disable took.
-    - name: The image's 30s exec healthcheck is disabled
-      vars:
-        unpoller_healthcheck: "{{ unpoller_inspected.Config.Healthcheck.Test | default([], true) }}"
-      ansible.builtin.assert:
-        that:
-          - unpoller_healthcheck | length == 0 or unpoller_healthcheck[0] == 'NONE'
-        fail_msg: >-
-          unpoller inherited the image's healthcheck ({{ unpoller_healthcheck }}) — an
-          exec into the container every 30s, on a Raspberry Pi, for a liveness signal
-          the Prometheus scrape already carries.
+    # No published image carries a HEALTHCHECK — upstream declares one in its
+    # Dockerfile, but goreleaser exports OCI media types and BuildKit drops the
+    # Docker-only field on that path, so podman reports Config.Healthcheck as null.
+    # Asserting the container has no healthcheck therefore cannot fail: it passes on
+    # that empty inspect whether or not the quadlet disables anything. The directive
+    # is what has to hold, so that is what is read — it is all that stands between a
+    # change of exporter upstream and an OCI exec every 30s on a Raspberry Pi.
+    - name: The quadlet disables the image's healthcheck
+      ansible.builtin.command: grep -Fqx HealthCmd=none /etc/containers/systemd/unpoller.container
+      become: true
+      register: unpoller_healthcmd
+      changed_when: false
+      failed_when: unpoller_healthcmd.rc != 0
 
     # This image sets no USER, so the container runs as root — which is what makes
     # EffectiveCaps meaningful here. A non-root container's effective set is empty
