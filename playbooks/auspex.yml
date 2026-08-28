@@ -102,6 +102,19 @@
       - name: photos-backup
         folders:
           - /scriptorum/photos
+    # The containers the R2 bucket must hold, one per Hyper Backup task, and the
+    # set R2MirrorContainerMissing measures it against. `prefix` is the target
+    # directory each task writes under. The photo library is not copied to R2.
+    r2_mirror_containers:
+      - name: podman-backup-r2
+        prefix: podman.hbk/
+      - name: home-backup-r2
+        prefix: home.hbk/
+    # Read-only, and deliberately not the pair the Hyper Backup tasks hold: that
+    # one can delete every object in the bucket, and nothing on a fleet host needs
+    # that reach over the last-resort copy.
+    r2_mirror_access_key_id: "{{ r2_reclusiam_readonly_access_key_id }}"
+    r2_mirror_secret_access_key: "{{ r2_reclusiam_readonly_secret_access_key }}"
     # Blackbox-probe via the co-located exporter. Each entry pairs a prober module
     # with the targets to run it against; the same module may appear more than once.
     prometheus_probe_targets:
@@ -186,6 +199,10 @@
     # public key has to be installed on the NAS by hand before any metric flows —
     # see roles/offsite_mirror.
     - offsite_mirror
+    # The only watch on the R2 copy, and it cannot come from offsite_mirror above:
+    # DSM's manifest for a cloud target carries no task name, status or last-run
+    # time, so this reads the bucket itself — see roles/r2_mirror.
+    - r2_mirror
     - cadvisor
     # blackbox_exporter before prometheus so the exporter is up when the blackbox
     # job first scrapes it — Prometheus tolerates a briefly-down target, so this is
