@@ -24,6 +24,10 @@ Recovery is driven from a control host with:
   a separate project from emmas-edit, and in neither the vault nor terraform).
   Needed to recover the off-site copy: it is the way back to both External
   Reachability and the box's sub-account password.
+- The Cloudflare dashboard login (password manager; the Hyper Backup tasks' S3
+  key pair lives only in DSM's task config, deliberately not in the vault — see
+  [`secret-rotation.md`](secret-rotation.md)). Needed to recover the R2 copy: it
+  is the way back to a credential that can read the bucket.
 - The NAS volume encryption key — both `/volume1` and `/volume2` are LUKS2,
   auto-unlocked from a key store on DSM's system partition. A RAID rebuild with
   DSM intact unlocks itself and a from-scratch Hyper Backup restore makes a
@@ -40,7 +44,7 @@ first (below), or drive the others from any machine meeting the above.
 
 ## What is and isn't backed up
 
-The full backup architecture — all six layers — is in [`backups.md`](backups.md);
+The full backup architecture — all seven layers — is in [`backups.md`](backups.md);
 this is the recovery-relevant summary.
 
 `podman_backup` runs on `solar` and `rogue-trader` only, writing a per-host
@@ -84,6 +88,17 @@ A lost NAS is recoverable from it — see [administratum](#administratum-nas).
 The tasks reach the box through the `storagebox_gateway` forward on
 `rogue-trader`, so it is on the restore path as well as the backup path — see
 [administratum](#administratum-nas).
+
+**Second off-site copy:** two more Hyper Backup tasks write the restic repos to
+the Cloudflare R2 bucket `reclusiam` — `podman-backup-r2` Wednesday 06:00,
+`home-backup-r2` Thursday 06:00; the photo library is not among them. This is
+the copy to reach for when port-wander cannot serve: the NAS and the storage box
+lost together, no route back to the box, or the mirror having already copied the
+damage onto it — R2 holds 52 weekly versions where port-wander holds none. The
+NAS reaches R2 directly over HTTPS, so none of the gateway recovery applies. Its
+watch is the `r2_mirror` probe on `auspex` (`R2MirrorContainerMissing`,
+`ContainerStale`, `StrandedParts`, `R2MirrorProbeFailed`); the `OffsiteMirror*`
+rules above do not cover these tasks. See [administratum](#administratum-nas).
 
 ## solar (and any openSUSE podman host)
 
@@ -565,6 +580,17 @@ Then restore those tasks' sets to return the repos to
 rogue-trader's backups can then be restored as normal. The laptop's `time-machine`
 SMB share on `scriptorum` is not mirrored off-site, so it is not recovered — the
 laptop simply resumes Time Machine onto the rebuilt share.
+
+The restic repos have a second off-site copy in the Cloudflare R2 bucket
+`reclusiam`, written by two more Hyper Backup tasks (`podman-backup-r2`
+Wednesday 06:00, `home-backup-r2` Thursday 06:00; not the photo library). There
+is no path to restore first: the NAS reaches R2 directly over HTTPS. There is a
+credential to remint, though — the Admin Read & Write S3 key pair lives only in
+the Hyper Backup task config, so it goes with the NAS; mint a replacement under
+R2 → Manage API tokens with the Cloudflare login from Prerequisites. Then
+restore through Hyper Backup itself against `podman.hbk` or `home.hbk` — this
+copy is Hyper Backup's own versioned container format, not a file mirror, so
+there is nothing to copy back by hand.
 
 ## Branch protection and merge methods
 

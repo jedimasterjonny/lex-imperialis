@@ -1,6 +1,6 @@
 # reclusiam — a Cloudflare R2 bucket, the backups' last-resort third copy
-# behind the NAS repos and the Hetzner storage box. Nothing writes to it yet:
-# this provisions the target, not the job that fills it.
+# behind the NAS repos and the Hetzner storage box. Two DSM Hyper Backup tasks
+# write it; this provisions the target, not the jobs that fill it.
 #
 # The storage box is in Finland, so the bucket is hinted to Western Europe —
 # far enough that a regional loss cannot take both off-site copies, close enough
@@ -16,9 +16,9 @@
 # restic's, as in every other repo. For the same reason there is no bucket lock:
 # object retention would refuse restic's own prune.
 #
-# The S3 credential restic will need is NOT minted here — a cloudflare_api_token
-# resource would write the secret into Terraform state. Mint it by hand and put
-# it in the vault when the backup job lands.
+# The tasks' S3 credential is NOT minted here — a cloudflare_api_token resource
+# would write the secret into Terraform state. It is minted by hand into the NAS
+# task config; only the r2_mirror probe's read-only pair is in the vault.
 #
 # This is the config's first account-scoped Cloudflare resource: both provider
 # tokens need Account | Workers R2 Storage (Edit to apply, Read to plan) on top
