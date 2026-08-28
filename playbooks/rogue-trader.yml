@@ -43,13 +43,12 @@
       - name: astropath
         server: 192.168.1.225
         export: /volume2/astropath
-    # caddy + wordpress serve emmasedit.com (apex + www) publicly. The Cloudflare
-    # token is scoped to the emmasedit.com zone — distinct from the global caddy
-    # token, which is solar's — so override it here. No internal services run, so
+    # caddy + wordpress serve emmasedit.com (apex + www) publicly, on the
+    # fleet-wide caddy_cloudflare_api_token — it covers this zone as well as
+    # solar's, so there is nothing to override here. No internal services run, so
     # the wildcard vhost is off; caddy issues the cert over DNS-01, so it is in
     # place before the DNS flip.
     caddy_wildcard: false
-    caddy_cloudflare_api_token: "{{ emmasedit_cloudflare_api_token }}"
     wordpress_domains:
       - emmasedit.com
       - www.emmasedit.com

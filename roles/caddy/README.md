@@ -73,7 +73,7 @@ emmasedit.com, www.emmasedit.com {
 The block author picks the scheme: an `http://` prefix stays off ACME, while a
 bare (HTTPS) address is certified by the global `cert_issuer` via DNS-01 (so the
 cert is issued before any A record points here) — which needs
-`caddy_cloudflare_api_token` scoped to that zone, or issuance fails at startup.
+`caddy_cloudflare_api_token` covering that zone, or issuance fails at startup.
 
 ## TLS
 
@@ -103,7 +103,8 @@ The container runs `NoNewPrivileges` and drops every capability except
 In the vault:
 
 - `caddy_domain` — a name under the `jonnyoc.uk` zone, not a zone itself.
-- `caddy_cloudflare_api_token` — scoped to that zone: Zone→Read, DNS→Edit.
+- `caddy_cloudflare_api_token` — covering that zone: Zone→Read, DNS→Edit. The
+  fleet's token also covers `emmasedit.com` for rogue-trader's caddy.
 
 Point wildcard DNS for `*.<caddy_domain>` at the host. A malformed token
 stops caddy at startup.

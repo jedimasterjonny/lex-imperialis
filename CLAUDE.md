@@ -20,7 +20,7 @@ This repo is public: every commit is world-readable and permanent, including git
 
 ## Secrets
 
-One `ansible-vault` file, `inventory/group_vars/all/vault.yml`, encrypted whole — no inline `!vault` strings, one vault id — decrypted locally with a gitignored `.vault_pass`. Vault var names are host/purpose-scoped (`emmasedit_cloudflare_api_token`) and mapped to a role's generic var in a play's `vars:` block; a vault var named identically to a role's default is read straight from `group_vars/all`. Terraform cannot read the vault, and CI's access to it is deliberately narrow — see `terraform/README.md` for that split and `.github/workflows/README.md` for the secrets CI holds directly.
+One `ansible-vault` file, `inventory/group_vars/all/vault.yml`, encrypted whole — no inline `!vault` strings, one vault id — decrypted locally with a gitignored `.vault_pass`. Vault var names are host/purpose-scoped (`scholam_restic_password`) and mapped to a role's generic var in a play's `vars:` block; a vault var named identically to a role's default is read straight from `group_vars/all`. Terraform cannot read the vault, and CI's access to it is deliberately narrow — see `terraform/README.md` for that split and `.github/workflows/README.md` for the secrets CI holds directly.
 
 ## Layout
 
