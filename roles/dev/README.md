@@ -30,12 +30,15 @@ the alert rules, so the workstation takes both from zypper (`butane` and
 `golang-github-prometheus-prometheus`, which provides `/usr/bin/promtool`).
 Both are rolling while CI pins — butane from a digest-pinned image, promtool
 from the prometheus release matching `roles/prometheus`'s image pin — so the
-versions can differ. Accepted rather than pinned in both cases: a zypper package
-cannot be held to a version under a rolling distro. Butane's `--strict` promotes
-warnings to errors, so a `*.bu` can pass locally and fail CI; promtool's drift is
-quieter, parting the local linter from the prometheus that evaluates the rules.
-Neither version is asserted, unlike packer's `build` (`bin/packer.sh`) — CI's
-verdict is the one that counts.
+versions can differ. Since upstream merged the transpiler into `coreos/ignition`
+and archived `coreos/butane` (2026-08-25), butane's gap is not only a version:
+the image is built from Ignition's tree and numbered on Ignition's version line,
+while zypper still packages the 0.x line. Accepted rather than pinned in both
+cases: a zypper package cannot be held to a version under a rolling distro.
+Butane's `--strict` promotes warnings to errors, so a `*.bu` can pass locally and
+fail CI; promtool's drift is quieter, parting the local linter from the
+prometheus that evaluates the rules. Neither version is asserted, unlike packer's
+`build` (`bin/packer.sh`) — CI's verdict is the one that counts.
 
 promtool ships only as part of the whole prometheus package — 187 MiB and a
 `prometheus` system user for one linter binary. Accepted as the cost of not

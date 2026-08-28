@@ -57,7 +57,7 @@
     },
     {
       "customType": "regex",
-      "description": "butane for the lint gate; the binary comes out of a digest-pinned image because the GitHub release ships signatures but no checksums.",
+      "description": "butane for the lint gate; the binary comes out of a digest-pinned image because the GitHub release ships signatures but no checksums. Butane now lives in coreos/ignition and coreos/butane is archived, so tags follow Ignition's version line: the 0.x -> 2.x jump is a renumbering, not years of drift.",
       "managerFilePatterns": ["/^\\.github/workflows/lint\\.yml$/"],
       "matchStrings": ["image=(?<depName>[^\\s:]+):(?<currentValue>[^\\s@]+)(?:@(?<currentDigest>sha256:\\S+))?"],
       "autoReplaceStringTemplate": "image={{{depName}}}:{{{newValue}}}{{#if newDigest}}@{{{newDigest}}}{{/if}}",

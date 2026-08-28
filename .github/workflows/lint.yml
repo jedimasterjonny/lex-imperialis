@@ -104,7 +104,10 @@ jobs:
       # signatures but no checksums, so verifying a downloaded binary would mean
       # pinning a new signing key. The digest-pinned image needs no new trust root
       # -- it is content-addressed, and renovate bumps it like the fleet's other
-      # image pins.
+      # image pins. Upstream has since merged the transpiler into coreos/ignition
+      # and archived coreos/butane, so the tag renumbers onto Ignition's version
+      # line; the pin is a digest, so that move costs nothing here beyond the bump
+      # renovate raises for it.
       - name: Set up butane
         run: |
           image=quay.io/coreos/butane:v0.29.0@sha256:13fec166cb47a8e053dcc23256c0ca41aaa1c61cab39793832aaf8894ca78c8f
