@@ -11,40 +11,25 @@ second copy. Seven layers:
 
 | Layer | Protects | On the NAS | Cadence | Owned by |
 | --- | --- | --- | --- | --- |
-| Podman volume backup | container state on `solar` and `rogue-trader` | per-host restic repo under `astropath` | weekly, Wed 00:00 / 01:00 | `podman_backup` role — this repo |
-| Home directory backup | `/home` on `solar`, `scholam`, and `rogue-trader` | per-host restic repo under `astropath` | weekly, Thu 01:00 / 02:00 / 03:00 | `home_backup` role — this repo |
+| Podman volume backup | container state on `solar` and `rogue-trader` | per-host restic repo under `astropath` | weekly | `podman_backup` role — this repo |
+| Home directory backup | `/home` on `solar`, `scholam`, and `rogue-trader` | per-host restic repo under `astropath` | weekly | `home_backup` role — this repo |
 | Photo library | the Google Photos archive | `/scriptorum/photos` | on demand | [`negative-space`](https://github.com/jedimasterjonny/negative-space) — external |
 | Laptop Time Machine | the operator's laptop | `time-machine` SMB share, a sibling of `scriptorum` on the same array (1 TB cap) | hourly when the laptop is on the network | macOS + DSM — external |
 | Bit-rot scrub | every block on both arrays | `scriptorum` + `astropath` | monthly | DSM — NAS-side |
-| Off-site mirror | the podman + home restic repos and the photo library | Hetzner storage box in Finland, via rogue-trader | podman Wed 02:00 · home Thu 04:00 · photos Tue 03:00 | DSM Hyper Backup — NAS-side |
-| Second off-site copy | the podman + home restic repos | Cloudflare R2 `reclusiam`, Western Europe | podman Wed 06:00 · home Thu 06:00 | DSM Hyper Backup — NAS-side |
+| Off-site mirror | the podman + home restic repos and the photo library | Hetzner storage box in Finland, via rogue-trader | weekly, staggered | DSM Hyper Backup — NAS-side |
+| Second off-site copy | the podman + home restic repos | Cloudflare R2 `reclusiam`, Western Europe | weekly, staggered | DSM Hyper Backup — NAS-side |
 
-Times are each host's local clock. Every fleet host keeps `Europe/London`, held
-by the `common` role rather than left to the image. The NAS does not: it is on
-GMT year-round and never observes BST, and it is out of the inventory, so its
-clock is DSM's. That asymmetry is what the schedule below is built around — the
-fleet's runs move an hour against the NAS's fixed mirror windows each summer,
-while keeping their spacing from each other. The whole week, in UTC:
+One clock end to end. Every fleet host keeps `Europe/London`, held by the
+`common` role rather than left to the image; the NAS keeps it too, though it is
+out of the inventory, so its clock is DSM's to hold. That is what the stagger is
+built on: the gap between a run and the mirror that copies it is the same all
+year. The whole week, alongside every other scheduled job on the estate, is in
+[`schedule.md`](schedule.md).
 
-| Winter (UTC) | Summer (UTC) | Job | Clock | Typical |
-| --- | --- | --- | --- | --- |
-| Tue 03:00 | Tue 03:00 | `photos-backup` → port-wander | NAS | 87 s |
-| Wed 00:00 | Tue 23:00 | `podman_backup` — solar | Europe/London | — |
-| Wed 01:00 | Wed 00:00 | `podman_backup` — rogue-trader | Europe/London | — |
-| Wed 02:00 | Wed 02:00 | `podman-backup` → port-wander | NAS | 145 s |
-| Wed 06:00 | Wed 06:00 | `podman-backup-r2` → reclusiam | NAS | — |
-| Thu 01:00 | Thu 00:00 | `home_backup` — solar | Europe/London | — |
-| Thu 02:00 | Thu 01:00 | `home_backup` — scholam | Europe/London | — |
-| Thu 03:00 | Thu 02:00 | `home_backup` — rogue-trader | Europe/London | — |
-| Thu 04:00 | Thu 04:00 | `home-backup` → port-wander | NAS | 121 s |
-| Thu 06:00 | Thu 06:00 | `home-backup-r2` → reclusiam | NAS | — |
-| Fri 08:00 | Fri 08:00 | `home-backup-r2` integrity check | NAS | — |
-| Sun 08:00 | Sun 08:00 | `podman-backup-r2` integrity check | NAS | — |
-
-The durations are last-run values from `offsite_mirror_task_duration_seconds`,
-not budgets — read the metric, not this table, when the spacing matters. The R2
-rows carry a dash because nothing measures them: DSM's manifest for a cloud
-target records no duration, which is the same gap `r2_mirror` exists for.
+Run durations are in `offsite_mirror_task_duration_seconds` rather than either
+document — last-run values, not budgets. The R2 tasks have none: DSM's manifest
+for a cloud target records no duration, which is the same gap `r2_mirror` exists
+for.
 
 The first two are Ansible-managed — `podman_backup` and `home_backup`, both thin
 consumers of the shared `restic_backup` engine. The rest are DSM tasks on the
@@ -65,15 +50,13 @@ packs — the whole repo over successive runs — so structural corruption and
 bit-rot inside the repo page as `PodmanBackupFailed` instead of surfacing at
 restore; a missed run raises `PodmanBackupOverdue`. The two hosts are staggered
 — `solar` Wednesday 00:00 and `rogue-trader` Wednesday 01:00 — so neither is on
-the astropath export while the other is. Both keep Europe/London, so that hour
-holds year-round, and either season leaves both finishing well inside the
-Wednesday 02:00 UTC off-site mirror window below — an hour of clearance in
-winter, two in summer. That clearance is the reason the stagger runs earlier
-rather than later: the mirror's window is the NAS's and does not move.
-`scholam` carries no podman repo: its only podman workload, `node_exporter`,
-defines no named volume, so `podman_backup` is left off its play. Container
-media on the NFS shares is deliberately out of the repo — it lives on the NAS
-and is re-acquirable. Role mechanics:
+the astropath export while the other is. Both finish well inside the Wednesday
+02:00 off-site mirror window below, an hour of clearance year-round. That
+clearance is the reason the stagger runs earlier rather than later: the mirror
+must find both repos complete. `scholam` carries no podman repo: its only
+podman workload, `node_exporter`, defines no named volume, so `podman_backup`
+is left off its play. Container media on the NFS shares is deliberately out of
+the repo — it lives on the NAS and is re-acquirable. Role mechanics:
 [`roles/podman_backup/README.md`](../roles/podman_backup/README.md).
 
 ## Home directory backup
@@ -91,10 +74,9 @@ recovery, not an output of it. Each run `restic check`s the repo (the same
 rotating data-pack re-read), so corruption pages as `HomeBackupFailed` rather
 than surfacing at restore; a missed run raises `HomeBackupOverdue`. The hosts
 are staggered (`solar` Thu 01:00, `scholam` Thu 02:00, `rogue-trader` Thu 03:00)
-so they don't snapshot to the astropath export at once. All three keep
-Europe/London, so the hour between them holds in either season and the chain
-shifts as one. Its off-site mirror is a NAS-side Hyper Backup task at Thu 04:00
-UTC, an hour clear of the last run in winter and two in summer. Role mechanics:
+so they don't snapshot to the astropath export at once. Its off-site mirror is
+a NAS-side Hyper Backup task at Thu 04:00, an hour clear of the last run
+year-round. Role mechanics:
 [`roles/home_backup/README.md`](../roles/home_backup/README.md).
 
 ## Photo library — negative-space
@@ -167,10 +149,10 @@ mirror fails. The Hyper Backup task notification catches that, and so does the
 probe below — as `OffsiteMirrorTaskFailed` if DSM records the refusal in each
 task's cached manifest, and otherwise as `OffsiteMirrorTaskOverdue` once the last
 success ages past a week. Its `autoupdate` reboot sits at Wed 07:00 so a
-transactional reboot cannot cut the Wed 02:00 UTC mirror: with the timer's
-two-hour randomised delay it lands 06:00–08:00 UTC in summer and 07:00–09:00 in
-winter, so the mirror is guaranteed four hours in summer and five in winter — see
-`playbooks/rogue-trader.yml` for the four-hour assumption that sets the slot.
+transactional reboot cannot cut the Wed 02:00 mirror: with the timer's two-hour
+randomised delay it lands 07:00–09:00, so the mirror is guaranteed five hours —
+see `playbooks/rogue-trader.yml` for the four-hour assumption that sets the
+slot.
 
 A failed run alerts by email, as does a failed scrub: DSM's notification profile
 routes storage and backup events to the Synology-Account mail, and task
@@ -252,15 +234,15 @@ Uploads use 64 MB parts: large enough that the per-part write charges are noise,
 small enough that a failed part is a cheap retry and the buffer is not half a
 gigabyte of NAS memory.
 
-A weekly integrity check reads each container back out of R2 — `home-backup-r2` on
-Friday 08:00, `podman-backup-r2` on Sunday 08:00, on separate days so neither
-grows into the other. 08:00 rather than the small hours because the UniFi
-controller updates its managed devices at 03:00 and the console itself early on
-Saturday, both on Europe/London while the NAS stays on GMT — so a 03:00 check
-runs an hour clear of them in summer and collides in winter. This is the only thing that verifies these copies are readable at
-all: restic's own `check` covers the source repos and the btrfs scrub covers the
-NAS, but neither sees what R2 actually holds. R2 charges no egress, so the read
-costs nothing but time.
+A weekly integrity check reads each container back out of R2 — `home-backup-r2`
+on Friday 08:00, `podman-backup-r2` on Sunday 08:00, on separate days so neither
+grows into the other. 08:00 because it is clear on every day of the week — past
+the overnight block the backups and mirrors run in, and past the Saturday UniFi
+window — so the slot needs no per-day arithmetic and stays right if a job moves.
+This is the only thing that verifies these copies are readable at all: restic's
+own `check` covers the source repos and the btrfs scrub covers the NAS, but
+neither sees what R2 actually holds. R2 charges no egress, so the read costs
+nothing but time.
 
 Neither task is watched by the `offsite_mirror` probe, and neither can be: DSM's
 manifest for a cloud target carries no task name, status, last-run time or folder
