@@ -159,7 +159,7 @@ in the same pass or the next run authenticates with the revoked token.
 
 | Vault variable | Mint a new… | CI copy | Verify |
 | --- | --- | --- | --- |
-| `terraform_cloudflare_api_token` | Cloudflare token over jonnyoc.uk, jonnyoc.co.uk and emmasedit.com — Zone: DNS Edit, Zone Settings Edit, Single Redirect Edit, Zone WAF Edit, Cache Rules Edit, SSL and Certificates Edit | `gh secret set CLOUDFLARE_APPLY_API_TOKEN --env 'Segmentum Obscurus'` | `make tofu-plan`, then a real apply |
+| `terraform_cloudflare_api_token` | Cloudflare token over jonnyoc.uk, jonnyoc.co.uk and emmasedit.com — Zone: DNS Edit, Zone Settings Edit, Single Redirect Edit, Zone WAF Edit, Cache Rules Edit, SSL and Certificates Edit, and Account: Workers R2 Storage Edit | `gh secret set CLOUDFLARE_APPLY_API_TOKEN --env 'Segmentum Obscurus'` | `make tofu-plan`, then a real apply |
 | `hcloud_token_emmas_edit` | Hetzner Read&Write token, **emmas-edit** project | `gh secret set HCLOUD_APPLY_TOKEN --env 'Segmentum Obscurus'` | `make tofu-plan` |
 | `hcloud_token` | Hetzner Read&Write token, **molecule test** project | `gh secret set MOLECULE_HCLOUD_TOKEN` | `make test-hetzner ROLE=motd` |
 
@@ -167,8 +167,8 @@ The read-only `CLOUDFLARE_PLAN_API_TOKEN` and `HCLOUD_PLAN_TOKEN` repo secrets
 have no vault copy — mint and `gh secret set` them alone. They serve every
 non-push event, not just PR plans: `workflow_dispatch` and the weekly drift check
 too. They must mirror the write tokens' scope in *read* form, because a plan
-refreshes rulesets, zone settings, DNSSEC and the Hetzner firewall — DNS read
-alone is not enough. Verify with `gh workflow run terraform.yml`, not by re-running
+refreshes rulesets, zone settings, DNSSEC, the R2 bucket and the Hetzner firewall
+— DNS read alone is not enough. Verify with `gh workflow run terraform.yml`, not by re-running
 an open PR: `discover` skips the plan job for any PR whose non-`.md` diff misses
 `terraform/`, and the gate still reports green.
 
