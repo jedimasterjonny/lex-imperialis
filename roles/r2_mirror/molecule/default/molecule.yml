@@ -1,0 +1,29 @@
+---
+# Debian only. auspex is the one host this role runs on and the role branches on
+# nothing, so a Tumbleweed platform would test a distribution it is deployed to
+# nowhere — the same reasoning the offsite_mirror and prometheus scenarios carry.
+platforms:
+  - name: "lex-r2-mirror-incus-${MOLECULE_RUN_ID:-local}"
+    image: images:debian/13/cloud
+# The declaration under test. converge's input only — verify asserts the rendered
+# literals rather than re-deriving them, since a play's vars_files outranks
+# inventory group_vars and would hand it this role's empty default. Three
+# containers, because the interesting cases are between them: one that holds
+# objects straddling a listing page, one carrying a stranded multipart upload, and
+# one declared that the bucket does not hold at all.
+#
+# The endpoint points at the scenario's own stub rather than R2.
+provisioner:
+  inventory:
+    group_vars:
+      all:
+        r2_mirror_endpoint: http://127.0.0.1:8099
+        r2_mirror_access_key_id: molecule-dummy-key
+        r2_mirror_secret_access_key: molecule-dummy-secret
+        r2_mirror_containers:
+          - name: home-backup-r2
+            prefix: home.hbk/
+          - name: podman-backup-r2
+            prefix: podman.hbk/
+          - name: photos-backup-r2
+            prefix: photos.hbk/
