@@ -171,12 +171,11 @@ once and does not watch it, so on a live host it can also report a zone the file
 no longer has.
 
 Held rather than observed because every schedule in the repo is an `OnCalendar=`
-in the host's local time. One zone does not stop the fleet moving against the
-NAS's fixed-GMT mirror windows each summer — it puts every host in one frame, so
-the stagger between them holds its spacing year-round instead of opening and
-closing with the seasons, and the clearances against those windows are then a
-property of the schedule rather than of which host is on which clock.
-`docs/backups.md` works that asymmetry through.
+in the host's local time. One zone puts every host in one frame, so the stagger
+between them holds its spacing year-round instead of opening and closing with
+the seasons. The NAS, which owns the mirror windows those runs must clear, keeps
+`Europe/London` too, so that clearance holds the same way. `docs/backups.md`
+works the chain through.
 
 systemd re-arms every calendar timer on the change itself, so the role notifies
 nothing — but a `Persistent=` timer whose slot the shift moves into the past
