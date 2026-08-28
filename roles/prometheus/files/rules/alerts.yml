@@ -428,6 +428,99 @@ groups:
         annotations:
           summary: "the off-site mirror probe is overdue on {{ $labels.instance }}"
           description: "{{ $labels.instance }} has not read the NAS's Hyper Backup manifest cache in over 2 days."
+      # The R2 copy gets its own rules because the four task rules above cannot
+      # reach it: DSM's manifest for a cloud Hyper Backup target carries no task
+      # name, status, last-run time or folder list, which is what each of them
+      # reads. The r2_mirror probe reads the bucket itself instead, so these read
+      # presence, freshness and stranded uploads — what a destination can answer
+      # for. The two probe rules below are a second probe's own outcome, not a
+      # replacement for anything. Rationale in full: roles/r2_mirror/README.md.
+      #
+      # Scoped to the declared set rather than written as `bytes == 0`, so a prefix
+      # the probe finds but the play never declared — one holding nothing but a
+      # stranded part — cannot read as a missing copy.
+      #
+      # Bytes, not objects: a zero-byte folder marker is an object, and both R2's
+      # dashboard creating a prefix by hand and a container having its contents
+      # removed leave one, either of which would hold this critical rule silent on a
+      # copy that does not exist. Strictly stronger, since bytes > 0 implies objects
+      # > 0 and a container holding a backup always has bytes.
+      - alert: R2MirrorContainerMissing
+        expr: group by (instance, container) (r2_mirror_container_expected) unless on (instance, container) (r2_mirror_container_bytes > 0)
+        for: 1h
+        labels:
+          severity: critical
+        annotations:
+          summary: "the {{ $labels.container }} R2 container holds nothing"
+          description: >-
+            {{ $labels.container }} is declared in the play but the bucket holds no
+            object under its prefix — the second off-site copy of those repos does
+            not exist.
+      # Both uploads are weekly, so a healthy run caps the gauge at ~7 days old; 8
+      # gives a day's grace, matching OffsiteMirrorTaskOverdue. The gauge is the
+      # newest object in the container, not a status DSM reported: a task that
+      # stops running, fails every run, or has its credentials revoked all reach
+      # this the same way, because none of them put a new object in the bucket.
+      #
+      # Joined onto the expected family for the reason ContainerMissing is scoped to
+      # it: the probe publishes this gauge for every prefix it finds, so a retired or
+      # renamed task whose objects remain in the bucket — or anything landing at the
+      # root — would alert from 8 days on, permanently, on a prefix nobody declared,
+      # with no remedy but deleting objects out of the last-resort copy.
+      - alert: R2MirrorContainerStale
+        expr: time() - (r2_mirror_container_last_write_timestamp_seconds and on (instance, container) r2_mirror_container_expected) > 8 * 86400
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "the {{ $labels.container }} R2 copy is stale"
+          description: "Nothing has been written to {{ $labels.container }} in R2 in over 8 days."
+      # An upload interrupted partway leaves its parts in the bucket, where they
+      # bill as storage and appear in no listing — the failure mode that is
+      # invisible from both ends unless something asks for it. An upload in flight
+      # while the probe runs is a legitimate reading the next day's run clears, so
+      # the window has to outlast one probe cycle: at 24h the gauge holds its value
+      # for exactly the for:, and whether a cleared upload pages turns on where the
+      # next run's jitter falls. 25h means two consecutive readings, as it does on
+      # R2MirrorProbeFailed.
+      - alert: R2MirrorStrandedParts
+        expr: r2_mirror_multipart_pending > 0
+        for: 25h
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.container }} has incomplete uploads in R2"
+          description: >-
+            {{ $value }} multipart upload(s) into {{ $labels.container }} were started
+            and never completed. They are billed as storage and do not appear in a
+            bucket listing.
+      # The probe's own outcome, which is what a revoked key or an unreachable
+      # endpoint looks like: the payload it last wrote stands untouched, so the
+      # three rules above go on evaluating it and saying the copy is fine. 25h
+      # rather than the 15m a *Failed rule usually carries, for the same reason
+      # OffsiteMirrorProbeFailed does — the probe is daily and does not retry, so
+      # this window means two consecutive failed runs.
+      - alert: R2MirrorProbeFailed
+        expr: r2_mirror_success == 0
+        for: 25h
+        labels:
+          severity: warning
+        annotations:
+          summary: "the R2 copy probe failed on {{ $labels.instance }}"
+          description: >-
+            {{ $labels.instance }} could not read the R2 bucket on two consecutive
+            days, so the rules above are evaluating the last payload it managed to
+            write, however old.
+      # The daily timer caps a healthy run at ~1 day old; 2 gives a day's grace
+      # before flagging a probe that stopped firing.
+      - alert: R2MirrorProbeOverdue
+        expr: time() - r2_mirror_last_run_timestamp_seconds > 2 * 86400
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "the R2 copy probe is overdue on {{ $labels.instance }}"
+          description: "{{ $labels.instance }} has not read the R2 bucket in over 2 days."
 
   - name: filesystem
     rules:
@@ -743,7 +836,7 @@ groups:
       - alert: SystemdUnitFailed
         expr: >-
           node_systemd_unit_state{state="failed",
-          name!~"(arbites|inquisition|smartmon|offsite-mirror|podman-backup|home-backup|autoupdate|wordpress-cron|wordpress-db-dump|wordpress-update-check|wordpress-boost)[.]service"}
+          name!~"(arbites|inquisition|smartmon|offsite-mirror|r2-mirror|podman-backup|home-backup|autoupdate|wordpress-cron|wordpress-db-dump|wordpress-update-check|wordpress-boost)[.]service"}
           == 1
         for: 15m
         labels:
@@ -1272,8 +1365,8 @@ groups:
       # rule anywhere has a series to fire on.
       #
       # The write is one `mkdir -p` away from silent: the textfile path is an
-      # independent literal in eight role defaults (restic_backup, arr, autoupdate,
-      # wordpress, arbites, inquisition, smartmon, offsite_mirror), tied to
+      # independent literal in nine role defaults (restic_backup, arr, autoupdate,
+      # wordpress, arbites, inquisition, smartmon, offsite_mirror, r2_mirror), tied to
       # node_exporter_textfile_directory by a comment and nothing else. A
       # one-character divergence lands the .prom outside the collector's glob and
       # the family vanishes with every run still green.
@@ -1319,6 +1412,7 @@ groups:
           or (group by (instance, name) (node_systemd_unit_state{name="inquisition.service"}) unless on (instance) inquisition_success)
           or (group by (instance, name) (node_systemd_unit_state{name="smartmon.service"}) unless on (instance) smartmon_success)
           or (group by (instance, name) (node_systemd_unit_state{name="offsite-mirror.service"}) unless on (instance) offsite_mirror_success)
+          or (group by (instance, name) (node_systemd_unit_state{name="r2-mirror.service"}) unless on (instance) r2_mirror_success)
         for: 1h
         labels:
           severity: warning
