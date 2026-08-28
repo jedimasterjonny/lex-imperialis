@@ -13,6 +13,14 @@ every record or setting is managed: an origin IP with no Terraform-visible sourc
 or a setting the provider reports read-only (Email Routing, Tiered Cache on Free),
 is left out and noted in the file's header.
 
+`r2-reclusiam.tf` is the one account-scoped Cloudflare resource: an R2
+bucket, `reclusiam`, standing as the backups' last-resort third copy behind
+the NAS repos and the Hetzner storage box. It is hinted to `weur` — the storage
+box is in Finland, so the two off-site copies do not share a region. Nothing
+writes to it yet, and the S3 credential restic will need is minted by hand into
+the vault rather than here, where it would land in state. Both provider tokens
+need Account | Workers R2 Storage — Edit to apply, Read to plan.
+
 `firewall-rogue-trader.tf` and an `hcloud_server` data source (in
 `dns-emmasedit-com.tf`) are the Hetzner side: the data source reads rogue-trader's
 live IP to set the `emmasedit.com` apex A/AAAA — fetching at plan time the origin
