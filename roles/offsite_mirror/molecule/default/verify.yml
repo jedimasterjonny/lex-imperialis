@@ -8,20 +8,21 @@
     offsite_mirror_prom: "{{ offsite_mirror_textfile_dir }}/offsite-mirror.prom"
     offsite_mirror_run_prom: "{{ offsite_mirror_textfile_dir }}/offsite-mirror-run.prom"
     offsite_mirror_stub_dir: /tmp/offsite-mirror-stub
+    offsite_mirror_stub_cache: /tmp/offsite-mirror-stub/cache
+    offsite_mirror_stub_spaced: "/tmp/offsite-mirror-stub/cache/DiskStation 1 backup"
     # The stub dir first, so the script's bare `ssh` resolves to it; bash and the
     # coreutils it calls still resolve to the real binaries behind it.
     offsite_mirror_stub_path: "{{ offsite_mirror_stub_dir }}:/usr/sbin:/usr/bin:/sbin:/bin"
     # What the NAS would answer with, one group per cache directory in the order
-    # the remote walked them — newest directory first. Group 1 is a previous
-    # endpoint's, months stale, and it deliberately sorts *ahead* of the live
-    # home-backup manifest in group 3: taking the first directory would publish
-    # its lone folder and its failed status as current, which is the whole trap
-    # the probe exists to avoid. home-backup is missing
-    # rogue-trader-home-backup, the five-week regression this role was built for;
-    # photos-backup is declared and has no manifest at all, and group 4 is the
-    # mirror of that — a task the NAS runs and the play does not declare, with a
-    # folder carrying a space. bkpAuthUser is the storage box account name and
-    # must reach no metric.
+    # the remote's glob walked them. Group 1 is a previous endpoint's, months
+    # stale, and it deliberately arrives *ahead* of the live home-backup manifest
+    # in group 3: taking the first directory would publish its lone folder and its
+    # failed status as current, which is the whole trap the probe exists to avoid.
+    # home-backup is missing rogue-trader-home-backup, the five-week regression
+    # this role was built for; photos-backup is declared and has no manifest at
+    # all, and group 4 is the mirror of that — a task the NAS runs and the play
+    # does not declare, with a folder carrying a space. bkpAuthUser is the storage
+    # box account name and must reach no metric.
     offsite_mirror_stub_manifest: |
       1|bkpStatus|failed
       1|bkpAuthUser|stub-account-name
@@ -376,6 +377,86 @@
         that:
           - "'offsite_mirror_success 1' in run_prom"
         fail_msg: "the outcome hook did not record a successful run"
+        quiet: true
+
+    # ── Remote-half arm: every arm above answers for the NAS with a canned
+    # manifest, so the script that produces one never runs — and it is a quoted
+    # heredoc, which shellcheck reads as data, so nothing else covers it either.
+    # Drive it here instead, off a cache directory whose name holds a space:
+    # parsed out of `ls` that name split into two words, both failed the manifest
+    # test, and the task left the payload as a silent OffsiteMirrorTaskUnverified.
+    - name: Build a cache directory whose name carries a space
+      ansible.builtin.file:
+        path: "{{ offsite_mirror_stub_spaced }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      become: true
+
+    - name: Plant the manifest DSM would cache in it
+      ansible.builtin.copy:
+        content: |
+          bkpTaskName|spaced-dir-backup
+          bkpStatus|success
+          bkpFolder|/astropath/spaced-dir-backup
+          lastBkpTime|1787200000
+        dest: "{{ offsite_mirror_stub_spaced }}/synobkpinfo.db"
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Stub the NAS's sqlite3 as a reader of that manifest
+      ansible.builtin.copy:
+        content: |
+          #!/bin/sh
+          # The probe opens "file:<dir>/synobkpinfo.db?mode=ro" and selects a group
+          # number alongside each key/value row, so hand the rows in that file back
+          # under the number the query names.
+          db=${1#file:}
+          n=$(printf '%s' "$2" | sed "s/^select '\([0-9]*\)'.*/\1/")
+          sed "s/^/$n|/" "${db%%\?*}"
+        dest: "{{ offsite_mirror_stub_dir }}/sqlite3"
+        owner: root
+        group: root
+        mode: "0755"
+      become: true
+
+    - name: Point the ssh stub at that cache instead of a canned answer
+      ansible.builtin.copy:
+        content: |
+          #!/bin/sh
+          # The NAS-side script arrives on stdin, as `sh -s` reads it there: run it
+          # against the fake cache rather than draining it.
+          exec sh -s -- "{{ offsite_mirror_stub_cache }}" "{{ offsite_mirror_stub_dir }}/sqlite3"
+        dest: "{{ offsite_mirror_stub_dir }}/ssh"
+        owner: root
+        group: root
+        mode: "0755"
+      become: true
+
+    - name: Run the probe against the fake cache
+      ansible.builtin.command: "{{ offsite_mirror_script }}"
+      environment:
+        PATH: "{{ offsite_mirror_stub_path }}"
+      changed_when: false
+      become: true
+
+    - name: Read the metrics the remote half produced
+      ansible.builtin.slurp:
+        src: "{{ offsite_mirror_prom }}"
+      register: offsite_mirror_remote
+      become: true
+
+    - name: A cache directory whose name holds a space is still read
+      vars:
+        prom: "{{ offsite_mirror_remote.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'offsite_mirror_task_status{task=\"spaced-dir-backup\"} 1' in prom"
+          - "'offsite_mirror_task_covered{task=\"spaced-dir-backup\",folder=\"/astropath/spaced-dir-backup\"} 1' in prom"
+        fail_msg: "a cache directory whose name holds a space was skipped by the remote walk"
         quiet: true
 
     # Restore the schedule the checks stopped, so verify re-runs clean against the
