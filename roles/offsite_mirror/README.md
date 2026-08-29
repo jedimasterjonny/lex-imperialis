@@ -15,8 +15,8 @@ SQLite table, opened `mode=ro`) and publishes:
   `offsite_mirror_tasks`. Published whatever the NAS says, so the coverage rule
   has a left-hand side even for a task the NAS knows nothing about.
 - `offsite_mirror_task_covered{task,folder}` — one series per `bkpFolder` the
-  task's newest manifest names. The comparison against the family above is
-  `OffsiteMirrorCoverageMissing`.
+  manifest of the task's most recent run names. The comparison against the family
+  above is `OffsiteMirrorCoverageMissing`.
 - `offsite_mirror_task_status{task}` — 1 iff `bkpStatus` reads `success`.
   Published for every task the cache names, declared or not: what is failing is a
   property of the NAS, and gating it on the declaration would let a task dropped
@@ -83,10 +83,13 @@ and not here.
 The trap is that DSM keys a cache directory on the backup target, so a changed
 target leaves the previous set behind — six directories for three tasks on this
 NAS, half of them months stale. Taking any matching directory reads one of those
-and reports false freshness. The probe walks them newest-first and takes the
-first manifest naming each task, reading the task name out of the manifest rather
-than off the directory, whose suffix is frozen at task creation and need not
-match it (`photos-backup`'s directory still ends `photos-backups`).
+and reports false freshness. The probe reads every directory and keeps, per task,
+the manifest with the greatest `lastBkpTime` — a property of the backup rather
+than of the file, so a DSM restart or a restore that touched a stale directory
+could not promote it into a current coverage claim. A manifest with no usable
+`lastBkpTime` sorts last. The task name comes out of the manifest rather than off
+the directory, whose suffix is frozen at task creation and need not match it
+(`photos-backup`'s directory still ends `photos-backups`).
 
 Neither the storage box account name nor the endpoint appears in this repo. Both
 are in those directory names and in the manifest's `bkpAuthUser`, which is read
