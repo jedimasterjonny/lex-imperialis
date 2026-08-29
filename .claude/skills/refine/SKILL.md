@@ -241,7 +241,8 @@ this after the tests pass means you document code that actually works, not code
 a later fix might still change. Documentation changes do not affect molecule, so
 they do not retrigger it.
 
-Work outward from the change, then check the project's standing docs:
+Work outward from the change, then sideways for prose that references it, then
+check the project's standing docs:
 
 1. **The change's own folder.** Does this change leave the folder's README
    wrong, missing, or stale? Bring it up to date — or, where there is none and
@@ -250,7 +251,17 @@ Work outward from the change, then check the project's standing docs:
    alters what a README documents — a new role, a changed interface, a moved
    file, a new convention — update that README, or create one where there is
    none and the change warrants it (the same bar below).
-3. **`CLAUDE.md`.** Does the change introduce or alter a convention it records —
+3. **Sideways, for cross-references.** A reviewer sees the diff, and the prose
+   that rots is by definition outside it: a comment or README elsewhere that
+   described the old behaviour was born true and is orphaned the moment the
+   change lands — a bootstrap comment still describing key-seeding a fix
+   closed, a `bin/` README still claiming a CI path that no longer exists. When
+   the diff changes behaviour, grep the repo's prose — comments, READMEs,
+   `docs/` — for the nouns of the *old* behaviour: its paths, unit and variable
+   names, commands, distinctive vocabulary. Update every hit in this change, or
+   say in the report why it stands; a hit outside a caller-constrained scope is
+   reported, never edited.
+4. **`CLAUDE.md`.** Does the change introduce or alter a convention it records —
    layout, gates, commit rules, a workflow, a tool? If so, update it; if not,
    leave it. A role convention belongs in `roles/CLAUDE.md`, not the root file.
 
