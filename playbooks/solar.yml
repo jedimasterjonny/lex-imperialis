@@ -13,9 +13,6 @@
     common_blacklisted_modules:
       - iwlmvm
       - iwlwifi
-    # Staggered autoupdate: solar (media server) updates first as the canary, so a
-    # bad rolling snapshot surfaces here before the rest of the fleet takes it.
-    autoupdate_oncalendar: "Mon *-*-* 03:00:00"
     # NFS exports from the NAS (administratum), each mounted at /nfs/<name>.
     nfs_shares:
       - name: scriptorum
@@ -24,7 +21,8 @@
       - name: astropath
         server: administratum
         export: /volume2/astropath
-    # Bring the arr stack up one container at a time.
+    # The whole stack, spelled out rather than taken from the role default: this
+    # is the roster auspex's blackbox probe targets are kept in step with.
     arr_enabled:
       - prowlarr
       - flaresolverr

@@ -3,7 +3,7 @@
 Media automation stack as rootful podman quadlets. Each webui is proxied at
 `<app>.<arr_domain>` via the caddy snippet contract — except host-networked
 apps (plex), reached directly. Config lives in per-app named volumes; media
-lives under the NAS-backed `arr_data_root` as `media/<type>` libraries beside a
+lives under `arr_data_root` as `media/<type>` libraries beside a
 sibling `downloads`. `arr_enabled` picks which apps a host runs (default: all),
 so the stack can come up one container at a time; dropping an app stops its
 container and removes the generated unit. A netns joiner needs its owner enabled
