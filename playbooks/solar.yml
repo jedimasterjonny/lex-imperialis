@@ -21,7 +21,8 @@
       - name: astropath
         server: administratum
         export: /volume2/astropath
-    # Bring the arr stack up one container at a time.
+    # The whole stack, spelled out rather than taken from the role default: this
+    # is the roster auspex's blackbox probe targets are kept in step with.
     arr_enabled:
       - prowlarr
       - flaresolverr
