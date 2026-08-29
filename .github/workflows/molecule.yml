@@ -45,8 +45,8 @@ jobs:
       # tiers; shared infra (anything outside roles/) is exercised via the motd
       # harness. The incus tier is free, so any shared change runs it; the
       # billable hetzner VM validates real-machine behaviour, so a toolchain-only
-      # bump (requirements-dev.txt, the Makefile or the pre-commit hook set) stays
-      # on the free incus tier.
+      # bump (requirements-dev.txt, the Makefile, the pre-commit hook set, or a
+      # bin script only that hook set runs) stays on the free incus tier.
       - name: Determine roles and tiers
         id: set
         env:
@@ -102,7 +102,19 @@ jobs:
           hetzner_cand="$roles"
           if [ -n "$shared" ]; then
             incus_cand=$(printf '%s\nmotd' "$roles")
-            if printf '%s\n' "$shared" | grep -qvE '^(requirements-dev\.txt|Makefile|\.pre-commit-config\.yaml)$'; then
+            # Shared paths no molecule, playbook or apply path executes: the
+            # toolchain pins, the pre-commit hook set, and the bin scripts only
+            # that hook set runs. They keep the free incus leg rather than leaving
+            # the shared set, as .pre-commit-config.yaml already does — a hetzner
+            # leg would bill a real VM to prove nothing about them. The three bin
+            # scripts deliberately absent are the ones a real path runs:
+            # expand-role-consumers.sh (this job), fleet-apply.sh (arbites' root
+            # apply) and vault-var.sh (the hetzner tier's own token lookup). Listing
+            # the exemptions, not the inclusions, keeps a new script billing a VM
+            # rather than silently testing nothing.
+            if printf '%s\n' "$shared" | grep -qvE \
+              -e '^(requirements-dev\.txt|Makefile|\.pre-commit-config\.yaml)$' \
+              -e '^bin/(ansible-lint-scoped|butane-lint|check-role-test-coverage|packer|shellcheck-jinja|tofu-validate)\.sh$'; then
               hetzner_cand=$(printf '%s\nmotd' "$roles")
             fi
           fi
