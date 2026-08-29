@@ -37,7 +37,11 @@ raw="$(ssh -F none \
 cache="$1"
 sqlite="$2"
 n=0
-for d in $(ls -dt "$cache"/* 2>/dev/null); do
+# Globbed, not parsed out of `ls`: a cache directory whose name holds a space
+# word-splits out of command substitution and its manifest is skipped in silence.
+# Order is irrelevant — the live manifest is picked on lastBkpTime below — and an
+# unmatched pattern fails the -f test like any other non-manifest, leaving n at 0.
+for d in "$cache"/*; do
     [ -f "$d/synobkpinfo.db" ] || continue
     n=$((n + 1))
     "$sqlite" "file:$d/synobkpinfo.db?mode=ro" \
