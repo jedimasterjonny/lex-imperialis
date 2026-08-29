@@ -38,5 +38,7 @@ autoupdate_update_command: >-
 autoupdate_textfile_dir: /var/lib/node_exporter/textfile_collector
 
 # The timer's systemd OnCalendar schedule. Set per host so the fleet updates on
-# staggered days; the default keeps the original fleet-wide Monday 03:00 slot.
+# staggered days. This is solar's slot: the media server updates first as the
+# fleet's canary, so a bad rolling snapshot surfaces there before the other
+# hosts take it.
 autoupdate_oncalendar: "Mon *-*-* 03:00:00"

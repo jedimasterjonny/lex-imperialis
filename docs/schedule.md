@@ -44,7 +44,7 @@ scheme's `auto_upgrade_hour`, which is vestigial and disagrees with the console.
 | Time (Europe/London) | Job | Owner |
 | --- | --- | --- |
 | Mon 00:00 | `btrfs-balance` — solar, scholam, rogue-trader | `btrfsmaintenance_balance_period` |
-| Mon 03:00 | `autoupdate` — solar | `autoupdate_oncalendar`, `solar.yml` |
+| Mon 03:00 | `autoupdate` — solar | `autoupdate_oncalendar`, role default |
 | Mon 06:41 winter, 07:41 summer | terraform drift plan | `.github/workflows/terraform.yml` |
 | Tue 03:00 | `autoupdate` — auspex | `autoupdate_oncalendar`, `auspex.yml` |
 | Tue 03:00 | `photos-backup` → port-wander | DSM task config |
