@@ -33,6 +33,11 @@ on to the `deadman` receiver:
 - Empty (the default), the matching receiver is null: its route fires nothing.
   This keeps molecule self-contained, so set the URLs on the real host.
 
+Both files are written whatever their variable holds, so clearing one in the
+vault empties it on the next apply — the revoked URL leaves the host instead of
+sitting superseded but readable — and the config, which references a file only
+while its variable is set, is left pointing at nothing.
+
 The image's default command already targets `/etc/alertmanager/alertmanager.yml`
 and `/alertmanager`, so the unit overrides no `Exec`. State (silences, the
 notification log) lives in the `alertmanager-data` named volume, handed to the

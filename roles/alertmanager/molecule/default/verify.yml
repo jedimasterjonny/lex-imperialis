@@ -40,6 +40,50 @@
         fail_msg: alertmanager did not render the secret-gated receivers
         quiet: true
 
+    # Both secret files are rendered whatever the vars hold, so clearing one in
+    # the vault revokes it rather than leaving the last URL on disk. Prove they
+    # are there and readable only by the image's nobody (65534), the uid the
+    # container's process runs as.
+    - name: Stat the secret files
+      ansible.builtin.stat:
+        path: "/etc/alertmanager/{{ item }}"
+      loop:
+        - discord_webhook_url
+        - deadman_url
+      become: true
+      register: alertmanager_secret_files
+
+    - name: Each secret file is private to the container's uid
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.mode == '0600'
+          - item.stat.uid == 65534
+        fail_msg: "/etc/alertmanager/{{ item.item }} is missing or not 0600 uid 65534"
+        quiet: true
+      loop: "{{ alertmanager_secret_files.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    # Revocation's other half: an emptied file must be referenced by nothing.
+    # Render the config on the controller with both vars cleared — the state a
+    # revoked host converges into, which this scenario's armed converge cannot
+    # itself reach — and prove both receivers come out null. webhook_url_file
+    # ends in url_file, so the one substring covers both references.
+    - name: The cleared render references neither secret file
+      vars:
+        alertmanager_discord_webhook_url: ""
+        alertmanager_deadman_ping_url: ""
+        alertmanager_cleared: >-
+          {{ lookup('template', playbook_dir | dirname | dirname
+             ~ '/templates/alertmanager.yml.j2') }}
+      ansible.builtin.assert:
+        that:
+          - "'url_file' not in alertmanager_cleared"
+          - (alertmanager_cleared | from_yaml).receivers | map(attribute='name') | sort == ['deadman', 'default']
+        fail_msg: clearing the secret vars still leaves a receiver pointed at a revoked secret file
+        quiet: true
+
     # Structural, not substring: both Watchdog routes are unconditional template
     # text, so what can regress is what each leg SAYS — order, matcher, receiver,
     # continue, cadence. Swap the legs, typo a matcher, or drop the 4m override

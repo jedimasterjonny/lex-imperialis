@@ -519,7 +519,9 @@
 
     - name: Read each Servarr app's injected API key
       ansible.builtin.command: podman exec {{ item }} printenv {{ item | upper }}__AUTH__APIKEY
-      loop: "{{ arr_api_keys | dict2items | selectattr('key', 'in', arr_enabled) | map(attribute='key') | list }}"
+      loop: >-
+        {{ arr_api_keys | dict2items | selectattr('key', 'in', arr_enabled)
+        | selectattr('value', 'truthy') | map(attribute='key') | list }}
       become: true
       register: arr_injected_keys
       changed_when: false
@@ -533,6 +535,32 @@
       loop: "{{ arr_injected_keys.results }}"
       loop_control:
         label: "{{ item.item }}"
+
+    # A key the vault stops setting must leave the host, not merely stop being
+    # referenced: the file is rendered for every enabled app whatever the key
+    # holds, so an unkeyed app's file comes out with no key line at all. The
+    # fixtures leave prowlarr unkeyed to exercise that arm — the stat above
+    # already proves the file is still there and still 0600.
+    - name: Read each unkeyed app's env file
+      ansible.builtin.slurp:
+        src: /etc/arr/{{ item.key }}.env
+      loop: >-
+        {{ arr_api_keys | dict2items | selectattr('key', 'in', arr_enabled)
+        | rejectattr('value', 'truthy') | list }}
+      loop_control:
+        label: "{{ item.key }}"
+      become: true
+      register: arr_unkeyed_env
+
+    - name: An unkeyed app's env file holds no key
+      ansible.builtin.assert:
+        that:
+          - item.content | b64decode | trim == ''
+        fail_msg: "/etc/arr/{{ item.item.key }}.env still holds a key the vault no longer sets"
+        quiet: true
+      loop: "{{ arr_unkeyed_env.results }}"
+      loop_control:
+        label: "{{ item.item.key }}"
 
     - name: Stat the data directories
       ansible.builtin.stat:

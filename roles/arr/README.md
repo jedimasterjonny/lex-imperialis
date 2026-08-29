@@ -177,6 +177,13 @@ to generate its own, so molecule converges with no vault. Vault replaces the
 whole dict; seed it with each app's current key so prowlarr and recyclarr keep
 working across the cutover.
 
+Every enabled app gets a file whatever its key holds, and the file carries the
+key line only for a key that is set, so clearing a key in the vault empties that
+app's file on the next converge rather than leaving the revoked key readable on
+disk. Emptied, it is inert: the unit reads it only for a keyed app, and the
+beets pipeline, which reads `lidarr.env` whatever the state, takes no line as no
+key.
+
 ## Recyclarr config
 
 recyclarr's config renders from the repo to `arr_recyclarr_config_dir` and
@@ -250,7 +257,10 @@ local traffic does not.
 - **RPC auth** — `arr_transmission_username`/`arr_transmission_password`
   (vault) render to a 0600 `EnvironmentFile`; the LSIO image turns RPC auth on
   and sets the rpc user/password from them. Both empty (the default) leaves
-  auth off, so molecule converges with no vault. The healthcheck is
+  auth off, so molecule converges with no vault — and empties the file, so
+  clearing them in the vault takes the old password off the host instead of
+  stranding it there. The file carries the pair only when both are set: a blank
+  pair would enable auth on an empty password. The healthcheck is
   credential-free — it treats the auth 401 as "responding", and its blackbox probe
   does the same, via the exporter's `http_2xx_or_401` module. Enabling auth 401s
   the radarr/sonarr/lidarr download-client connections until each carries the
