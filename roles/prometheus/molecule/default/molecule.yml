@@ -3,9 +3,9 @@
 # on, so the Tumbleweed platform it inherited from the agent tested the one
 # distribution it is deployed to nowhere. The role branches on neither — no
 # packages, no OS-conditional defaults — so a second platform buys no coverage,
-# only runtime. The two other auspex-only quadlet roles (alertmanager,
-# blackbox_exporter) are single-platform too, but still on Tumbleweed — the same
-# gap this closes here, left alone rather than widened into this change.
+# only runtime. The other auspex-only roles beside it — alertmanager,
+# blackbox_exporter, unpoller, offsite_mirror, r2_mirror — are on Debian for the
+# same reason.
 #
 # podman mounts overlays for its storage, which incus only permits in a
 # nested-container-capable instance. The CI runner's AppArmor denies a nested
