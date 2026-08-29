@@ -5,8 +5,8 @@ endpoint refresh a dynamic-IP peer needs. Replaces `wireguard_reresolve`, which
 drove `wg-quick` and needed openresolv and a local SELinux policy module to do it.
 
 The role renders `/etc/NetworkManager/system-connections/<iface>.nmconnection`
-(0600) from `wireguard_client_conf`, hands the interface over from `wg-quick` if
-it still owns it, then removes what only `wg-quick` needed.
+(0600) from `wireguard_client_conf` and hands the interface over from `wg-quick`
+if it still owns it.
 
 Variables in `defaults/main.yml`: `wireguard_client_packages`,
 `wireguard_client_interface`, `wireguard_client_conf`, `wireguard_client_uuid`,
@@ -88,10 +88,6 @@ step. If NetworkManager cannot bring the tunnel up, the role re-enables
 `wg-quick` immediately: on a public VPS reached only through this tunnel, a
 failed handover otherwise strands the host behind a serial console.
 
-The retirement of `wg-quick`'s supporting artefacts — the old re-resolve timer,
-the SELinux module, openresolv — is gated on `wg-quick` no longer being active,
-so a run whose handover failed leaves the fallback intact.
-
 ## MTU
 
 Pinned to 1420 rather than left to NetworkManager's kernel default. `wg-quick`
@@ -109,8 +105,8 @@ fails open, silently.
 ## What the container tier cannot test
 
 The molecule scenario has no NetworkManager and no `wg0`, so it covers the
-rendered profile, the units and the refresh script's guards. Activation, the
-handover and the SELinux and openresolv removals are gated on state a container
-never reaches; they are exercised on the host. The `libvirt`/`hetzner` tiers the
-retired role carried are gone with it: they existed to test `wg-quick` under
-enforcing SELinux, and neither the confinement nor the policy module survives.
+rendered profile, the units and the refresh script's guards. Activation and the
+handover are gated on state a container never reaches; they are exercised on the
+host. The `libvirt`/`hetzner` tiers the retired role carried are gone with it:
+they existed to test `wg-quick` under enforcing SELinux, and neither the
+confinement nor the policy module survives.

@@ -27,9 +27,3 @@
     name: caddy
     state: restarted
   become: true
-
-# Retiring a quadlet leaves no unit to restart, so the reload stands alone.
-- name: Reload systemd for wordpress
-  ansible.builtin.systemd_service:
-    daemon_reload: true
-  become: true

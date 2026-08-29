@@ -124,18 +124,3 @@
     state: started
     daemon_reload: true
   become: true
-
-# Re-read rather than reuse the earlier check: the handover above may have just
-# changed the answer, and if it failed it will have put wg-quick back. Retiring
-# wg-quick's supporting artefacts while it is still carrying the tunnel would
-# take away the fallback the handover depends on.
-- name: Check whether wg-quick still owns the tunnel after the handover
-  ansible.builtin.systemd_service:
-    name: "wg-quick@{{ wireguard_client_interface }}"
-  register: wireguard_client_wg_quick_after
-  failed_when: false
-  become: true
-
-- name: Retire wg-quick's supporting artefacts
-  ansible.builtin.include_tasks: retire.yml
-  when: (wireguard_client_wg_quick_after.status | default({})).ActiveState | default('') != 'active'

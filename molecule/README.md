@@ -28,11 +28,10 @@ worktree, where `.git` is a file; the make targets still pass `-c` there.
 
 Prepare stays a scenario file, like converge and verify: a scenario that needs
 one ships a `prepare.yml` in its directory — its own (`arr`, `incus`, `sshd`,
-`storagebox_gateway`, `wireguard_client`) or a symlink to the tier's (`dev`,
-`motd`). `common` is the one hybrid: it needs fixtures `dev` and `motd` must not
-get, so it imports the tier's play and layers them on top. No `base.yml` names
-`playbooks.prepare`: a base config sets a floor, so it would mask the scenario's
-own.
+`storagebox_gateway`) or a symlink to the tier's (`dev`, `motd`). `common` is the
+one hybrid: it needs fixtures `dev` and `motd` must not get, so it imports the
+tier's play and layers them on top. No `base.yml` names `playbooks.prepare`: a
+base config sets a floor, so it would mask the scenario's own.
 
 ## incus
 
