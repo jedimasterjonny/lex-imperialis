@@ -5,12 +5,17 @@
 # placeholders there would shadow them and verify's re-applies would render
 # every unit without its EnvironmentFile.
 
-# Exercise the API-key injection the way real hosts do (vault-sourced).
+# Exercise the API-key injection the way real hosts do (vault-sourced). prowlarr
+# is deliberately left unkeyed to exercise the other arm: its file is still
+# rendered, holding no key, which is how a key cleared in the vault leaves the
+# host. Nothing else reads prowlarr's key — recyclarr takes radarr's and
+# sonarr's, the beets pipeline lidarr's — so the app self-generates one and its
+# /ping healthcheck is unaffected.
 arr_api_keys:
   radarr: a1b2c3d4e5f60718293a4b5c6d7e8f90
   sonarr: b2c3d4e5f60718293a4b5c6d7e8f90a1
   lidarr: c3d4e5f60718293a4b5c6d7e8f90a1b2
-  prowlarr: d4e5f60718293a4b5c6d7e8f90a1b2c3
+  prowlarr: ""
 
 # Exercise the transmission RPC auth-on path (and the -u healthcheck).
 arr_transmission_username: molecule

@@ -199,8 +199,14 @@
   become: true
 
 # A Servarr app's key renders to a 0600 EnvironmentFile the unit reads, so it
-# never lands in the world-readable .container. Only apps with a vault-set key
-# get a file; an empty key (molecule) leaves the app to generate its own.
+# never lands in the world-readable .container. Every enabled app gets a file
+# whatever its key holds — the template writes the line only for a key that is
+# set — so clearing a key in the vault empties that app's file on the next
+# converge instead of leaving the revoked key readable on disk. Emptied, the
+# file is inert: the unit references it only for a keyed app, and
+# beets-pipeline.service, which reads lidarr.env whatever the state, reads no
+# line as no key and skips lidarr. An empty key (molecule) leaves the app to
+# generate its own.
 - name: Deploy the Servarr API keys
   ansible.builtin.template:
     src: apikey.env.j2
@@ -208,7 +214,7 @@
     owner: root
     group: root
     mode: "0600"
-  loop: "{{ arr_api_keys | dict2items | selectattr('key', 'in', arr_enabled) | selectattr('value', 'truthy') | list }}"
+  loop: "{{ arr_api_keys | dict2items | selectattr('key', 'in', arr_enabled) | list }}"
   loop_control:
     label: "{{ item.key }}"
   become: true
@@ -217,10 +223,13 @@
   notify: Restart the arr app containers
 
 # Transmission's RPC auth renders to a 0600 EnvironmentFile the unit reads, so the
-# password never lands in the world-readable unit. Only when both creds are set;
-# both empty leaves the image's auth-off default, so molecule converges with no
-# vault. The unit itself is unchanged by a cred rotation, so this notifies a
-# dedicated restart.
+# password never lands in the world-readable unit. Rendered whenever transmission
+# is enabled, whatever the creds hold — the template writes the pair only when
+# both are set — so clearing them in the vault empties the file rather than
+# leaving the last password on disk. Clearing them still turns RPC auth off: the
+# unit references the file only while both are set, and the image forces auth off
+# without them. The unit itself is unchanged by a cred rotation, so this notifies
+# a dedicated restart.
 - name: Deploy the transmission RPC credentials
   ansible.builtin.template:
     src: transmission.env.j2
@@ -230,10 +239,7 @@
     mode: "0600"
   become: true
   no_log: true
-  when:
-    - "'transmission' in arr_enabled"
-    - arr_transmission_username | length > 0
-    - arr_transmission_password | length > 0
+  when: "'transmission' in arr_enabled"
   notify: Restart transmission for arr
 
 # A daily timer catalogs the music library into the standing beets DB so it
