@@ -13,7 +13,9 @@ retry, and metric mechanics.
 
 Assumes `podman` is installed and the `nfs` role has mounted the target. Runs on
 `solar` and `rogue-trader`; `scholam`'s only podman workload (`node_exporter`) is
-stateless, so it carries no podman repo.
+stateless, so it carries no podman repo, and `auspex`'s TSDB and Alertmanager
+state are accepted as derived data — see
+[`docs/backups.md`](../../docs/backups.md).
 
 ## Restore
 

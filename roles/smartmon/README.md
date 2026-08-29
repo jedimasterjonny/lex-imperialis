@@ -26,7 +26,8 @@ one whose report arrives empty reads unhealthy.
 glob and every rule matches an empty vector — `ScheduledJobMetricMissing` is
 what catches that, and `TextfileScrapeError` a file that lands in the glob
 malformed. `smartmon_oncalendar` sets the cadence the alert windows are sized
-against.
+against, and `smartmon_script` / `smartmon_metric_script` where the reader and
+its hook install — `/usr/local/sbin`, root-only like the other oneshots.
 
 The `prometheus` role's `hardware` group alerts: `SmartDeviceUnhealthy` (the
 verdict), `NvmeWearHigh` (endurance nearly spent), `NvmeMediaErrorsIncreasing`

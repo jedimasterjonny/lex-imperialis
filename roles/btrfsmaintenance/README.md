@@ -16,8 +16,8 @@ already runs, so applying the role changes nothing on scholam or solar.
 - The generator is invoked explicitly rather than left to that path unit, which
   fires asynchronously and so cannot be ordered against arming the timers. The
   same task re-materialises a schedule on a host whose periods are already
-  correct but whose drop-ins were never generated — the state rogue-trader is
-  in, where the balance timer runs the package default of monthly rather than
-  the weekly its sysconfig asks for.
+  correct but whose drop-ins were never generated — a sysconfig written where
+  the path unit could never see it, leaving the balance timer on the package
+  default of monthly rather than the weekly that sysconfig asks for.
 - The package's own timer units both default to monthly, so the balance period
   is a real override while the scrub period only restates that default.

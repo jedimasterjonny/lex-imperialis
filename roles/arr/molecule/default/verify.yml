@@ -462,8 +462,9 @@
       changed_when: false
 
     # Transmission RPC auth: the creds render to a 0600 EnvironmentFile (USER/PASS
-    # turn auth on in the image). The healthcheck above already proves the -u probe
-    # authenticates; prove the file is locked down and that auth is enforced.
+    # turn auth on in the image). The healthcheck above carries no credentials, so
+    # it says nothing about auth; prove the file is locked down and that the RPC
+    # refuses an unauthenticated call.
     - name: Stat the transmission RPC credentials file
       ansible.builtin.stat:
         path: /etc/arr/transmission.env

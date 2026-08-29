@@ -6,6 +6,10 @@ served at its own `wordpress_domains` via a caddy public site block. Core
 and uploads persist in the `wordpress-html` volume, the database in
 `wordpress-db`; each container self-heals via a healthcheck.
 
+`wordpress_timezone` renders as `TZ=` into both env files. The site's own
+timezone is a database option, so it moves log timestamps and mariadb's `NOW()`,
+not the times the site displays.
+
 ## Database
 
 `wordpress-db` runs the official mariadb image and creates `wordpress_db_name`

@@ -60,8 +60,8 @@ indistinguishable from clean), and the `InquisitionFailed` (90m) /
 from an outage republishes its stale `.prom` before the next `:37` refreshes it —
 every window above clears that gap.
 
-Wired onto `solar` and `rogue-trader` after the `podman` role (owns the quadlet
-dir). scholam is excluded despite running a quadlet of its own: its podman use is
-interactive dev work, which an unmanaged check would flag as drift.
+Wired onto `solar`, `rogue-trader` and `auspex` after the `podman` role (owns the
+quadlet dir). scholam is excluded despite running a quadlet of its own: its
+podman use is interactive dev work, which an unmanaged check would flag as drift.
 The NAS is not a candidate at all: it is no longer in the inventory, runs no
 containers this repo deploys, and carries no node_exporter to publish through.

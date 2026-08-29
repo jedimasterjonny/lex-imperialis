@@ -12,6 +12,6 @@ arr_api_keys:
   lidarr: c3d4e5f60718293a4b5c6d7e8f90a1b2
   prowlarr: d4e5f60718293a4b5c6d7e8f90a1b2c3
 
-# Exercise the transmission RPC auth-on path (and the -u healthcheck).
+# Exercise the transmission RPC auth-on path.
 arr_transmission_username: molecule
 arr_transmission_password: moleculepass

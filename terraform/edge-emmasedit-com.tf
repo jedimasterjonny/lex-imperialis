@@ -121,6 +121,8 @@ resource "cloudflare_ruleset" "emmas_cache" {
 
   rules = [
     {
+      # The extension list below is a second copy of the @static matcher in
+      # roles/wordpress/templates/wordpress.caddy.j2; nothing keeps them in step.
       ref         = "cache_static_assets"
       description = "Edge-cache static assets, honouring the origin's Cache-Control"
       expression  = "http.request.uri.path.extension in {\"css\" \"js\" \"svg\" \"ico\" \"gif\" \"png\" \"jpg\" \"jpeg\" \"webp\" \"avif\" \"woff\" \"woff2\" \"ttf\" \"otf\" \"eot\"}"

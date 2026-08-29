@@ -101,8 +101,9 @@ must sort after common's `wheel` file to override that file's own-password
 `%wheel` rule. It supersedes and removes a legacy hand-rolled `wheel-nopasswd`.
 
 This is the owner's convenience only. The `ansible` automation account escalates
-via its own `/etc/sudoers.d/ansible` (fleet-standard, set by `bootstrap/host.sh`),
-untouched here.
+via its own `/etc/sudoers.d/ansible`, which `common` writes and reconciles every
+converge — bootstrap only seeds it at first boot — and which this role leaves
+alone.
 
 ## Remote Control
 

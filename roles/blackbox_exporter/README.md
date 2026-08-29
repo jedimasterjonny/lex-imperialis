@@ -21,6 +21,8 @@ the host does.
 
 ## Variables
 
+- `blackbox_exporter_image` — the pinned image; renovate's image manager bumps
+  the tag. In `vars/`, not a tunable.
 - `blackbox_exporter_config_dir` — where `blackbox.yml` is written, and the
   directory bind-mounted read-only into the container.
 - `blackbox_exporter_listen_address` — address the exporter binds `/probe` and
