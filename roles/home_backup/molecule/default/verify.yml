@@ -20,9 +20,9 @@
         fail_msg: "the home backup script does not snapshot /home"
         quiet: true
 
-    # The repo is unencrypted and every fleet host mounts the share it sits on,
-    # so the vault password reaching a snapshot is a full-vault disclosure. Pin
-    # the exclude here rather than trusting the default to stay put.
+    # The repo key itself comes from the vault, so a snapshot holding the vault
+    # password would turn any future repo-key disclosure into a full-vault one.
+    # Pin the exclude here rather than trusting the default to stay put.
     - name: The script excludes the vault password
       ansible.builtin.assert:
         that:

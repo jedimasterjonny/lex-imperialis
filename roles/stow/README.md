@@ -2,9 +2,11 @@
 
 Deploys GNU stow packages from the owner's dots checkout; common and dev
 include it for their dotfiles. Consumers set `stow_user`, `stow_user_home` and
-`stow_packages` (the dotfile trees), and ensure git is installed. `stow_package`
-is the OS package the role installs, through `ansible.builtin.package` — the
-name is `stow` on openSUSE and Debian alike, so the one default covers both.
+`stow_packages` (the dotfile trees), and ensure git is installed.
+`stow_dots_repo` at `stow_dots_version` is cloned to `stow_dots_dir`.
+`stow_package` is the OS package the role installs, through
+`ansible.builtin.package` — the name is `stow` on openSUSE and Debian alike, so
+the one default covers both.
 
 - The clone is bootstrap-only (`update: false`): tracked files are the live
   targets of the deployed symlinks, so refreshing the tree is the

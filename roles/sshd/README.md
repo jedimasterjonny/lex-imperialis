@@ -8,6 +8,7 @@ the vendor file.
 - Password and keyboard-interactive auth off; root stays
   `prohibit-password` because provisioning and the molecule full-VM tiers
   reach fresh hosts as root with keys.
+- X11 forwarding off.
 - No algorithm pinning: every peer's OpenSSH defaults already exclude weak
   crypto.
 - `LogLevel VERBOSE` records the key fingerprint used for each login.

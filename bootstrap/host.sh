@@ -14,7 +14,7 @@ set -euo pipefail
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT
 
-zypper --non-interactive install --no-recommends curl openssh python3 sudo
+zypper --non-interactive install --no-recommends openssh python3 sudo
 
 # The account plays connect as; the locked password makes it key-only.
 id ansible >/dev/null 2>&1 || useradd --system --create-home --home-dir /home/ansible --user-group --shell /bin/bash ansible

@@ -31,6 +31,7 @@
 	# Cache static assets for a year, deferred so it beats any Cache-Control the
 	# upstream sets. WordPress ?ver=-busts its css/js and renames re-uploaded
 	# media, so nothing served from a static URL goes stale.
+{# Extension list duplicated in terraform/edge-emmasedit-com.tf's cache rule. #}
 	@static path *.css *.js *.svg *.ico *.gif *.png *.jpg *.jpeg *.webp *.avif *.woff *.woff2 *.ttf *.otf *.eot
 	header @static {
 		Cache-Control "public, max-age=31536000, immutable"

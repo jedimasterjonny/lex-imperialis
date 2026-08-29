@@ -33,9 +33,9 @@ passwd:
       system: true
       home_dir: /home/ansible
       shell: /bin/bash
-      # Inlined rather than fetched from GitHub the way host.sh does: a failed
-      # fetch in the initrd leaves a box nobody can log into. The cost is that a
-      # key rotation needs a commit here too.
+      # Inlined rather than fetched from GitHub, as host.sh is: a failed fetch
+      # in the initrd leaves a box nobody can log into. The cost is that a key
+      # rotation needs a commit here too.
       #
       # This write is why packer's stage 2 puts x-initrd.mount on /home: Ignition
       # runs in the initrd, which mounts only /etc, /root and /var by default,

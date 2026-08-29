@@ -7,13 +7,12 @@
 # on every host — the ansible account's by a full reconcile running under them,
 # the owner's by a session opened with them.
 #
-# Not the only place fleet keys are written. bootstrap/host.sh curls the whole
-# GitHub list into a new host's ansible account, and auspex-user-data.yaml seeds
-# five keys into both of its accounts — both go beyond what is declared here.
-# rogue-trader.bu seeds only the control-host key, which is declared, but it is
-# still a second copy a rotation has to reach. A converge now undoes those seeds,
-# so a rebuilt or reflashed host is wider than this file only until the
-# reconciler next reaches it.
+# Not the only place fleet keys are written. Three bootstrap seeds inline copies
+# of these lists: bootstrap/host.sh both ansible keys, auspex-user-data.yaml both
+# lists whole, and rogue-trader.bu the control host's and arbites'. None reaches
+# past what is declared here, so a converge narrows nothing — the cost runs the
+# other way: a rotation that misses a copy leaves the next rebuilt or reflashed
+# host holding a key the control host no longer offers.
 common_authorized_keys_exclusive: true
 common_ansible_authorized_keys_exclusive: true
 common_authorized_keys:

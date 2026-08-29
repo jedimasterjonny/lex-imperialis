@@ -86,9 +86,10 @@ watch the split. Scraper and TSDB on one host need none of it.
 ## Alerting
 
 When `prometheus_alertmanager_targets` is set, the role adds the `alerting` block
-and a `rule_files` glob, copies its `files/rules/` into `rules/` under
+and a `rule_files` glob, copies `files/rules/alerts.yml` into `rules/` under
 `prometheus_config_dir` — which the quadlet mounts whole — and routes alerts to
-the targets.
+the targets. The glob is wider than the copy: a second rules file needs a task of
+its own, or it never reaches the host.
 
 The rules are in `files/rules/alerts.yml`, grouped by concern: `availability`,
 `probes`, `unifi`, `backups`, `filesystem`, `memory`, `hardware`, `time`, `services`,

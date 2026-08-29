@@ -39,7 +39,7 @@ Tumbleweed on the Beelinks, MicroOS on the VPS, DSM on the NAS, Raspberry Pi OS 
 
 Backends publish no host port at all: they sit on caddy's network and drop a snippet into `/etc/caddy/sites/`. A DNS-01 wildcard issues their certs, so an internal service gets TLS without ever facing the internet. plex is the exception — host-networked, and reached directly. Container state is a named volume, never a host bind mount.
 
-`solar` runs the media stack — prowlarr, sonarr, radarr, lidarr, beets, recyclarr, plex, transmission — with media over NFSv4 from the NAS. All but beets, plex and recyclarr are netns-confined to the wireguard container: the tunnel drops and their network drops with it.
+`solar` runs the media stack — prowlarr, flaresolverr, sonarr, radarr, lidarr, beets, recyclarr, plex, transmission — with media over NFSv4 from the NAS. All but beets, plex and recyclarr are netns-confined to the wireguard container: the tunnel drops and their network drops with it.
 
 `rogue-trader` serves the public WordPress site behind the same caddy role and joins the fleet over WireGuard, which carries both its scrape and its backup. Its root is read-only: packages come from the `packer/` image, not its play.
 

@@ -31,8 +31,9 @@ wordpress_db_name: wordpress
 wordpress_db_user: wordpress
 
 # node_exporter textfile-collector directory the role's metric writers publish to
-# (wordpress-db-dump.prom, wordpress-updates.prom). Must match the node_exporter
-# role's node_exporter_textfile_directory so Prometheus scrapes what they write.
+# (wordpress-db-dump.prom, wordpress-updates.prom, wordpress-cron.prom,
+# wordpress-boost.prom). Must match the node_exporter role's
+# node_exporter_textfile_directory so Prometheus scrapes what they write.
 wordpress_textfile_dir: /var/lib/node_exporter/textfile_collector
 
 # Database passwords (vault-sourced). Empty leaves the stack uninitialised:
