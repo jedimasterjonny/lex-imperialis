@@ -70,8 +70,10 @@ Two blind spots, both silent. `vars_files` is a hand-maintained list of seven
 roles, so a package installed by any other role `playbooks/rogue-trader.yml`
 reaches — or by a role added to that play later — never lands in the image. And
 it reads role `defaults/`, so a package list a play overrides in its `vars:` is
-missed too. Neither bites today: every package that play installs comes from one
-of the seven, and no play overrides a package list.
+missed too. The first has one live instance and still costs nothing:
+`btrfsmaintenance` is on that play and outside the seven, but the base image
+already ships its package, so the role's installed-set guard skips the install.
+The second is unexercised — no play overrides a package list.
 
 ## Gotchas
 

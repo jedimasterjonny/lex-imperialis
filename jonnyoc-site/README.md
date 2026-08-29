@@ -15,9 +15,9 @@ workstation:
 
 `config/_default/params.toml` holds only the values that differ from Blowfish's
 own — Hugo deep-merges the module's `params` underneath. It does **not** merge
-root-level keys, so `hugo.toml`, `languages.en.toml` and `markup.toml` must keep
-theirs verbatim: dropping one there falls back to Hugo's built-in default, not
-the theme's, and the build stays green while `robots.txt` and two taxonomies
+root-level keys, so `hugo.toml` and `languages.en.toml` must keep theirs
+verbatim: dropping one there falls back to Hugo's built-in default, not the
+theme's, and the build stays green while `robots.txt` and two taxonomies
 disappear.
 
 The deploy authenticates to GCP keylessly via Workload Identity Federation, so it

@@ -55,7 +55,8 @@ CLI-driven execution. The backend authenticates like the google provider — you
 gcloud ADC locally, WIF in CI — so there is no state token, and the read-only
 `tofu-plan` SA can read state while only the write `tofu-apply` SA can write it.
 Only the Cloudflare and Hetzner provider tokens come from the vault (locally —
-in CI they are `Segmentum Obscurus` environment secrets):
+in CI the read-only plan tokens are plain repo secrets, and only the write apply
+tokens are `Segmentum Obscurus` environment secrets):
 
     export TF_VAR_cloudflare_api_token="$(bin/vault-var.sh terraform_cloudflare_api_token)"
     export TF_VAR_hcloud_token="$(bin/vault-var.sh hcloud_token_emmas_edit)"
