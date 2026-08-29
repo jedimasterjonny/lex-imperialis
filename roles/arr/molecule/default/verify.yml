@@ -9,6 +9,12 @@
     - ../../defaults/main.yml
     - ../../vars/main.yml
     - fixtures.yml
+  vars:
+    # The quarantine fixtures the backlog-metric arm parks and then unparks, so
+    # the two stay in step.
+    arr_beets_parked_albums:
+      - "{{ arr_data_root }}/downloads/quarantine/Some No-Match Album"
+      - "{{ arr_data_root }}/downloads/quarantine/lidarr-rejected/Some Rejected Album"
   tasks:
     - name: Wait for each app to answer through the proxy
       ansible.builtin.uri:
@@ -773,9 +779,7 @@
         path: "{{ item }}"
         state: directory
         mode: "0755"
-      loop:
-        - "{{ arr_data_root }}/downloads/quarantine/Some No-Match Album"
-        - "{{ arr_data_root }}/downloads/quarantine/lidarr-rejected/Some Rejected Album"
+      loop: "{{ arr_beets_parked_albums }}"
       become: true
 
     - name: Re-run the metric hook over the parked albums
@@ -795,6 +799,16 @@
           - "'beets_pipeline_quarantine_albums 1' in arr_beets_metric_parked.stdout"
           - "'beets_pipeline_lidarr_rejected_albums 1' in arr_beets_metric_parked.stdout"
         quiet: true
+
+    # Unpark them again: the empty-queue arm above asserts both gauges read zero,
+    # so a second verify against the same instance would fail there. The metric
+    # file itself needs no reset — that arm republishes it from the tree.
+    - name: Unpark the fixture albums
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: "{{ arr_beets_parked_albums }}"
+      become: true
 
     # Decommission path: the converge enables every app, so nothing above
     # exercises the removal loop. Re-apply with flaresolverr dropped and prove its
@@ -841,3 +855,10 @@
         that:
           - not arr_dropped_unit_again.stat.exists
         quiet: true
+
+    # Put the dropped app back: the arms above read the full arr_apps set, so
+    # leaving the instance short of flaresolverr would fail a second verify
+    # against it where the portless apps are asserted running.
+    - name: Re-apply arr with the full app set to restore the converged state
+      ansible.builtin.include_role:
+        name: arr

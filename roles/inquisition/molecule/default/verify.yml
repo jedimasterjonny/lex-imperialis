@@ -363,3 +363,12 @@
           - "payload == (inquisition_restored.content | b64decode)"
         fail_msg: "the outcome metric did not report a failed run, or the payload moved"
         quiet: true
+
+    # Undo the stop above: the timer is the one piece of state this verify leaves
+    # changed, and the arm that reads it asserts ActiveState=='active', so a
+    # second verify against the same instance would fail there.
+    - name: Start the drift check timer again
+      ansible.builtin.systemd_service:
+        name: inquisition.timer
+        state: started
+      become: true

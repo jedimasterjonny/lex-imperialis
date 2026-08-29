@@ -2,6 +2,8 @@
 - name: Verify
   hosts: all
   gather_facts: false
+  vars_files:
+    - ../../defaults/main.yml
   tasks:
     - name: Wait for blackbox_exporter to be ready
       ansible.builtin.uri:
@@ -48,6 +50,17 @@
         blackbox_exporter_loaded_modules: >-
           {{ (blackbox_exporter_loaded_config.content | from_yaml).modules }}
 
+    # The sentinel module comes from side_effect, which `make converge` does not
+    # run — so gate the assert below on the rendered file rather than skipping it
+    # whenever the module is missing. side_effect writes the file whether or not
+    # the handler fires, so under `molecule test` the gate is always open and the
+    # assert is exactly as strong as before.
+    - name: Read the blackbox config on disk
+      ansible.builtin.slurp:
+        src: "{{ blackbox_exporter_config_dir }}/blackbox.yml"
+      register: blackbox_exporter_config_file
+      become: true
+
     # side_effect added this module; finding it in the LOADED config proves the
     # restart handler applied the change. The exporter reads its config only at
     # start, so a changed file with no restart leaves the old modules serving.
@@ -58,6 +71,7 @@
         fail_msg: >-
           The running blackbox_exporter did not pick up the config change — the
           restart handler did not fire.
+      when: "'http_2xx_sentinel:' in (blackbox_exporter_config_file.content | b64decode)"
 
     # Probe the exporter's own endpoint through the module: a self-contained 2xx
     # with no external dependency, exercising the http_2xx prober end to end.

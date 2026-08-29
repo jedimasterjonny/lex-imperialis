@@ -1,4 +1,15 @@
 ---
+# Two platforms, one per distribution the role deploys to. The role branches on
+# nothing, but the Debian arm rests on things the Tumbleweed platform cannot
+# reach: the `sshd` unit name resolving through Debian's ssh.service alias, and
+# Debian's own sshd_config reading the drop-in directory before its settings.
+# This role can lock a host out, so both are worth a platform.
 platforms:
   - name: "lex-sshd-incus-${MOLECULE_RUN_ID:-local}"
     image: images:opensuse/tumbleweed/cloud
+    groups:
+      - opensuse
+  - name: "lex-sshd-debian-${MOLECULE_RUN_ID:-local}"
+    image: images:debian/13/cloud
+    groups:
+      - debian

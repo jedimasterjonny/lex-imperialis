@@ -72,14 +72,23 @@
       register: restic_backup_timer
       become: true
 
-    - name: The timer is enabled and fires at 02:00 on Thursdays
+    # Anchor on the whole OnCalendar= spec rather than bare substrings:
+    # TimersCalendar reads `{ OnCalendar=<spec> ; next_elapse=<resolved time> }`,
+    # so 'Thu' and '02:00:00' can both be satisfied by the next_elapse half
+    # whatever the spec says. Defect C17 — roles/podman_backup's scenario carries
+    # the full account. The schedule comes from the scenario's group_vars, the one
+    # source converge renders from.
+    - name: The timer is enabled and fires on the configured schedule
       ansible.builtin.assert:
         that:
           - restic_backup_timer.status.ActiveState == 'active'
           - restic_backup_timer.status.UnitFileState == 'enabled'
-          - "'Thu' in restic_backup_timer.status.TimersCalendar"
-          - "'02:00:00' in restic_backup_timer.status.TimersCalendar"
-        fail_msg: "the backup timer is not enabled for Thu 02:00"
+          - >-
+            'OnCalendar=' ~ restic_backup_oncalendar
+            in restic_backup_timer.status.TimersCalendar
+        fail_msg: >-
+          the backup timer is not enabled for {{ restic_backup_oncalendar }} —
+          TimersCalendar is {{ restic_backup_timer.status.TimersCalendar | default('unset') }}
         quiet: true
 
     # Type=oneshot leaves the start timeout disabled unless the unit sets one, so

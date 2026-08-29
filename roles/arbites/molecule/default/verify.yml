@@ -258,6 +258,16 @@
       changed_when: false
       become: true
 
+    # Cleared before the assert, not after it: the flag is the one mutation this
+    # verify would otherwise leave behind, and it short-circuits the
+    # unchanged-HEAD arm above, so a re-run against the same instance would fail
+    # there rather than here.
+    - name: Clear the pause flag
+      ansible.builtin.file:
+        path: "{{ arbites_pause_flag }}"
+        state: absent
+      become: true
+
     - name: The pause flag short-circuits the reconcile to a clean no-op
       ansible.builtin.assert:
         that:
