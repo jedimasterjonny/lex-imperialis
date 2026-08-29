@@ -6,8 +6,11 @@ arr_domain: "{{ caddy_domain | default('home.arpa') }}"
 
 arr_timezone: Europe/London
 
-# NAS-backed media root; each app that stores media gets <root>/<data type>.
-arr_data_root: /nfs/administratum/scriptorum
+# Media root; each app that stores media gets <root>/<data type>. Local, so a
+# host that sets nothing keeps its media on its own disk rather than under a
+# path that only looks like a mount; a host whose media lives on the NAS points
+# this at that mount, as solar's play does.
+arr_data_root: /var/lib/arr
 
 # Data dir → owning app, created under arr_data_root with the shared group and
 # setgid so the importers co-write. Media types nest under media/ (matching the
