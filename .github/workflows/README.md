@@ -21,17 +21,21 @@ and runs — and re-reports the gate on — the ready PR.
 ## lint
 
 Fires on every PR and every push to `main`. Two jobs. **pre-commit** builds the
-venv from `requirements-dev.txt`, installs the pinned OpenTofu, tflint, and
-promtool the binary-dependent hooks need, then runs `make pre-commit`
-(`pre-commit run --all-files`) — yamllint, ansible-lint, shellcheck, codespell
-(British English — flags American spellings via `.codespell-en-GB.txt`), actionlint
-(these very workflow files: Actions semantics plus shellcheck over every `run:`
-step), markdownlint (every `*.md`), check-toml, editorconfig-checker,
-renovate-config-validator (schema-checks `renovate.json`), promtool (the static
-Prometheus alert rules), tofu fmt/validate, tflint, `detect-private-key`, the
+venv from `requirements-dev.txt`, installs the pinned OpenTofu, tflint, promtool,
+packer (its plugins cached on the template hash) and butane the binary-dependent
+hooks need, then runs `make pre-commit` (`pre-commit run --all-files`) —
+yamllint, ansible-lint, shellcheck plus shellcheck-jinja (the `*.sh.j2` templates
+the shell hook skips, typed jinja) and jinja-syntax (every `*.j2` and `*.bu`
+parsed), codespell (British English — flags American spellings via
+`.codespell-en-GB.txt`), actionlint (these very workflow files: Actions
+semantics plus shellcheck over every `run:` step), markdownlint (every `*.md`),
+check-toml, editorconfig-checker, renovate-config-validator (schema-checks
+`renovate.json`), promtool over the static Prometheus alert rules plus
+`promtool test` and `check-alert-test-coverage.py` over the cases behind them,
+tofu fmt/validate, tflint, packer fmt/validate, butane, `detect-private-key`, the
 file-hygiene hooks, and `check-role-test-coverage.sh`.
-The pip cache keys on the requirements files; the pre-commit environment cache on
-`.pre-commit-config.yaml`.
+`setup-uv` caches the wheels the venv is built from, keyed on the requirements
+files; the pre-commit environment cache keys on `.pre-commit-config.yaml`.
 
 **secret-scan** is the push-time gitleaks backstop. The `gitleaks` hook scans the
 staged index, which is empty on CI's fresh checkout, so it passes vacuously; this
@@ -58,11 +62,13 @@ cancel).
 Checks out with `fetch-depth: 0` — the `base...head` diff needs full history; a
 genuine `git diff` failure aborts the job rather than yielding an empty diff.
 Drops `*.md` (a doc-only change runs no tier), then splits the rest into changed
-roles and shared infra — a fixed allowlist of the non-role paths that affect a
-molecule run (`molecule/`, the vault, the requirements files, the `Makefile`,
-the coverage script, and this workflow). A PR touching only paths outside that
-set (e.g. `terraform/`, `jonnyoc-site/`) yields no tiers, so `molecule-gate`
-reports green without running one:
+roles and shared infra — a fixed allowlist in two groups: the fleet code an apply
+executes (`playbooks/`, all of `inventory/` including the vault, `bootstrap/`,
+`ansible.cfg`) and the harness and toolchain the tiers run on (`molecule/`,
+`bin/*.sh`, the requirements files, the `Makefile`, `.pre-commit-config.yaml`,
+`.github/actions/`, and this workflow). A PR touching only paths outside that
+set (e.g. `terraform/`, `jonnyoc-site/`, `packer/`) yields no tiers, so
+`molecule-gate` reports green without running one:
 
 - A changed role runs whichever tiers it ships — the matrix includes a role
   only when it carries that tier's scenario directory (`molecule/default` for
@@ -74,8 +80,12 @@ reports green without running one:
   The graph is read out of the tree, not listed anywhere.
 - Shared infra is exercised through the `motd` harness, which carries both CI
   tiers.
-- A `requirements-dev.txt`- or `Makefile`-only change stays on the free incus
-  tier and skips the billable hetzner VM.
+- A change confined to the toolchain — `requirements-dev.txt`, the `Makefile`,
+  `.pre-commit-config.yaml`, or a `bin/` script only the hook set runs — stays on
+  the free incus tier and skips the billable hetzner VM. The three scripts a real
+  path runs still book it: `expand-role-consumers.sh` (this job),
+  `fleet-apply.sh` (`arbites`' root apply) and `vault-var.sh` (the hetzner tier's
+  own token lookup).
 - `workflow_dispatch` ignores the diff and tests every role.
 
 Molecule tests only the scenarios a role ships; that the required ones *exist*
