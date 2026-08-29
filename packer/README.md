@@ -8,7 +8,8 @@ token that can create and delete them, and runs perhaps twice a year. Only
 `packer fmt` and `packer validate` run as gates. `packer/` is also kept out of
 `discover`'s shared-path allowlist in `.github/workflows/molecule.yml`: inside
 it, every PR here would book a hetzner `motd` VM for a run that tests nothing.
-A PR touching `bin/*.sh` or `bootstrap/` still books one through those entries.
+A PR touching `bootstrap/` still books one through that entry; `bin/packer.sh`
+does not, `discover` holding the scripts only the hook set runs to incus.
 
 ## Two stages, in order
 
