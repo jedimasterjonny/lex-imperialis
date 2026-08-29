@@ -1,7 +1,8 @@
 # bin
 
 Scripts backing the pre-commit hooks (`.pre-commit-config.yaml`, run by `make
-pre-commit` in the lint CI gate), the Makefile, and the `arbites` reconciler.
+pre-commit` in the lint CI gate), the Makefile, the molecule workflow, and the
+`arbites` reconciler.
 
 ## ansible-lint-scoped.sh
 
@@ -60,6 +61,20 @@ so it runs in the site gate's build job, not a pre-commit hook. Counts only
 executable scripts: a non-JavaScript `type` is a data block that script-src never
 applies to, which is why the theme's `application/ld+json` is ignored.
 
+## expand-role-consumers.sh
+
+Expands a set of changed role names, read on stdin, to the closure molecule must
+converge: a role's consumers come with it, transitively. `restic_backup` and
+`stow` are engines rather than plays' roles, and an engine's own scenario tests
+the engine — so a PR touching only `restic_backup` runs green while `home_backup`
+and `podman_backup`, whose scenarios assert the units, timers and metrics it
+renders for them, are never converged, and `arbites` applies main to the fleet
+within ~15 min. The edge list is derived from the tree's own `include_role` calls
+rather than kept here, and a shape it cannot read aborts the run instead of
+silently narrowing the matrix. Backs the discover job in
+`.github/workflows/molecule.yml`; the `patrol` and `refine` skills call it to
+pick the scenarios a change has to be tested against.
+
 ## shellcheck-jinja.sh
 
 Shellchecks the shell-in-Jinja templates the plain `shellcheck` hook skips —
@@ -100,8 +115,9 @@ backend, so no cloud credentials are needed) then `tofu validate`. Backs the
 
 Prints one top-level variable's value from the ansible-vault, bridging a vault
 secret into a `TF_VAR_` (Terraform can't read the vault). Backs the
-`tofu-plan`/`tofu-apply` make targets and the `terraform.yml` plan workflow.
-Needs the venv and `.vault_pass`.
+`tofu-plan`/`tofu-apply` make targets, and nothing in CI: the workflows hold
+their provider tokens as GitHub secrets and never decrypt the vault. Needs the
+venv and `.vault_pass`.
 
 ## fleet-apply.sh
 
