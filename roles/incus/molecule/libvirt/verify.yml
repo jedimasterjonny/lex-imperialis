@@ -2,8 +2,10 @@
 - name: Verify
   hosts: all
   gather_facts: false
+  # fixtures.yml comes last: it must outrank the role default it overrides.
   vars_files:
     - ../../defaults/main.yml
+    - fixtures.yml
   vars:
     # Functional check of the refresh script below uses a tiny image over the
     # same images: remote, so it runs the real copy + refresh path without
@@ -70,13 +72,21 @@
       register: incus_refresh_timer
       become: true
 
-    - name: The timer is enabled and fires at 03:00 on Sundays
+    # Anchor on the whole OnCalendar= spec rather than bare substrings:
+    # TimersCalendar reads `{ OnCalendar=<spec> ; next_elapse=<resolved time> }`,
+    # so a bare weekday and time can both be satisfied by the next_elapse half
+    # whatever the spec says. Defect C17 — roles/podman_backup's scenario carries
+    # the full account.
+    - name: The timer is enabled and fires on the configured schedule
       ansible.builtin.assert:
         that:
           - incus_refresh_timer.status.UnitFileState == 'enabled'
-          - "'Sun' in incus_refresh_timer.status.TimersCalendar"
-          - "'03:00:00' in incus_refresh_timer.status.TimersCalendar"
-        fail_msg: "image refresh timer is not enabled for {{ incus_image_refresh_oncalendar }}"
+          - >-
+            'OnCalendar=' ~ incus_image_refresh_oncalendar
+            in incus_refresh_timer.status.TimersCalendar
+        fail_msg: >-
+          image refresh timer is not enabled for {{ incus_image_refresh_oncalendar }} —
+          TimersCalendar is {{ incus_refresh_timer.status.TimersCalendar | default('unset') }}
         quiet: true
 
     - name: Cache a fixture image via the refresh script

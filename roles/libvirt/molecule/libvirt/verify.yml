@@ -97,13 +97,21 @@
       register: libvirt_refresh_timer
       become: true
 
-    - name: The timer is enabled and fires at 03:30 on Sundays
+    # Anchor on the whole OnCalendar= spec rather than bare substrings:
+    # TimersCalendar reads `{ OnCalendar=<spec> ; next_elapse=<resolved time> }`,
+    # so 'Sun' and '03:30:00' can both be satisfied by the next_elapse half
+    # whatever the spec says. Defect C17 — roles/podman_backup's scenario carries
+    # the full account.
+    - name: The timer is enabled and fires on the configured schedule
       ansible.builtin.assert:
         that:
           - libvirt_refresh_timer.status.UnitFileState == 'enabled'
-          - "'Sun' in libvirt_refresh_timer.status.TimersCalendar"
-          - "'03:30:00' in libvirt_refresh_timer.status.TimersCalendar"
-        fail_msg: "image refresh timer is not enabled for {{ libvirt_image_refresh_oncalendar }}"
+          - >-
+            'OnCalendar=' ~ libvirt_image_refresh_oncalendar
+            in libvirt_refresh_timer.status.TimersCalendar
+        fail_msg: >-
+          image refresh timer is not enabled for {{ libvirt_image_refresh_oncalendar }} —
+          TimersCalendar is {{ libvirt_refresh_timer.status.TimersCalendar | default('unset') }}
         quiet: true
 
     # Exercise the script end to end against a local fixture over file://, so it

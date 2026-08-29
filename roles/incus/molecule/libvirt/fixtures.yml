@@ -1,0 +1,9 @@
+---
+# One source for the refresh schedule, loaded by both converge and verify. Not
+# the scenario's inventory group_vars: verify loads the role's defaults through
+# vars_files, which outranks inventory, so the default would shadow it.
+#
+# Deliberately not that default (Sun 03:00), which no play overrides — asserting
+# it would prove only that the default equals itself, leaving the var's path to
+# the rendered timer untested.
+incus_image_refresh_oncalendar: "Mon *-*-* 05:00:00"

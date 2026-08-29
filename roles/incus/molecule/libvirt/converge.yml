@@ -1,6 +1,8 @@
 ---
 - name: Converge
   hosts: all
+  vars_files:
+    - fixtures.yml
   tasks:
     # incus's bridge-trust task needs a live firewalld; the fleet plays apply the
     # firewalld role before incus, so do the same here for the standalone test.

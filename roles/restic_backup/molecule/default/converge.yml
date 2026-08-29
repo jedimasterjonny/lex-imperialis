@@ -7,7 +7,6 @@
     # podman-volumes mode.
     restic_backup_name: probe
     restic_backup_description: a probe directory
-    restic_backup_oncalendar: "Thu *-*-* 02:00:00"
     # Local stand-in for the astropath NFS share — mounting it is the nfs role's
     # job, not this role's.
     restic_backup_root: /var/tmp/backup

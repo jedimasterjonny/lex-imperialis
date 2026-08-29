@@ -94,14 +94,21 @@
       register: podman_prune_timer
       become: true
 
+    # Anchor on the whole OnCalendar= spec rather than bare substrings:
+    # TimersCalendar reads `{ OnCalendar=<spec> ; next_elapse=<resolved time> }`,
+    # so 'Sat' and '06:00:00' can both be satisfied by the next_elapse half
+    # whatever the spec says. Defect C17 — roles/podman_backup's scenario carries
+    # the full account. A literal rather than a var: this timer is a static unit
+    # file with the schedule baked in, so there is nothing to pass through.
     - name: The timer is enabled and fires at 06:00 on Saturdays
       ansible.builtin.assert:
         that:
           - podman_prune_timer.status.ActiveState == 'active'
           - podman_prune_timer.status.UnitFileState == 'enabled'
-          - "'Sat' in podman_prune_timer.status.TimersCalendar"
-          - "'06:00:00' in podman_prune_timer.status.TimersCalendar"
-        fail_msg: "the prune timer is not enabled for Sat 06:00"
+          - "'OnCalendar=Sat *-*-* 06:00:00' in podman_prune_timer.status.TimersCalendar"
+        fail_msg: >-
+          the prune timer is not enabled for Sat 06:00 — TimersCalendar is
+          {{ podman_prune_timer.status.TimersCalendar | default('unset') }}
         quiet: true
 
     - name: Stage a probe build context
