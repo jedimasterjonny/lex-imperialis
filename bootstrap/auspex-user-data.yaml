@@ -97,3 +97,19 @@ ssh_pwauth: false
 runcmd:
   # Raspberry Pi OS ships sshd disabled until something enables it.
   - [systemctl, enable, --now, ssh]
+  # Single-shot config, so the provisioners retire themselves once done:
+  # systemd-timesyncd would fight chrony (roles/common) for NTP from the first
+  # converge, and a cloud-init left installed re-runs every boot against a seed
+  # nothing maintains. Last on purpose — the accounts and sshd already exist, so
+  # a failure here cannot lock anyone out. Purging the owner of the running
+  # cloud-final.service is safe: trixie's cloud-init stops no unit on removal
+  # (its prerm is py3clean and nothing else), so this run completes from memory.
+  # The lock timeout rides out apt's stock timers, which autoupdate only masks
+  # at the first converge. /etc/sudoers.d/90-cloud-init-users survives the purge
+  # deliberately: it is the ansible account's only grant until roles/common
+  # writes the managed one and then removes it.
+  - [apt-get, --yes, -o, DPkg::Lock::Timeout=60, purge, cloud-init, rpi-cloud-init-mods, systemd-timesyncd]
+  # Written a stage earlier by ssh_pwauth above and orphaned by the purge.
+  # Dropping it costs nothing — both accounts are key-only — and roles/sshd owns
+  # PasswordAuthentication from the first converge on.
+  - [rm, -f, /etc/ssh/sshd_config.d/50-cloud-init.conf]
