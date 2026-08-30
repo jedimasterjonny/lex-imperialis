@@ -140,6 +140,10 @@ Three one-shot entry points in `bootstrap/` — idempotent, apart from `rogue-tr
 
 Recovery walks the same path: re-bootstrap the host, run its play to rebuild everything declarative, then restore its podman volumes from the restic repository on the NAS. `docs/disaster-recovery.md` covers it host by host, along with what the backup does and does not hold; `docs/backups.md` is the backup architecture in full.
 
+## Open source
+
+Open source is the default here: OpenTofu rather than Terraform, Valkey rather than Redis, and the openSUSE non-OSS package repositories held disabled. The exceptions — Plex is the obvious one — are few and deliberate, recorded in `docs/non-oss.md`.
+
 ## Working with Claude
 
 `CLAUDE.md` and `roles/CLAUDE.md` are the house style: quadlets, named volumes, the caddy snippet contract, health probes, commit and branch conventions. Together they are what keeps a generated role indistinguishable from a hand-written one.
