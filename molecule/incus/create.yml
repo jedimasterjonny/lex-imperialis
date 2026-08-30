@@ -35,7 +35,11 @@
       changed_when: false
 
     # The Tumbleweed mirror CDN intermittently times out serving repo metadata
-    # (curl 28), which a converge install reports as "No provider of <pkg> found".
+    # (curl 28), which a converge install reports as "No provider of <pkg> found",
+    # and mid-sync serves 403s (curl 22) on files repomd.xml lists — outages that
+    # run minutes, so the retry budget sits out a sync, not just a blip. Each
+    # attempt is capped: a stalled transfer burns 90s, not the CI job's timeout,
+    # and the per-repo refresh is incremental, so a killed attempt resumes.
     # Prime the cache here, retried, so the install reuses fresh metadata within
     # the package manager's refresh window instead of racing a flaky refresh of
     # its own. Both arms are load-bearing, apt's more so: ansible.builtin.package
@@ -52,12 +56,12 @@
           - --
           - sh
           - -c
-          - "if command -v zypper >/dev/null 2>&1; then zypper --non-interactive refresh; else apt-get update; fi"
+          - "if command -v zypper >/dev/null 2>&1; then timeout 90 zypper --non-interactive refresh; else timeout 90 apt-get update; fi"
       loop: "{{ molecule_yml.platforms }}"
       loop_control:
         label: "{{ item.name }}"
       register: mol_refresh
       until: mol_refresh.rc == 0
-      retries: 5
-      delay: 10
+      retries: 10
+      delay: 30
       changed_when: false

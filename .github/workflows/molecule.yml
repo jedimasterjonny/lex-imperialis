@@ -141,7 +141,9 @@ jobs:
     needs: discover
     if: needs.discover.outputs.incus != '[]'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 30 where the other tiers keep 20: a first run riding out a mirror outage
+    # can spend ~20 min failing before the retry below gets its turn.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -170,10 +172,15 @@ jobs:
 
       # No MOLECULE_RUN_ID: each incus leg gets its own ephemeral runner, so the
       # stable instance name can't collide; only Hetzner's shared account needs one.
+      # One automatic retry: a mirror-sync outage can outlive create.yml's retried
+      # cache prime, and the rootfs download behind `incus launch` has no in-play
+      # retry at all. Molecule destroys on failure, so a second run starts clean.
+      # It costs a few minutes only when a leg actually fails — cheap on the free
+      # tier; the billable hetzner leg deliberately retries nothing.
       - name: Run the incus molecule scenario
         env:
           ROLE: ${{ matrix.role }}
-        run: sg incus-admin -c "make test ROLE=$ROLE"
+        run: sg incus-admin -c "make test ROLE=$ROLE" || sg incus-admin -c "make test ROLE=$ROLE"
 
   hetzner:
     name: hetzner (${{ matrix.role }})
