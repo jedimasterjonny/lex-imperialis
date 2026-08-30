@@ -117,6 +117,12 @@ Its scope is `host.sh`'s — the key-only, NOPASSWD-sudo `ansible` account and
 sshd — plus the owner account and `/etc/hostname`. The file itself argues the
 rest; read it rather than this.
 
+It ends by retiring its own provisioners: the last `runcmd` entries purge
+`cloud-init`, `rpi-cloud-init-mods` and `systemd-timesyncd` — chrony's rival —
+and drop the sshd drop-in the run wrote, so a converged auspex carries no trace
+of first boot. Verified against trixie's package before writing: cloud-init's
+prerm stops no unit, so the purge cannot kill the run that issues it.
+
 Hand-written rather than emitted by Raspberry Pi Imager's customisation pane,
 which writes the same kind of file but sets no `uid` and no `primary_group`: the
 owner lands on uid 1000 with a per-user group where the fleet pins 1026 and
