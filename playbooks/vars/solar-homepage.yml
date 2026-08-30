@@ -158,6 +158,22 @@ homepage_services:
           href: http://auspex:9093
           siteMonitor: http://auspex:9093/-/healthy
           # No widget: homepage ships none for alertmanager.
+      - UniFi:
+          icon: unifi.png
+          description: Network
+          href: https://unifi.ui.com
+          # url and siteMonitor take the controller's LAN address, vaulted as
+          # unpoller_url — topology, not a credential — rather than a second
+          # vault var naming the same thing. Its self-signed cert is fine:
+          # homepage's proxy fetches with TLS validation off.
+          siteMonitor: "{{ unpoller_url }}"
+          # Its own API key, not unpoller's, so either rotates without
+          # touching the other. Same passphrase-grade caveat as unpoller's —
+          # see that role's README.
+          widget:
+            type: unifi
+            url: "{{ unpoller_url }}"
+            key: !unsafe "{{HOMEPAGE_VAR_UNIFI_API_KEY}}" # noqa: jinja[spacing]
   # Host health for the whole fleet, read from the Prometheus on auspex
   # rather than from each host's own exporter: one address to reach, and the
   # same series the alerts evaluate. RAM and Temp are MemoryLow and
@@ -337,7 +353,7 @@ homepage_layout:
     initiallyCollapsed: true
   Vigil:
     style: row
-    columns: 3
+    columns: 4
   Cogitators:
     style: row
     columns: 4
@@ -410,7 +426,8 @@ homepage_bookmarks:
 # Widget credentials, delivered to the container as a 0600 EnvironmentFile
 # and substituted into the configs by name. Same keys the services above
 # already own — one credential per service, not a homepage-specific one —
-# so a rotation there is a rotation here.
+# so a rotation there is a rotation here. UNIFI_API_KEY is the exception:
+# minted for this dashboard alone, so it rotates on its own.
 homepage_secrets:
   PLEX_TOKEN: "{{ solar_plex_token }}"
   SONARR_KEY: "{{ arr_api_keys.sonarr }}"
@@ -420,3 +437,4 @@ homepage_secrets:
   TRANSMISSION_USERNAME: "{{ arr_transmission_username }}"
   TRANSMISSION_PASSWORD: "{{ arr_transmission_password }}"
   GRAFANA_PASSWORD: "{{ grafana_admin_password }}"
+  UNIFI_API_KEY: "{{ homepage_unifi_api_key }}"
