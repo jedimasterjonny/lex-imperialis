@@ -93,7 +93,8 @@ is enforced separately by `check-role-test-coverage.sh` in the lint gate.
 
 ### Tiers
 
-Every tier job has a 20-minute timeout.
+Every tier job has a 20-minute timeout, except incus at 30 — room for its
+retry, below.
 
 | Job | Scenario | Make target | Runner |
 | --- | --- | --- | --- |
@@ -103,7 +104,9 @@ Every tier job has a 20-minute timeout.
 The libvirt tier is local-only; CI realises it as `hetzner`, since Hetzner
 Cloud cannot nest KVM. The incus job installs and inits incus on the runner (dir
 storage; `FORWARD ACCEPT` and IPv6 off to clear the runner's Docker/network
-defaults) and runs molecule under the `incus-admin` group. The `hetzner` job passes
+defaults) and runs molecule under the `incus-admin` group, retrying a red run
+once — the transient openSUSE mirror and image-server flakes outlast a single
+run's in-play retries. The `hetzner` job passes
 `HCLOUD_TOKEN` from the `MOLECULE_HCLOUD_TOKEN` secret — a token scoped to a
 throwaway Hetzner project with no production server — so it never decrypts the
 vault (the one PR-triggered path that otherwise would). It sets `MOLECULE_RUN_ID`
