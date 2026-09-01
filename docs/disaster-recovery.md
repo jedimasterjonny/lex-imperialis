@@ -581,7 +581,7 @@ Hyper Backup config (see [`secret-rotation.md`](secret-rotation.md)) — if that
 went with the NAS, reset the sub-account password in the Console.
 
 Then restore those tasks' sets to return the repos to
-`/volume2/astropath/` and the photo library to its share; solar's, scholam's, and
+`/volume2/astropath/` and `/volume2/xenos/`, and the photo library to its share; solar's, scholam's, and
 rogue-trader's backups can then be restored as normal. The laptop's `time-machine`
 SMB share on `scriptorum` is not mirrored off-site, so it is not recovered — the
 laptop simply resumes Time Machine onto the rebuilt share.

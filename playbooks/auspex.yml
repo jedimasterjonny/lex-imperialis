@@ -93,12 +93,12 @@
       - name: podman-backup
         folders:
           - /astropath/solar-podman-backup
-          - /astropath/rogue-trader-podman-backup
+          - /xenos/rogue-trader-podman-backup
       - name: home-backup
         folders:
           - /astropath/solar-home-backup
           - /astropath/scholam-home-backup
-          - /astropath/rogue-trader-home-backup
+          - /xenos/rogue-trader-home-backup
       - name: photos-backup
         folders:
           - /scriptorum/photos
