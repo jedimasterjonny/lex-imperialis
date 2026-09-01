@@ -1,0 +1,60 @@
+---
+# arbites's container fast path, not a host spec: swap renovate-bumped image
+# refs in place on every host and bounce just the quadlet units that carried
+# them, instead of re-converging the whole fleet. bin/container-refresh.sh
+# drives it with container_refresh_updates (a list of {old, new} refs) and
+# falls back to bin/fleet-apply.sh whenever this playbook exits non-zero — a
+# host that failed, or a bump no host carried.
+#
+# hosts: all rather than site.yml's imports: the swap resolves "which host
+# runs this container" by looking, so a host without the ref costs a no-op.
+# fleet-apply.sh's control-host-last rule does not bind here — the swap only
+# touches quadlet units, and arbites is not a container, so a run can never
+# restart its own timer. A host in the inventory but not yet in site.yml is
+# reached too: mid-bring-up, with hand-applied quadlets, its pins get swapped
+# and bounced like any fleet host's — an apply site.yml would not have made,
+# accepted because the one operator is the one driving that bring-up. One not
+# reachable yet just fails the play into the full-apply fallback.
+- name: Swap bumped container image refs across the fleet
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Swap the refs and bounce the affected quadlets
+      ansible.builtin.script:
+        cmd: >-
+          ../bin/container-swap.sh
+          {{ container_refresh_updates | map(attribute='old')
+             | zip(container_refresh_updates | map(attribute='new'))
+             | flatten | map('quote') | join(' ') }}
+      register: container_refresh_swap
+      changed_when: "'matched ' in container_refresh_swap.stdout"
+      become: true
+
+    # The journal's record of what the fast path did to this host — the slow
+    # path has --diff for the same job. Runs on the controller, no round trip.
+    - name: Report what each host swapped and bounced
+      ansible.builtin.debug:
+        var: container_refresh_swap.stdout_lines
+
+    # A bump no host matched means the pin renders somewhere the swap does not
+    # reach (the roles/CLAUDE.md contract has slipped) or the container is not
+    # deployed anywhere — either way only the full apply can be trusted to
+    # converge it, so fail and let the driver fall back. Only hosts whose swap
+    # succeeded count: a failed host reverted its files, so its matches never
+    # landed.
+    - name: Every bumped image was matched on at least one host
+      run_once: true
+      vars:
+        container_refresh_matches: >-
+          {{ ansible_play_hosts | map('extract', hostvars)
+             | map(attribute='container_refresh_swap.stdout_lines') | flatten }}
+      ansible.builtin.assert:
+        that: ('matched ' ~ item.old) in container_refresh_matches
+        fail_msg: >-
+          {{ item.old }} was found on no host — not deployed (a pin whose app
+          is disabled?) or the render contract slipped; falling back to a full
+          apply
+        quiet: true
+      loop: "{{ container_refresh_updates }}"
+      loop_control:
+        label: "{{ item.old }}"

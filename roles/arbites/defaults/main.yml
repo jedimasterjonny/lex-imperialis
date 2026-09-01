@@ -7,6 +7,13 @@ arbites_repo_dir: "{{ arbites_state_dir }}/repo"
 arbites_venv_dir: "{{ arbites_state_dir }}/venv"
 # The SHA last successfully applied; the unchanged-HEAD short-circuit reads it.
 arbites_last_applied_file: "{{ arbites_state_dir }}/last-applied-sha"
+# Present from the start of an apply until its clean completion, so a failed
+# or killed run leaves it standing — and the next run then takes the full
+# apply rather than the container fast path, which reasons from the last
+# applied tree and needs the fleet to actually be at it. Deliberately separate
+# from the last-applied file, which the metric hook reads as the last
+# known-good SHA and so must survive a failed run.
+arbites_incomplete_flag: "{{ arbites_state_dir }}/apply-incomplete"
 # Soft kill-switch: touch this to make the timer fire as a clean no-op (README).
 arbites_pause_flag: "{{ arbites_state_dir }}/pause"
 

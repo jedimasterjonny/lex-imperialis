@@ -132,7 +132,7 @@ rules above do not cover these tasks. See [administratum](#administratum-nas).
 
 4. Once step 3 has converged clean — `sudo podman volume ls` shows the expected
    volumes — pause the reconciler and hold the backup timer, then restore over
-   the fresh ones. An unpaused reconciler re-applies `site.yml` and restarts
+   the fresh ones. An unpaused reconciler applies from `main` and can restart
    these units mid-swap; an unmasked timer can snapshot the freshly-initialised
    state as `latest`, which is what a later restore would then read back:
 
@@ -216,9 +216,9 @@ throwaway, never on this server.** So step 7 is mandatory, not optional, and ste
 8 where the raw copy will not start.
 
 1. Pause the reconciler on scholam. It fires every 15 minutes and applies
-   `site.yml` whenever `main` has advanced — which Renovate does unattended at
-   any hour — so an unpaused one races the converge below and re-applies the
-   play into a half-restored box:
+   from `main` whenever it has advanced — which Renovate does unattended at
+   any hour — so an unpaused one races the converge below and applies into a
+   half-restored box:
 
    ```bash
    sudo touch /var/lib/arbites/pause
@@ -357,11 +357,16 @@ throwaway, never on this server.** So step 7 is mandatory, not optional, and ste
    ```
 
 9. Resume the reconciler on scholam: `sudo rm /var/lib/arbites/pause`. Confirm
-   the next fire *applied* — `journalctl -u arbites.service` should show an
-   `applying <sha>` line, not `origin/main unchanged`. `last-applied-sha`
-   reaching HEAD is necessary, not sufficient: on a static `main` the
-   short-circuit satisfies it without connecting to anything, so a botched
-   step 6 re-pin would still read as healthy.
+   the next fire *applied in full* — `journalctl -u arbites.service` should
+   show an `applying <sha>` line followed by `[rogue-trader]`-prefixed play
+   output, not `origin/main unchanged`, and not only `container-refresh: bump`
+   lines (a bump-only range prints `applying <sha>` while swapping pins
+   fleet-wide and converging nothing else — it proves nothing about a
+   recovered host's config). If only the fast path ran,
+   `make apply PLAY=rogue-trader` re-converges the host directly.
+   `last-applied-sha` reaching HEAD is necessary, not sufficient: on a static
+   `main` the short-circuit satisfies it without connecting to anything, so a
+   botched step 6 re-pin would still read as healthy.
 10. `rogue-trader` also carries a `rogue-trader-home-backup` repo (its `/home` is
    minimal — service-account skeletons only); restore it by hand as in
    [scholam](#scholam-control-host) step 6 if wanted.

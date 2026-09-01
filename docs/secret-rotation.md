@@ -97,10 +97,11 @@ public address, never over the tunnel:
 
 0. Pause the reconciler on scholam for the whole procedure:
    `sudo touch /var/lib/arbites/pause`. It applies `site.yml`, and so this play,
-   whenever `main` advances — which Renovate does unattended at any hour. Off a
-   stale `main` it re-renders the *old* conf and the tunnel comes back on the old
-   peer, so step 4 confirms a handshake that is about to die with the peer
-   removal. A paused run still exits a clean success, so nothing alerts.
+   whenever `main` advances with anything beyond renovate's image bumps — which
+   Renovate's other updates do unattended at any hour. Off a stale `main` it
+   re-renders the *old* conf and the tunnel comes back on the old peer, so
+   step 4 confirms a handshake that is about to die with the peer removal. A
+   paused run still exits a clean success, so nothing alerts.
 1. Open a path that does not depend on the tunnel. On the host, over the tunnel
    while it still works (`firewall-cmd` needs root as `ansible`):
    `sudo firewall-cmd --permanent --add-rich-rule='rule family=ipv4 source

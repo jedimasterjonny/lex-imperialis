@@ -138,3 +138,49 @@ Output is prefixed per host to stay attributable once the plays interleave, in a
 terminal and in the reconciler's journal alike. Each host is attempted even when
 another has failed — unlike a plain `site.yml` run, where a host that loses its
 play aborts every play imported after it — and any failure still exits non-zero.
+
+## container-refresh.sh
+
+The `arbites` container fast path: given the last-applied and target SHAs,
+decides whether the range is nothing but renovate image bumps — every commit
+renovate[bot]'s, only `roles/*/vars/main.yml` touched (plus
+`docs/disaster-recovery.md`, whose mariadb pin renovate co-bumps and which
+renders nowhere on a host), every changed line a tag-and-digest image pin
+moving within its repository under an unchanged key, no bump chaining into
+another's — and, when it is, applies them through
+`playbooks/container-refresh.yml` instead of a full fleet apply. Exits zero
+only when every bump landed; any other outcome logs why and exits non-zero, on
+which `arbites.sh` falls back to `fleet-apply.sh`. Extra arguments pass through
+to `ansible-playbook`; needs ansible on PATH (the reconciler's venv) and `jq`.
+
+## container-swap.sh
+
+The per-host half of the fast path, run as root on each host by
+`playbooks/container-refresh.yml`'s `script:` task — never installed, staged
+in the run's temp dir. Takes old/new ref pairs; swaps each exact old ref
+wherever it appears under `/etc/containers/systemd` and `/usr/local/bin` (the
+`roles/CLAUDE.md` contract on where pins render; `/usr/local/sbin` is swept as
+a tripwire that fails the run instead), then daemon-reloads and restarts the
+quadlet units whose files changed in one systemd transaction, so the units'
+own `Requires=`/`After=` data orders the starts. Prints `matched <ref>` (the
+playbook's coverage assert and changed state) and `refreshed <unit>` lines.
+Any failure or signal before every unit is up on its new image restores all
+touched files — and starts the touched units back on the old, still-local
+image — so the full-apply fallback re-fires the roles' restart handlers
+instead of ratifying a new pin over an old container; an untrappable kill
+(SIGKILL, OOM) escapes that restore, and `inquisition`'s pin-vs-running check
+is the backstop. An orphaned quadlet (a decommission missed) is swapped and
+bounced like any other — the manual-discipline gap the root `CLAUDE.md`'s
+decommission rules already carry.
+
+## check-container-refresh.sh
+
+Fixture tests for the fast path's two scripts. The gate: a scratch git repo
+with the real script copied in and `ansible-playbook` stubbed on PATH, every
+accept and reject class asserted — the runbook rider and the nested arr shape
+included — plus an exact pin of the renovate.json manager shapes the gate
+mirrors. The swap payload: a scratch root (`CONTAINER_SWAP_ROOT`) with
+`systemctl` stubbed, asserting the no-op, swap-and-bounce, revert-on-failure
+and no-mapping classes. Exists because the fast path fails closed: a
+regression breaks nothing visibly, every range just takes the correct, slow
+full apply forever. Backs the `container-refresh-gate` hook.

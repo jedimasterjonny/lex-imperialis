@@ -139,6 +139,17 @@ repos:
         language: script
         pass_filenames: false
         always_run: true
+      # Fixture tests for arbites' fast path — the range gate and the per-host
+      # swap payload. The path fails closed, so a regression would only ever
+      # show as every merge quietly taking the slow full apply — this is the
+      # one place that would notice. renovate.json is included because the
+      # test pins the manager shapes the gate mirrors.
+      - id: container-refresh-gate
+        name: container-refresh-gate
+        entry: bin/check-container-refresh.sh
+        language: script
+        pass_filenames: false
+        files: ^(bin/(container-refresh|container-swap|check-container-refresh)\.sh|renovate\.json)$
       # OpenTofu gates for terraform/, mirroring the yamllint/ansible-lint style:
       # local hooks calling the tofu on PATH (zypper-installed; setup-opentofu in CI).
       - id: tofu-fmt
