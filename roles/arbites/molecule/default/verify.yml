@@ -135,7 +135,7 @@
 
     - name: Read the outcome metric after the successful run
       ansible.builtin.slurp:
-        src: "{{ arbites_textfile_dir }}/arbites.prom"
+        src: "{{ arbites_metric_file }}"
       register: arbites_metric_ok
       become: true
 
@@ -159,7 +159,7 @@
 
     - name: Read the outcome metric after the simulated failure
       ansible.builtin.slurp:
-        src: "{{ arbites_textfile_dir }}/arbites.prom"
+        src: "{{ arbites_metric_file }}"
       register: arbites_metric_fail
       become: true
 

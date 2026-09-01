@@ -34,7 +34,7 @@ arbites_last_run_timestamp_seconds $(date +%s)
 arbites_applied_commit{sha="$sha"} 1
 EOF
 chmod 0644 "$tmp"
-mv "$tmp" "$dir/arbites.prom"
+mv "$tmp" "{{ arbites_metric_file }}"
 
 # Close the GitHub deployment the reconcile opened, if it opened one — only a run
 # that actually applied writes an id here, so a paused or unchanged-HEAD cycle posts

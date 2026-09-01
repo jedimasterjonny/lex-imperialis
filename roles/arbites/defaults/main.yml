@@ -37,10 +37,12 @@ arbites_host_key_checking: true
 arbites_script: /usr/local/sbin/arbites.sh
 arbites_metric_script: /usr/local/sbin/arbites-metric.sh
 
-# node_exporter textfile-collector directory the outcome metric is written to
-# (arbites.prom). Must match the node_exporter role's
-# node_exporter_textfile_directory so Prometheus scrapes what this writes.
+# node_exporter textfile-collector directory the outcome metric is written to.
+# Must match the node_exporter role's node_exporter_textfile_directory so
+# Prometheus scrapes what this writes; the file path is derived once for the
+# metric hook that writes it and the scenario that reads it back.
 arbites_textfile_dir: /var/lib/node_exporter/textfile_collector
+arbites_metric_file: "{{ arbites_textfile_dir }}/arbites.prom"
 
 # Reconcile cadence. Every 15 min with a 2 min jitter: the unchanged-HEAD
 # short-circuit makes an idle run near-free, so a merge reaches the fleet within
