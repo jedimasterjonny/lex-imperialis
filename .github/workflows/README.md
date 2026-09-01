@@ -307,14 +307,47 @@ the skill deciding whether a review happens is whatever is on that repo's HEAD,
 and nothing in the action accepts a ref for it. That reaches further than the
 prose — the skill's own `allowed-tools` frontmatter is where the review's `gh`
 grants come from, since `claude_args` names only the MCP tool, so an upstream
-edit moves what the reviewer may do and not just what it is told to do. The
-`--disallowedTools` fence is a floor under that: the OIDC-minted App token is
-write-scoped and reaches the agent's shell, and the review reads release notes a
-dependency's author wrote, so pushing, merging, approving and `gh api` are
-denied rather than left to the skill's discretion. Treat it as defence in depth,
-not a boundary — the rules are command-prefix matches, and a determined
-rephrasing (`git -c … push`) is not covered. Vendoring the command locally would
-close the gap properly; `install-plugins.ts` accepts a path.
+edit moves what the reviewer may do and not just what it is told to do.
+Vendoring the command locally would close that properly; `install-plugins.ts`
+accepts a path.
+
+It reaches further still because the review reads text nobody here controls. A
+Renovate major carries the upstream release notes verbatim in its body — 6 KB
+on #540, 20 KB on #491 — and the skill fetches that body with its own
+`gh pr view`, so the action's sanitiser never sees it. Whoever writes a release
+note for a dependency tracked here, the indirect gomod deps included, gets prose
+in front of the reviewer.
+
+Three things bound what that prose reaches, in the order they bite. The action
+drives the Agent SDK with no `permissionMode` and no permission callback, so the
+SDK default holds and a call matching no allow rule is denied rather than
+prompted: the rules in force are the skill's seven `gh` prefixes plus
+`--allowedTools`, and there is no general shell behind them. The SDK loads the
+`user`, `project` and `local` setting sources, so this repo's own
+`.claude/settings.json` is read on the runner too — it carries only `ask` rules,
+which cannot widen anything, but an `allow` added there for workstation
+convenience would widen CI with it. `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` then keeps
+`CLAUDE_OAUTH_TOKEN` and the Actions secrets out of every subprocess environment
+the agent can open; the action sets it itself only alongside
+`allowed_non_write_users`, but reads the caller's `env` ahead of that, so the job
+opts in directly. Last, `--disallowedTools` is the floor under an upstream
+widening, and deny beats allow. It names families rather than commands — `git`
+entire, so `git -c … push` is covered and not just `git push`, then `gh api`,
+`curl`, `wget`, `WebFetch` and `WebSearch` — plus `gh pr merge` and
+`gh pr review`, the two `gh pr` subcommands that would change what lands or what
+"approved" means. Families are the point: a widening upstream to `Bash(gh:*)`
+would still leave nothing that reaches `main`, which is what matters when
+`arbites` applies `main` to the fleet as root within ~15 minutes.
+
+The OIDC-minted App token stays write-scoped (`contents`, `pull_requests` and
+`issues`, per the action's `DEFAULT_PERMISSIONS`) and still reaches the agent.
+That is a trade, not an oversight: passing `github_token` mints no App token and
+leaves a `pull-requests: write` `GITHUB_TOKEN` in its place, but it returns
+before the OIDC exchange and so drops the workflow-file check below with it, and
+it moves the review's comments to `github-actions[bot]` — the author
+`review-outcome` keys on, and an identity this repo already disambiguates with
+markers elsewhere, as the Firebase preview comment does. Denying the primitives
+costs neither.
 
 That skill stops before reviewing when the PR "does not need code review (e.g.
 automated PR ...)" — which is every Renovate PR, the entire class this exists to
@@ -322,7 +355,8 @@ review, and it exits cleanly enough to still look reviewed.
 The override answers that — both the automated leg and the "trivial change that
 is obviously correct" one, which a one-line pin bump would otherwise trip — and
 points the review at the release notes in the PR body, as far as the skill's own
-allowed tools reach. It is deliberately in **both** `prompt` and
+allowed tools reach, while naming that body untrusted so the notes are read as
+evidence rather than instruction. It is deliberately in **both** `prompt` and
 `--append-system-prompt`: the skill delegates that decision to a subagent, which
 inherits the user turn but not the session system prompt, so the `prompt` copy
 is the one that reaches it. `--allowedTools` duplicates the same tool the skill's own frontmatter
