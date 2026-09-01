@@ -21,7 +21,7 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Container image refs pinned in role vars; quadlet templates render them.",
+      "description": "Container image refs pinned in role vars; quadlet templates render them. arbites' fast-path gate (bin/container-refresh.sh) mirrors this shape — keep them in step.",
       "managerFilePatterns": ["/^roles/.+/vars/main\\.yml$/"],
       "matchStrings": ["image: (?<depName>[^\\s:]+):(?<currentValue>[^\\s@]+)(?:@(?<currentDigest>sha256:\\S+))?"],
       "autoReplaceStringTemplate": "image: {{{depName}}}:{{{newValue}}}{{#if newDigest}}@{{{newDigest}}}{{/if}}",
@@ -29,7 +29,7 @@
     },
     {
       "customType": "regex",
-      "description": "The disaster-recovery runbook hardcodes the mariadb roles/wordpress pins, so its fallback SQL load runs on that engine. Same depName, so both bump in one PR.",
+      "description": "The disaster-recovery runbook hardcodes the mariadb roles/wordpress pins, so its fallback SQL load runs on that engine. Same depName, so both bump in one PR — which is why arbites' fast-path gate exempts this file.",
       "managerFilePatterns": ["/^docs/disaster-recovery\\.md$/"],
       "matchStrings": ["(?<depName>docker\\.io/library/mariadb):(?<currentValue>[^\\s@]+)(?:@(?<currentDigest>sha256:\\S+))?"],
       "autoReplaceStringTemplate": "{{{depName}}}:{{{newValue}}}{{#if newDigest}}@{{{newDigest}}}{{/if}}",

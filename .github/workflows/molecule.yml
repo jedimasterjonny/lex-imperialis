@@ -106,15 +106,16 @@ jobs:
             # toolchain pins, the pre-commit hook set, and the bin scripts only
             # that hook set runs. They keep the free incus leg rather than leaving
             # the shared set, as .pre-commit-config.yaml already does — a hetzner
-            # leg would bill a real VM to prove nothing about them. The three bin
+            # leg would bill a real VM to prove nothing about them. The bin
             # scripts deliberately absent are the ones a real path runs:
-            # expand-role-consumers.sh (this job), fleet-apply.sh (arbites' root
-            # apply) and vault-var.sh (the hetzner tier's own token lookup). Listing
-            # the exemptions, not the inclusions, keeps a new script billing a VM
-            # rather than silently testing nothing.
+            # expand-role-consumers.sh (this job), fleet-apply.sh,
+            # container-refresh.sh and container-swap.sh (arbites' root apply and
+            # its container fast path) and vault-var.sh (the hetzner tier's own
+            # token lookup). Listing the exemptions, not the inclusions, keeps a
+            # new script billing a VM rather than silently testing nothing.
             if printf '%s\n' "$shared" | grep -qvE \
               -e '^(requirements-dev\.txt|Makefile|\.pre-commit-config\.yaml)$' \
-              -e '^bin/(ansible-lint-scoped|butane-lint|check-role-test-coverage|packer|shellcheck-jinja|tofu-validate)\.sh$'; then
+              -e '^bin/(ansible-lint-scoped|butane-lint|check-container-refresh|check-role-test-coverage|packer|shellcheck-jinja|tofu-validate)\.sh$'; then
               hetzner_cand=$(printf '%s\nmotd' "$roles")
             fi
           fi

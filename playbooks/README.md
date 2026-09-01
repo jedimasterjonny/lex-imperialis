@@ -43,3 +43,13 @@ fifteen minutes until the broken host is fixed. A host still joins this file onl
 once its play converges green — until then it runs by hand, `make apply
 PLAY=<host>` — and it must be in `arbites`'s `known_hosts` first, or its connect
 fails the same way.
+
+## container-refresh.yml
+
+The `arbites` container fast path's fleet play, not a host spec: driven only
+by `bin/container-refresh.sh`, which supplies `container_refresh_updates` (a
+list of `{old, new}` image refs) — there is no sensible bare `make` form.
+Unlike everything else here it is `hosts: all`: the swap resolves "which host
+runs this container" by looking, and it reaches every inventory host, a
+mid-bring-up host not yet in `site.yml` included. A bump no host matches fails
+the run, and the driver falls back to the full apply.

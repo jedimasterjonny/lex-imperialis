@@ -14,6 +14,7 @@ vault_pass="{{ arbites_vault_pass_file }}"
 ssh_key="{{ arbites_ssh_key_file }}"
 pause_flag="{{ arbites_pause_flag }}"
 last_applied="{{ arbites_last_applied_file }}"
+incomplete_flag="{{ arbites_incomplete_flag }}"
 github_repo="{{ arbites_github_repo }}"
 deployment_env="{{ arbites_deployment_environment }}"
 deployment_id_file="{{ arbites_deployment_id_file }}"
@@ -53,9 +54,10 @@ git -C "$repo" reset --hard "origin/$branch"
 # Nothing the reconciler needs is untracked here: venv, vault pass and key are not.
 git -C "$repo" clean -xffd
 target="$(git -C "$repo" rev-parse HEAD)"
+last_applied_sha="$(cat "$last_applied" 2>/dev/null || true)"
 
 # Near-free idle run: apply only when the branch has actually advanced.
-if [ -f "$last_applied" ] && [ "$(cat "$last_applied")" = "$target" ]; then
+if [ "$last_applied_sha" = "$target" ]; then
     echo "origin/$branch unchanged at ${target:0:12}, nothing to apply"
     exit 0
 fi
@@ -90,10 +92,6 @@ fi
 # Run from the clone root so ansible picks up the repo's ansible.cfg (inventory,
 # roles_path), exactly as make apply does.
 cd "$repo" || exit 1
-# Sync the venv to the just-fetched requirements before applying, so a bumped
-# ansible pin is in place up front and the self-apply's own pip task finds it
-# already satisfied — it never reinstalls ansible under the running process.
-"$venv/bin/pip" install --quiet --requirement requirements.txt
 # UserKnownHostsFile makes the seeded known_hosts authoritative; CheckHostIP=no pins
 # on the connection name/address alone, so keyscanning each host as ansible reaches
 # it (including scholam's own loopback) suffices; empty array when off.
@@ -102,17 +100,41 @@ ssh_extra_args=(--ssh-extra-args "-o UserKnownHostsFile={{ arbites_known_hosts_f
 {% else %}
 ssh_extra_args=()
 {% endif %}
-# --diff lands the change set in the journal; the key reaches each host's account.
-# fleet-apply.sh shards site.yml by host so the remote hosts converge at once and
-# scholam (self) still goes last, so this run never restarts its own timer. It
-# runs ansible off PATH, which is what puts the venv's in front of any system one.
-PATH="$venv/bin:$PATH" bin/fleet-apply.sh \
-    --private-key "$ssh_key" \
-    --vault-password-file "$vault_pass" \
-    "${ssh_extra_args[@]}" \
-    --diff
+# Sync the venv to the just-fetched requirements before applying, so a bumped
+# ansible pin is in place up front and the self-apply's own pip task finds it
+# already satisfied — it never reinstalls ansible under the running process.
+"$venv/bin/pip" install --quiet --requirement requirements.txt
+apply_args=(--private-key "$ssh_key" --vault-password-file "$vault_pass" "${ssh_extra_args[@]}")
+# A failed or killed apply can leave hosts part-way to different targets, and
+# the fast path reasons from the last applied *tree* — so it runs only when
+# the previous apply completed cleanly. The flag stands from here until this
+# apply completes, so any death in between forces the next run onto the full
+# apply. A paused or idle cycle never touches it.
+previous_incomplete=0
+if [ -e "$incomplete_flag" ]; then
+    echo "previous apply did not complete cleanly: container fast path skipped"
+    previous_incomplete=1
+fi
+touch "$incomplete_flag"
+# A range that is nothing but renovate container bumps takes the fast path:
+# swap the pins in place on each host and bounce just those containers, rather
+# than re-converge the whole fleet. bin/container-refresh.sh gates it strictly
+# and any anomaly — a range that is more than bumps, a bump no host carries, a
+# failed swap, no known last-applied SHA — falls through to the full apply,
+# the known-correct path.
+if [ "$previous_incomplete" -ne 0 ] \
+    || ! PATH="$venv/bin:$PATH" bin/container-refresh.sh "$last_applied_sha" "$target" \
+        "${apply_args[@]}"; then
+    # --diff lands the change set in the journal; the key reaches each host's account.
+    # fleet-apply.sh shards site.yml by host so the remote hosts converge at once and
+    # scholam (self) still goes last, so this run never restarts its own timer. It
+    # runs ansible off PATH, which is what puts the venv's in front of any system one.
+    PATH="$venv/bin:$PATH" bin/fleet-apply.sh "${apply_args[@]}" --diff
+fi
 
-# Record the applied SHA only after a clean full apply; a failure leaves the
-# previous value so the next run retries the same target.
+# Record the applied SHA only after a clean apply — fast path or full; a
+# failure leaves the previous value so the next run retries the same target,
+# and leaves the incomplete flag so it retries with the full apply.
 echo "$target" >"$last_applied"
+rm -f "$incomplete_flag"
 echo "applied ${target:0:12}"

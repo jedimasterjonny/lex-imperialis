@@ -45,6 +45,21 @@
         fail_msg: "the reconcile script does not enforce host-key checking against the known_hosts"
         quiet: true
 
+    # The container fast path must be tried without losing the full apply — a
+    # reconcile that only fast-paths leaves every non-bump change unapplied —
+    # and it must consult the incomplete flag, or a half-converged fleet gets
+    # reasoned about from a tree it is not at.
+    - name: The reconcile script tries the container fast path, keeping the full apply
+      vars:
+        script: "{{ arbites_script_content.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'bin/container-refresh.sh' in script"
+          - "'bin/fleet-apply.sh' in script"
+          - arbites_incomplete_flag in script
+        fail_msg: "the reconcile script does not wire the container fast path over the full apply"
+        quiet: true
+
     # The deployment record is posted from both scripts, so both must carry the API
     # calls, and the token must reach them through the 0600 EnvironmentFile rather
     # than either 0755 script.
@@ -135,7 +150,7 @@
 
     - name: Read the outcome metric after the successful run
       ansible.builtin.slurp:
-        src: "{{ arbites_textfile_dir }}/arbites.prom"
+        src: "{{ arbites_metric_file }}"
       register: arbites_metric_ok
       become: true
 
@@ -159,7 +174,7 @@
 
     - name: Read the outcome metric after the simulated failure
       ansible.builtin.slurp:
-        src: "{{ arbites_textfile_dir }}/arbites.prom"
+        src: "{{ arbites_metric_file }}"
       register: arbites_metric_fail
       become: true
 

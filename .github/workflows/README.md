@@ -82,10 +82,11 @@ set (e.g. `terraform/`, `jonnyoc-site/`, `packer/`) yields no tiers, so
   tiers.
 - A change confined to the toolchain — `requirements-dev.txt`, the `Makefile`,
   `.pre-commit-config.yaml`, or a `bin/` script only the hook set runs — stays on
-  the free incus tier and skips the billable hetzner VM. The three scripts a real
+  the free incus tier and skips the billable hetzner VM. The scripts a real
   path runs still book it: `expand-role-consumers.sh` (this job),
-  `fleet-apply.sh` (`arbites`' root apply) and `vault-var.sh` (the hetzner tier's
-  own token lookup).
+  `fleet-apply.sh` (`arbites`' root apply), `container-refresh.sh` and
+  `container-swap.sh` (its container fast path), and `vault-var.sh` (the
+  hetzner tier's own token lookup).
 - `workflow_dispatch` ignores the diff and tests every role.
 
 Molecule tests only the scenarios a role ships; that the required ones *exist*

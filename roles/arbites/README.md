@@ -21,20 +21,50 @@ jitter; `Persistent`, so a reboot-missed run catches up). The script:
    is read as an inventory source and survives a revert);
 3. short-circuits if `main` has not advanced since the last applied SHA, so an
    idle cycle is near-free;
-4. otherwise runs `bin/fleet-apply.sh` from the clone root (reusing the repo's
-   `ansible.cfg`) with `arbites_venv_dir`'s ansible on `PATH`, and `--diff` to
-   the journal. It shards `playbooks/site.yml` by host so the remote hosts
-   converge at once, scholam last so the run never restarts its own timer
-   mid-apply;
-5. records the applied SHA only on a clean full apply; a failure leaves the old
+4. otherwise applies, from the clone root (reusing the repo's `ansible.cfg`)
+   with `arbites_venv_dir`'s ansible on `PATH`: a range that is nothing but
+   renovate container bumps goes via the container fast path (below); anything
+   else runs `bin/fleet-apply.sh` with `--diff` to the journal, sharding
+   `playbooks/site.yml` by host so the remote hosts converge at once, scholam
+   last so the run never restarts its own timer mid-apply;
+5. records the applied SHA only on a clean apply; a failure leaves the old
    value, so the next run retries.
 
-An `ExecStopPost` hook writes the outcome to
-`arbites_textfile_dir/arbites.prom`: `arbites_success`
-(1/0 from `$SERVICE_RESULT`), `arbites_last_run_timestamp_seconds`, and
-`arbites_applied_commit{sha=...}` (the live revision). The `prometheus`
-role's `ArbitesFailed` / `ArbitesStale` rules surface a failed run
-or a timer that has stopped firing.
+An `ExecStopPost` hook writes the outcome to `arbites_metric_file`
+(`arbites_textfile_dir/arbites.prom`): `arbites_success` (1/0 from
+`$SERVICE_RESULT`), `arbites_last_run_timestamp_seconds`, and
+`arbites_applied_commit{sha=...}` (the live revision). The `prometheus` role's
+`ArbitesFailed` / `ArbitesStale` rules surface a failed run or a timer that
+has stopped firing.
+
+## Container fast path
+
+Most merges are renovate image bumps, and a full fleet apply is a slow way to
+move one pin. When the newly fetched range is nothing but such bumps,
+`bin/container-refresh.sh` applies it by swapping the pinned refs in place on
+every host and bouncing just the quadlet units that carried them
+(`playbooks/container-refresh.yml`). Anything else — and any anomaly — takes
+`bin/fleet-apply.sh`, the known-correct path. The gate's acceptance rules and
+the swap, revert and bounce mechanics live with the scripts (`bin/README.md`);
+the render-location contract they depend on is `roles/CLAUDE.md`'s.
+
+One guard is the reconciler's own: the previous apply must have completed
+cleanly. The incomplete flag (`/var/lib/arbites/apply-incomplete`), up for the
+whole of every apply and removed only on clean completion (paused and idle
+cycles never touch it), forces the run after a failure or kill onto the full
+apply — the gate reasons from the last applied *tree*, and a partial apply can
+leave hosts part-way to different targets. Record-keeping is unchanged: same
+deployment record, same metric, `last_applied` advancing only on a clean run.
+
+One invariant is deliberately traded: every merge used to re-converge the
+whole fleet, so out-of-band drift on any host was reverted within 15 minutes
+of the next merge. A streak of bump-only merges now performs no full converge,
+so such drift stands until the next non-bump merge or a manual `make apply` —
+and a host rolled back out-of-band (a MicroOS snapshot revert, a restored
+quadlet) is the same shape: its older ref matches no bump, the coverage assert
+is satisfied by the hosts that did match, and the run reports green. Recovery
+procedures re-apply by hand for exactly this reason
+(`docs/disaster-recovery.md`).
 
 ## Bootstrap (one-time)
 
