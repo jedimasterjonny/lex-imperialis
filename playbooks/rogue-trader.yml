@@ -35,11 +35,10 @@
     # image rebuilt — roles/nfs cannot create one on MicroOS's read-only root,
     # and nothing detects the omission.
     nfs_shares:
-      # By the NAS's stable LAN IP, not its hostname: rogue-trader resolves LAN
-      # names only over the tunnel. NetworkManager now owns that resolver and
-      # re-applies it on reload, where wg-quick's openresolv copy was dropped by
-      # any reload (e.g. the podman conf.d drop-in) — but the IP still depends on
-      # nothing, so it stays.
+      # By the NAS's stable LAN IP, not its hostname: nothing this host can
+      # reach answers LAN names at all. The tunnel carried a resolver until the
+      # profile dropped it, leaving only the public interface's — so the literal
+      # is now the sole thing that works rather than merely the sturdiest.
       - name: astropath
         server: 192.168.1.225
         export: /volume2/astropath
