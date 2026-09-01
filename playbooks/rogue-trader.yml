@@ -28,9 +28,9 @@
     # wg-quick@wg0 remains a working rollback from a NetworkManager that will not
     # bring the tunnel up — and the private key keeps one copy in the vault.
     wireguard_client_conf: "{{ rogue_trader_wireguard_conf }}"
-    # podman_backup writes to the astropath share; mount it from the NAS. No arr
+    # podman_backup writes to the xenos share; mount it from the NAS. No arr
     # stack here, so scriptorum stays unmounted. The backup runs as root, which
-    # the NAS squashes to the admin uid its astropath ACL grants.
+    # the NAS squashes to the admin uid its xenos ACL grants.
     # Adding a share here also needs its mount point added to packer/ and the
     # image rebuilt — roles/nfs cannot create one on MicroOS's read-only root,
     # and nothing detects the omission.
@@ -39,9 +39,17 @@
       # reach answers LAN names at all. The tunnel carried a resolver until the
       # profile dropped it, leaving only the public interface's — so the literal
       # is now the sole thing that works rather than merely the sturdiest.
+      #
+      # `name` deliberately does not follow the export. The mount point
+      # /nfs/astropath is baked into the packer image and stage 2 refuses a
+      # snapshot that is missing it, so renaming it would cost an image rebuild
+      # and a re-image of this box; keeping it also keeps restic_backup_root and
+      # every restore path in docs/ correct. The export is a share of this
+      # host's own because this is the public box: a compromise here reaches
+      # only its two repos, where astropath carries solar's and scholam's too.
       - name: astropath
         server: 192.168.1.225
-        export: /volume2/astropath
+        export: /volume2/xenos
     # caddy + wordpress serve emmasedit.com (apex + www) publicly, on the
     # fleet-wide caddy_cloudflare_api_token — it covers this zone as well as
     # solar's, so there is nothing to override here. No internal services run, so
@@ -82,12 +90,12 @@
     cadvisor_listen_ip: 192.168.3.4
     cadvisor_after: NetworkManager-wait-online.service
     # Home backup after solar (Thu 01:00) and scholam (Thu 02:00), before the
-    # off-site mirror (Thu 04:00). rogue-trader already mounts astropath for
+    # off-site mirror (Thu 04:00). rogue-trader already mounts xenos for
     # podman_backup, so no extra NFS setup is needed.
     home_backup_oncalendar: "Thu *-*-* 03:00:00"
     # This host's restic key. One per host, so a host that is compromised can
-    # open only its own repos — the astropath export carries every host's, and
-    # this is the public box.
+    # open only its own repos. Belt and braces on the public box: its repos also
+    # sit on an export of their own, so a compromise cannot delete the fleet's.
     restic_backup_password: "{{ rogue_trader_restic_password }}"
     # The storage box forward. The NAS's Hyper Backup tasks reach the box through
     # this rather than over the public internet, which is what lets the box refuse

@@ -11,8 +11,8 @@ second copy. Seven layers:
 
 | Layer | Protects | On the NAS | Cadence | Owned by |
 | --- | --- | --- | --- | --- |
-| Podman volume backup | container state on `solar` and `rogue-trader` | per-host restic repo under `astropath` | weekly | `podman_backup` role — this repo |
-| Home directory backup | `/home` on `solar`, `scholam`, and `rogue-trader` | per-host restic repo under `astropath` | weekly | `home_backup` role — this repo |
+| Podman volume backup | container state on `solar` and `rogue-trader` | per-host restic repo under `astropath`, `xenos` for `rogue-trader` | weekly | `podman_backup` role — this repo |
+| Home directory backup | `/home` on `solar`, `scholam`, and `rogue-trader` | per-host restic repo under `astropath`, `xenos` for `rogue-trader` | weekly | `home_backup` role — this repo |
 | Photo library | the Google Photos archive | `/scriptorum/photos` | on demand | [`negative-space`](https://github.com/jedimasterjonny/negative-space) — external |
 | Laptop Time Machine | the operator's laptop | `time-machine` SMB share, a sibling of `scriptorum` on the same array (1 TB cap) | hourly when the laptop is on the network | macOS + DSM — external |
 | Bit-rot scrub | every block on both arrays | `scriptorum` + `astropath` | monthly | DSM — NAS-side |
@@ -32,7 +32,10 @@ for a cloud target records no duration, which is the same gap `r2_mirror` exists
 for.
 
 The first two are Ansible-managed — `podman_backup` and `home_backup`, both thin
-consumers of the shared `restic_backup` engine. The rest are DSM tasks on the
+consumers of the shared `restic_backup` engine. Their repos share one export,
+`astropath`, except `rogue-trader`'s: the public box writes to `xenos`, exported
+to it alone, so a compromise there reaches its own two repos and no others. The
+rest are DSM tasks on the
 NAS or an external app — recorded here, not codified. `auspex` runs neither
 role: its Prometheus TSDB and Alertmanager state have no copy, accepted as
 derived data. Recovery is in [`disaster-recovery.md`](disaster-recovery.md).
@@ -49,8 +52,8 @@ Each run `restic check`s the repo and re-reads a rotating slice of the data
 packs — the whole repo over successive runs — so structural corruption and
 bit-rot inside the repo page as `PodmanBackupFailed` instead of surfacing at
 restore; a missed run raises `PodmanBackupOverdue`. The two hosts are staggered
-— `solar` Wednesday 00:00 and `rogue-trader` Wednesday 01:00 — so neither is on
-the astropath export while the other is. Both finish well inside the Wednesday
+— `solar` Wednesday 00:00 and `rogue-trader` Wednesday 01:00 — so neither is
+writing to the backup array while the other is. Both finish well inside the Wednesday
 02:00 off-site mirror window below, an hour of clearance year-round. That
 clearance is the reason the stagger runs earlier rather than later: the mirror
 must find both repos complete. `scholam` carries no podman repo: its only
@@ -74,7 +77,7 @@ recovery, not an output of it. Each run `restic check`s the repo (the same
 rotating data-pack re-read), so corruption pages as `HomeBackupFailed` rather
 than surfacing at restore; a missed run raises `HomeBackupOverdue`. The hosts
 are staggered (`solar` Thu 01:00, `scholam` Thu 02:00, `rogue-trader` Thu 03:00)
-so they don't snapshot to the astropath export at once. Its off-site mirror is
+so they don't snapshot to the backup array at once. Its off-site mirror is
 a NAS-side Hyper Backup task at Thu 04:00, an hour clear of the last run
 year-round. Role mechanics:
 [`roles/home_backup/README.md`](../roles/home_backup/README.md).
@@ -203,7 +206,7 @@ Western Europe — port-wander is in Finland, so a regional loss cannot take bot
 `podman-backup-r2` copies the two `*-podman-backup` repos on Wednesday 06:00 and
 `home-backup-r2` the three `*-home-backup` repos on Thursday 06:00 — four hours
 behind the port-wander mirror of the same repos for podman, two for home, so the
-two copies never read the astropath array or the uplink at once. They share the
+two copies never read the backup array or the uplink at once. They share the
 bucket but not a Hyper Backup container: the target directory puts them in
 `podman.hbk` and `home.hbk`, which is what lets one bucket hold both without
 their version chains touching. The photo library is not copied here — it stays

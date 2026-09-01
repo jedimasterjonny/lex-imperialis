@@ -26,7 +26,8 @@
     # mount that already blips under load (the engine's retry() exists for that).
     home_backup_oncalendar: "Thu *-*-* 02:00:00"
     # This host's restic key. One per host, so a host that is compromised can
-    # open only its own repos — the astropath export carries every host's.
+    # open only its own repos — the astropath export carries this host's and
+    # the other LAN host's; rogue-trader's sit on xenos, off this export.
     restic_backup_password: "{{ scholam_restic_password }}"
     # node_exporter, scraped by the Prometheus on auspex over the LAN.
     firewalld_ports:
