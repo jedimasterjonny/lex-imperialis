@@ -149,9 +149,12 @@ resource "cloudflare_ruleset" "emmas_cache" {
 
 # --- WAF custom rules ---
 
-# Challenge the WordPress login POST and XML-RPC at the edge, before the origin.
-# The login GET and front-end stay clean, so only credential submission and the
-# XML-RPC machine endpoint are gated.
+# Drop backup-file scans, then challenge the WordPress login POST and XML-RPC,
+# all at the edge before the origin. The login GET and front-end stay clean, so
+# only credential submission and the XML-RPC machine endpoint are gated. Free
+# allows five custom rules; three are used. The name outlives its accuracy on
+# purpose: the provider replaces the whole ruleset on a rename, and a replace
+# drops every rule here for the gap between destroy and create.
 resource "cloudflare_ruleset" "emmas_waf" {
   zone_id = local.emmasedit_com_zone_id
   name    = "emmasedit.com WordPress login protection"
@@ -159,6 +162,31 @@ resource "cloudflare_ruleset" "emmas_waf" {
   phase   = "http_request_firewall_custom"
 
   rules = [
+    # Ordered first so a scan is dropped before the challenge rules evaluate.
+    # 2026-09-02: one client sent 560 requests in 20 s for /archives.tar,
+    # /secrets.zip, /.env.tgz and the like. Every one reached WordPress, whose
+    # themed 404 is a 66 KB render, so under that load the 404s took 5-18 s;
+    # caddy logged 1,594 "aborting with incomplete response" that day against 13
+    # in the preceding month, and the container's 5 s healthcheck failed and
+    # podman killed it. A minute of downtime, all of it spent serving 404s.
+    #
+    # path.extension is the LAST extension, so /x.tar.gz matches on "gz" and
+    # /x.sql.bz2 on "bz2"; the dotfile clause takes the extensionless probes
+    # (/.env, /.git/config, /.aws/credentials). /.well-known/ stays exempt: it is
+    # the RFC 8615 namespace, and although caddy issues this zone's certificate
+    # over DNS-01 (every challenge in its journal is dns-01), a block here would
+    # fail an HTTP-01 fallback or a future security.txt silently. Evidence for
+    # the list, from the origin journals since 2026-08-03: nothing matching either
+    # clause has ever returned 2xx, and the only non-404s are WordPress canonical
+    # 301s on the probe paths themselves. zip is an allowed WordPress upload type,
+    # so a media-library archive would be blocked too; none has ever been served.
+    {
+      ref         = "block_backup_and_dotfile_probes"
+      description = "Block archive, backup-copy, and dotfile probing; /.well-known/ exempt"
+      expression  = "http.request.uri.path.extension in {\"7z\" \"bz2\" \"gz\" \"rar\" \"sql\" \"tar\" \"tgz\" \"xz\" \"zip\" \"zst\" \"bak\" \"backup\" \"old\"} or (starts_with(http.request.uri.path, \"/.\") and not starts_with(http.request.uri.path, \"/.well-known/\"))"
+      action      = "block"
+      enabled     = true
+    },
     {
       ref         = "challenge_wp_login_post"
       description = "Managed-challenge credential POSTs to wp-login.php; GET renders clean"
