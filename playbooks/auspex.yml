@@ -118,6 +118,37 @@
     # Blackbox-probe via the co-located exporter. Each entry pairs a prober module
     # with the targets to run it against; the same module may appear more than once.
     prometheus_probe_targets:
+      # The uplink canary: one anycast address outside the estate, TCP-connected
+      # from here every 60s. It is the only entry in this list whose failure means
+      # the LAN itself has no internet, and it is the whole input to
+      # HomeUplinkDown — which the alertmanager role then uses to suppress the
+      # ProbeDowns and the WireguardTunnelDown that one outage otherwise raises
+      # under three other names. Labelled rather than addressed so the rules file
+      # names no topology; the label is the group's identity, so it is set here at
+      # creation and never added to an existing group.
+      #
+      # Nothing else here can say it. Every public site below is probed FROM the
+      # home, so a dead uplink and a dead site are the same red; rogue-trader's
+      # exporters and the storage box go down over the tunnel for the same cause;
+      # and unpoller reports nothing at all when the break is a firewall rule
+      # rather than a dropped link — which is what it was on 2026-09-01, when an
+      # accidental block-all on the gateway held for 21 minutes with the WAN still
+      # up and its traffic counters still moving. That raised 10 alerts and 8
+      # Discord messages, none naming the cause.
+      #
+      # One target, not two. A second anycast address would only cover the case
+      # where this one is unreachable while the internet is not, and 1.1.1.1 is
+      # already the resolver the fleet trusts when its own DNS is down
+      # (wireguard_client, arr), so this adds no dependency the fleet does not
+      # carry already. The cost of the false positive that buys is one critical
+      # page three minutes in, self-resolving — and, for those minutes, the
+      # inhibition muting the ProbeDowns of sites that are genuinely up. Cheap
+      # against the ten unexplained alerts the real fault raised.
+      - module: tcp_connect
+        targets:
+          - 1.1.1.1:443
+        labels:
+          probe: uplink-canary
       # The public sites end-to-end: each a 2xx through the Cloudflare/Firebase edge
       # (redirect zones answer 3xx first, which http_2xx follows), plus per-site TLS
       # expiry.

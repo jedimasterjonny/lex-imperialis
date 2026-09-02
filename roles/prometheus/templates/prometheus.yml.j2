@@ -121,6 +121,15 @@ scrape_configs:
   # prober module as __param_module, so the module is per target rather than per
   # job. The relabelling moves the URL into the target param and the instance
   # label, then rewrites __address__ to the exporter so the scrape lands there.
+  #
+  # An entry's optional labels: map is rendered beside that module. Unlike
+  # __param_module it survives relabelling onto every series the group produces,
+  # which is how a rule selects one group without naming its address — the
+  # uplink canary and the ProbeDown that excludes it are the pair that needs it.
+  # It is therefore subject to the continuity note at the top of this file in
+  # full: a target's label set is its series identity, so labelling a group that
+  # already has history splits that history in two. Label a group as it is
+  # created.
   - job_name: blackbox
     # Each scrape is a live probe (DNS + TLS + redirect-follow), so scrape at 60s,
     # not the global 15s: the probe alerts key off minutes to hours (probe_success
@@ -133,6 +142,9 @@ scrape_configs:
       - targets: {{ group.targets | to_json }}
         labels:
           __param_module: {{ group.module | to_json }}
+{% for name, value in group.labels | default({}) | dictsort %}
+          {{ name }}: {{ value | to_json }}
+{% endfor %}
 {% endfor %}
     relabel_configs:
       - source_labels: [__address__]

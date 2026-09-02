@@ -53,6 +53,13 @@ failing, so an `inhibit_rules` entry suppresses the `Watchdog` while it fires,
 and the deadman reports the failure out-of-band (why with the inhibit block;
 mechanics and windows with the rule).
 
+A second `inhibit_rules` entry collapses an uplink outage to one page: while
+`HomeUplinkDown` fires, `ProbeDown` and `WireguardTunnelDown` are suppressed,
+since a LAN with no internet is the single cause behind every one of them.
+`InstanceDown` is left alone — the host really is unreachable, and it is the one
+alert still naming a host. The cost is that a LAN-side `ProbeDown` is muted for
+the outage's duration and pages once it ends.
+
 ## Hardening
 
 The container runs `NoNewPrivileges` and drops every capability. The image runs

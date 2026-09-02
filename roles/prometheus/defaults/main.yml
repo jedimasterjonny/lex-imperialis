@@ -49,7 +49,13 @@ prometheus_cadvisor_targets: []
 prometheus_unpoller_targets: []
 
 # Blackbox probe targets: each entry pairs a prober module with the full URLs to
-# run it against, and the same module may appear in more than one entry.
+# run it against, and the same module may appear in more than one entry. An entry
+# may also carry an optional `labels:` map, rendered into that group's
+# static_configs labels beside the module: those survive relabelling onto every
+# series the group produces, so a rule can select one group by label rather than
+# by address — which is what keeps topology out of the shipped rules file.
+# Labelling a group that already has history splits that history in two, since a
+# target's label set is its series identity, so set them as a group is created.
 prometheus_probe_targets: []
 
 # host:port of the blackbox_exporter the blackbox job scrapes. Must match the

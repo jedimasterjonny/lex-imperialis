@@ -22,12 +22,17 @@ rule_files:
 
 # 5m, not the 1m these cases were first written at: MicroOSBuildStale turns on a
 # fortnight-wide window, and re-evaluating that every simulated minute costs the hook
-# five times its runtime for nothing. Every eval_time and every rule for: is a multiple
-# of 5m, so nothing below loses precision — but promtool floors an off-grid eval_time
-# silently rather than rejecting it, so a case written at 3h57m would assert at 3h55m
-# and quietly mean something other than it says. The 5m ceiling binds each test's own
-# series interval, not this: a series sampled sparser than the lookback reads as stale
-# between evaluations, and no for: could ever be satisfied.
+# five times its runtime for nothing. Every eval_time is a multiple of 5m, so nothing
+# below loses precision — but promtool floors an off-grid eval_time silently rather
+# than rejecting it, so a case written at 3h57m would assert at 3h55m and quietly mean
+# something other than it says. The 5m ceiling binds each test's own series interval,
+# not this: a series sampled sparser than the lookback reads as stale between
+# evaluations, and no for: could ever be satisfied.
+#
+# Every rule for: is a multiple of 5m bar HomeUplinkDown's 3m, which is shorter than
+# the grid: no on-grid time separates it from a 5m one, so its cases pin that the wait
+# exists rather than its length — exactly what the 5m cases here already pin, for the
+# same reason.
 evaluation_interval: 5m
 
 tests:
@@ -1208,6 +1213,79 @@ tests:
       # Pending at the first evaluation, which is what rides out a deploy; a 5m for:
       # is one evaluation step, so this pins that the wait exists, not its length.
       - eval_time: 0m
+        alertname: ProbeDown
+        exp_alerts: []
+
+  # The canary and ProbeDown's exclusion are one mechanism, so they are driven as
+  # one input. Both halves have to hold: the uplink fault must arrive under the
+  # name that explains it, and it must not ALSO arrive under the anonymous one —
+  # group_by is on alertname, so a canary matching both rules pages twice for the
+  # single fault this exists to name once. The public site failing beside it is not
+  # decoration: in a real outage it fails for the same cause and must still raise
+  # ProbeDown, because muting it is Alertmanager's inhibition to do and not this
+  # file's, and a rule that suppressed it here would suppress it for a genuinely
+  # dead site too.
+  - interval: 1m
+    name: a failing uplink canary names the uplink and raises no probe alert of its own
+    input_series:
+      - series: 'probe_success{job="blackbox",instance="1.1.1.1:443",probe="uplink-canary"}'
+        values: "0x20"
+      # Probed from the home, so it is failing for the canary's cause, not its own.
+      - series: 'probe_success{job="blackbox",instance="https://jonnyoc.uk"}'
+        values: "0x20"
+      # LAN-side, and unaffected: the uplink is down, caddy is not.
+      - series: 'probe_success{job="blackbox",instance="https://sonarr.home.arpa/ping"}'
+        values: "1x20"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: HomeUplinkDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: blackbox
+              instance: 1.1.1.1:443
+              probe: uplink-canary
+            exp_annotations:
+              summary: "the home LAN cannot reach the internet"
+              description: >-
+                The uplink canary probe of 1.1.1.1:443 has not connected for over 3
+                minutes — egress is down, so every probe of a public site and every
+                host reached over the tunnel is failing for that one reason.
+      # exp_alerts is exhaustive, so naming only the public site is what proves the
+      # canary raises no ProbeDown — and naming it at all is what proves the
+      # exclusion is a label matcher rather than a mute on the whole rule.
+      - eval_time: 10m
+        alertname: ProbeDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: blackbox
+              instance: https://jonnyoc.uk
+            exp_annotations:
+              summary: "probe of https://jonnyoc.uk is failing"
+              description: "The blackbox probe of https://jonnyoc.uk has not answered with an accepted status for over 5 minutes."
+      # Pending at the first evaluation. for: 3m is shorter than this file's 5m
+      # grid, so what this pins is that the wait exists, not its length — without
+      # it the case above would equally pass a rule with no for: at all.
+      - eval_time: 0m
+        alertname: HomeUplinkDown
+        exp_alerts: []
+
+  # The negative control, and the reason the case above means anything: a canary
+  # that answers must leave both rules silent. ProbeDown is asserted here too
+  # because a canary excluded by label and a canary that is simply up look
+  # identical to it, and only a reachable one tells the exclusion from a rule that
+  # has stopped matching anything at all.
+  - interval: 1m
+    name: a reachable uplink canary raises nothing
+    input_series:
+      - series: 'probe_success{job="blackbox",instance="1.1.1.1:443",probe="uplink-canary"}'
+        values: "1x20"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: HomeUplinkDown
+        exp_alerts: []
+      - eval_time: 10m
         alertname: ProbeDown
         exp_alerts: []
 

@@ -43,6 +43,28 @@ inhibit_rules:
       - 'alertname="AlertmanagerNotificationsFailing"'
     target_matchers:
       - 'alertname="Watchdog"'
+  # One cause, one page. A dead uplink fails every probe run from the home and
+  # every host reached over the tunnel, so HomeUplinkDown (prometheus role, which
+  # owns the mechanism and the windows) arrives beside the ProbeDowns and the
+  # WireguardTunnelDown it already explains — 8 Discord messages for one fault on
+  # 2026-09-01. Suppressed, the outage pages once, under the name of its cause.
+  # It fires at 3m against their 5m precisely so it is already firing here when
+  # they flush.
+  #
+  # InstanceDown is deliberately NOT a target: rogue-trader genuinely is
+  # unreachable, and it is the one alert left that names a host rather than a
+  # symptom. No equal: the fault is global and HomeUplinkDown is a singleton, so
+  # source and targets share no label to join on — and any join would defeat the
+  # rule, since every alert it suppresses carries a different instance.
+  #
+  # The accepted cost is a LAN-side ProbeDown — solar's arr apps through caddy,
+  # which the uplink has nothing to do with — muted for as long as the uplink is
+  # down and no longer. It pages on the first evaluation after the uplink returns,
+  # so such a fault is delayed by the length of the outage, not lost.
+  - source_matchers:
+      - 'alertname="HomeUplinkDown"'
+    target_matchers:
+      - 'alertname=~"ProbeDown|WireguardTunnelDown"'
 
 receivers:
   - name: default
