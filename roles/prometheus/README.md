@@ -77,7 +77,13 @@ watch the split. Scraper and TSDB on one host need none of it.
   `keep`; the job's comment says why.
 - `prometheus_probe_targets` — blackbox probe targets: each entry pairs a prober
   module with the URLs to run it against, so the module is per target rather than
-  per job, and the same module may appear more than once.
+  per job, and the same module may appear more than once. An entry may also carry
+  a `labels:` map, rendered into that group's `static_configs` labels beside the
+  module. Those labels survive relabelling onto every series the group produces —
+  unlike `__param_module`, which does not — so a rule can select one group by
+  label instead of by address, which is what keeps topology out of `alerts.yml`.
+  A target's label set is its series identity, so labelling a group that already
+  has history splits that history in two: set them as a group is created.
 - `prometheus_blackbox_address` — `host:port` of the blackbox_exporter the
   `blackbox` job scrapes. Must match the `blackbox_exporter` role's
   `blackbox_exporter_listen_address`: two independent defaults on co-located
@@ -97,6 +103,15 @@ The rules are in `files/rules/alerts.yml`, grouped by concern: `availability`,
 threshold or a `for:` window was calibrated against a measurement or a past
 failure, the comment above that rule records it. That file is the roster, and the
 molecule scenario asserts the set Prometheus loaded matches it exactly.
+
+`HomeUplinkDown` is the one rule keyed on a probe *label* rather than a metric
+name: the group carrying `probe: uplink-canary` probes an anycast address outside
+the estate, so its failure means the LAN itself has no internet — which no other
+rule here can say, since every public-site probe runs from the home and fails the
+same way whether the site or the uplink is dead. `ProbeDown` excludes the same
+label so one outage pages under one name, and the `alertmanager` role inhibits
+`ProbeDown` and `WireguardTunnelDown` while it fires. `for: 3m` against their 5m,
+so the inhibition's source is firing before its targets are.
 
 The outcome rules read textfile metrics off node_exporter rather than systemd
 state, written by an `ExecStopPost` hook on each unit — bar the drift payload and

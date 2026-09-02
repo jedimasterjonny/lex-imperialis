@@ -40,3 +40,15 @@ provisioner:
           - module: http_2xx
             targets:
               - https://example.com
+          # A second group carrying the optional labels: map, which is what the
+          # uplink canary rests on — HomeUplinkDown and ProbeDown's exclusion both
+          # select on that label rather than on an address. The unlabelled group
+          # above is the control: verify asserts exactly one target carries it, so
+          # a map that leaked onto every group fails here rather than by splitting
+          # the stored history of every real target at once. TEST-NET-1, so the
+          # fixture names nothing that could resolve.
+          - module: tcp_connect
+            targets:
+              - 192.0.2.1:443
+            labels:
+              probe: uplink-canary

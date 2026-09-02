@@ -30,13 +30,54 @@ groups:
         annotations:
           summary: "the blackbox exporter is unreachable — all probing is blind"
           description: "Prometheus cannot scrape the blackbox exporter, so nothing is being probed — not the public sites, not the containerised services."
+      # The named signal for "the LAN itself cannot reach the internet", off a
+      # canary probe of one anycast address outside the estate. Nothing else in
+      # this file says it, and the fault reads as a dozen other things: every
+      # public-site probe runs FROM the home, so a dead uplink and a dead site are
+      # the same red; the hosts reached over the tunnel go down under InstanceDown;
+      # the tunnel's own egress restarts under WireguardTunnelDown; and unpoller
+      # sees nothing at all when the break is a firewall rule rather than a dropped
+      # link, since the gateway's WAN stays up and its counters keep moving.
+      # Measured on 2026-09-01: a 21-minute block-all on the gateway raised 10
+      # alerts across three critical groups and 8 Discord messages, not one of
+      # which named the cause.
+      #
+      # Selected by label, not by address. The canary's target group carries
+      # probe="uplink-canary" (playbooks/auspex.yml, which owns the address and the
+      # argument for one target rather than two), so this file names no topology
+      # and ProbeDown below excludes the same label rather than a literal.
+      #
+      # for: 3m against the 5m of every alert it explains, and the gap is
+      # load-bearing rather than cosmetic: Alertmanager's inhibition needs the
+      # source already firing when the target group flushes, and blackbox scrapes
+      # are offset per target, so a shared 5m would leave which of the two lands
+      # first to scrape jitter. 3m is four consecutive failed connects at the
+      # blackbox job's 60s cadence, so a single dropped probe never reaches it.
+      - alert: HomeUplinkDown
+        expr: probe_success{probe="uplink-canary"} == 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "the home LAN cannot reach the internet"
+          description: >-
+            The uplink canary probe of {{ $labels.instance }} has not connected for
+            over 3 minutes — egress is down, so every probe of a public site and every
+            host reached over the tunnel is failing for that one reason.
       # Blackbox probe of a target: probe_success == 0 means it did not answer with a
       # status its prober module accepts — down, DNS broken, or TLS failed. Not just
       # a 2xx: a module may accept others (an auth-walled target answers 401), so key
       # off probe_success, which is the module's own verdict. 5m rides out a transient
       # blip or a deploy.
+      #
+      # The uplink canary is excluded because HomeUplinkDown above already names
+      # what its failure means, and group_by is on alertname: without the exclusion
+      # one dead uplink pages under two names, the same double-report the
+      # ServiceRestartStorm/WireguardTunnelDown pair avoids by the same means. A
+      # negative matcher also matches a series carrying no probe label at all, so
+      # every group that sets none is untouched.
       - alert: ProbeDown
-        expr: probe_success == 0
+        expr: probe_success{probe!="uplink-canary"} == 0
         for: 5m
         labels:
           severity: critical

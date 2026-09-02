@@ -201,6 +201,32 @@
           the entry's module and target, so the probe would run the exporter's
           default module against the wrong thing.
 
+    # An entry's labels: map has to reach the TARGET's own label set, not merely
+    # the rendered file: __param_module sits in the same block and is dropped by
+    # relabelling, so a label rendered but not surviving would leave
+    # HomeUplinkDown matching nothing and ProbeDown's exclusion excluding nothing,
+    # both silently. Asserted on the labels Prometheus resolved, and against the
+    # unlabelled group beside it — exactly one target carries it, so a map that
+    # leaked across groups fails here too.
+    - name: The labelled probe group carries its label into the target's labels
+      vars:
+        prometheus_labelled_probes: >-
+          {{ prometheus_targets.json.data.activeTargets
+             | selectattr('labels.job', 'eq', 'blackbox')
+             | selectattr('labels.probe', 'defined')
+             | map(attribute='labels') | list }}
+      ansible.builtin.assert:
+        that:
+          - prometheus_labelled_probes | length == 1
+          - (prometheus_labelled_probes | first).probe == 'uplink-canary'
+          - (prometheus_labelled_probes | first).instance == '192.0.2.1:443'
+        fail_msg: >-
+          the blackbox targets carrying a probe label are
+          {{ prometheus_labelled_probes }} — the entry's labels: map either did not
+          survive relabelling, in which case HomeUplinkDown can never fire and
+          ProbeDown excludes nothing, or it reached a group that did not declare it.
+        quiet: true
+
     # Both properties of the cadvisor job, parsed and scoped to it rather than
     # substring-matched against the whole document: every other job honours
     # timestamps, and Prometheus renders that default explicitly into the loaded
