@@ -111,6 +111,27 @@
         fail_msg: a Watchdog leg's matcher, order, continue, or cadence — or the deadman inhibition — has regressed
         quiet: true
 
+    # The uplink inhibition is what turns one outage into one page. Located by its
+    # source rather than by index, so adding a third rule does not silently move
+    # what this reads, and asserted whole: a source that no longer names
+    # HomeUplinkDown, or a target regex that has lost one of its two alertnames,
+    # restores the eight-message fan-out with nothing else to notice.
+    - name: The uplink inhibition suppresses both alerts HomeUplinkDown explains
+      vars:
+        alertmanager_uplink_inhibition: >-
+          {{ (alertmanager_status.json.config.original | from_yaml).inhibit_rules
+             | selectattr('source_matchers', 'eq', ['alertname="HomeUplinkDown"']) | list }}
+      ansible.builtin.assert:
+        that:
+          - alertmanager_uplink_inhibition | length == 1
+          - >-
+            (alertmanager_uplink_inhibition | first).target_matchers
+            == ['alertname=~"ProbeDown|WireguardTunnelDown"']
+        fail_msg: >-
+          the HomeUplinkDown inhibition is missing or no longer names both targets
+          — one uplink outage pages once per failing probe again
+        quiet: true
+
     # A non-zero exit fails the task, proving wget resolves in the image and the
     # health endpoint reports healthy.
     - name: The healthcheck passes
