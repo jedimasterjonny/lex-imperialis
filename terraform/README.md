@@ -6,9 +6,10 @@ Currently manages the `jonnyoc.uk`, `jonnyoc.co.uk`, and `emmasedit.com`
 Cloudflare zones — one `dns-<zone>.tf` per zone, plus an `edge-<zone>.tf` per zone
 for its non-DNS config (settings and rulesets): canonical-redirect rulesets for the
 two jonnyoc zones, and `emmasedit.com`'s WordPress TLS, security, caching, and
-login-protection posture — the last a WAF challenge on the login/XML-RPC plus a
-per-IP rate limit, and Authenticated Origin Pulls so the origin can refuse
-anything that did not come through this edge. Not
+request-filtering posture — the last a WAF block on backup-file and dotfile
+scans, a WAF challenge on the login/XML-RPC, a per-IP rate limit on the login,
+and Authenticated Origin Pulls so the origin can refuse anything that did not
+come through this edge. Not
 every record or setting is managed: an origin IP with no Terraform-visible source,
 or a setting the provider reports read-only (Email Routing, Tiered Cache on Free),
 is left out and noted in the file's header.
