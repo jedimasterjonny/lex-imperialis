@@ -41,7 +41,7 @@ Backends publish no host port at all: they sit on caddy's network and drop a sni
 
 `solar` runs the media stack — prowlarr, flaresolverr, sonarr, radarr, lidarr, beets, recyclarr, plex, transmission — with media over NFSv4 from the NAS. All but beets, plex and recyclarr are netns-confined to the wireguard container: the tunnel drops and their network drops with it.
 
-`rogue-trader` serves the public WordPress site behind the same caddy role and joins the fleet over WireGuard, which carries both its scrape and its backup. Its root is read-only: packages come from the `packer/` image, not its play.
+`rogue-trader` serves the public WordPress site behind the same caddy role and joins the fleet over WireGuard, which carries its scrape and its backup. Its root is read-only: packages come from the `packer/` image, not its play.
 
 `auspex` runs Prometheus to scrape the fleet, blackbox_exporter probes the public sites, and Alertmanager sends what fires. Grafana runs on `solar`, pointed at `auspex`. node_exporter runs on every host but the NAS, and cadvisor on the workload hosts. unpoller polls the UniFi controller, since the network hardware runs no exporter of its own. Liveness is a blackbox probe over the network; a container's own healthcheck exists only to restart it when stuck, and anything that must not be killed mid-flight carries none at all.
 
@@ -49,33 +49,33 @@ Updates run unattended and staggered: `solar` Monday as the canary, `auspex` Tue
 
 ## Network
 
+Solid is a link; dotted is an off-site backup flow riding it.
+
 ```mermaid
 flowchart TD
-  fttp[FTTP] ---|1G| gw[Cloud Gateway]
-  gw ---|10G SFP+| core[Core]
+  fttp[FTTP] ---|1G| gw{{Cloud Gateway}}
 
   subgraph Hetzner
     rogue[rogue-trader]
-    pw[port-wander]
+    pw[(port-wander)]
   end
 
   subgraph Cloudflare
-    reclusiam[reclusiam]
+    reclusiam[(reclusiam)]
   end
 
-  rogue ---|VPN| gw
-  rogue ---|hcloud| pw
-  gw ---|S3| reclusiam
+  gw ---|VPN| rogue
+  gw ---|10G SFP+| core[[Core]]
 
-  core ---|2.5G| study[Study]
-  core ---|10G| apu[Upstairs AP]
-  core ---|2.5G| lounge[Lounge]
-  core ---|10G| apd[Downstairs AP]
-  core ---|2.5G| cupboard[Cupboard]
+  core ---|2.5G| study[[Study]]
+  core ---|10G| apu(Upstairs AP)
+  core ---|2.5G| lounge[[Lounge]]
+  core ---|10G| apd(Downstairs AP)
+  core ---|2.5G| cupboard[[Cupboard]]
 
   study ---|2.5G| scholam[scholam]
   study ---|2.5G| laptop[Laptop]
-  study ---|1G| nas[administratum]
+  study ---|1G| nas[(administratum)]
   study ---|1G| solar[solar]
 
   lounge ---|1G| ps5[PS5]
@@ -84,6 +84,10 @@ flowchart TD
   cupboard ---|1G| imac[iMac]
   cupboard ---|1G| auspex[auspex]
   cupboard ---|10M| tado[Tado Bridge]
+
+  nas -.->|rsync| rogue
+  nas -.->|S3| reclusiam
+  rogue -.->|proxy| pw
 ```
 
 ## Layout
