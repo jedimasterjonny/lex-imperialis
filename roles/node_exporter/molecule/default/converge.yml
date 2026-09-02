@@ -1,6 +1,10 @@
 ---
 - name: Converge
   hosts: all
+  vars:
+    # A 64-hex container id and a hex run suffix, the shape podman gives a
+    # healthcheck's transient unit. verify matches on the shape, not this literal.
+    node_exporter_healthcheck_fixture: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef-a1b2c3d4e5f60718
   tasks:
     # A stand-in for the fstab-generated nfs-<name>.mount units the nfs role
     # produces on the fleet — the series prometheus's NfsShareUnmounted reads, and
@@ -42,6 +46,22 @@
         state: started
         daemon_reload: true
       become: true
+
+    # The other half of the unit filter: podman starts one transient
+    # <container id>-<hex>.service per container healthcheck run, and unit-exclude
+    # drops them. Really transient, via systemd-run, because that is what podman
+    # does — a unit file on disk would test the regex against a shape the collector
+    # never actually meets. Guarded rather than made idempotent by systemd: a second
+    # systemd-run under a live unit name fails outright.
+    - name: Read the units systemd has loaded
+      ansible.builtin.service_facts:
+      become: true
+
+    - name: Start a transient unit named like a podman container healthcheck
+      ansible.builtin.command: systemd-run --quiet --unit={{ node_exporter_healthcheck_fixture }} sleep 3600
+      become: true
+      changed_when: true
+      when: (node_exporter_healthcheck_fixture ~ '.service') not in ansible_facts.services
 
     - name: Apply the podman role
       ansible.builtin.include_role:

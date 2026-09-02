@@ -72,9 +72,12 @@ non-private bus connection, which systemd serves to any uid, so the exporter
 stays unprivileged.
 
 `unit-include` also admits the `nfs-<name>.mount` units systemd generates from
-fstab, which is what Prometheus's `NfsShareUnmounted` reads; `unit-exclude` is
-emptied because its default (`.+[.](automount|device|mount|scope|slice)`) is
-applied after the include and would drop them again.
+fstab, which is what Prometheus's `NfsShareUnmounted` reads. `unit-exclude`
+overrides a default of `.+[.](automount|device|mount|scope|slice)` that would
+drop those again — a unit must match the include and miss the exclude — and
+drops podman's per-healthcheck transient `<container id>-<hex>.service` units
+instead, 354 of the 979 unit names the fleet reported over 30 days and each
+`failed` for ~5 minutes around every reboot and container recreation.
 
 ## Timex collector
 

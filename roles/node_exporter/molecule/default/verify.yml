@@ -116,6 +116,34 @@
       retries: 15
       delay: 2
 
+    # unit-exclude drops podman's per-healthcheck transient units, which were 354 of
+    # the 979 unit names the fleet reported over 30 days and spend ~5m failed around
+    # every reboot and container recreation — pending SystemdUnitFailed the whole
+    # time. Asserted on the shape rather than on converge's literal, so the two files
+    # cannot drift into a check that passes by naming a unit nothing created; the
+    # loaded list is read back for the same reason, as an empty exported set proves
+    # nothing if the fixture was never there.
+    - name: Read the units systemd has loaded
+      ansible.builtin.service_facts:
+      become: true
+
+    - name: A transient healthcheck unit is loaded and kept out of the scrape
+      vars:
+        node_exporter_healthcheck_loaded: >-
+          {{ ansible_facts.services | select('match', '[0-9a-f]{64}-[0-9a-f]+[.]service') | list }}
+        node_exporter_healthcheck_exported: >-
+          {{ node_exporter_unmounted.content
+             | regex_findall('node_systemd_unit_state[{]name="([0-9a-f]{64}-[0-9a-f]+[.]service)"') }}
+      ansible.builtin.assert:
+        that:
+          - node_exporter_healthcheck_loaded | length > 0
+          - node_exporter_healthcheck_exported | length == 0
+        fail_msg: >-
+          loaded={{ node_exporter_healthcheck_loaded }}
+          exported={{ node_exporter_healthcheck_exported }} — an empty loaded list means
+          the fixture never started, a non-empty exported list means unit-exclude missed it
+        quiet: true
+
     # The timex collector reads the kernel clock-sync flag via adjtimex, which the
     # default seccomp profile gates behind CAP_SYS_TIME; success 1 proves that cap
     # is granted and the collector reads — 0 (or absent) means ClockNotSynchronised

@@ -37,10 +37,14 @@ Volume=/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket:ro
 # unit-include admits two families and keeps scopes, slices, timers and devices
 # out: every .service, and the nfs-<name>.mount units systemd-fstab-generator
 # writes per share, which is the only thing that reports a share having gone away
-# (prometheus's NfsShareUnmounted). unit-exclude is emptied deliberately — it
-# defaults to .+[.](automount|device|mount|scope|slice) and is applied after the
-# include, so left alone it would drop every one of those mount units again.
-Exec=--path.rootfs=/host --web.listen-address={{ node_exporter_listen_address }} --collector.textfile.directory=/host{{ node_exporter_textfile_directory }} --collector.systemd --collector.systemd.enable-restarts-metrics --collector.systemd.unit-include=.+[.]service|nfs-.+[.]mount --collector.systemd.unit-exclude=
+# (prometheus's NfsShareUnmounted). unit-exclude replaces a default of
+# .+[.](automount|device|mount|scope|slice) that would drop every one of those
+# mount units again — a unit has to match the include AND miss the exclude — and
+# spends itself instead on podman's per-healthcheck transient units, which are
+# named <container id>-<hex>.service and were 354 of the 979 unit names the fleet
+# reported over 30 days, each spending ~5m failed around a reboot or a container
+# recreation. Their .timer siblings never reach the include.
+Exec=--path.rootfs=/host --web.listen-address={{ node_exporter_listen_address }} --collector.textfile.directory=/host{{ node_exporter_textfile_directory }} --collector.systemd --collector.systemd.enable-restarts-metrics --collector.systemd.unit-include=.+[.]service|nfs-.+[.]mount --collector.systemd.unit-exclude=[0-9a-f]{64}-[0-9a-f]+[.]service
 
 [Service]
 Restart=on-failure
