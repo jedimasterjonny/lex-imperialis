@@ -85,29 +85,3 @@
   when: incus_image_cached.rc != 0
   changed_when: true
   become: true
-
-# Retire the refresh timer this supersedes; a no-op on any host that never
-# carried it. Drop, with its handler, once one apply has landed on scholam.
-- name: Stat the retired image refresh timer
-  ansible.builtin.stat:
-    path: /etc/systemd/system/incus-image-refresh.timer
-  register: incus_refresh_timer
-
-- name: Stop the retired image refresh timer
-  ansible.builtin.systemd_service:
-    name: incus-image-refresh.timer
-    state: stopped
-    enabled: false
-  become: true
-  when: incus_refresh_timer.stat.exists
-
-- name: Remove the retired image refresh units and script
-  ansible.builtin.file:
-    path: "{{ item }}"
-    state: absent
-  loop:
-    - /etc/systemd/system/incus-image-refresh.timer
-    - /etc/systemd/system/incus-image-refresh.service
-    - /usr/local/sbin/incus-image-refresh.sh
-  become: true
-  notify: Reload systemd for incus
