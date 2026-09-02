@@ -18,11 +18,10 @@ role before molecule can run — the one host it cannot set up for itself.
 - **Storage** — btrfs pool on the fleet (`incus_storage_driver` at
   `incus_storage_source`); molecule's non-btrfs VMs override to a source-less
   `dir` pool, so the btrfs default is not molecule-tested.
-- **Image cache** — a weekly timer (`incus_image_refresh_script`,
-  `incus_image_refresh_oncalendar`) caches the Tumbleweed cloud image
-  (`incus_image_source`, aliased `incus_image_alias`) in the local store and
-  refreshes it as the source rolls, so container launches never wait on the
-  remote.
+- **Image cache** — copies the Tumbleweed cloud image (`incus_image_source`,
+  aliased `incus_image_alias`) into the local store once, `--auto-update`, and
+  the daemon refreshes it as the source rolls, so container launches never
+  wait on the remote.
 - **CI coverage** — the billable full-VM tier (`hetzner`) runs on openSUSE
   Leap 16, but the fleet runs this on Tumbleweed; validate Tumbleweed-side
   behaviour locally with `make test-vm` (the libvirt tier's Tumbleweed VM).

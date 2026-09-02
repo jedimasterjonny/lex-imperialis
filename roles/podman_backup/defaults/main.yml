@@ -7,8 +7,8 @@
 # podman_backup_success metric.
 
 # Weekly, on a slot no other scheduled job uses — autoupdate (Mon 03:00-05:00),
-# podman image-prune (Sat 06:00), incus (Sun 03:00) and libvirt (Sun 03:30)
-# refreshes all sit elsewhere. This is rogue-trader's slot: its daily WordPress
+# podman image-prune (Sat 06:00) and the libvirt image refresh (Sun 03:30) all
+# sit elsewhere. This is rogue-trader's slot: its daily WordPress
 # database dump (00:30) has to land before the snapshot picks it up. solar's play
 # staggers to Wed 00:00 — the fleet keeps one timezone, so a shared slot would put
 # both hosts on the astropath export at the same instant, every week rather than

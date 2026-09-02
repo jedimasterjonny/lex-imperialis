@@ -67,31 +67,47 @@
   changed_when: true
   become: true
 
-- name: Install the incus image refresh script
-  ansible.builtin.template:
-    src: incus-image-refresh.sh.j2
-    dest: "{{ incus_image_refresh_script }}"
-    owner: root
-    group: root
-    mode: "0755"
+# The daemon refreshes an --auto-update image itself on images.auto_update_interval,
+# so no timer; an explicit copy is also exempt from images.remote_cache_expiry,
+# which evicts a launch-cached image after ten idle days.
+- name: Check whether the image is cached
+  ansible.builtin.command: "incus image info {{ incus_image_alias }}"
+  register: incus_image_cached
+  changed_when: false
+  failed_when: false
+  check_mode: false
   become: true
 
-- name: Install the image refresh systemd units
-  ansible.builtin.template:
-    src: "{{ item }}.j2"
-    dest: "/etc/systemd/system/{{ item }}"
-    owner: root
-    group: root
-    mode: "0644"
-  loop:
-    - incus-image-refresh.service
-    - incus-image-refresh.timer
+- name: Cache the image with auto-update
+  ansible.builtin.command: >-
+    incus image copy {{ incus_image_source }} local:
+    --alias {{ incus_image_alias }} --auto-update
+  when: incus_image_cached.rc != 0
+  changed_when: true
   become: true
 
-- name: Enable and start the image refresh timer
+# Retire the refresh timer this supersedes; a no-op on any host that never
+# carried it. Drop, with its handler, once one apply has landed on scholam.
+- name: Stat the retired image refresh timer
+  ansible.builtin.stat:
+    path: /etc/systemd/system/incus-image-refresh.timer
+  register: incus_refresh_timer
+
+- name: Stop the retired image refresh timer
   ansible.builtin.systemd_service:
     name: incus-image-refresh.timer
-    enabled: true
-    state: started
-    daemon_reload: true
+    state: stopped
+    enabled: false
   become: true
+  when: incus_refresh_timer.stat.exists
+
+- name: Remove the retired image refresh units and script
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/incus-image-refresh.timer
+    - /etc/systemd/system/incus-image-refresh.service
+    - /usr/local/sbin/incus-image-refresh.sh
+  become: true
+  notify: Reload systemd for incus

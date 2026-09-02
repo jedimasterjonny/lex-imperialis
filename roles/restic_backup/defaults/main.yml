@@ -42,7 +42,7 @@ restic_backup_excludes: []
 # restore script. Off for a plain path backup.
 restic_backup_podman_volumes: false
 
-# Installed under /usr/local/sbin: root-only, like incus-image-refresh. Script
+# Installed under /usr/local/sbin: root-only, like the other oneshots. Script
 # basenames derive from restic_backup_name (<name>-backup.sh, its metric hook,
 # and <name>-restore.sh in podman-volumes mode).
 restic_backup_script_dir: /usr/local/sbin
