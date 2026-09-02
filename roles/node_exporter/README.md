@@ -60,7 +60,8 @@ what the closing `sync` protects.
 
 `--collector.systemd` with `--collector.systemd.enable-restarts-metrics` exports
 `node_systemd_service_restart_total` per `*.service` unit (`unit-include` filters
-out mounts, scopes, and timers), feeding Prometheus's `ServiceRestartStorm` alert.
+out scopes, slices, timers and devices), feeding Prometheus's `ServiceRestartStorm`
+alert.
 The collector reads the host D-Bus system bus, so the container binds the host's
 `/run/dbus/system_bus_socket` read-only at `/var/run/dbus/system_bus_socket` (the
 path the bus library dials; the image has no `/var/run` symlink) and adds
@@ -69,6 +70,14 @@ the enforcing fleet otherwise denies `container_t` the socket connect (the same
 trade-off cadvisor makes for the podman socket). Reads use the default,
 non-private bus connection, which systemd serves to any uid, so the exporter
 stays unprivileged.
+
+`unit-include` also admits the `nfs-<name>.mount` units systemd generates from
+fstab, which is what Prometheus's `NfsShareUnmounted` reads. `unit-exclude`
+overrides a default of `.+[.](automount|device|mount|scope|slice)` that would
+drop those again — a unit must match the include and miss the exclude — and
+drops podman's per-healthcheck transient `<container id>-<hex>.service` units
+instead, 354 of the 979 unit names the fleet reported over 30 days and each
+`failed` for ~5 minutes around every reboot and container recreation.
 
 ## Timex collector
 

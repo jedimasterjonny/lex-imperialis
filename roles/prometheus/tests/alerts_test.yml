@@ -422,6 +422,88 @@ tests:
         alertname: ContainerStoreMountMissing
         exp_alerts: []
 
+  # NfsShareUnmounted reads a state the fleet spent ~14 h in over one month with
+  # nothing reporting it. Both polarities on one host: node_exporter reports every
+  # state of a unit, so an unmounted share is active=0/inactive=1 rather than an
+  # absent series, and the mounted share beside it is what makes the firing one mean
+  # something.
+  - interval: 1m
+    name: an unmounted nfs share alerts while a mounted one does not
+    input_series:
+      - series: 'node_systemd_unit_state{job="node",instance="scholam:9100",name="nfs-astropath.mount",state="active"}'
+        values: "0x20"
+      - series: 'node_systemd_unit_state{job="node",instance="scholam:9100",name="nfs-astropath.mount",state="inactive"}'
+        values: "1x20"
+      - series: 'node_systemd_unit_state{job="node",instance="scholam:9100",name="nfs-scriptorum.mount",state="active"}'
+        values: "1x20"
+      - series: 'node_systemd_unit_state{job="node",instance="scholam:9100",name="nfs-scriptorum.mount",state="inactive"}'
+        values: "0x20"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: NfsShareUnmounted
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: node
+              instance: scholam:9100
+              name: nfs-astropath.mount
+              state: active
+            exp_annotations:
+              summary: "nfs-astropath.mount is not mounted on scholam:9100"
+              description: >-
+                The mount unit nfs-astropath.mount on scholam:9100 is not active, so
+                the NFS share is gone and reads fall through to the empty mount point
+                underneath. Nothing remounts it on its own — start the unit, or reapply the
+                nfs role.
+      # Inside for: 10m, which covers the boot window.
+      - eval_time: 5m
+        alertname: NfsShareUnmounted
+        exp_alerts: []
+
+  # The boundary with the catch-all, which the mount units now reach. A unit that
+  # fails to mount is `failed` and not `active` at the same time, so before
+  # SystemdUnitFailed was restricted to .service one fault raised two alerts on a
+  # group_by keyed to alertname. The caddy.service in the same input is what stops
+  # that restriction being a way to switch the catch-all off altogether.
+  - interval: 1m
+    name: a mount unit that failed to mount raises only the nfs alert
+    input_series:
+      - series: 'node_systemd_unit_state{job="node",instance="scholam:9100",name="nfs-astropath.mount",state="active"}'
+        values: "0x20"
+      - series: 'node_systemd_unit_state{job="node",instance="scholam:9100",name="nfs-astropath.mount",state="failed"}'
+        values: "1x20"
+      - series: 'node_systemd_unit_state{job="node",instance="scholam:9100",name="caddy.service",state="failed"}'
+        values: "1x20"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: NfsShareUnmounted
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: node
+              instance: scholam:9100
+              name: nfs-astropath.mount
+              state: active
+            exp_annotations:
+              summary: "nfs-astropath.mount is not mounted on scholam:9100"
+              description: >-
+                The mount unit nfs-astropath.mount on scholam:9100 is not active, so
+                the NFS share is gone and reads fall through to the empty mount point
+                underneath. Nothing remounts it on its own — start the unit, or reapply the
+                nfs role.
+      - eval_time: 20m
+        alertname: SystemdUnitFailed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: scholam:9100
+              name: caddy.service
+              state: failed
+            exp_annotations:
+              summary: "caddy.service has failed on scholam:9100"
+              description: "The systemd unit caddy.service on scholam:9100 is in the failed state and has not recovered."
+
   # MicroOSBuildStale is the only rule that sees a rolled-back host, so a rule that
   # parses but cannot fire would restore exactly the blind spot it was written for.
   # These sample at 5m per the file-level note above, the window being a fortnight.

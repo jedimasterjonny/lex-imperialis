@@ -596,6 +596,47 @@ groups:
             filesystem underneath the mount point — silently, since nofail lets the host
             boot without it.
 
+      # Nothing watched an unmounted NFS share until this rule. openSUSE's stock
+      # NetworkManager nfs dispatcher lazy-unmounted every fstab entry on any
+      # link-down and its remount branch never ran, so scholam lost its shares for
+      # ~14 h across ten events in a month and the only thing that noticed was the
+      # weekly backup failing on restic_backup's require_mounted(). The dispatcher is
+      # fixed; this is the half that would have said so.
+      #
+      # The mount unit, not node_filesystem: those series simply vanish on unmount,
+      # and a count of zero is an empty vector. Reading them would mean naming each
+      # host's shares in an absent(), the per-host topology this file keeps out —
+      # ContainerStoreMountMissing above is the one place it could not be, and its
+      # comment records what that costs. systemd-fstab-generator writes one
+      # nfs-<name>.mount per share instead, so this matches exactly the shares a host
+      # declares while restating none of them.
+      #
+      # node_exporter reports every state of a unit, so state="active" reads 0 for a
+      # share that was unmounted, one that never mounted at boot, and one whose mount
+      # failed outright — three faults, one rule. It reads 0 rather than going absent
+      # because the generator's remote-fs.target.requires symlink keeps the unit
+      # loaded once it is inactive; an unreferenced mount unit is garbage-collected on
+      # stop, which would leave this an expression that cannot fire. node_exporter's
+      # scenario holds that property by unmounting a fixture share and reading the
+      # series back.
+      #
+      # The mounts are hard, so a NAS that goes away blocks I/O rather than
+      # unmounting: an inactive unit is never a transient NFS blip, it is a share that
+      # has actually gone. 10m covers the boot window, where the unit is inactive
+      # until remote-fs.target is reached.
+      - alert: NfsShareUnmounted
+        expr: node_systemd_unit_state{name=~"nfs-.+[.]mount", state="active"} == 0
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.name }} is not mounted on {{ $labels.instance }}"
+          description: >-
+            The mount unit {{ $labels.name }} on {{ $labels.instance }} is not active, so
+            the NFS share is gone and reads fall through to the empty mount point
+            underneath. Nothing remounts it on its own — start the unit, or reapply the
+            nfs role.
+
   - name: memory
     rules:
       # Mirrors FilesystemSpaceLow: the same 10% headroom, severity and window, for
@@ -833,9 +874,18 @@ groups:
       # exclusion one fault would raise two alerts — the same reasoning that excludes
       # wireguard from ServiceRestartStorm. 15m rides out a unit that fails and is
       # restarted by its own Restart= policy.
+      #
+      # Restricted to .service because node_exporter now also exports the
+      # nfs-<name>.mount units NfsShareUnmounted reads, and a mount unit that fails to
+      # mount is `failed` and not `active` at once — one fault, two alerts, on the same
+      # group_by reasoning. A matcher rather than a thirteenth name!~ alternative: that
+      # roster is the set of units whose *_success metric carries a bespoke *Failed
+      # rule, held clause-for-clause against ScheduledJobMetricMissing by
+      # bin/check-alert-test-coverage.py, and a mount unit has no such metric to be
+      # excluded on the strength of.
       - alert: SystemdUnitFailed
         expr: >-
-          node_systemd_unit_state{state="failed",
+          node_systemd_unit_state{state="failed", name=~".+[.]service",
           name!~"(arbites|inquisition|smartmon|offsite-mirror|r2-mirror|podman-backup|home-backup|autoupdate|wordpress-cron|wordpress-db-dump|wordpress-update-check|wordpress-boost)[.]service"}
           == 1
         for: 15m
@@ -1372,11 +1422,11 @@ groups:
       # the family vanishes with every run still green.
       #
       # A bare absent() would need the family gone from EVERY host before it fired.
-      # Key on unit presence instead: node_exporter's systemd collector runs with
-      # --collector.systemd.unit-include=.+[.]service, so a host exports
-      # node_systemd_unit_state for the unit iff the role that writes the metric is
-      # deployed there — exact ground truth, per host, carrying no topology. Measured
-      # against the live fleet: the unit set and the metric set match family for
+      # Key on unit presence instead: node_exporter's systemd collector includes every
+      # .service (--collector.systemd.unit-include=.+[.]service|nfs-.+[.]mount), so a
+      # host exports node_systemd_unit_state for the unit iff the role that writes the
+      # metric is deployed there — exact ground truth, per host, carrying no topology.
+      # Measured against the live fleet: the unit set and the metric set match family for
       # family (home 3/3, podman 2/2, autoupdate 3/3, the wordpress trio, and
       # arbites and inquisition 1/1 each). Both sides ride the same node_exporter
       # scrape, so a
