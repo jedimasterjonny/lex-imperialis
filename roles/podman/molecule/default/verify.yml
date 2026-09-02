@@ -30,6 +30,56 @@
         fail_msg: "the role wrote a /var/lib/containers fstab entry with podman_storage_device unset"
         quiet: true
 
+    # The Debian platform stands in for auspex, whose firmware command line
+    # converge staged. What is pinned is the shape a Pi will still boot from —
+    # one line, the staged parameters untouched — plus the append landing at the
+    # end, which is what makes the enable outrank the firmware's disable: the
+    # kernel runs the __setup handlers in command-line order and the last wins.
+    - name: Read the kernel command line the role appended to
+      ansible.builtin.slurp:
+        path: /boot/firmware/cmdline.txt
+      register: podman_cmdline
+      become: true
+      when: "'debian' in group_names"
+
+    - name: The memory cgroup controller is enabled once, at the end of one line
+      ansible.builtin.assert:
+        that:
+          - podman_cmdline_lines | length == 1
+          # select|length, not list.count(): Jinja resolves .count() to
+          # something that answers 0 for a list that plainly holds the value,
+          # so the duplicate check would pass by never being true.
+          - podman_cmdline_lines[0].split() | select('eq', 'cgroup_enable=memory') | list | length == 1
+          - podman_cmdline_lines[0].endswith(' cgroup_enable=memory')
+          - "'cgroup_disable=memory' in podman_cmdline_lines[0].split()"
+          - "'root=PARTUUID=deadbeef-02' in podman_cmdline_lines[0].split()"
+          - "'rootfstype=ext4' in podman_cmdline_lines[0].split()"
+          - "'rootwait' in podman_cmdline_lines[0].split()"
+        fail_msg: >-
+          the kernel command line is not one line ending in a single
+          cgroup_enable=memory with the staged parameters intact:
+          {{ podman_cmdline_lines }}
+        quiet: true
+      vars:
+        podman_cmdline_lines: "{{ (podman_cmdline.content | b64decode).splitlines() }}"
+      when: "'debian' in group_names"
+
+    # The other half of that guard: a host with no Pi firmware partition must end
+    # up with no such file, so the task skipped rather than creating one.
+    - name: Probe for a kernel command line where no firmware partition exists
+      ansible.builtin.stat:
+        path: /boot/firmware/cmdline.txt
+      register: podman_no_cmdline
+      when: "'debian' not in group_names"
+
+    - name: The role wrote no kernel command line of its own
+      ansible.builtin.assert:
+        that:
+          - not podman_no_cmdline.stat.exists
+        fail_msg: "the role created /boot/firmware/cmdline.txt on a host with no Pi firmware partition"
+        quiet: true
+      when: "'debian' not in group_names"
+
     - name: Query the podman runtime
       ansible.builtin.command: podman info
       become: true

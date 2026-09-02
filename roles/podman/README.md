@@ -75,6 +75,34 @@ device. Molecule asserts the guard instead — that the empty default leaves fst
 alone, so nothing here can write a mount onto the three other hosts that run this
 role and have no such device.
 
+## Memory cgroup controller
+
+The Raspberry Pi firmware prepends `cgroup_disable=memory` to whatever
+`/boot/firmware/cmdline.txt` holds, so auspex boots with
+`cgroup.controllers` reading `cpuset cpu io pids`. Every
+`container_memory_*` series cadvisor exports there is 0, and no quadlet on
+the host could take a `MemoryMax=`. The role appends `cgroup_enable=memory`
+to that line: the kernel runs `__setup` handlers in command-line order and
+`cgroup_disable`/`cgroup_enable` are exact inverses on the same static key,
+so the later one wins and the firmware's copy is always earlier.
+
+`cgroup_memory=1`, which the Pi documentation pairs with it, is not a kernel
+parameter — the real one is `cgroup.memory=`, taking only
+`nosocket`/`nokmem`/`nobpf`. An unrecognised `name=value` with no dot in it
+becomes an environment variable for PID 1, so it is left out.
+
+**The controller appears at the next boot, not at the apply.** Nothing here
+reboots; `autoupdate`'s weekly timer does, unconditionally on a successful run.
+
+Guarded on the file rather than a fact, since what gates it is the firmware boot
+partition and no fact reports that. `backrefs` with a regexp that matches only a
+line *without* the parameter is what keeps it idempotent, and what keeps it from
+appending a line of its own — the firmware reads only the first line, so a second
+silently drops every parameter on it, `root=` included, and a Pi that will not
+boot has no console to say why. `validate` re-checks the same two properties, one
+line and `root=` still on it, before the file is moved into place. Molecule's
+Debian platform stages a firmware-style line for the task to work on.
+
 ## OCI runtime
 
 `podman_runtime` is written to `/etc/containers/containers.conf.d/10-runtime.conf`
