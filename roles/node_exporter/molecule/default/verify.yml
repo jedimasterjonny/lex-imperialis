@@ -54,6 +54,68 @@
       retries: 15
       delay: 2
 
+    # unit-include admits the fstab-generated nfs-<name>.mount units so that an NFS
+    # share going away has something reporting it (prometheus's NfsShareUnmounted).
+    # Reading the rendered Exec= line back would only prove Ansible wrote what
+    # Ansible wrote — and would have passed while the collector's default
+    # unit-exclude, applied after the include, dropped every mount unit again. So
+    # scrape a real one instead, in both of the states the alert turns on.
+    - name: Remount the fixture share
+      ansible.builtin.systemd_service:
+        name: nfs-fixture.mount
+        state: started
+      become: true
+
+    - name: The mounted fixture share is exported as active
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9100/metrics
+        return_content: true
+      register: node_exporter_mounted
+      until: >-
+        node_exporter_mounted.content is
+        search('node_systemd_unit_state[{]name="nfs-fixture[.]mount",state="active"[^}]*[}] 1')
+      retries: 15
+      delay: 2
+
+    # The include is a filter, not a licence. Every other mount unit the host runs
+    # (-.mount, dev-mqueue.mount, the podman overlay mounts) stays out, or the fleet
+    # pays six series per mount unit for one rule that only ever reads nfs-.
+    - name: No mount unit outside the nfs- prefix is exported
+      vars:
+        node_exporter_mount_units: >-
+          {{ node_exporter_mounted.content
+             | regex_findall('node_systemd_unit_state[{]name="([^"]+[.]mount)"')
+             | unique | sort }}
+      ansible.builtin.assert:
+        that: node_exporter_mount_units | reject('match', 'nfs-') | list == []
+        fail_msg: "the systemd collector exported mount units outside nfs-: {{ node_exporter_mount_units }}"
+        quiet: true
+
+    # NfsShareUnmounted is `state="active" == 0`, so the series has to SURVIVE the
+    # unmount: a unit systemd unloaded would take it to an empty vector, where == 0
+    # matches nothing and the alert can never fire. An out-of-band umount rather than
+    # a stop, because that is what NetworkManager's stock nfs dispatcher did to the
+    # fleet's shares — the fault this alert exists to report — and systemd reaches
+    # the inactive state by a different road when it is not the one unmounting. Its
+    # -f is dropped: an unprivileged container refuses the forced path outright
+    # ("block devices are not permitted on filesystem"), and the lazy detach is what
+    # takes the mount out of mountinfo either way.
+    - name: Unmount the fixture share the way the fault does
+      ansible.builtin.command: umount -l /nfs/fixture
+      become: true
+      changed_when: true
+
+    - name: The unmounted fixture share still reports, at zero
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9100/metrics
+        return_content: true
+      register: node_exporter_unmounted
+      until: >-
+        node_exporter_unmounted.content is
+        search('node_systemd_unit_state[{]name="nfs-fixture[.]mount",state="active"[^}]*[}] 0')
+      retries: 15
+      delay: 2
+
     # The timex collector reads the kernel clock-sync flag via adjtimex, which the
     # default seccomp profile gates behind CAP_SYS_TIME; success 1 proves that cap
     # is granted and the collector reads — 0 (or absent) means ClockNotSynchronised

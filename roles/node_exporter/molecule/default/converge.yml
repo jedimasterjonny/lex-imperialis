@@ -2,6 +2,47 @@
 - name: Converge
   hosts: all
   tasks:
+    # A stand-in for the fstab-generated nfs-<name>.mount units the nfs role
+    # produces on the fleet — the series prometheus's NfsShareUnmounted reads, and
+    # the only reason the systemd collector's unit-include admits mount units at
+    # all. tmpfs because a container has no NAS to reach; the collector filters on
+    # the unit name.
+    #
+    # RequiredBy=remote-fs.target is not decoration. systemd-fstab-generator writes
+    # exactly that symlink for a _netdev entry, and it is what keeps the unit loaded
+    # once it goes inactive: an unreferenced mount unit is garbage-collected the
+    # moment it stops, taking its series out of the scrape entirely rather than to
+    # zero — measured, with an earlier draft of this fixture that omitted the
+    # [Install] section and left verify's unmounted assertion reading no series at
+    # all. NfsShareUnmounted is `== 0`, so that would be a rule that can never fire.
+    - name: Install a fixture NFS-shaped mount unit
+      ansible.builtin.copy:
+        content: |
+          [Unit]
+          Description=molecule fixture for the systemd collector's unit filter
+
+          [Mount]
+          What=tmpfs
+          Where=/nfs/fixture
+          Type=tmpfs
+          Options=size=1M
+
+          [Install]
+          RequiredBy=remote-fs.target
+        dest: /etc/systemd/system/nfs-fixture.mount
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Start the fixture mount unit
+      ansible.builtin.systemd_service:
+        name: nfs-fixture.mount
+        enabled: true
+        state: started
+        daemon_reload: true
+      become: true
+
     - name: Apply the podman role
       ansible.builtin.include_role:
         name: podman

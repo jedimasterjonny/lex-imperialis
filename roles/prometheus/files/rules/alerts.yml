@@ -1372,11 +1372,11 @@ groups:
       # the family vanishes with every run still green.
       #
       # A bare absent() would need the family gone from EVERY host before it fired.
-      # Key on unit presence instead: node_exporter's systemd collector runs with
-      # --collector.systemd.unit-include=.+[.]service, so a host exports
-      # node_systemd_unit_state for the unit iff the role that writes the metric is
-      # deployed there — exact ground truth, per host, carrying no topology. Measured
-      # against the live fleet: the unit set and the metric set match family for
+      # Key on unit presence instead: node_exporter's systemd collector includes every
+      # .service (--collector.systemd.unit-include=.+[.]service|nfs-.+[.]mount), so a
+      # host exports node_systemd_unit_state for the unit iff the role that writes the
+      # metric is deployed there — exact ground truth, per host, carrying no topology.
+      # Measured against the live fleet: the unit set and the metric set match family for
       # family (home 3/3, podman 2/2, autoupdate 3/3, the wordpress trio, and
       # arbites and inquisition 1/1 each). Both sides ride the same node_exporter
       # scrape, so a

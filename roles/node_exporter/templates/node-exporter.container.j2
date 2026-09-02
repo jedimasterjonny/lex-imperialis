@@ -33,9 +33,14 @@ Volume=/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket:ro
 # The textfile directory is read through the read-only /host bind, so batch jobs
 # drop *.prom files on the host without the exporter needing a writable mount.
 # The systemd collector reads the host bus unprivileged (default non-private
-# connection); its restart counter feeds prometheus's ServiceRestartStorm alert,
-# and unit-include keeps mounts, scopes, and timers out.
-Exec=--path.rootfs=/host --web.listen-address={{ node_exporter_listen_address }} --collector.textfile.directory=/host{{ node_exporter_textfile_directory }} --collector.systemd --collector.systemd.enable-restarts-metrics --collector.systemd.unit-include=.+[.]service
+# connection); its restart counter feeds prometheus's ServiceRestartStorm alert.
+# unit-include admits two families and keeps scopes, slices, timers and devices
+# out: every .service, and the nfs-<name>.mount units systemd-fstab-generator
+# writes per share, which is the only thing that reports a share having gone away
+# (prometheus's NfsShareUnmounted). unit-exclude is emptied deliberately — it
+# defaults to .+[.](automount|device|mount|scope|slice) and is applied after the
+# include, so left alone it would drop every one of those mount units again.
+Exec=--path.rootfs=/host --web.listen-address={{ node_exporter_listen_address }} --collector.textfile.directory=/host{{ node_exporter_textfile_directory }} --collector.systemd --collector.systemd.enable-restarts-metrics --collector.systemd.unit-include=.+[.]service|nfs-.+[.]mount --collector.systemd.unit-exclude=
 
 [Service]
 Restart=on-failure
