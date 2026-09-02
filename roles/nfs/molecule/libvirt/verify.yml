@@ -71,3 +71,38 @@
           - "(nfs_probe.content | b64decode) == nfs_probe_content"
         fail_msg: "data did not round-trip through the NFS mount"
         quiet: true
+
+    - name: Read the shadowing dispatcher script
+      ansible.builtin.stat:
+        path: /etc/NetworkManager/dispatcher.d/nfs
+      register: nfs_dispatcher
+      become: true
+
+    - name: The stock dispatcher script is shadowed by an executable no-op
+      ansible.builtin.assert:
+        that:
+          - nfs_dispatcher.stat.exists
+          - nfs_dispatcher.stat.mode == "0755"
+          - nfs_dispatcher.stat.pw_name == "root"
+        fail_msg: "the NM dispatcher shadow is missing, or not root-owned 0755"
+        quiet: true
+
+    # Shadowing is resolved per-name, so it holds only while the stock script
+    # keeps this exact path. An NM update that renames or relocates it restores
+    # the unmount silently — the /etc file stays exactly where it is and every
+    # other assertion here stays green — so assert the shadow still has a target.
+    - name: Read the stock dispatcher script the shadow displaces
+      ansible.builtin.stat:
+        path: /usr/lib/NetworkManager/dispatcher.d/nfs
+      register: nfs_stock_dispatcher
+      become: true
+
+    - name: The stock script is still at the path the shadow displaces
+      ansible.builtin.assert:
+        that:
+          - nfs_stock_dispatcher.stat.exists
+          - nfs_stock_dispatcher.stat.isreg
+        fail_msg: >-
+          /usr/lib/NetworkManager/dispatcher.d/nfs is gone: NetworkManager has
+          moved or renamed it, so the /etc no-op shadows nothing
+        quiet: true

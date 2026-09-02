@@ -8,6 +8,35 @@
   # it inside a root snapshot (roles/CLAUDE.md). Absent the fact, this just runs.
   when: nfs_package not in ansible_facts['packages'] | default({})
 
+# NetworkManager ships /usr/lib/NetworkManager/dispatcher.d/nfs, which on any
+# interface-down event runs `umount -l -f` over the NFS entries in fstab. It is
+# meant to be conditional: each unmount is gated on `other_reaches`, a 2s ICMP
+# probe to the server from every other interface, so a share still reachable is
+# left alone. The NAS drops ICMP — it serves NFS while ping sees 100% loss — so
+# that probe never succeeds on any host here and the gate never holds. Every down
+# event therefore unmounts every share, whichever interface it was for, and the
+# remount branch is gated on `systemctl is-enabled nfs-client.target`, disabled
+# fleet-wide, so it is one-way: only the next apply puts the shares back.
+#
+# NM resolves an identically-named script in /etc ahead of the stock one, so a
+# no-op disables it. Nothing needs unmounting: the shares are `hard`, so I/O
+# blocks across an outage and resumes when the server answers.
+# Skipped where NetworkManager is absent.
+- name: Detect the NetworkManager dispatcher
+  ansible.builtin.stat:
+    path: /etc/NetworkManager/dispatcher.d
+  register: nfs_nm_dispatcherd
+
+- name: Disable the dispatcher script that unmounts NFS on any interface down
+  ansible.builtin.copy:
+    src: nm-dispatcher-nfs
+    dest: /etc/NetworkManager/dispatcher.d/nfs
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  when: nfs_nm_dispatcherd.stat.exists
+
 # ansible.posix.mount creates the mount point (and the root above it) when
 # absent, writes the fstab entry, and mounts now — idempotent once the entry and
 # mount match. It cannot create either on a read-only root: a transactional host
