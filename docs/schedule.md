@@ -27,17 +27,19 @@ The **Owner** column names what to edit: a var in the host's play or the role's
 defaults, or a static timer file. Rows owned by DSM, UniFi or macOS are set on
 the device — no gate, no review, no diff. The DSM backup and mirror tasks are at
 least watched from outside by `offsite_mirror` and `r2_mirror`, and the UniFi
-update by `UnifiFirmwareUpdatePending`, which reads the outcome rather than the
-schedule: any 8-day span contains a window, so an update still pending across
-one has sat through it. Nothing watches the two R2 integrity checks, the array
-scrub, the controller auto-backup or Time Machine.
+device update by `UnifiFirmwareUpdatePending`, which reads the outcome rather
+than the schedule: any 8-day span contains a window, so an update still pending
+across one has sat through it. Nothing watches the two R2 integrity checks, the
+array scrub, the controller auto-backup or Time Machine.
 
 `autoupdate` carries `RandomizedDelaySec=2h`, so its rows open a two-hour window
 rather than name a fire time.
 
-The UniFi row covers all three of its update components. Do not take the day or
-hour from the Network API: `setting/mgmt` still reports the older combined
-scheme's `auto_upgrade_hour`, which is vestigial and disagrees with the console.
+UniFi updates on two rows, not one: managed devices first, the console's own OS
+and Application two hours later, so a bad device batch surfaces while the
+controller that has to fix it is still up. Do not take the day or hour from the
+Network API: `setting/mgmt` still reports the older combined scheme's
+`auto_upgrade_hour`, which is vestigial and disagrees with the console.
 
 ## Weekly
 
@@ -60,7 +62,8 @@ scheme's `auto_upgrade_hour`, which is vestigial and disagrees with the console.
 | Thu 06:00 | `home-backup-r2` → reclusiam | DSM task config |
 | Fri 03:00 | `autoupdate` — scholam | `autoupdate_oncalendar`, `scholam.yml` |
 | Fri 08:00 | `home-backup-r2` integrity check | DSM task config |
-| Sat 05:00 | UniFi update — OS, Application and managed devices | UniFi console |
+| Sat 03:00 | UniFi update — managed devices | UniFi console |
+| Sat 05:00 | UniFi update — OS and Application | UniFi console |
 | Sat 06:00 | `podman-image-prune` — auspex, rogue-trader, scholam, solar | `roles/podman/files/podman-image-prune.timer` |
 | Sun 03:00 | `incus-image-refresh` — scholam | `incus_image_refresh_oncalendar` |
 | Sun 03:30 | `tumbleweed-image-refresh` — scholam | `libvirt_image_refresh_oncalendar` |
