@@ -53,29 +53,29 @@ Solid is a link; dotted is an off-site backup flow riding it.
 
 ```mermaid
 flowchart TD
-  fttp[FTTP] ---|1G| gw[Cloud Gateway]
+  fttp[FTTP] ---|1G| gw{{Cloud Gateway}}
 
   subgraph Hetzner
     rogue[rogue-trader]
-    pw[port-wander]
+    pw[(port-wander)]
   end
 
   subgraph Cloudflare
-    reclusiam[reclusiam]
+    reclusiam[(reclusiam)]
   end
 
   gw ---|VPN| rogue
-  gw ---|10G SFP+| core[Core]
+  gw ---|10G SFP+| core[[Core]]
 
-  core ---|2.5G| study[Study]
-  core ---|10G| apu[Upstairs AP]
-  core ---|2.5G| lounge[Lounge]
-  core ---|10G| apd[Downstairs AP]
-  core ---|2.5G| cupboard[Cupboard]
+  core ---|2.5G| study[[Study]]
+  core ---|10G| apu(Upstairs AP)
+  core ---|2.5G| lounge[[Lounge]]
+  core ---|10G| apd(Downstairs AP)
+  core ---|2.5G| cupboard[[Cupboard]]
 
   study ---|2.5G| scholam[scholam]
   study ---|2.5G| laptop[Laptop]
-  study ---|1G| nas[administratum]
+  study ---|1G| nas[(administratum)]
   study ---|1G| solar[solar]
 
   lounge ---|1G| ps5[PS5]
