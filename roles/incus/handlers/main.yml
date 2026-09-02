@@ -4,8 +4,3 @@
     name: NetworkManager
     state: reloaded
   become: true
-
-- name: Reload systemd for incus
-  ansible.builtin.systemd_service:
-    daemon_reload: true
-  become: true
