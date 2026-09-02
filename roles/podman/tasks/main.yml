@@ -14,6 +14,42 @@
   when: podman_storage_device | length > 0
   become: true
 
+# The Raspberry Pi firmware prepends cgroup_disable=memory to whatever this file
+# holds, so auspex boots without the memory controller: cgroup.controllers reads
+# `cpuset cpu io pids`, every container_memory_* series cadvisor exports is 0,
+# and no quadlet on the host could take a MemoryMax=. A later
+# cgroup_enable=memory undoes it — parse_args walks the command line left to
+# right and the two __setup handlers are exact inverses on the same static key,
+# so whichever comes last wins, and the firmware's copy always comes first.
+# cgroup_memory=1, which the Pi documentation pairs with it, is not a kernel
+# parameter at all and would land in PID 1's environment instead; the real one is
+# cgroup.memory=, and it only takes nosocket/nokmem/nobpf.
+#
+# Guarded on the file rather than a fact-derived default: what gates this is the
+# Pi firmware's boot partition existing, which no fact reports. Same shape as the
+# NetworkManager guard below — every other host has no such file and skips.
+- name: Detect the Raspberry Pi firmware kernel command line
+  ansible.builtin.stat:
+    path: /boot/firmware/cmdline.txt
+  register: podman_pi_cmdline
+
+# Appended, never templated: the file is the imager's and carries the host's
+# root=. The negative lookahead is what makes this idempotent — a line already
+# holding the parameter matches nothing, and backrefs leaves a file it did not
+# match completely alone rather than appending a line of its own. That last part
+# is the dangerous one: the firmware reads only the first line, so a second line
+# silently drops every parameter on it, root= included, and a Pi that will not
+# boot has no console to say why. validate catches it from the other side.
+- name: Enable the memory cgroup controller
+  ansible.builtin.lineinfile:
+    path: /boot/firmware/cmdline.txt
+    regexp: '^(?!.*cgroup_enable=memory)(.*\broot=\S+.*)$'
+    line: '\1 cgroup_enable=memory'
+    backrefs: true
+    validate: "awk '/root=/ { found = 1 } END { exit !(NR == 1 && found) }' %s"
+  when: podman_pi_cmdline.stat.exists
+  become: true
+
 - name: Install podman
   ansible.builtin.package:
     name: "{{ podman_packages }}"
