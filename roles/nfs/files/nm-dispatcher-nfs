@@ -1,0 +1,17 @@
+#!/bin/sh
+# Shadows /usr/lib/NetworkManager/dispatcher.d/nfs. NetworkManager resolves
+# dispatcher scripts from /etc ahead of /usr/lib when the names match
+# (NetworkManager-dispatcher(8)), so this file disables the stock one.
+#
+# That script runs `umount -l -f` over the NFS entries in fstab on any
+# interface-down event. Each unmount is meant to be gated on `other_reaches`, a
+# 2s ICMP probe to the server from every other interface — but the NAS drops
+# ICMP while serving NFS, so the probe never succeeds and the gate never holds.
+# Every down event unmounts every share, whichever interface it was for, and the
+# remount branch is gated on `systemctl is-enabled nfs-client.target`, disabled
+# on every host here. The unmount is therefore one-way: only the next Ansible
+# apply puts the shares back.
+#
+# Nothing needs unmounting. The shares are `hard`, so I/O blocks and retries
+# across an outage and resumes when the server answers.
+exit 0

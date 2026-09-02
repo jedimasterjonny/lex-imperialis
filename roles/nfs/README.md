@@ -6,6 +6,15 @@ fstab entry. Options are pinned for the NAS link — v4.1 (the NAS rejects 4.2),
 1 MiB rsize/wsize, `hard` so a stalled server retries instead of returning I/O
 errors, `noatime`, `_netdev`.
 
+The role also drops a no-op `/etc/NetworkManager/dispatcher.d/nfs`, shadowing the
+stock script of that name — NM resolves `/etc` ahead of `/usr/lib`. The stock one
+unmounts the fstab NFS entries on any interface-down event, gating each on a 2s
+ICMP probe to the server from another interface; the NAS drops ICMP while serving
+NFS, so that gate never holds and every down event unmounts every share. Its
+remount branch is gated on `nfs-client.target`, disabled on every host here, so
+the unmount is one-way. `hard` already covers an outage: I/O blocks and resumes.
+Skipped where NetworkManager is absent.
+
 CI coverage: the billable full-VM tier (`hetzner`) runs on openSUSE Leap 16, but
 the fleet runs this on Tumbleweed and MicroOS; validate Tumbleweed-side
 behaviour locally with `make test-vm` (the libvirt tier's Tumbleweed VM).

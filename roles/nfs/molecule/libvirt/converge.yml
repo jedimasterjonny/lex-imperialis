@@ -33,6 +33,17 @@
         mode: "0644"
       become: true
 
+    # The role shadows a file the NetworkManager package owns, so the package has
+    # to be here for the scenario to prove anything: fabricating the dispatcher
+    # directory would satisfy the role's probe while leaving nothing to shadow
+    # and no way to catch the stock script being renamed. Installed, never
+    # started — the VM keeps the network backend it booted with.
+    - name: Install NetworkManager (test fixture)
+      community.general.zypper:
+        name: NetworkManager
+        state: present
+      become: true
+
     # Starting the server runs exportfs, so the export is live before the role
     # mounts it in the roles section below.
     - name: Enable and start the NFS server
