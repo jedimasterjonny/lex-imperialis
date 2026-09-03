@@ -106,6 +106,19 @@ repos:
         entry: codespell
         language: system
         types: [text]
+      # ruff lints and format-checks the Python under bin/ and molecule/ with every
+      # rule on; the exemptions and their reasons live in ruff.toml. Two hooks
+      # because `ruff format --diff` is a separate command, not a check rule.
+      - id: ruff
+        name: ruff
+        entry: ruff check
+        language: system
+        types: [python]
+      - id: ruff-format
+        name: ruff format
+        entry: ruff format --diff
+        language: system
+        types: [python]
       - id: shellcheck
         name: shellcheck
         entry: shellcheck

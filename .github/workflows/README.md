@@ -27,7 +27,8 @@ hooks need, then runs `make pre-commit` (`pre-commit run --all-files`) —
 yamllint, ansible-lint, shellcheck plus shellcheck-jinja (the `*.sh.j2` templates
 the shell hook skips, typed jinja) and jinja-syntax (every `*.j2` and `*.bu`
 parsed), codespell (British English — flags American spellings via
-`.codespell-en-GB.txt`), actionlint (these very workflow files: Actions
+`.codespell-en-GB.txt`), ruff (every rule on over the Python scripts, and its
+formatter), actionlint (these very workflow files: Actions
 semantics plus shellcheck over every `run:` step), markdownlint (every `*.md`),
 check-toml, editorconfig-checker, renovate-config-validator (schema-checks
 `renovate.json`), promtool over the static Prometheus alert rules plus
