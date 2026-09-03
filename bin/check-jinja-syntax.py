@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Parse the Jinja templates pre-commit hands over, so a syntax error fails here
-rather than at converge.
+"""Parse the Jinja templates pre-commit hands over, so a syntax error fails here.
 
 The failure this catches is cheap to make and expensive to find: a bare `{#`
 outside a `{% raw %}` fence opens a Jinja comment that never closes, and bash's
@@ -18,16 +17,17 @@ vocabulary Ansible does.
 """
 
 import sys
+from pathlib import Path
 
 from jinja2 import Environment, TemplateSyntaxError
 
 
-def main(paths):
-    env = Environment()
+def main(paths: list[str]) -> int:
+    env = Environment()  # noqa: S701 -- parse only; nothing is ever rendered
     status = 0
     for path in paths:
         try:
-            with open(path, encoding="utf-8") as template:
+            with Path(path).open(encoding="utf-8") as template:
                 env.parse(template.read(), filename=path)
         except TemplateSyntaxError as error:
             print(f"{path}:{error.lineno}: {error.message}", file=sys.stderr)

@@ -51,7 +51,7 @@ TESTS = sorted((REPO / "roles/prometheus/tests").glob("*_test.yml"))
 TESTS_LABEL = ", ".join(str(path.relative_to(REPO)) for path in TESTS)
 
 
-def declared(rules):
+def declared(rules: dict) -> dict[str, str]:
     # A recording rule carries `record:` where an alert carries `alert:`; the repo
     # ships none, but reading past one beats a KeyError traceback out of a gate.
     # Keyed by name rather than a bare set so the roster check below can read an
@@ -65,7 +65,7 @@ def declared(rules):
     }
 
 
-def asserted(tests):
+def asserted(tests: dict) -> set[str]:
     return {
         case["alertname"]
         for test in tests.get("tests", [])
@@ -82,7 +82,7 @@ def asserted(tests):
 # BOTH rosters at once, so they compare equal and the gate stays green on a real
 # mismatch. Measured: with `[a-z-]+`, a `wordpress-boost2` excluded but uncovered
 # passed.
-def excluded_roster(expr):
+def excluded_roster(expr: str) -> list[str]:
     # One alternation inside SystemdUnitFailed's name!~ matcher. Spaces around !~ are
     # valid PromQL and are the likely shape of the next edit, so the whitespace is
     # matched loosely.
@@ -95,7 +95,7 @@ def excluded_roster(expr):
     )
 
 
-def covered_roster(expr):
+def covered_roster(expr: str) -> list[str]:
     # One node_systemd_unit_state selector per ScheduledJobMetricMissing clause. The
     # promtool case's input_series carry the same shape, so this reads those too.
     return sorted(
@@ -103,7 +103,7 @@ def covered_roster(expr):
     )
 
 
-def catch_all_series(tests):
+def catch_all_series(tests: dict) -> set[str]:
     # Located by the alert its cases assert, not by case name, so renaming the case
     # does not quietly empty this.
     return {
@@ -118,7 +118,7 @@ def catch_all_series(tests):
     }
 
 
-def main():
+def main() -> int:
     if not TESTS:
         print(
             "ERROR: no *_test.yml under roles/prometheus/tests — every check below "

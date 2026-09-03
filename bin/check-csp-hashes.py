@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Assert the CSP script-src hashes in firebase.json match the inline scripts the
-built site actually serves.
+"""Assert the CSP script-src hashes in firebase.json match the site's inline scripts.
 
 `firebase.json` hash-pins the theme's inline script, so a Blowfish bump that
 rewrites that script silently invalidates the pin: hugo still builds, every gate
@@ -51,12 +50,12 @@ JS_MIME_TYPES = {
 class InlineScriptCollector(HTMLParser):
     """Collects the text of every executable inline script."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(convert_charrefs=False)
         self.scripts = []
         self._capturing = False
 
-    def handle_starttag(self, tag, attrs):
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag != "script":
             return
         attributes = dict(attrs)
@@ -68,32 +67,31 @@ class InlineScriptCollector(HTMLParser):
         if script_type in ("", "module") or script_type in JS_MIME_TYPES:
             self._capturing = True
 
-    def handle_data(self, data):
+    def handle_data(self, data: str) -> None:
         if self._capturing:
             self.scripts.append(data)
             self._capturing = False
 
-    def handle_endtag(self, tag):
+    def handle_endtag(self, tag: str) -> None:
         if tag == "script":
             self._capturing = False
 
 
-def csp_script_src_hashes(firebase_json):
-    """The set of sha256 hashes pinned in the CSP script-src directive."""
+def csp_script_src_hashes(firebase_json: Path) -> set[str]:
+    """Return the set of sha256 hashes pinned in the CSP script-src directive."""
     config = json.loads(firebase_json.read_text(encoding="utf-8"))
     for header_block in config["hosting"]["headers"]:
         for header in header_block["headers"]:
             if header["key"].lower() != "content-security-policy":
                 continue
             for directive in header["value"].split(";"):
-                directive = directive.strip()
-                if directive.startswith("script-src"):
+                if directive.strip().startswith("script-src"):
                     return set(re.findall(r"'(sha256-[A-Za-z0-9+/=]+)'", directive))
     return set()
 
 
-def served_hashes(build_dir):
-    """Maps each executable inline script's hash to the pages serving it."""
+def served_hashes(build_dir: Path) -> dict[str, list[Path]]:
+    """Map each executable inline script's hash to the pages serving it."""
     found = {}
     for page in sorted(build_dir.rglob("*.html")):
         collector = InlineScriptCollector()
@@ -108,21 +106,23 @@ def served_hashes(build_dir):
     return found
 
 
-def main(argv):
-    if len(argv) != 2:
-        print(
-            "usage: check-csp-hashes.py <build-dir> <firebase.json>", file=sys.stderr
-        )
+def main(argv: list[str]) -> int:
+    try:
+        build_dir, firebase_json = map(Path, argv)
+    except ValueError:
+        print("usage: check-csp-hashes.py <build-dir> <firebase.json>", file=sys.stderr)
         return 2
 
-    build_dir, firebase_json = Path(argv[0]), Path(argv[1])
     if not build_dir.is_dir():
         print(f"{build_dir}: not a directory — build the site first", file=sys.stderr)
         return 2
 
     served = served_hashes(build_dir)
     if not served:
-        print(f"{build_dir}: no inline scripts found — is the build empty?", file=sys.stderr)
+        print(
+            f"{build_dir}: no inline scripts found — is the build empty?",
+            file=sys.stderr,
+        )
         return 2
 
     pinned = csp_script_src_hashes(firebase_json)

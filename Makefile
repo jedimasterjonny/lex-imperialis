@@ -44,12 +44,12 @@ PLAY ?= scholam
 # remote ones converge concurrently; any other PLAY is one host, run directly.
 FLEET_RUN = $(if $(filter site,$(PLAY)),bin/fleet-apply.sh,ansible-playbook playbooks/$(PLAY).yml)
 
-.PHONY: lint ansible-lint yamllint codespell hooks pre-commit converge verify destroy test test-vm test-hetzner destroy-hetzner check apply tofu-fmt tofu-validate tofu-lint tofu-plan tofu-apply packer-fmt packer-validate image hugo-serve hugo-build
+.PHONY: lint ansible-lint yamllint codespell ruff hooks pre-commit converge verify destroy test test-vm test-hetzner destroy-hetzner check apply tofu-fmt tofu-validate tofu-lint tofu-plan tofu-apply packer-fmt packer-validate image hugo-serve hugo-build
 
 # ansible-lint last: it is ~107s against yamllint's 3.5s and codespell's 0.4s,
 # so running the cheap gates first surfaces their failures in seconds rather
 # than behind it.
-lint: yamllint codespell ansible-lint
+lint: yamllint codespell ruff ansible-lint
 
 yamllint:
 	. .venv/bin/activate && yamllint --strict .
@@ -61,6 +61,9 @@ ansible-lint:
 
 codespell:
 	. .venv/bin/activate && git ls-files -z | xargs -0 codespell
+
+ruff:
+	. .venv/bin/activate && ruff check && ruff format --diff
 
 hooks:
 	. .venv/bin/activate && pre-commit install

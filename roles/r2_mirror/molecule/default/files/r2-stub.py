@@ -8,6 +8,7 @@ with a stranded multipart upload, and a prefix nobody declared. Signatures are
 not checked — what is under test is the probe's tallying and output, not R2's
 authorisation, which the role cannot influence anyway.
 """
+
 import http.server
 import sys
 
@@ -38,7 +39,7 @@ UPLOADS = """<?xml version="1.0" encoding="UTF-8"?>
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
-    def do_GET(self):  # the name BaseHTTPRequestHandler dispatches to
+    def do_GET(self) -> None:  # the name BaseHTTPRequestHandler dispatches to
         if "uploads" in self.path:
             body = UPLOADS
         elif "continuation-token=PAGE2" in self.path:
@@ -52,7 +53,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
-    def log_message(self, *_args):
+    def log_message(self, *_args: object) -> None:
         pass
 
 

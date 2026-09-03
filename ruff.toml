@@ -1,0 +1,33 @@
+# ruff configuration — marks ruff as a deliberate part of the lint gate, over the
+# handful of Python under bin/ and molecule/. Venv-pinned like yamllint and
+# ansible-lint (version in requirements-dev.txt). Every rule is on; the ignores
+# below are the whole exemption list, each with its reason.
+#
+# The floor is the runner's system python3, which firebase-hosting-pull-request.yml
+# hands check-csp-hashes.py outside the venv; the venv and the fleet run newer.
+target-version = "py312"
+
+[lint]
+select = ["ALL"]
+ignore = [
+  # Halves of two mutually exclusive pairs (D211, D212 hold); ruff drops them with a
+  # warning otherwise.
+  "D203",
+  "D213",
+  # A function whose name needs a docstring needs a rename — CLAUDE.md's comment
+  # rule. Module docstrings (D100) stay: that is where a script's why lives.
+  "D101",
+  "D102",
+  "D103",
+  "D105",
+  "D106",
+  "D107",
+  # The formatter owns trailing commas.
+  "COM812",
+  # No per-file licence headers; LICENSE at the root covers the repo.
+  "CPY001",
+  # Standalone scripts, not a package.
+  "INP001",
+  # CLI scripts report through print.
+  "T20",
+]
