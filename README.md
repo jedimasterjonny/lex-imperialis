@@ -49,22 +49,11 @@ Updates run unattended and staggered: `solar` Monday as the canary, `auspex` Tue
 
 ## Network
 
-Solid is a link; dotted is an off-site backup flow riding it.
+Segmentum Solar:
 
 ```mermaid
 flowchart TD
   fttp[FTTP] ---|1G| gw{{Cloud Gateway}}
-
-  subgraph Hetzner
-    rogue[rogue-trader]
-    pw[(port-wander)]
-  end
-
-  subgraph Cloudflare
-    reclusiam[(reclusiam)]
-  end
-
-  gw ---|VPN| rogue
   gw ---|10G SFP+| core[[Core]]
 
   core ---|2.5G| study[[Study]]
@@ -84,6 +73,27 @@ flowchart TD
   cupboard ---|1G| imac[iMac]
   cupboard ---|1G| auspex[auspex]
   cupboard ---|10M| tado[Tado Bridge]
+```
+
+Segmentum Obscurus:
+
+```mermaid
+flowchart TD
+  subgraph Home
+    gw{{Cloud Gateway}}
+    nas[(administratum)]
+  end
+
+  subgraph Hetzner
+    rogue[rogue-trader]
+    pw[(port-wander)]
+  end
+
+  subgraph Cloudflare
+    reclusiam[(reclusiam)]
+  end
+
+  gw ---|VPN| rogue
 
   nas -.->|rsync| rogue
   nas -.->|S3| reclusiam
