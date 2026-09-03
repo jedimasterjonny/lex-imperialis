@@ -44,7 +44,7 @@ PLAY ?= scholam
 # remote ones converge concurrently; any other PLAY is one host, run directly.
 FLEET_RUN = $(if $(filter site,$(PLAY)),bin/fleet-apply.sh,ansible-playbook playbooks/$(PLAY).yml)
 
-.PHONY: lint ansible-lint yamllint codespell ruff hooks pre-commit converge verify destroy test test-vm test-hetzner destroy-hetzner check apply tofu-fmt tofu-validate tofu-lint tofu-plan tofu-apply packer-fmt packer-validate image hugo-serve hugo-build
+.PHONY: lint ansible-lint yamllint codespell ruff setup hooks pre-commit converge verify destroy test test-vm test-hetzner destroy-hetzner check apply tofu-fmt tofu-validate tofu-lint tofu-plan tofu-apply packer-fmt packer-validate image hugo-serve hugo-build
 
 # ansible-lint last: it is ~107s against yamllint's 3.5s and codespell's 0.4s,
 # so running the cheap gates first surfaces their failures in seconds rather
@@ -64,6 +64,15 @@ codespell:
 
 ruff:
 	. .venv/bin/activate && ruff check && ruff format --diff
+
+# --no-managed-python: the system interpreter, not a uv download nothing updates.
+setup:
+	if command -v uv >/dev/null 2>&1; then \
+		uv venv .venv --clear --no-managed-python && uv pip install --python .venv/bin/python -r requirements-dev.txt; \
+	else \
+		python3 -m venv --clear .venv && . .venv/bin/activate && pip install -r requirements-dev.txt; \
+	fi
+	$(MAKE) hooks
 
 hooks:
 	. .venv/bin/activate && pre-commit install

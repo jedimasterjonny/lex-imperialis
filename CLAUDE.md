@@ -71,7 +71,7 @@ Every commit MUST also be green — lint and tests pass on every commit, on ever
 
 ## Commands
 
-- **Setup**: `python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements-dev.txt`, then `make hooks` to install the pre-commit hooks. The `dev` role provisions the gate binaries the hooks need on the workstation (`tofu`, `tflint`, `promtool`, `butane`); `packer` is deliberately not among them — see `packer/README.md` to install it by hand.
+- **Setup**: `make setup` builds `.venv` from `requirements-dev.txt` and installs the pre-commit hooks. The `dev` role provisions the gate binaries the hooks need on the workstation (`tofu`, `tflint`, `promtool`, `butane`); `packer` is deliberately not among them — see `packer/README.md` to install it by hand.
 - **Iterate on one role** without the full create→destroy lifecycle: `make converge ROLE=<role>` (apply), `make verify ROLE=<role>` (assertions), `make destroy ROLE=<role>`; add `SCENARIO=<scenario>` for a non-`default` tier. `make test ROLE=<role>` runs the whole lifecycle. To shell into a converged instance, `incus exec lex-<role>-incus-local -- bash` (`molecule login` works only on the VM tiers — the incus `create.yml` writes no instance config for it to read).
 - **Bootstrap**: a fresh Tumbleweed host runs `bootstrap/host.sh` (creates the `ansible` account + sshd) before it joins the inventory; `bootstrap/incus.yml` sets up the molecule runner; `bootstrap/rogue-trader.yml` provisions the Hetzner VM.
 - The `ansible` MCP server (`.mcp.json`) and the project-local skills (`ansible-author`, `refine`, `branch-finaliser`) are the intended authoring → review → finalise workflow.

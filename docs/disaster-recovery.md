@@ -11,7 +11,7 @@ Recovery is driven from a control host with:
 - The repo (public, on GitHub) — clone it.
 - `.vault_pass` — gitignored, so restore it from the password manager. It
   unlocks every other secret in the repo.
-- The venv: `python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements-dev.txt`.
+- The venv: `make setup`.
 - The operator's fleet SSH key (`~jonny/.ssh/id_ed25519`) — the `ansible`
   account is key-only and its `authorized_keys` is exclusive, so nothing
   connects without it and a hand-made replacement is stripped by the next
@@ -385,13 +385,12 @@ play, run locally, then the home restore.
    offline root console to fix.
 2. As root: `bootstrap/host.sh`.
 3. Restore the control-host workspace: clone the repo, drop `.vault_pass` back in
-   from the password manager, build the venv (see Prerequisites), then
-   `make hooks`. Replace `arbites`'s two secrets and re-seed
-   `/etc/arbites/ssh/known_hosts` over the trusted LAN, including scholam's own
-   loopback (see its README) — its guard fails the apply below without all
-   three. If you generate a fresh arbites key rather than restoring the old one,
-   add its public half to `inventory/group_vars/all/authorized_keys.yml` and
-   apply it to the other hosts *before* step 5: that step arms the timer, and
+   from the password manager, then `make setup`. Replace `arbites`'s two secrets
+   and re-seed `/etc/arbites/ssh/known_hosts` over the trusted LAN, including
+   scholam's own loopback (see its README) — its guard fails the apply below
+   without all three. If you generate a fresh arbites key rather than restoring
+   the old one, add its public half to `inventory/group_vars/all/authorized_keys.yml`
+   and apply it to the other hosts *before* step 5: that step arms the timer, and
    the declared list is exclusive, so an unadvertised key fails at every connect.
 4. Restore the operator's SSH key, which step 5 cannot connect without: the
    `ansible` account is key-only, and a hand-made replacement is stripped by the
