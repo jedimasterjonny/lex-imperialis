@@ -199,7 +199,7 @@
 # — and a Persistent= timer whose slot the shift moves into the past fires its
 # catch-up run there and then. Only a host whose zone actually changes is
 # exposed, and only for the hour before each such slot, but on a host running
-# podman_backup that catch-up stops every container mid-play.
+# podman_backup that catch-up stops the containers it backs up mid-play.
 - name: Set the system timezone
   community.general.timezone:
     name: "{{ common_timezone }}"

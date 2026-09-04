@@ -69,9 +69,10 @@
   become: true
 
 # podman/netavark manage the container bridges themselves; NetworkManager must
-# not. Otherwise deleting the last bridge — a run that stops every container, as
-# podman_backup does — fires an NM event that unmounts the _netdev NFS shares
-# mid-run. Skipped where NetworkManager is absent (the molecule containers).
+# not. Otherwise deleting the last bridge — a run that stops every container
+# holding a backed-up volume, as podman_backup does — fires an NM event that
+# unmounts the _netdev NFS shares mid-run. Skipped where NetworkManager is
+# absent (the molecule containers).
 - name: Detect NetworkManager
   ansible.builtin.stat:
     path: /etc/NetworkManager/conf.d

@@ -8,6 +8,22 @@
     restic_backup_root: /var/tmp/backup
     # Throwaway repo password; the engine rejects an empty one.
     restic_backup_password: molecule-probe-repo-password
+    # Every quadlet installed below and the named volumes each mounts — the
+    # quiesce rule's cases: the probe, snapshotted and stopped; the excluded
+    # volume's sole mounter and a container mounting nothing, which ride
+    # through like Prometheus and the exporters; and one mounting the excluded
+    # volume beside the probe's, stopped like any other. verify names them.
+    podman_backup_fixture_quadlets:
+      - name: lex-probe
+        volumes: [lex-probe]
+      - name: lex-skip
+        volumes: [lex-skip]
+      - name: lex-both
+        volumes: [lex-skip, lex-probe]
+      - name: lex-none
+        volumes: []
+    # The volumes those mount, seeded so the snapshot holds data.
+    podman_backup_fixture_volumes: "{{ podman_backup_fixture_quadlets | map(attribute='volumes') | flatten | unique }}"
   pre_tasks:
     # The engine refuses to write to an unmounted repository root, so the stand-in
     # for the share must be a real mountpoint; a bind mount models it exactly.
@@ -37,23 +53,26 @@
         state: present
       become: true
 
-    - name: Create a probe volume to back up
+    # verify reads the probe's seed back after the restore.
+    - name: Create the fixture volumes
       ansible.builtin.command:
-        cmd: podman volume create lex-probe
-      register: podman_backup_probe
-      changed_when: "'lex-probe' in podman_backup_probe.stdout"
+        cmd: "podman volume create {{ item }}"
+      loop: "{{ podman_backup_fixture_volumes }}"
+      register: podman_backup_volume
+      changed_when: "item in podman_backup_volume.stdout"
       failed_when:
-        - podman_backup_probe.rc != 0
-        - "'already exists' not in podman_backup_probe.stderr"
+        - podman_backup_volume.rc != 0
+        - "'already exists' not in podman_backup_volume.stderr"
       become: true
 
-    - name: Seed the probe volume with data
+    - name: Seed the fixture volumes with data
       ansible.builtin.copy:
         content: "lex-imperialis podman backup probe\n"
-        dest: /var/lib/containers/storage/volumes/lex-probe/_data/probe.txt
+        dest: "/var/lib/containers/storage/volumes/{{ item }}/_data/probe.txt"
         owner: root
         group: root
         mode: "0644"
+      loop: "{{ podman_backup_fixture_volumes }}"
       become: true
 
     # verify's bit-rot test must corrupt a data pack, not a tree pack: a plain
@@ -77,39 +96,54 @@
         mode: "0755"
       become: true
 
-    # Without a running .container unit, podman-backup's discovery loop matches
-    # nothing and the whole quiesce→stop→restart path is dead code the test never
-    # exercises. This minimal always-up container gives it a unit to quiesce (the
-    # volume mounted read-only, so the probe never perturbs the round-trip data).
-    - name: Install a probe quadlet for the quiesce path
+    # Without running containers, podman-backup finds nothing to quiesce and
+    # the whole stop→restart path is dead code the test never exercises.
+    # Minimal always-up containers, each mounting its volumes read-only so the
+    # fixture never perturbs the round-trip data. StopTimeout=1 because
+    # busybox's sh ignores SIGTERM as PID 1, and the scenario stops these some
+    # twenty times per platform: at podman's 10s default that is minutes of
+    # waiting for a SIGKILL that proves nothing.
+    - name: Install the fixture quadlets
       ansible.builtin.copy:
         content: |
           [Container]
           Image=docker.io/library/busybox:latest
-          Volume=lex-probe:/data:ro
+          {% for volume in item.volumes %}
+          Volume={{ volume }}:/{{ volume }}:ro
+          {% endfor %}
           Exec=/bin/sh -c "while true; do sleep 3600; done"
-        dest: /etc/containers/systemd/lex-probe.container
+          StopTimeout=1
+        dest: "/etc/containers/systemd/{{ item.name }}.container"
         owner: root
         group: root
         mode: "0644"
+      loop: "{{ podman_backup_fixture_quadlets }}"
+      loop_control:
+        label: "{{ item.name }}"
       become: true
-      notify: Restart the probe unit
+      notify: Restart the fixture units
 
-    - name: Apply the probe quadlet
+    - name: Apply the fixture quadlets
       ansible.builtin.meta: flush_handlers
 
-    - name: Start the probe unit
+    - name: Start the fixture units
       ansible.builtin.systemd_service:
-        name: lex-probe
+        name: "{{ item.name }}"
         state: started
+      loop: "{{ podman_backup_fixture_quadlets }}"
+      loop_control:
+        label: "{{ item.name }}"
       become: true
   roles:
     - role: podman_backup
   handlers:
-    # daemon-reload folded in: the quadlet-generated unit exists only after it.
-    - name: Restart the probe unit
+    # daemon-reload folded in: the quadlet-generated units exist only after it.
+    - name: Restart the fixture units
       ansible.builtin.systemd_service:
-        name: lex-probe
+        name: "{{ item.name }}"
         state: restarted
         daemon_reload: true
+      loop: "{{ podman_backup_fixture_quadlets }}"
+      loop_control:
+        label: "{{ item.name }}"
       become: true

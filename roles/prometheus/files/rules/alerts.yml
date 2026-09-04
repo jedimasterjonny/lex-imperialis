@@ -1299,7 +1299,7 @@ groups:
             {{ $labels.container }} exists on {{ $labels.instance }} outside the repo's
             declarations — unmanaged state the fleet's config does not describe.
       # 2h also clears podman_backup's weekly quiesce, which stops every
-      # .container on the host to snapshot it: capped at an hour by
+      # container holding a snapshotted volume: capped at an hour by
       # restic_backup_timeout_start_sec, so exactly one :37 run sees the stopped
       # units. Widening that cap, or moving the backup so its window straddles
       # two :37 marks, fires this for every container on the host.

@@ -27,6 +27,11 @@ provisioner:
   inventory:
     group_vars:
       all:
+        # A second volume the snapshot must not hold — auspex's TSDB in
+        # miniature. converge's fixture and verify name it literally, so a
+        # rename here is a rename there.
+        restic_backup_podman_volume_excludes:
+          - lex-skip
         # Deliberately not the role default (Wed 01:00), which is what both hosts
         # running this role actually take — so converging on it would prove only
         # that the default equals itself and would leave the pass-through to

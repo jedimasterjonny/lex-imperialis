@@ -17,6 +17,12 @@
     # metric lands here.
     podman_backup_textfile_dir: /var/lib/node_exporter/textfile_collector
     podman_backup_probe_content: "lex-imperialis podman backup probe\n"
+    # The fixture's quadlets (converge.yml) by their part in the quiesce rule:
+    # the four it is judged by, the three that mount a volume at all, and the
+    # two that mount the excluded volume.
+    podman_backup_quiesce_units: [lex-probe, lex-skip, lex-both, lex-none]
+    podman_backup_volume_mounters: [lex-probe, lex-skip, lex-both]
+    podman_backup_excluded_mounters: [lex-skip, lex-both]
   tasks:
     # side_effect ran podman-restore.sh, which quiesced (stopped) the probe unit
     # and must have restarted it via its EXIT trap. If the trap were broken the
@@ -110,27 +116,102 @@
       ansible.builtin.set_fact:
         podman_backup_repo: "{{ podman_backup_repo_root }}/{{ podman_backup_hostname.stdout }}-podman-backup"
 
-    # Starting a oneshot unit blocks until it exits, so success means the
-    # backup ran clean.
-    - name: Fire the backup service
+    # The probe, and the container mounting the excluded volume beside the
+    # probe volume, must be stopped and restarted; the container mounting only
+    # the excluded volume and the one mounting no volume must ride through the
+    # run untouched. Each activation timestamp is the proof: a quiesce that
+    # stopped and restarted a unit moves it, where ActiveState alone reads
+    # 'active' either way — and a broken EXIT trap would leave it down.
+    - name: Read the quiesce units' activation times before the backup
       ansible.builtin.systemd_service:
-        name: podman-backup.service
-        state: started
+        name: "{{ item }}"
+      loop: "{{ podman_backup_quiesce_units }}"
+      register: podman_backup_quiesce_before
       become: true
 
-    # The backup quiesced (stopped) the probe unit and must have restarted it via
-    # its EXIT trap; a broken trap would leave the container down after the run.
-    - name: Read the probe unit's state after the backup
-      ansible.builtin.systemd_service:
-        name: lex-probe
-      register: podman_backup_probe_after_backup
-      become: true
+    # A container no unit owns cannot be quiesced — rogue-trader's wp wrapper
+    # holds a volume this way every five minutes — so one holding a volume in
+    # the snapshot is logged and left running, as it was before the quiesce
+    # knew such containers existed. Run one through the backup below; always
+    # removed, at once, since busybox's sh would sit out podman's stop timeout.
+    - name: Back up with a container no unit owns holding the probe volume
+      block:
+        - name: Run an ad-hoc container holding the probe volume
+          ansible.builtin.command:
+            cmd: podman run -d --rm --name lex-adhoc -v lex-probe:/data:ro docker.io/library/busybox:latest sleep 3600
+          changed_when: true
+          become: true
 
-    - name: The backup restarted the quiesced probe unit
+        # Starting a oneshot unit blocks until it exits, so success means the
+        # backup ran clean.
+        - name: Fire the backup service
+          ansible.builtin.systemd_service:
+            name: podman-backup.service
+            state: started
+          become: true
+
+        - name: Read whether the ad-hoc container rode through
+          ansible.builtin.command:
+            cmd: podman container inspect --format '{% raw %}{{ .State.Running }}{% endraw %}' lex-adhoc
+          register: podman_backup_adhoc_running
+          changed_when: false
+          become: true
+      always:
+        - name: Remove the ad-hoc container
+          ansible.builtin.command:
+            cmd: podman rm -f -t 0 lex-adhoc
+          changed_when: true
+          become: true
+
+    - name: The container no unit owns was left running
       ansible.builtin.assert:
         that:
-          - podman_backup_probe_after_backup.status.ActiveState == 'active'
-        fail_msg: "the backup did not restart the quiesced probe unit"
+          - podman_backup_adhoc_running.stdout == 'true'
+        fail_msg: "the backup stopped, or failed on, a container no unit owns"
+        quiet: true
+
+    - name: Read the quiesce units' activation times after the backup
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+      loop: "{{ podman_backup_quiesce_units }}"
+      register: podman_backup_quiesce_after
+      become: true
+
+    - name: Read the snapshot the backup just wrote
+      ansible.builtin.command: "restic --password-file /etc/restic/password --repo {{ podman_backup_repo }} snapshots --json --latest 1"
+      register: podman_backup_latest
+      changed_when: false
+      become: true
+
+    # Every arm of the quiesce rule: the excluded volume is not in the
+    # snapshot's paths; the probe, and the container mounting the excluded
+    # volume beside the probe volume, were stopped and restarted; the container
+    # mounting only the excluded volume, and the one mounting nothing, were
+    # never stopped — auspex's TSDB and the Prometheus over it, and its
+    # exporters, in miniature. Keyed by unit name, so the loop order is not
+    # load-bearing.
+    - name: The excluded volume is out of the snapshot, and only its mounters' peers stopped
+      vars:
+        podman_backup_latest_paths: "{{ (podman_backup_latest.stdout | from_json | first).paths | join(' ') }}"
+        podman_backup_before: >-
+          {{ dict(podman_backup_quiesce_units
+             | zip(podman_backup_quiesce_before.results | map(attribute='status.ActiveEnterTimestampMonotonic'))) }}
+        podman_backup_after: >-
+          {{ dict(podman_backup_quiesce_units
+             | zip(podman_backup_quiesce_after.results | map(attribute='status.ActiveEnterTimestampMonotonic'))) }}
+      ansible.builtin.assert:
+        that:
+          - "'/lex-probe/' in podman_backup_latest_paths"
+          - "('/' ~ restic_backup_podman_volume_excludes[0] ~ '/') not in podman_backup_latest_paths"
+          - podman_backup_quiesce_after.results | map(attribute='status.ActiveState') | unique == ['active']
+          - podman_backup_after['lex-probe'] != podman_backup_before['lex-probe']
+          - podman_backup_after['lex-skip'] == podman_backup_before['lex-skip']
+          - podman_backup_after['lex-both'] != podman_backup_before['lex-both']
+          - podman_backup_after['lex-none'] == podman_backup_before['lex-none']
+        fail_msg: >-
+          the quiesce rule did not hold — snapshot paths: {{ podman_backup_latest_paths }};
+          activation times {{ podman_backup_after }} against {{ podman_backup_before }}
+          before the run
         quiet: true
 
     # side_effect ran podman-restore.sh after tampering with the live volume; the
@@ -226,71 +307,120 @@
           read-data rc={{ podman_backup_bitrot_read.rc }} (want non-zero)
         quiet: true
 
-    # The quiesce globs /etc/containers/systemd/*.container. Unguarded, a moved
-    # quadlet directory makes it match nothing, and the run then snapshots every
-    # volume live and un-quiesced — a torn MariaDB — while reporting success.
-    # Take the probe quadlet out of the glob's reach and confirm it refuses.
-    # No daemon-reload either side, so the running unit is left undisturbed.
-    # The metric assertion binds only because the last run to write the file was
-    # the successful one above: it reads success 1 until this failed run rewrites
-    # it, so nothing between the two may fire the service.
-    - name: Stage the probe quadlet outside the quadlet directory
-      ansible.builtin.copy:
-        src: /etc/containers/systemd/lex-probe.container
-        dest: /var/tmp/lex-probe.container.staged
-        remote_src: true
-        owner: root
-        group: root
-        mode: "0644"
+    # The quiesce set comes from podman's running containers, so a host with
+    # every volume-claiming container stopped — maintenance — has nothing to
+    # quiesce and is consistent as it stands: the run must succeed, and the
+    # volumeless container it finds running must ride through as before.
+    - name: Stop the volume-claiming units, as a host under maintenance is
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        state: stopped
+      loop: "{{ podman_backup_volume_mounters }}"
       become: true
 
-    - name: Remove the probe quadlet so the glob matches nothing
-      ansible.builtin.file:
-        path: /etc/containers/systemd/lex-probe.container
-        state: absent
+    - name: Read the volumeless unit's activation time before the maintenance run
+      ansible.builtin.systemd_service:
+        name: lex-none
+      register: podman_backup_none_before_maintenance
       become: true
 
-    - name: Fire the backup service with no quadlet to quiesce
+    - name: Fire the backup service with nothing to quiesce
       ansible.builtin.systemd_service:
         name: podman-backup.service
         state: started
-      register: podman_backup_noquadlet_run
+      become: true
+
+    - name: Read the volumeless unit's activation time after the maintenance run
+      ansible.builtin.systemd_service:
+        name: lex-none
+      register: podman_backup_none_after_maintenance
+      become: true
+
+    - name: A host with nothing running to quiesce is snapshotted as it stands
+      ansible.builtin.assert:
+        that:
+          - >-
+            podman_backup_none_after_maintenance.status.ActiveEnterTimestampMonotonic
+            == podman_backup_none_before_maintenance.status.ActiveEnterTimestampMonotonic
+        fail_msg: "the maintenance-state run restarted the volumeless container it found running"
+        quiet: true
+
+    # Only the probe comes back here: the excluded volume's mounters stay down
+    # for the next test, which removes that volume.
+    - name: Start the probe unit again
+      ansible.builtin.systemd_service:
+        name: lex-probe
+        state: started
+      become: true
+
+    # An exclusion naming no volume on the host — the TSDB renamed under it, or
+    # a typo — must refuse the run before anything is stopped: left alone, the
+    # volume would silently return to the snapshot and its container to the
+    # quiesce, reporting success. Remove the excluded volume, fire, and prove
+    # the run failed without touching the probe unit; then put it all back.
+    - name: Remove the excluded volume
+      ansible.builtin.command:
+        cmd: "podman volume rm {{ restic_backup_podman_volume_excludes[0] }}"
+      changed_when: true
+      become: true
+
+    - name: Read the probe unit's activation time before the missing-volume run
+      ansible.builtin.systemd_service:
+        name: lex-probe
+      register: podman_backup_probe_before_missing
+      become: true
+
+    - name: Fire the backup service with the excluded volume missing
+      ansible.builtin.systemd_service:
+        name: podman-backup.service
+        state: started
+      register: podman_backup_missing_run
       ignore_errors: true
       become: true
 
-    - name: Read the outcome metric after the no-quadlet run
+    - name: Read the outcome metric after the missing-volume run
       ansible.builtin.slurp:
         src: "{{ podman_backup_textfile_dir }}/podman-backup.prom"
-      register: podman_backup_metric_noquadlet
+      register: podman_backup_metric_missing
       become: true
 
-    - name: A quiesce that would match no quadlet fails the run
+    - name: Read the probe unit's activation time after the missing-volume run
+      ansible.builtin.systemd_service:
+        name: lex-probe
+      register: podman_backup_probe_after_missing
+      become: true
+
+    - name: An exclusion naming no volume refuses the run before the quiesce
       ansible.builtin.assert:
         that:
-          - podman_backup_noquadlet_run is failed
-          - "'podman_backup_success 0' in (podman_backup_metric_noquadlet.content | b64decode)"
-        fail_msg: "the backup snapshotted the volumes without quiescing anything"
+          - podman_backup_missing_run is failed
+          - "'podman_backup_success 0' in (podman_backup_metric_missing.content | b64decode)"
+          - >-
+            podman_backup_probe_after_missing.status.ActiveEnterTimestampMonotonic
+            == podman_backup_probe_before_missing.status.ActiveEnterTimestampMonotonic
+        fail_msg: >-
+          an exclusion naming no volume did not refuse the run, or stopped the
+          probe unit first (activated at
+          {{ podman_backup_probe_after_missing.status.ActiveEnterTimestampMonotonic }}
+          against {{ podman_backup_probe_before_missing.status.ActiveEnterTimestampMonotonic }})
         quiet: true
 
-    - name: Put the probe quadlet back
-      ansible.builtin.copy:
-        src: /var/tmp/lex-probe.container.staged
-        dest: /etc/containers/systemd/lex-probe.container
-        remote_src: true
-        owner: root
-        group: root
-        mode: "0644"
-      become: true
-
-    - name: Discard the staged copy
-      ansible.builtin.file:
-        path: /var/tmp/lex-probe.container.staged
-        state: absent
-      become: true
-
-    - name: Clear the failed state the no-quadlet run left
+    - name: Clear the failed state the missing-volume run left
       ansible.builtin.command: systemctl reset-failed podman-backup.service
       changed_when: true
+      become: true
+
+    - name: Recreate the excluded volume
+      ansible.builtin.command:
+        cmd: "podman volume create {{ restic_backup_podman_volume_excludes[0] }}"
+      changed_when: true
+      become: true
+
+    - name: Start the excluded volume's mounters again
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        state: started
+      loop: "{{ podman_backup_excluded_mounters }}"
       become: true
 
     # The restore reads the whole snapshot into a scratch target before it touches
@@ -428,39 +558,37 @@
         fail_msg: "restoring a named snapshot did not mirror the volume or did not restart the units"
         quiet: true
 
-    # The restore's quiesce globs the same directory the backup's does, and here
-    # the zero-match case is worse: the swap wipes and replaces live volumes, so a
-    # glob that silently matched nothing would do that with the containers still
-    # running and writing. Take the quadlet out of the glob's reach and confirm
-    # the restore refuses before it touches anything.
-    - name: Stage the probe quadlet outside the quadlet directory for the restore
-      ansible.builtin.copy:
-        src: /etc/containers/systemd/lex-probe.container
-        dest: /var/tmp/lex-probe.container.staged
-        remote_src: true
-        owner: root
-        group: root
-        mode: "0644"
-      become: true
+    # The restore takes its stop set from the quadlet directory's glob, and its
+    # zero-match case is the worse one: the swap wipes and replaces live volumes,
+    # so a glob that silently matched nothing would do that with the containers
+    # still running and writing. Take the quadlets out of the glob's reach and
+    # confirm the restore refuses before it touches anything.
+    - name: Run the restore with its quadlet directory out of the glob's reach
+      block:
+        - name: Move the quadlet directory away
+          ansible.builtin.command: mv /etc/containers/systemd /etc/containers/systemd.staged
+          changed_when: true
+          become: true
 
-    - name: Remove the probe quadlet so the restore's glob matches nothing
-      ansible.builtin.file:
-        path: /etc/containers/systemd/lex-probe.container
-        state: absent
-      become: true
+        - name: Run the restore with no quadlet to quiesce
+          ansible.builtin.command: "{{ podman_backup_restore_script }}"
+          register: podman_backup_noquadlet_restore
+          changed_when: false
+          failed_when: false
+          become: true
 
-    - name: Run the restore with no quadlet to quiesce
-      ansible.builtin.command: "{{ podman_backup_restore_script }}"
-      register: podman_backup_noquadlet_restore
-      changed_when: false
-      failed_when: false
-      become: true
-
-    - name: Stat the probe file after the no-quadlet restore
-      ansible.builtin.stat:
-        path: /var/lib/containers/storage/volumes/lex-probe/_data/probe.txt
-      register: podman_backup_probe_after_noquadlet
-      become: true
+        - name: Stat the probe file after the no-quadlet restore
+          ansible.builtin.stat:
+            path: /var/lib/containers/storage/volumes/lex-probe/_data/probe.txt
+          register: podman_backup_probe_after_noquadlet
+          become: true
+      # Whatever happened above, or the next run nests the live directory
+      # inside the staged one.
+      always:
+        - name: Put the quadlet directory back
+          ansible.builtin.command: mv /etc/containers/systemd.staged /etc/containers/systemd
+          changed_when: true
+          become: true
 
     # On the message, not just the return code: the script refuses on several
     # grounds before the swap, so a bare non-zero would no longer say it was this
@@ -477,22 +605,6 @@
           probe present={{ podman_backup_probe_after_noquadlet.stat.exists }}) —
           stderr: {{ podman_backup_noquadlet_restore.stderr | default('') }}
         quiet: true
-
-    - name: Put the probe quadlet back after the restore check
-      ansible.builtin.copy:
-        src: /var/tmp/lex-probe.container.staged
-        dest: /etc/containers/systemd/lex-probe.container
-        remote_src: true
-        owner: root
-        group: root
-        mode: "0644"
-      become: true
-
-    - name: Discard the staged copy from the restore check
-      ansible.builtin.file:
-        path: /var/tmp/lex-probe.container.staged
-        state: absent
-      become: true
 
     # Every other restore here runs without a terminal, so nothing yet proves the
     # confirmation still gates the wipe — and it moved, from before the repository

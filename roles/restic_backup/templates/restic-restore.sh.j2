@@ -99,11 +99,10 @@ if ((${#restorable[@]} == 0)); then
     exit 1
 fi
 
-# Same zero-match guard as the backup, and load-bearing for the same reason: the
-# swap below wipes and replaces live volumes, so a glob that silently matched
-# nothing would do that underneath running containers. Ahead of the confirmation
-# because it reads nothing from the repository, so it must never be what refuses
-# a run the operator has already agreed to.
+# The swap below wipes and replaces live volumes, so a glob that silently
+# matched nothing would do that underneath running containers: refuse instead.
+# Ahead of the confirmation because it reads nothing from the repository, so it
+# must never be what refuses a run the operator has already agreed to.
 shopt -s nullglob
 unit_files=(/etc/containers/systemd/*.container)
 shopt -u nullglob

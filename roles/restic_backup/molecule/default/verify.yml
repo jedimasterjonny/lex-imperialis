@@ -96,7 +96,8 @@
     # Type=oneshot leaves the start timeout disabled unless the unit sets one, so
     # unset means infinity rather than the manager's 90s default. With `hard` NFS
     # that lets a wedged call hold the service in activating indefinitely — in
-    # podman-volumes mode with every container stopped — and nothing catches it:
+    # podman-volumes mode with the quiesced containers stopped — and nothing
+    # catches it:
     # SystemdUnitFailed excludes these units by regex, and a unit stuck in
     # activating never reaches failed to begin with.
     - name: Read the backup service's state
