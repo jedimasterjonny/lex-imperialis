@@ -1,0 +1,11 @@
+---
+- name: Converge
+  hosts: all
+  tasks:
+    - name: Apply the podman role
+      ansible.builtin.include_role:
+        name: podman
+
+    - name: Apply the uptime_kuma role
+      ansible.builtin.include_role:
+        name: uptime_kuma
