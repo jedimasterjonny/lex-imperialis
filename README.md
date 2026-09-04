@@ -79,25 +79,46 @@ Segmentum Obscurus:
 
 ```mermaid
 flowchart TD
+  subgraph GitHub
+    gh[lex-imperialis]
+  end
+
   subgraph Home
     gw{{Cloud Gateway}}
     nas[(administratum)]
   end
 
+  subgraph Cloudflare
+    reclusiam[(reclusiam)]
+    edge[edge]
+  end
+
   subgraph Hetzner
     rogue[rogue-trader]
     pw[(port-wander)]
+    ci@{ shape: procs, label: "lex-ci" }
   end
 
-  subgraph Cloudflare
-    reclusiam[(reclusiam)]
+  subgraph Google Cloud
+    site[jonnyoc-site]
   end
+
+  tf[terraform providers]
 
   gw ---|VPN| rogue
+  edge --> rogue
+  %% invisible links only pin the layout: Cloudflare level with Hetzner
+  rogue ~~~ edge
+  reclusiam ~~~ edge
 
   nas -.->|rsync| rogue
   nas -.->|S3| reclusiam
   rogue -.->|proxy| pw
+
+  gh -.->|arbites| Home
+  gh -.->|molecule| ci
+  gh -.->|firebase deploy| site
+  gh -.->|tofu| tf
 ```
 
 ## Layout
