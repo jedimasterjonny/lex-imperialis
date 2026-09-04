@@ -154,8 +154,12 @@ generator meta for the same reason, narrows the user-disclosure surface —
 denying anonymous `/wp-json/wp/v2/users` enumeration and redirecting `?author=N`
 and the `/author/<slug>/` archives home before they leak a login slug — and
 neuters the XML-RPC pingback vector by stripping its methods and their
-`X-Pingback` header (XML-RPC itself stays on for Jetpack). Point DNS for each
-name at the host.
+`X-Pingback` header (XML-RPC itself stays on for Jetpack). It also pins Jetpack
+Boost's concatenated CSS/JS to Boost's static cache: behind Cloudflare the
+plugin's loopback 404 tester never reaches the origin, and every Boost update
+deletes the option a hand fix left set, so without the
+`jetpack_boost_minify_use_static_cache_urls` filter the bundles silently fall
+back to PHP delivery at `/_jb_static/`. Point DNS for each name at the host.
 
 `wordpress_origin_pull` adds Cloudflare's Authenticated Origin Pulls to the
 block: `client_auth` in `require_and_verify` mode against the published origin

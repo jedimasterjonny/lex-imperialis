@@ -1,7 +1,7 @@
 <?php
 /*
  * Plugin Name: Hardening
- * Description: Must-use tweaks that suppress version and user disclosure and neuter XML-RPC pingback.
+ * Description: Must-use tweaks that suppress version and user disclosure, neuter XML-RPC pingback and pin Jetpack Boost's concat delivery to its static cache.
  */
 
 // Drop the <meta name="generator"> tag WordPress prints into every page head.
@@ -43,3 +43,11 @@ add_filter( 'wp_headers', function ( $headers ) {
 	unset( $headers['X-Pingback'] );
 	return $headers;
 } );
+
+// Pin Jetpack Boost's concatenated CSS/JS to its static cache. Behind
+// Cloudflare, Boost's daily loopback 404 tester never reaches the origin, so
+// it records static delivery as unsupported; the tester is disabled by a
+// wp-config constant, but every Boost update deletes the option that fix left
+// set and bundles silently revert to PHP delivery at /_jb_static/. The filter
+// outranks both the option and the tester's verdict.
+add_filter( 'jetpack_boost_minify_use_static_cache_urls', '__return_true' );
