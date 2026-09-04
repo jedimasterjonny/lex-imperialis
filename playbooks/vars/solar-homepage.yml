@@ -124,6 +124,21 @@ homepage_services:
             key: !unsafe "{{HOMEPAGE_VAR_RADARR_KEY}}" # noqa: jinja[spacing]
             enableQueue: true
   - Vigil:
+      - Uptime Kuma:
+          icon: uptime-kuma.png
+          description: Status page
+          href: https://uptime.{{ caddy_domain }}
+          # Direct to auspex, as the Prometheus tile is: the LAN bind and port
+          # are playbooks/auspex.yml's, and homepage fetches it itself.
+          siteMonitor: http://auspex:3001/
+          # The widget reads a public status page by its slug, and status pages
+          # are made in Uptime Kuma's UI, not by its role: until one with this
+          # slug exists the widget reports an API error and the tile is
+          # otherwise whole. No credential — a public page needs none.
+          widget:
+            type: uptimekuma
+            url: http://auspex:3001
+            slug: fleet
       - Grafana:
           icon: grafana.png
           description: Dashboards
@@ -351,9 +366,10 @@ homepage_layout:
     style: row
     columns: 2
     initiallyCollapsed: true
+  # Five tiles, so five columns rather than a second row holding one.
   Vigil:
     style: row
-    columns: 4
+    columns: 5
   Cogitators:
     style: row
     columns: 4
