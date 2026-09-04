@@ -179,55 +179,6 @@ homepage_services:
             type: unifi
             url: "{{ unpoller_url }}"
             key: !unsafe "{{HOMEPAGE_VAR_UNIFI_API_KEY}}" # noqa: jinja[spacing]
-      - Uptime Kuma:
-          icon: uptime-kuma.png
-          description: Status page
-          href: https://uptime.{{ caddy_domain }}
-          # Direct to auspex, as the Prometheus tile is: the LAN bind and port
-          # are playbooks/auspex.yml's, and homepage fetches it itself.
-          siteMonitor: http://auspex:3001/
-          # The widget reads a public status page by its slug, and status pages
-          # are made in Uptime Kuma's UI, not by its role: until one with this
-          # slug exists the widget reports an API error and the tile is
-          # otherwise whole. No credential — a public page needs none.
-          widget:
-            type: uptimekuma
-            url: http://auspex:3001
-            slug: fleet
-      - Grafana:
-          icon: grafana.png
-          description: Dashboards
-          href: https://grafana.{{ caddy_domain }}
-          siteMonitor: http://grafana:3000/api/health
-          # version 2 because the widget's default speaks the pre-10.4 API
-          # and grafana here is 13.x. Only the two inventory counts: alerting
-          # is Prometheus's and Alertmanager's on auspex, so grafana holds no
-          # rules and its alert fields would read a permanent zero.
-          widget:
-            type: grafana
-            version: 2
-            url: http://grafana:3000
-            # Not a secret: grafana's admin_user is the image default and
-            # the role does not make it settable. The password is.
-            username: admin
-            password: !unsafe "{{HOMEPAGE_VAR_GRAFANA_PASSWORD}}" # noqa: jinja[spacing]
-            fields: [dashboards, datasources]
-      - Prometheus:
-          icon: prometheus.png
-          description: Metrics and alert rules
-          href: http://auspex:9090
-          siteMonitor: http://auspex:9090/-/healthy
-          # The one widget needing no credential: the API is unauthenticated
-          # on the LAN, so it takes no entry in homepage_secrets.
-          widget:
-            type: prometheus
-            url: http://auspex:9090
-      - Alertmanager:
-          icon: alertmanager.png
-          description: Alert routing
-          href: http://auspex:9093
-          siteMonitor: http://auspex:9093/-/healthy
-          # No widget: homepage ships none for alertmanager.
       # Four fleet-wide facts that otherwise only exist in Grafana, read from
       # the same Prometheus the alerts evaluate against. Every count here is
       # wrapped `or vector(0)`: an empty count() returns no series at all,
@@ -279,6 +230,55 @@ homepage_services:
                 query: count(smartmon_device_healthy == 0) or vector(0)
                 format:
                   type: number
+      - Uptime Kuma:
+          icon: uptime-kuma.png
+          description: Status page
+          href: https://uptime.{{ caddy_domain }}
+          # Direct to auspex, as the Prometheus tile is: the LAN bind and port
+          # are playbooks/auspex.yml's, and homepage fetches it itself.
+          siteMonitor: http://auspex:3001/
+          # The widget reads a public status page by its slug, and status pages
+          # are made in Uptime Kuma's UI, not by its role: until one with this
+          # slug exists the widget reports an API error and the tile is
+          # otherwise whole. No credential — a public page needs none.
+          widget:
+            type: uptimekuma
+            url: http://auspex:3001
+            slug: fleet
+      - Grafana:
+          icon: grafana.png
+          description: Dashboards
+          href: https://grafana.{{ caddy_domain }}
+          siteMonitor: http://grafana:3000/api/health
+          # version 2 because the widget's default speaks the pre-10.4 API
+          # and grafana here is 13.x. Only the two inventory counts: alerting
+          # is Prometheus's and Alertmanager's on auspex, so grafana holds no
+          # rules and its alert fields would read a permanent zero.
+          widget:
+            type: grafana
+            version: 2
+            url: http://grafana:3000
+            # Not a secret: grafana's admin_user is the image default and
+            # the role does not make it settable. The password is.
+            username: admin
+            password: !unsafe "{{HOMEPAGE_VAR_GRAFANA_PASSWORD}}" # noqa: jinja[spacing]
+            fields: [dashboards, datasources]
+      - Prometheus:
+          icon: prometheus.png
+          description: Metrics and alert rules
+          href: http://auspex:9090
+          siteMonitor: http://auspex:9090/-/healthy
+          # The one widget needing no credential: the API is unauthenticated
+          # on the LAN, so it takes no entry in homepage_secrets.
+          widget:
+            type: prometheus
+            url: http://auspex:9090
+      - Alertmanager:
+          icon: alertmanager.png
+          description: Alert routing
+          href: http://auspex:9093
+          siteMonitor: http://auspex:9093/-/healthy
+          # No widget: homepage ships none for alertmanager.
   # Host health for the whole fleet, read from the Prometheus on auspex
   # rather than from each host's own exporter: one address to reach, and the
   # same series the alerts evaluate. RAM and Temp are MemoryLow and
@@ -456,10 +456,9 @@ homepage_layout:
     style: row
     columns: 2
     initiallyCollapsed: true
-  # Six tiles, so six columns rather than a second row holding one.
   Vigil:
     style: row
-    columns: 6
+    columns: 3
   Cogitators:
     style: row
     columns: 4
