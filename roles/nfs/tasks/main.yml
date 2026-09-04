@@ -1,6 +1,7 @@
 ---
+# The package module, not zypper: auspex runs this (roles/CLAUDE.md).
 - name: Install the NFS client
-  community.general.zypper:
+  ansible.builtin.package:
     name: "{{ nfs_package }}"
     state: present
   become: true
@@ -21,7 +22,8 @@
 # NM resolves an identically-named script in /etc ahead of the stock one, so a
 # no-op disables it. Nothing needs unmounting: the shares are `hard`, so I/O
 # blocks across an outage and resumes when the server answers.
-# Skipped where NetworkManager is absent.
+# Skipped where NetworkManager is absent. Debian's NetworkManager ships no such
+# script, so there the no-op shadows nothing and costs nothing.
 - name: Detect the NetworkManager dispatcher
   ansible.builtin.stat:
     path: /etc/NetworkManager/dispatcher.d

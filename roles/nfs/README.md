@@ -13,8 +13,13 @@ ICMP probe to the server from another interface; the NAS drops ICMP while servin
 NFS, so that gate never holds and every down event unmounts every share. Its
 remount branch is gated on `nfs-client.target`, disabled on every host here, so
 the unmount is one-way. `hard` already covers an outage: I/O blocks and resumes.
-Skipped where NetworkManager is absent.
+Skipped where NetworkManager is absent. Debian's NetworkManager ships no such
+script, so on `auspex` the no-op shadows nothing.
 
-CI coverage: the billable full-VM tier (`hetzner`) runs on openSUSE Leap 16, but
-the fleet runs this on Tumbleweed and MicroOS; validate Tumbleweed-side
-behaviour locally with `make test-vm` (the libvirt tier's Tumbleweed VM).
+Two distributions: `auspex` mounts the backup share on Debian, where the client
+package is `nfs-common` — the role's one branch, in `nfs_package`.
+
+CI coverage: the billable full-VM tier (`hetzner`) launches one platform, on
+openSUSE Leap 16, but the fleet runs this on Tumbleweed, MicroOS and Debian;
+validate both arms locally with `make test-vm` (the libvirt tier boots a
+Tumbleweed and a Debian VM).

@@ -10,12 +10,20 @@
         server: 127.0.0.1
         export: "{{ nfs_fixture_export }}"
   pre_tasks:
-    # A self-contained loopback NFS server gives the role a real export to mount.
-    # Needs the kernel nfsd module — present on the full-kernel hetzner VM; the
-    # Tumbleweed Minimal-VM auto-loads it when nfs-server starts.
-    - name: Install the NFS server (test fixture)
-      community.general.zypper:
-        name: nfs-kernel-server
+    # A loopback NFS server gives the role a real export to mount without a
+    # second host to act as the NAS — it needs the kernel nfsd module, present
+    # on the full-kernel hetzner VM and auto-loaded by the Tumbleweed
+    # Minimal-VM — and NetworkManager is whose stock dispatcher script the role
+    # shadows: fabricating the dispatcher directory would satisfy the role's
+    # probe while leaving nothing to shadow and no way to catch the stock
+    # script being renamed. NetworkManager is installed only: on Tumbleweed it
+    # is never started, and Debian's package starts it but leaves the booted
+    # NIC's configuration alone, so either VM keeps the network it booted with.
+    - name: Install the NFS server and NetworkManager (test fixtures)
+      ansible.builtin.package:
+        name:
+          - nfs-kernel-server
+          - "{{ 'network-manager' if 'debian' in group_names else 'NetworkManager' }}"
         state: present
       become: true
 
@@ -33,24 +41,19 @@
         mode: "0644"
       become: true
 
-    # The role shadows a file the NetworkManager package owns, so the package has
-    # to be here for the scenario to prove anything: fabricating the dispatcher
-    # directory would satisfy the role's probe while leaving nothing to shadow
-    # and no way to catch the stock script being renamed. Installed, never
-    # started — the VM keeps the network backend it booted with.
-    - name: Install NetworkManager (test fixture)
-      community.general.zypper:
-        name: NetworkManager
-        state: present
-      become: true
-
-    # Starting the server runs exportfs, so the export is live before the role
-    # mounts it in the roles section below.
     - name: Enable and start the NFS server
       ansible.builtin.systemd_service:
         name: nfs-server
         enabled: true
         state: started
+      become: true
+
+    # Debian starts the server at package install, before the export above is
+    # written, so the start finds it running and re-reads nothing; openSUSE
+    # leaves it stopped, and the start is what exports. Re-read either way.
+    - name: Export the fixture
+      ansible.builtin.command: exportfs -ra
+      changed_when: false
       become: true
   roles:
     - role: nfs

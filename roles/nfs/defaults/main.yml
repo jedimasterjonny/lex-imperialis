@@ -1,6 +1,7 @@
 ---
-# NFS client package; provides mount.nfs / mount.nfs4.
-nfs_package: nfs-client
+# NFS client package; provides mount.nfs / mount.nfs4. Distro-derived: Debian
+# ships the client as nfs-common.
+nfs_package: "{{ 'nfs-common' if ansible_facts['os_family'] == 'Debian' else 'nfs-client' }}"
 
 # Every share mounts under here, as /nfs/<name>.
 nfs_mount_root: /nfs
