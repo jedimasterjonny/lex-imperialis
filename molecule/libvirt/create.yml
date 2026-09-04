@@ -10,6 +10,9 @@
     # interpreter has — not the venv molecule runs from.
     ansible_python_interpreter: /usr/bin/python3
     mol_ssh_key: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/ssh_key"
+    mol_ssh_cmd: >-
+      ssh -i {{ mol_ssh_key }} -o BatchMode=yes -o StrictHostKeyChecking=no
+      -o UserKnownHostsFile=/dev/null
     # The libvirt image store, not a private cache: a run reuses the warm
     # Tumbleweed qcow2 the libvirt role's refresh timer keeps here rather than
     # re-downloading, and populates it on a miss. Writing here unprivileged
@@ -21,35 +24,59 @@
       args:
         creates: "{{ mol_ssh_key }}"
 
-    - name: Launch instances
-      community.libvirt.virt_cloud_instance:
-        name: "{{ item.name }}"
-        base_image: "{{ item.image }}"
-        image_cache_dir: "{{ mol_image_cache }}"
-        image_checksum: "{{ item.image_checksum }}"
-        url_timeout: 600
-        disks:
-          - path: "/var/lib/libvirt/images/{{ item.name }}.qcow2"
-            size: 12
-            format: qcow2
-        memory: 2048
-        vcpus: 2
-        osinfo:
-          name: opensusetumbleweed
-        # The module only emits --boot when 'boot' is set, so 'boot' is
-        # required for boot_opts (UEFI firmware) to reach virt-install.
-        boot: hd
-        boot_opts:
-          firmware: efi
-          loader.secure: "no"
-        networks:
-          - network: default
-        cloud_init:
-          root_ssh_key: "{{ mol_ssh_key }}.pub"
-        wait_for_cloud_init_reboot: false
-      loop: "{{ molecule_yml.platforms }}"
-      loop_control:
-        label: "{{ item.name }}"
+    # The image cache is keyed by filename and validated against upstream's
+    # rolling checksum, so a cached qcow2 whose upstream has moved fails the
+    # launch until it is refreshed — the libvirt role's timer does that weekly
+    # for the Tumbleweed image, and nothing does for any other. Re-pull and
+    # retry the platforms that failed, once: what a stale cache needs, and a
+    # failure of any other kind is raised by the second attempt with nothing
+    # lost but the download.
+    - name: Launch instances, re-pulling a stale cached image
+      block:
+        - name: Launch instances
+          community.libvirt.virt_cloud_instance: &mol_launch_args
+            name: "{{ item.name }}"
+            base_image: "{{ item.image }}"
+            image_cache_dir: "{{ mol_image_cache }}"
+            image_checksum: "{{ item.image_checksum }}"
+            url_timeout: 600
+            disks:
+              - path: "/var/lib/libvirt/images/{{ item.name }}.qcow2"
+                size: 12
+                format: qcow2
+            memory: 2048
+            vcpus: 2
+            osinfo:
+              name: "{{ item.osinfo | default('opensusetumbleweed') }}"
+            # The module only emits --boot when 'boot' is set, so 'boot' is
+            # required for boot_opts (UEFI firmware) to reach virt-install.
+            boot: hd
+            boot_opts:
+              firmware: efi
+              loader.secure: "no"
+            networks:
+              - network: default
+            cloud_init:
+              root_ssh_key: "{{ mol_ssh_key }}.pub"
+            wait_for_cloud_init_reboot: false
+          loop: "{{ molecule_yml.platforms }}"
+          loop_control:
+            label: "{{ item.name }}"
+          register: mol_launch
+      rescue:
+        # A failure before the loop ran has no per-platform results to retry.
+        - name: Re-raise a launch failure that was not a platform's
+          ansible.builtin.fail:
+            msg: "{{ mol_launch.msg | default(mol_launch) }}"
+          when: mol_launch.results is not defined
+
+        - name: Launch the platforms that failed again, their images re-pulled
+          community.libvirt.virt_cloud_instance:
+            <<: *mol_launch_args
+            force_pull: true
+          loop: "{{ mol_launch.results | selectattr('failed', 'defined') | selectattr('failed') | map(attribute='item') | list }}"
+          loop_control:
+            label: "{{ item.name }}"
 
     - name: Wait for an IPv4 lease
       ansible.builtin.command: "virsh -c qemu:///system -q domifaddr {{ item.name }}"
@@ -83,9 +110,7 @@
         mode: "0600"
 
     - name: Wait for SSH to accept the key
-      ansible.builtin.command: >-
-        ssh -i {{ mol_ssh_key }} -o BatchMode=yes -o StrictHostKeyChecking=no
-        -o UserKnownHostsFile=/dev/null root@{{ item.address }} true
+      ansible.builtin.command: "{{ mol_ssh_cmd }} root@{{ item.address }} true"
       loop: "{{ mol_instance_conf }}"
       loop_control:
         label: "{{ item.instance }}"
@@ -93,4 +118,19 @@
       until: mol_ssh.rc == 0
       retries: 20
       delay: 3
+      changed_when: false
+
+    # As the incus tier's create primes its cache, and for its reasons; apt
+    # only, since zypper's autorefresh covers the Tumbleweed image itself.
+    - name: Prime apt's package lists
+      ansible.builtin.command: >-
+        {{ mol_ssh_cmd }} root@{{ item.address }}
+        'if command -v apt-get >/dev/null 2>&1; then timeout 90 apt-get update; fi'
+      loop: "{{ mol_instance_conf }}"
+      loop_control:
+        label: "{{ item.instance }}"
+      register: mol_refresh
+      until: mol_refresh.rc == 0
+      retries: 3
+      delay: 30
       changed_when: false

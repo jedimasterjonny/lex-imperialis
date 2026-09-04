@@ -48,9 +48,14 @@ CI consumer, since every shared-infra change runs `motd`.
 Full-boot VM tier (`make test-vm`), for roles a container can't exercise. Runs
 under the system Python (the libvirt binding isn't in the venv), boots a UEFI VM
 from the warm qcow2 the `libvirt` role's refresh timer keeps in the image store,
-downloading on a miss. It waits for a DHCP lease, writes the instance config
-molecule reads, then waits for SSH. Each platform sets `image`, `name`, and an
-`image_checksum`. `destroy.yml` also clears the UEFI nvram and the disk.
+downloading on a miss — and retrying a failed launch once with its image
+re-pulled, which is what a cache gone stale against upstream's rolling checksum
+needs and the role's weekly refresh covers only for the Tumbleweed image. It
+waits for a DHCP lease, writes the instance config
+molecule reads, waits for SSH, then primes apt's lists where the VM has apt
+(zypper refreshes on its own). Each platform sets `image`, `name`, and an
+`image_checksum`, plus an `osinfo` name where it is not Tumbleweed.
+`destroy.yml` also clears the UEFI nvram and the disk.
 
 ## hetzner
 
