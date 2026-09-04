@@ -206,23 +206,26 @@
     # The exclusive forget --prune is refused and every scheduled run fails until
     # the lock is cleared by hand, with the snapshot itself already saved. Plant one
     # the way reality does, by killing a restic mid-lock, and assert the run clears
-    # it rather than tripping over it.
+    # it rather than tripping over it. restic writes the lock as <id>-tmp-<n> and
+    # renames it into place; a kill between the two leaves a stray tmp file that is
+    # no lock and that unlock does not clear, so wait for the rename.
     - name: Plant a stale lock from a killed restic
       ansible.builtin.shell: |
         set -u
         locks={{ restic_backup_repo | quote }}/locks
+        has_lock() { [ -n "$(find "$locks" -maxdepth 1 -type f ! -name '*-tmp-*' -print -quit 2>/dev/null)" ]; }
         restic --password-file /etc/restic/password \
             --repo {{ restic_backup_repo | quote }} backup /usr >/dev/null 2>&1 &
         pid=$!
         for _ in $(seq 1 200); do
-            [ -n "$(ls -A "$locks" 2>/dev/null)" ] && break
+            has_lock && break
             sleep 0.1
         done
         kill -9 "$pid" 2>/dev/null
         wait "$pid" 2>/dev/null
         # Fail loudly rather than leave the assertion below proving nothing: a lock
         # that never appeared, or that the killed run tidied up, is not a test.
-        [ -n "$(ls -A "$locks" 2>/dev/null)" ]
+        has_lock
       changed_when: true
       become: true
 
