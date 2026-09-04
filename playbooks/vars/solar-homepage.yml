@@ -124,6 +124,22 @@ homepage_services:
             key: !unsafe "{{HOMEPAGE_VAR_RADARR_KEY}}" # noqa: jinja[spacing]
             enableQueue: true
   - Vigil:
+      - UniFi:
+          icon: unifi.png
+          description: Network
+          href: https://unifi.ui.com
+          # url and siteMonitor take the controller's LAN address, vaulted as
+          # unpoller_url — topology, not a credential — rather than a second
+          # vault var naming the same thing. Its self-signed cert is fine:
+          # homepage's proxy fetches with TLS validation off.
+          siteMonitor: "{{ unpoller_url }}"
+          # Its own API key, not unpoller's, so either rotates without
+          # touching the other. Same passphrase-grade caveat as unpoller's —
+          # see that role's README.
+          widget:
+            type: unifi
+            url: "{{ unpoller_url }}"
+            key: !unsafe "{{HOMEPAGE_VAR_UNIFI_API_KEY}}" # noqa: jinja[spacing]
       - Uptime Kuma:
           icon: uptime-kuma.png
           description: Status page
@@ -173,22 +189,6 @@ homepage_services:
           href: http://auspex:9093
           siteMonitor: http://auspex:9093/-/healthy
           # No widget: homepage ships none for alertmanager.
-      - UniFi:
-          icon: unifi.png
-          description: Network
-          href: https://unifi.ui.com
-          # url and siteMonitor take the controller's LAN address, vaulted as
-          # unpoller_url — topology, not a credential — rather than a second
-          # vault var naming the same thing. Its self-signed cert is fine:
-          # homepage's proxy fetches with TLS validation off.
-          siteMonitor: "{{ unpoller_url }}"
-          # Its own API key, not unpoller's, so either rotates without
-          # touching the other. Same passphrase-grade caveat as unpoller's —
-          # see that role's README.
-          widget:
-            type: unifi
-            url: "{{ unpoller_url }}"
-            key: !unsafe "{{HOMEPAGE_VAR_UNIFI_API_KEY}}" # noqa: jinja[spacing]
   # Host health for the whole fleet, read from the Prometheus on auspex
   # rather than from each host's own exporter: one address to reach, and the
   # same series the alerts evaluate. RAM and Temp are MemoryLow and
