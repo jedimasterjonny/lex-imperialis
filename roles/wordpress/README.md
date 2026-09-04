@@ -66,12 +66,16 @@ apply them with `wp core update`, `wp plugin update` (and so on) or through wp-a
 
 `wordpress-boost.timer` runs `/usr/local/sbin/wp-boost.sh` every six
 hours — offset 20 minutes from the update check so the two `wp` containers don't
-start on the same tick — reading Jetpack Boost's `critical_css_state` and the
-stored `jb_store_css` posts into `wordpress_textfile_dir/wordpress-boost.prom` as
-`wordpress_boost_installed`, `wordpress_boost_critical_css_generated`,
+start on the same tick — reading Jetpack Boost's `critical_css_state`, its
+`critical_css_suggest_regenerate` flag and the stored `jb_store_css` posts into
+`wordpress_textfile_dir/wordpress-boost.prom` as `wordpress_boost_installed`,
+`wordpress_boost_critical_css_generated`,
 `wordpress_boost_critical_css_updated_timestamp_seconds`,
-`wordpress_boost_critical_css_providers{status="success|error"}` and
-`wordpress_boost_critical_css_stored_bytes`, alongside the usual
+`wordpress_boost_critical_css_providers{status="success|error"}`,
+`wordpress_boost_critical_css_stored_bytes` and
+`wordpress_boost_critical_css_regenerate_suggested` — Boost's own regenerate
+flag, set on a plugin toggle, theme switch or page save and cleared by a
+regeneration — alongside the usual
 `wordpress_boost_success` / `_last_run_timestamp_seconds` pair. A failed
 check carries the last-good values forward, as the update check does.
 
@@ -86,7 +90,11 @@ run. The role does not manage the plugin, so `wordpress_boost_installed` is 0 on
 a WordPress host without Boost and `WordpressBoostCriticalCssMissing` gates on
 it; `WordpressBoostCriticalCssStale` gates on
 `wordpress_boost_critical_css_generated` instead, so a never-generated install
-raises one alert rather than two. `WordpressBoostFailed` /
+raises one alert rather than two. `WordpressBoostCriticalCssRegenerateSuggested`
+relays Boost's own regenerate flag once it has stood a week: the two rules
+above can't see it, since the state stays `generated` and the timestamp recent,
+and a page save alone sets it, so anything shorter would fire on every content
+edit. `WordpressBoostFailed` /
 `WordpressBoostOverdue` cover the check itself — the script always exits 0, so
 the overdue rule is what catches a stopped timer or a deleted script.
 

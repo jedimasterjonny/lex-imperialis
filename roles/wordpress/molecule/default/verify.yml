@@ -546,6 +546,7 @@
           - "wordpress_boost_metric_text is search('(?m)^wordpress_boost_critical_css_providers\\{status=\"success\"\\} 0$')"
           - "wordpress_boost_metric_text is search('(?m)^wordpress_boost_critical_css_providers\\{status=\"error\"\\} 0$')"
           - "wordpress_boost_metric_text is search('(?m)^wordpress_boost_critical_css_stored_bytes 0$')"
+          - "wordpress_boost_metric_text is search('(?m)^wordpress_boost_critical_css_regenerate_suggested 0$')"
         fail_msg: "the boost metric did not degrade to a complete zeroed file with Boost absent"
         quiet: true
 

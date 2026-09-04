@@ -24,9 +24,9 @@ last_value() {
     grep -m1 "^$1 " "$prom" 2>/dev/null | awk '{print $NF}'
 }
 
-# One wp-cli call for the whole state, rather than one per metric: six
+# One wp-cli call for the whole state, rather than one per metric: seven
 # space-separated fields — installed, generated, updated, providers ok,
-# providers failed, stored bytes.
+# providers failed, stored bytes, regenerate suggested.
 #
 # Boost is not managed by this role, so its absence is a first-class answer
 # (installed 0) and not an error: jetpack_boost_ds_get() only exists while the
@@ -45,7 +45,7 @@ last_value() {
 # shellcheck disable=SC2016
 if state=$(wp eval '
     if ( ! function_exists( "jetpack_boost_ds_get" ) ) {
-        echo "boost_state 0 0 0 0 0 0";
+        echo "boost_state 0 0 0 0 0 0 0";
     } else {
         $s  = (array) jetpack_boost_ds_get( "critical_css_state" );
         $ok = 0;
@@ -66,18 +66,19 @@ if state=$(wp eval '
             )
         );
         printf(
-            "boost_state 1 %d %d %d %d %d",
+            "boost_state 1 %d %d %d %d %d %d",
             ( $s["status"] ?? "" ) === "generated" ? 1 : 0,
             (int) ( $s["updated"] ?? 0 ),
             $ok,
             $ko,
-            $bytes
+            $bytes,
+            empty( jetpack_boost_ds_get( "critical_css_suggest_regenerate" ) ) ? 0 : 1
         );
     }
 ' </dev/null 2>/dev/null |
-    awk '$1 == "boost_state" && !found { print $2, $3, $4, $5, $6, $7; found = 1 } END { exit !found }'); then
+    awk '$1 == "boost_state" && !found { print $2, $3, $4, $5, $6, $7, $8; found = 1 } END { exit !found }'); then
     success=1
-    read -r installed generated updated providers_ok providers_error stored_bytes <<<"$state"
+    read -r installed generated updated providers_ok providers_error stored_bytes regenerate_suggested <<<"$state"
 else
     success=0
     installed=$(last_value wordpress_boost_installed)
@@ -86,6 +87,7 @@ else
     providers_ok=$(last_value 'wordpress_boost_critical_css_providers{status="success"}')
     providers_error=$(last_value 'wordpress_boost_critical_css_providers{status="error"}')
     stored_bytes=$(last_value wordpress_boost_critical_css_stored_bytes)
+    regenerate_suggested=$(last_value wordpress_boost_critical_css_regenerate_suggested)
 fi
 
 # Default every value to 0: an empty result (no prior file on a first failed
@@ -97,6 +99,7 @@ updated=${updated:-0}
 providers_ok=${providers_ok:-0}
 providers_error=${providers_error:-0}
 stored_bytes=${stored_bytes:-0}
+regenerate_suggested=${regenerate_suggested:-0}
 
 # Publish atomically: write a temp file the exporter's *.prom glob ignores, then
 # rename it over the target so no scrape reads a half-written file. 0644 so the
@@ -125,6 +128,9 @@ wordpress_boost_critical_css_providers{status="error"} $providers_error
 # HELP wordpress_boost_critical_css_stored_bytes Critical CSS currently stored, and so served, in bytes.
 # TYPE wordpress_boost_critical_css_stored_bytes gauge
 wordpress_boost_critical_css_stored_bytes $stored_bytes
+# HELP wordpress_boost_critical_css_regenerate_suggested Whether Boost itself is asking for a critical CSS regeneration (1) after a plugin, theme or content change, or not (0).
+# TYPE wordpress_boost_critical_css_regenerate_suggested gauge
+wordpress_boost_critical_css_regenerate_suggested $regenerate_suggested
 EOF
 chmod 0644 "$tmp"
 mv "$tmp" "$prom"
