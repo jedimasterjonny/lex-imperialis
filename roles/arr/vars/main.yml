@@ -123,6 +123,18 @@ arr_apps:
     # No healthcheck: never auto-kill plex — a transcode can be in flight, and a
     # restart drops every stream mid-playback. Its blackbox probe of /identity
     # (unauthenticated, so it needs no token) is the alert.
+  # Plex activity and history. Talks only to plex, over the LAN at the host's
+  # :32400 as homepage does — a connection made in its UI on first start, where
+  # its API key is minted too. No media mount, no tunnel.
+  tautulli:
+    image: lscr.io/linuxserver/tautulli:2.18.1@sha256:5ce8c5f82f9153e72ad4a24a1605f5a90bfee4bbe8e75bd05fcf91b410330b63
+    uid: 3010
+    caps: [CHOWN, KILL, SETGID, SETUID]
+    port: 8181
+    # Bare /status is the one unauthenticated endpoint; with a path or query it
+    # is auth-gated.
+    healthcheck:
+      cmd: curl -fsS http://127.0.0.1:8181/status
   recyclarr:
     image: ghcr.io/recyclarr/recyclarr:8.7.2@sha256:6e69e009e1cd7493ff6093e8e187b5d3788c75b4a2c0c5127b6a1beda1c19728
     uid: 3007

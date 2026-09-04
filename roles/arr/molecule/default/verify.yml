@@ -22,12 +22,13 @@
         headers:
           Host: "{{ item.key }}.{{ arr_domain }}"
         follow_redirects: none
-        status_code: [200, 301, 302, 401]
+        # 303: tautulli's redirect off /.
+        status_code: [200, 301, 302, 303, 401]
       loop: "{{ arr_apps | dict2items | selectattr('value.port', 'defined') | rejectattr('value.network', 'defined') | list }}"
       loop_control:
         label: "{{ item.key }}"
       register: arr_proxied
-      until: arr_proxied.status in [200, 301, 302, 401]
+      until: arr_proxied.status in [200, 301, 302, 303, 401]
       retries: 30
       delay: 2
 
@@ -148,6 +149,7 @@
         - {name: transmission, field: EffectiveCaps, caps: [CAP_CHOWN, CAP_DAC_OVERRIDE, CAP_KILL, CAP_SETGID, CAP_SETUID]}
         - {name: beets, field: EffectiveCaps, caps: [CAP_CHOWN, CAP_DAC_OVERRIDE, CAP_KILL, CAP_SETGID, CAP_SETUID]}
         - {name: plex, field: EffectiveCaps, caps: [CAP_CHOWN, CAP_DAC_OVERRIDE, CAP_KILL, CAP_SETGID, CAP_SETUID]}
+        - {name: tautulli, field: EffectiveCaps, caps: [CAP_CHOWN, CAP_KILL, CAP_SETGID, CAP_SETUID]}
         - {name: wireguard, field: EffectiveCaps, caps: [CAP_CHOWN, CAP_NET_ADMIN, CAP_SETGID, CAP_SETUID]}
         - {name: flaresolverr, field: BoundingCaps, caps: []}
         - {name: recyclarr, field: BoundingCaps, caps: []}
