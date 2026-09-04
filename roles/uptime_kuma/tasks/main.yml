@@ -1,0 +1,19 @@
+---
+- name: Install the uptime-kuma container unit
+  ansible.builtin.template:
+    src: uptime-kuma.container.j2
+    dest: /etc/containers/systemd/uptime-kuma.container
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart uptime-kuma
+
+- name: Apply pending unit changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Start uptime-kuma
+  ansible.builtin.systemd_service:
+    name: uptime-kuma
+    state: started
+  become: true

@@ -38,7 +38,10 @@ to it alone, so a compromise there reaches its own two repos and no others. The
 rest are DSM tasks on the
 NAS or an external app — recorded here, not codified. `auspex` runs neither
 role: its Prometheus TSDB and Alertmanager state have no copy, accepted as
-derived data. Recovery is in [`disaster-recovery.md`](disaster-recovery.md).
+derived data. Uptime Kuma's database sits beside them with no copy either, and
+it is not derived: its monitors and status pages are entered by hand, and a
+lost drive means entering them again. Recovery is in
+[`disaster-recovery.md`](disaster-recovery.md).
 
 ## Podman volume backup
 

@@ -1,0 +1,44 @@
+[Unit]
+Description=Uptime Kuma
+
+[Container]
+ContainerName=uptime-kuma
+Image={{ uptime_kuma_image }}
+# Host network so its monitors resolve and reach their targets exactly as the
+# host does — LAN names, the tunnel — like the blackbox exporter beside it. The
+# UI binds uptime_kuma_listen_host, not every interface.
+Network=host
+NoNewPrivileges=true
+DropCapability=all
+{# The rootless image runs as node and opens ordinary sockets on a port above
+   1024, so it needs no capability back. Without NET_RAW its ping monitors
+   cannot work; HTTP, TCP and DNS ones can. #}
+Environment=UPTIME_KUMA_HOST={{ uptime_kuma_listen_host }}
+Environment=UPTIME_KUMA_PORT={{ uptime_kuma_listen_port }}
+# Declares the database here rather than on the first-run page, which this
+# skips: the choice is written to db-config.json in the volume on every start.
+# The slim image carries no embedded MariaDB, so SQLite is the only local one.
+Environment=UPTIME_KUMA_DB_TYPE=sqlite
+Environment=TZ={{ uptime_kuma_timezone }}
+# The database, and with it every monitor and status page: a named volume, :U
+# handing it to the image's node user, which rootful podman would otherwise
+# create root-owned. A few files, so the recursive chown costs nothing.
+Volume=uptime-kuma-data:/app/data:U
+# Restart backstop, not the monitor — see the health convention in
+# roles/CLAUDE.md. The image ships this binary but no HEALTHCHECK naming it, so
+# it is named here at the backstop cadence. It reads the same UPTIME_KUMA_HOST
+# and UPTIME_KUMA_PORT the server binds, and exits 0 on any HTTP answer — so the
+# redirect a fresh instance sends to its setup page passes it.
+HealthCmd=/app/extra/healthcheck
+HealthInterval=5m
+HealthTimeout=30s
+HealthStartPeriod=30s
+HealthRetries=3
+HealthOnFailure=kill
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,78 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    # Host network, so the UI answers on the instance's own loopback :3001 — the
+    # role's defaults. A fresh instance redirects / to its first-run account
+    # page, which uri follows; that 200 proves the server is up and serving.
+    - name: Wait for uptime-kuma to serve its UI
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3001/
+        status_code: 200
+      register: uptime_kuma_ui
+      until: uptime_kuma_ui.status == 200
+      retries: 30
+      delay: 2
+
+    # A non-zero exit fails the task: the image's health binary is where the
+    # unit says, reads the same UPTIME_KUMA_HOST/PORT the server binds, and gets
+    # an answer.
+    - name: The healthcheck passes
+      ansible.builtin.command: podman healthcheck run uptime-kuma
+      become: true
+      changed_when: false
+
+    # See the container TZ convention in roles/CLAUDE.md, which fixes the zone —
+    # so the expectation is spelled out rather than derived from
+    # uptime_kuma_timezone, which would assert nothing.
+    - name: Read the zone the container resolved
+      ansible.builtin.command: podman exec uptime-kuma date +%Z
+      become: true
+      register: uptime_kuma_zone
+      changed_when: false
+
+    - name: The container resolved the zone it was given
+      ansible.builtin.assert:
+        that:
+          - uptime_kuma_zone.stdout in ['GMT', 'BST']
+        fail_msg: "uptime-kuma reports {{ uptime_kuma_zone.stdout }}, expected GMT or BST"
+
+    # The whole data path in one file: UPTIME_KUMA_DB_TYPE was honoured, so the
+    # database was created without the setup page, and the volume :U handed to
+    # node took the write — a root-owned volume would otherwise surface only at
+    # first-run setup, as a page that fails to save.
+    - name: The SQLite database was created in the data volume
+      ansible.builtin.command: podman exec uptime-kuma test -f /app/data/kuma.db
+      become: true
+      changed_when: false
+
+    - name: Read uptime-kuma's security posture
+      ansible.builtin.command: podman inspect uptime-kuma
+      become: true
+      register: uptime_kuma_inspect
+      changed_when: false
+
+    # The rootless image runs as node, so EffectiveCaps is always empty — only
+    # BoundingCaps reflects DropCapability=all. Assert the bounding set, and the
+    # user: a bump onto the non-rootless tag would run the process as root with
+    # every other assertion here still passing.
+    - name: Uptime Kuma runs as node, keeps no capabilities and bars privilege escalation
+      vars:
+        uptime_kuma: "{{ uptime_kuma_inspect.stdout | from_json | first }}"
+      ansible.builtin.assert:
+        that:
+          - uptime_kuma.Config.User == 'node'
+          - uptime_kuma.BoundingCaps | default([], true) | sort == []
+          - "'no-new-privileges' in (uptime_kuma.HostConfig.SecurityOpt | default([], true))"
+        fail_msg: "uptime-kuma's user, capability or no-new-privileges posture has regressed"
+        quiet: true
+
+    # The inquisition's `unpinned` class reads exactly this, and a quadlet whose
+    # Image lost its digest is a container that silently drifts on the next pull.
+    - name: The quadlet pins its image by digest
+      ansible.builtin.command: grep -E '^Image=.*@sha256:[0-9a-f]{64}$' /etc/containers/systemd/uptime-kuma.container
+      become: true
+      register: uptime_kuma_pin
+      changed_when: false
+      failed_when: uptime_kuma_pin.rc != 0

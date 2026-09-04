@@ -1,0 +1,6 @@
+---
+# renovate's image manager bumps the tag. slim: no Chromium, so no real-browser
+# monitors — a headless Chrome on a Raspberry Pi to assert what an HTTP monitor
+# already can — and no apprise, whose notification bridge Discord does not need.
+# rootless: the process runs as node, not root.
+uptime_kuma_image: docker.io/louislam/uptime-kuma:2.5.3-slim-rootless@sha256:ed26c94420af0921a38ebab6051cc5f7553c64efb4f8a5dd5e934f9b3b7ed062

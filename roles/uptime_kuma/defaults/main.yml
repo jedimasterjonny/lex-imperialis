@@ -1,0 +1,12 @@
+---
+# Address and port the web UI binds. Loopback by default; a host fronting it
+# for a browser — auspex, through solar's caddy — binds the LAN address instead
+# and opens the port. Two variables because the server reads them as two
+# environment variables, UPTIME_KUMA_HOST and UPTIME_KUMA_PORT.
+uptime_kuma_listen_host: 127.0.0.1
+uptime_kuma_listen_port: 3001
+
+# Container timezone, per the convention in roles/CLAUDE.md; the scenario asserts
+# the zone the container resolved. It is the server's default timezone, which
+# notification messages and the log are stamped in.
+uptime_kuma_timezone: Europe/London
