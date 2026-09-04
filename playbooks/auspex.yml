@@ -163,6 +163,14 @@
           - https://jonnyoc.uk
           - https://www.jonnyoc.uk
           - https://emmasedit.com
+          # emmasedit.com's permalink HTML is edge-cached for two hours (terraform's
+          # cache_html rule), so the probe above is a Cloudflare cache hit and would
+          # stay green for up to two hours after the origin died: the edge only tries
+          # the origin — and so only answers 52x — on a miss. This one is cached at
+          # neither layer: the query string keeps it out of the cache rule and Jetpack
+          # Boost never stores a feed, so every check is a full WordPress render,
+          # database included, ~1 KB. Uptime Kuma carries the same URL as a monitor.
+          - https://emmasedit.com/feed/?probe=origin
           - https://www.emmasedit.com
           - https://jonnyoc.co.uk
           - https://www.jonnyoc.co.uk
