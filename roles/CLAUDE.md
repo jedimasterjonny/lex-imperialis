@@ -24,9 +24,10 @@ changing or composing a role.
 
 ## Two distributions
 
-Six roles carry both arms: `stow`, `common`, `podman`, `firewalld`,
-`autoupdate` and `smartmon`. Everything else is single-OS and should stay that
-way — this is a tax, not a direction.
+Nine roles carry both arms: `stow`, `common`, `podman`, `firewalld`,
+`autoupdate` and `smartmon`, plus the backup chain `nfs`, `restic_backup` and
+`podman_backup`, which auspex runs for its podman repo. Everything else is
+single-OS and should stay that way — this is a tax, not a direction.
 
 `prometheus` is the one role that is neither and is easy to file wrongly: it
 branches on nothing and deploys only to the Debian host, so it is single-OS and

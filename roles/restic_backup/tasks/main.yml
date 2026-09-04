@@ -21,8 +21,9 @@
       anything that can reach the share, and by the off-site mirror.
     quiet: true
 
+# The package module, not zypper: auspex runs this (roles/CLAUDE.md).
 - name: Install restic
-  community.general.zypper:
+  ansible.builtin.package:
     name: "{{ restic_backup_package }}"
     state: present
   become: true

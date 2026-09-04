@@ -29,8 +29,10 @@
         state: mounted
       become: true
 
+    # The package module: the Debian platform has apt, refreshed by the tier's
+    # create.
     - name: Install podman (the runtime whose volumes are backed up)
-      community.general.zypper:
+      ansible.builtin.package:
         name: podman
         state: present
       become: true

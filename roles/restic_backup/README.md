@@ -40,6 +40,18 @@ compromised must not be able to open another host's backups. An empty
 `restic_backup_password` is rejected at converge. Assumes the `nfs` role has
 mounted the target; podman-volumes mode also assumes `podman`.
 
+The unit's `RequiresMountsFor=` makes the share's fstab mount unit a hard
+requirement on every fleet host. A share that is mounted but dead — the NAS down
+under a `hard` mount — starts the service, which the start timeout kills, so
+`*BackupFailed` fires as usual. A share merely unmounted is mounted by the
+timer's start job and the run proceeds; one that cannot be mounted — the NAS
+down, the export refused — fails that job instead: the service never starts,
+its `ExecStopPost` never writes `<name>_backup_success 0`, and `*BackupFailed`
+cannot fire — `NfsShareUnmounted` pages within ten minutes, and
+`*BackupOverdue` eight days after the last run, success or failure, since the
+timestamp advances on every run. The guard below is the second line, for a
+share that goes away after the mount job succeeded.
+
 `restic_backup_root` must be a live mountpoint, asserted immediately before the
 repository is created and again before the snapshot is written — not once at the
 top, because in podman-volumes mode the quiesce runs in between and stopping the
