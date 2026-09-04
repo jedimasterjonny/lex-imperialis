@@ -109,8 +109,35 @@ homepage_services:
           description: Tagging pipeline
           href: https://beets.{{ caddy_domain }}
           siteMonitor: http://beets:8337/
-          # No widget: homepage ships none for beets. The pipeline's backlog
-          # is a node_exporter textfile metric, so grafana is where it reads.
+          # No widget: homepage ships none for beets. Its backlog is the
+          # Screening tile beside this one.
+      # The beets pipeline's two parked-album counts, which are work waiting
+      # for the operator rather than a fault: an album lands here when the
+      # screener cannot match it, or when lidarr refused the matched copy past
+      # the poke cap, and only hand-processing clears either. No alert reads
+      # them — a backlog is not an outage — so this tile is where they surface.
+      # Both are node_exporter textfile gauges from the arr role's metric
+      # script, written on every pipeline tick.
+      #
+      # No href: the queue is a directory on solar, not a page. No siteMonitor
+      # for the same reason, and because beets beside it already reports the
+      # container that fills these.
+      - Screening:
+          icon: mdi-tray-full
+          description: Albums parked for hand-processing
+          widget:
+            type: prometheusmetric
+            url: http://auspex:9090
+            refreshInterval: 60000
+            metrics:
+              - label: Quarantine
+                query: sum(beets_pipeline_quarantine_albums)
+                format:
+                  type: number
+              - label: Rejected
+                query: sum(beets_pipeline_lidarr_rejected_albums)
+                format:
+                  type: number
   # The same two apps again, this time with enableQueue — the detailed
   # download listing, which has no fold of its own and would otherwise sit
   # open down the page. Only a group can collapse, so the listing gets its
@@ -201,6 +228,57 @@ homepage_services:
           href: http://auspex:9093
           siteMonitor: http://auspex:9093/-/healthy
           # No widget: homepage ships none for alertmanager.
+      # Four fleet-wide facts that otherwise only exist in Grafana, read from
+      # the same Prometheus the alerts evaluate against. Every count here is
+      # wrapped `or vector(0)`: an empty count() returns no series at all,
+      # which the widget renders as a blank slot — so the healthy answer would
+      # look exactly like a broken tile without it.
+      #
+      # No href and no siteMonitor: the Prometheus tile above is the way into
+      # the data, and a monitor here would re-fetch what these four already read.
+      - Fleet:
+          icon: mdi-shield-check
+          description: Alerts, backups and reconcile
+          widget:
+            type: prometheusmetric
+            url: http://auspex:9090
+            refreshInterval: 60000
+            metrics:
+              # Watchdog is excluded because it fires permanently by design —
+              # it is the deadman alertmanager forwards to healthchecks.io, so
+              # counting it would pin this at one and never read zero.
+              - label: Alerts
+                query: count(ALERTS{alertstate="firing", alertname!="Watchdog"}) or vector(0)
+                format:
+                  type: number
+              # The least-recently-run backup of the two the fleet schedules,
+              # so the tile follows whichever is furthest behind. podman_backup
+              # is weekly, so a healthy value reads in days, not hours, and it
+              # is normally the one this shows; home_backup is nightly. Both are
+              # last-run rather than last-success — the success flags have their
+              # own alerts, and a run that failed is still a run that happened.
+              - label: Backup
+                query: >-
+                  time() - min(podman_backup_last_run_timestamp_seconds
+                  or home_backup_last_run_timestamp_seconds)
+                format:
+                  type: duration
+              # How long since arbites last reconciled main onto the fleet.
+              # The timer fires every 15 minutes, so anything beyond that is
+              # the interesting case — and a *paused* reconciler is exactly
+              # that: the pause flag exits success, raising nothing, so this
+              # tile is the only place a hold left on by accident shows up.
+              - label: Reconcile
+                query: time() - max(arbites_last_run_timestamp_seconds)
+                format:
+                  type: duration
+              # SMART health across every checked device on every host, stated
+              # as the count that is wrong rather than the count that is right,
+              # so it agrees with the alert instead of inverting it.
+              - label: Bad disks
+                query: count(smartmon_device_healthy == 0) or vector(0)
+                format:
+                  type: number
   # Host health for the whole fleet, read from the Prometheus on auspex
   # rather than from each host's own exporter: one address to reach, and the
   # same series the alerts evaluate. RAM and Temp are MemoryLow and
@@ -372,16 +450,16 @@ homepage_layout:
     columns: 5
   Acquisition:
     style: row
-    columns: 3
+    columns: 4
   # Folded on every load; the group header is all that shows until clicked.
   Manifest:
     style: row
     columns: 2
     initiallyCollapsed: true
-  # Five tiles, so five columns rather than a second row holding one.
+  # Six tiles, so six columns rather than a second row holding one.
   Vigil:
     style: row
-    columns: 5
+    columns: 6
   Cogitators:
     style: row
     columns: 4
