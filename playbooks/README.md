@@ -12,8 +12,8 @@ descriptive:
 - **auspex** — a Raspberry Pi 5 on Raspberry Pi OS aarch64, the only non-x86_64
   and only Debian host, and the whole of the monitoring stack: Prometheus scrapes
   the fleet, holds the TSDB on its NVMe and evaluates every rule, blackbox_exporter
-  probes the public sites, solar's services and the NAS's NFS port, and
-  Alertmanager notifies.
+  probes the public sites, solar's services and the NAS's NFS port,
+  Alertmanager notifies, and Uptime Kuma keeps a status page.
 - **rogue-trader** — the Hetzner VPS serving the public WordPress site.
 
 `vars/` holds spec a play reads with `vars_files:` instead of carrying inline:

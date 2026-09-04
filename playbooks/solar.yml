@@ -71,6 +71,10 @@
       nas:
         upstream: https://administratum:5001
         insecure: true
+      # Uptime Kuma on auspex, plain HTTP on the LAN. Fronted for the cert as the
+      # NAS is: it has a login, and this puts that behind the fleet's wildcard.
+      uptime:
+        upstream: http://auspex:3001
     # Grafana reads the Prometheus on auspex over the LAN — the one that scrapes
     # the fleet, holds the TSDB on its NVMe and evaluates every rule. The NAS
     # holds no history any more.

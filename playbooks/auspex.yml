@@ -23,9 +23,10 @@
     node_exporter_listen_address: "{{ ansible_facts['default_ipv4']['address'] }}:9100"
     cadvisor_listen_ip: "{{ ansible_facts['default_ipv4']['address'] }}"
     # Openings beyond the ssh baseline the firewalld role already carries. 9090 so
-    # Grafana on solar can query this Prometheus; 9100 and 8080 for the exporters
-    # above, which bind the LAN address and so need the port even though their
-    # scraper is local.
+    # Grafana on solar can query this Prometheus; 3001 so solar's caddy and
+    # homepage reach Uptime Kuma; 9100 and 8080 for the exporters above, which
+    # bind the LAN address and so need the port even though their scraper is
+    # local.
     #
     # 9093 is kept rather than justified: its reason was the NAS's Prometheus
     # pushing alerts here over the LAN, and that went with the NAS's Prometheus.
@@ -35,6 +36,7 @@
     firewalld_ports:
       - 9090/tcp
       - 9093/tcp
+      - 3001/tcp
       - 9100/tcp
       - 8080/tcp
     # Bind the LAN rather than the role's loopback default: Grafana on solar
@@ -46,6 +48,10 @@
     # to title that alert with. Resolving to the LAN address from inside the
     # container is the same path the node and cadvisor jobs already take.
     prometheus_self_target: auspex:9090
+    # Bind the LAN rather than the role's loopback default: solar's caddy fronts
+    # this for the browser (caddy_proxied_hosts in solar.yml) and homepage's
+    # widget reads it. The exposure is the one prometheus above already accepts.
+    uptime_kuma_listen_host: "{{ ansible_facts['default_ipv4']['address'] }}"
     # A year, against the role's 30d default. Measured rather than estimated: the
     # TSDB this replaces held 2.1 GB at 30 days, so a year is ~26 GB — nothing on
     # the NVMe the container store now sits on, and holding a year is what the
@@ -184,6 +190,13 @@
       - module: http_2xx_or_401
         targets:
           - https://transmission.{{ caddy_domain }}/transmission/web/
+      # Uptime Kuma on this host, the liveness alert for it as for solar's
+      # services above. Direct rather than through solar's caddy, which fronts it
+      # for the browser: probed that way, solar down would read as this host's
+      # monitor down too.
+      - module: http_2xx
+        targets:
+          - http://auspex:3001/
       # The NAS, which runs no exporter and, now that Prometheus has left it, has
       # nothing else on the fleet that would notice it going away — the old
       # arrangement had the TSDB die with the host and the Watchdog deadman page.
@@ -257,4 +270,10 @@
     # `disable --now` fails before the --now ever stops the container.
     - prometheus
     - alertmanager
+    # A second watch on the fleet's services, with the status page and history
+    # the pair above does not keep. Here for the reason blackbox_exporter is: a
+    # monitor of solar's services that does not live on solar. Its monitors and
+    # status pages are entered in its UI, not declared here — and this host runs
+    # no podman_backup, so they have no copy either.
+    - uptime_kuma
     - inquisition

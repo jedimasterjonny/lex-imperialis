@@ -68,8 +68,8 @@ DSM's job (see below).
 Prometheus TSDB is set to retain a year of the fleet's monitoring history on a
 single NVMe with no RAID, no scrub and no repo. That is accepted rather than
 overlooked — it is derived data, so losing it costs dashboards and not recovery —
-but that NVMe, which carries Alertmanager's state beside the TSDB, is the one part
-of the fleet with no copy anywhere.
+but that NVMe, which carries Alertmanager's state and Uptime Kuma's hand-entered
+monitors beside the TSDB, is the one part of the fleet with no copy anywhere.
 
 **Off-site copy:** three Synology Hyper Backup tasks mirror the on-NAS backups
 off-site to a Hetzner storage box over rsync, each a plain true mirror (latest
