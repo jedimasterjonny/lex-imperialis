@@ -66,12 +66,16 @@ apply them with `wp core update`, `wp plugin update` (and so on) or through wp-a
 
 `wordpress-boost.timer` runs `/usr/local/sbin/wp-boost.sh` every six
 hours — offset 20 minutes from the update check so the two `wp` containers don't
-start on the same tick — reading Jetpack Boost's `critical_css_state` and the
-stored `jb_store_css` posts into `wordpress_textfile_dir/wordpress-boost.prom` as
-`wordpress_boost_installed`, `wordpress_boost_critical_css_generated`,
+start on the same tick — reading Jetpack Boost's `critical_css_state`, its
+`critical_css_suggest_regenerate` flag and the stored `jb_store_css` posts into
+`wordpress_textfile_dir/wordpress-boost.prom` as `wordpress_boost_installed`,
+`wordpress_boost_critical_css_generated`,
 `wordpress_boost_critical_css_updated_timestamp_seconds`,
-`wordpress_boost_critical_css_providers{status="success|error"}` and
-`wordpress_boost_critical_css_stored_bytes`, alongside the usual
+`wordpress_boost_critical_css_providers{status="success|error"}`,
+`wordpress_boost_critical_css_stored_bytes` and
+`wordpress_boost_critical_css_regenerate_suggested` — Boost's own regenerate
+flag, set on a plugin toggle, theme switch or page save and cleared by a
+regeneration — alongside the usual
 `wordpress_boost_success` / `_last_run_timestamp_seconds` pair. A failed
 check carries the last-good values forward, as the update check does.
 
