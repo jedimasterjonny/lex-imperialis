@@ -133,12 +133,14 @@ rules above do not cover these tasks. See [administratum](#administratum-nas).
 4. Once step 3 has converged clean — `sudo podman volume ls` shows the expected
    volumes — pause the reconciler and hold the backup timer, then restore over
    the fresh ones. An unpaused reconciler applies from `main` and can restart
-   these units mid-swap; an unmasked timer can snapshot the freshly-initialised
-   state as `latest`, which is what a later restore would then read back:
+   these units mid-swap; an unheld timer can snapshot the freshly-initialised
+   state as `latest`, which is what a later restore would then read back.
+   `stop`, not `mask`: the timer is a real file under `/etc/systemd/system`,
+   which `mask` refuses to overwrite.
 
    ```bash
    sudo touch /var/lib/arbites/pause
-   sudo systemctl mask --now podman-backup.timer
+   sudo systemctl stop podman-backup.timer
    sudo /usr/local/sbin/podman-restore.sh
    ```
 
@@ -179,7 +181,6 @@ rules above do not cover these tasks. See [administratum](#administratum-nas).
 5. Once the restore is verified, lift the holds:
 
    ```bash
-   sudo systemctl unmask podman-backup.timer
    sudo systemctl start podman-backup.timer
    sudo rm /var/lib/arbites/pause
    ```
@@ -305,7 +306,7 @@ throwaway, never on this server.** So step 7 is mandatory, not optional, and ste
    backup timer for the same reason as solar step 4:
 
    ```bash
-   sudo systemctl mask --now podman-backup.timer
+   sudo systemctl stop podman-backup.timer
    sudo podman volume create wordpress-db-dump
    sudo /usr/local/sbin/podman-restore.sh
    ```
@@ -352,7 +353,6 @@ throwaway, never on this server.** So step 7 is mandatory, not optional, and ste
    ```bash
    sudo systemctl restart wordpress wordpress-valkey
    sudo systemctl enable --now wordpress-cron.timer wordpress-db-dump.timer
-   sudo systemctl unmask podman-backup.timer
    sudo systemctl start podman-backup.timer
    ```
 
