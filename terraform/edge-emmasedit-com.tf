@@ -1,7 +1,7 @@
 # emmasedit.com edge configuration: Cloudflare zone settings (TLS, security,
-# caching) and the WordPress cache ruleset. DNS records live in
-# dns-emmasedit-com.tf; the zone_id local is defined there. Tiered Cache is
-# read-only on the Free plan, so it is left unmanaged.
+# caching), the www canonical redirect and the WordPress cache ruleset. DNS
+# records live in dns-emmasedit-com.tf; the zone_id local is defined there.
+# Tiered Cache is read-only on the Free plan, so it is left unmanaged.
 #
 # The origin (caddy on rogue-trader) owns the response security headers and the
 # static-asset Cache-Control; these settings govern only what Cloudflare's edge
@@ -105,6 +105,41 @@ resource "cloudflare_zone_setting" "emmas_rocket_loader" {
   zone_id    = local.emmasedit_com_zone_id
   setting_id = "rocket_loader"
   value      = "off"
+}
+
+# --- Canonical redirect ---
+
+# 301 www to the apex at the edge, preserving path and query. WordPress already
+# answers www with this same 301, so nothing a visitor sees changes; the rule
+# stops that hop reaching the origin at all. Measured 2026-09-04: the origin
+# round trip is ~60 ms on a warm edge connection and ~150 ms on a cold one, once
+# caddy's 5m idle timeout has closed it and the edge must redo the mTLS
+# handshake — paid by every www visitor before the request they came for. The
+# WordPress 301 stays as the fallback; www remains a proxied CNAME to the apex.
+resource "cloudflare_ruleset" "emmas_www_redirect" {
+  zone_id = local.emmasedit_com_zone_id
+  name    = "emmasedit.com www canonical redirect to apex"
+  kind    = "zone"
+  phase   = "http_request_dynamic_redirect"
+
+  rules = [
+    {
+      ref         = "redirect_www_to_apex"
+      description = "301 www to the emmasedit.com apex, preserving path and query"
+      expression  = "(http.host eq \"www.emmasedit.com\")"
+      action      = "redirect"
+      enabled     = true
+      action_parameters = {
+        from_value = {
+          status_code           = 301
+          preserve_query_string = true
+          target_url = {
+            expression = "concat(\"https://emmasedit.com\", http.request.uri.path)"
+          }
+        }
+      }
+    },
+  ]
 }
 
 # --- Cache rules ---
