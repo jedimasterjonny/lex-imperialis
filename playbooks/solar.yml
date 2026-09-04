@@ -32,6 +32,7 @@
       - beets
       - recyclarr
       - plex
+      - tautulli
       - wireguard
       - transmission
     # Media lives under arr-data on the NAS; mounting it as /data makes the apps'
