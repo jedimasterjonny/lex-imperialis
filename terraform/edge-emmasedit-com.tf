@@ -144,10 +144,10 @@ resource "cloudflare_ruleset" "emmas_www_redirect" {
 
 # --- Cache rules ---
 
-# HTML stays dynamic (served from the origin's Jetpack Boost page cache). Two
-# rules: cache static assets honouring the origin's immutable Cache-Control, and
-# never cache admin, login, or logged-in/commenter responses. The bypass rule is
-# ordered last so it wins for a logged-in user's static-asset requests.
+# Three rules: cache static assets honouring the origin's immutable
+# Cache-Control, cache the HTML for two hours, and never cache admin, login,
+# or logged-in/commenter responses. The bypass rule is ordered last so it wins
+# for a logged-in user's static-asset and page requests alike.
 resource "cloudflare_ruleset" "emmas_cache" {
   zone_id = local.emmasedit_com_zone_id
   name    = "emmasedit.com WordPress cache policy"
@@ -166,6 +166,31 @@ resource "cloudflare_ruleset" "emmas_cache" {
       action_parameters = {
         cache       = true
         edge_ttl    = { mode = "respect_origin" }
+        browser_ttl = { mode = "respect_origin" }
+      }
+    },
+    # The permalinks are the extensionless GETs with no query string; everything
+    # else stays dynamic — /wp-json/ by name, .php and the feeds/sitemaps by
+    # extension, searches and cache-busters by the query test. The TTL has to be
+    # an override because the origin sends no Cache-Control on HTML: WordPress
+    # core sends none for anonymous pages by design, and Jetpack Boost's page
+    # cache is an origin cache that marks its hits with X-Jetpack-Boost-Cache and
+    # nothing else. Two hours is the Free plan's minimum edge TTL. browser_ttl
+    # stays respect_origin so browsers get no header and revalidate every visit.
+    # Invalidation is the Cloudflare WordPress plugin's "Auto Purge Content On
+    # Update", installed by hand on rogue-trader with a purge-only token
+    # (docs/secret-rotation.md) — without it an edit sits stale for the TTL.
+    # Measured 2026-09-04 from the LAN: an edge hit answers in ~28 ms, against
+    # ~60 ms from a warm origin connection and ~150 ms from a cold one.
+    {
+      ref         = "cache_html"
+      description = "Edge-cache permalink HTML for two hours; the plugin purges on edit"
+      expression  = "http.request.method eq \"GET\" and http.request.uri.query eq \"\" and http.request.uri.path.extension eq \"\" and not starts_with(http.request.uri.path, \"/wp-json/\")"
+      action      = "set_cache_settings"
+      enabled     = true
+      action_parameters = {
+        cache       = true
+        edge_ttl    = { mode = "override_origin", default = 7200 }
         browser_ttl = { mode = "respect_origin" }
       }
     },
