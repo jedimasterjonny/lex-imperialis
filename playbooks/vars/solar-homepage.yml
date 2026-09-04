@@ -38,6 +38,18 @@ homepage_services:
             type: plex
             url: http://solar:32400
             key: !unsafe "{{HOMEPAGE_VAR_PLEX_TOKEN}}" # noqa: jinja[spacing]
+      - Tautulli:
+          icon: tautulli.png
+          description: Plex activity
+          href: https://tautulli.{{ caddy_domain }}
+          siteMonitor: http://tautulli:8181/status
+          # Tautulli mints its own key on first start (Settings → Web Interface
+          # → API), read back into the vault as the Plex token is; until it is,
+          # the widget reports an API error and the tile is otherwise whole.
+          widget:
+            type: tautulli
+            url: http://tautulli:8181
+            key: !unsafe "{{HOMEPAGE_VAR_TAUTULLI_KEY}}" # noqa: jinja[spacing]
       - Sonarr:
           icon: sonarr.png
           description: Television
@@ -357,7 +369,7 @@ homepage_services:
 homepage_layout:
   Archive:
     style: row
-    columns: 4
+    columns: 5
   Acquisition:
     style: row
     columns: 3
@@ -446,6 +458,7 @@ homepage_bookmarks:
 # minted for this dashboard alone, so it rotates on its own.
 homepage_secrets:
   PLEX_TOKEN: "{{ solar_plex_token }}"
+  TAUTULLI_KEY: "{{ solar_tautulli_api_key }}"
   SONARR_KEY: "{{ arr_api_keys.sonarr }}"
   RADARR_KEY: "{{ arr_api_keys.radarr }}"
   LIDARR_KEY: "{{ arr_api_keys.lidarr }}"
