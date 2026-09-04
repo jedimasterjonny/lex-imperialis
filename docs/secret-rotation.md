@@ -55,7 +55,7 @@ apply target, and any wrinkle.
 | `rogue_trader_wordpress_db_password` | self-chosen MariaDB app password | `PLAY=rogue-trader` | **First-init only, and the apply misses the live copy** — the play rewrites `db.env`/`app.env`, which only the nightly dump reads; the migrated `wp-config.php` holds its own literal the image entrypoint never rewrites. Keep the site up with MariaDB multi-auth: `ALTER USER 'wordpress'@'%' IDENTIFIED VIA mysql_native_password USING PASSWORD('<old>') OR mysql_native_password USING PASSWORD('<new>')`, apply, `sudo wp config set DB_PASSWORD '<new>'` on the host, verify, then re-`ALTER` to the new password alone. A straight cutover takes emmasedit.com down until `wp-config.php` is edited, and step 4 will not catch it |
 | `rogue_trader_wordpress_db_root_password` | self-chosen MariaDB root password | `PLAY=rogue-trader` | Same first-init caveat, but root exists **twice** — `ALTER USER 'root'@'localhost', 'root'@'%'`. Nothing authenticates as root at runtime (the healthcheck has its own account), so missing the `'%'` half is silent until `disaster-recovery.md`'s dump-load step, which connects remotely as root |
 | `arbites_github_token` | GitHub PAT — fine-grained with Deployments: read and write on this repo, or classic scoped `repo_deployment` | `PLAY=scholam` | Telemetry only: it posts the reconcile's deployment record to the `Segmentum Solar` environment and nothing else, so a lapsed or revoked token degrades to a journal warning while applies carry on — no alert fires, and the environment simply stops gaining deployments. Verify by merging anything and watching the record appear. A fine-grained token expires on a fixed date, so it rotates on GitHub's calendar rather than on exposure |
-| `solar_restic_password` / `scholam_restic_password` / `rogue_trader_restic_password` | self-chosen, one per host | `PLAY=<host>` | **Repo-side, and the order is inverted — see below.** One key per host by design: a host must not be able to open another's repos |
+| `solar_restic_password` / `scholam_restic_password` / `rogue_trader_restic_password` / `auspex_restic_password` | self-chosen, one per host | `PLAY=<host>` | **Repo-side, and the order is inverted — see below.** One key per host by design: a host must not be able to open another's repos |
 
 **First-init caveat.** MariaDB and Grafana bake the password in on first
 container init, so a vault edit + apply alone will not change an already-running
@@ -74,7 +74,8 @@ Add first, and split the add from the remove across a mirror run:
 
 1. While the old key is still the rendered one, add the new one to every repo that
    host owns — two on solar and rogue-trader (podman and home, one host key opens
-   both), one on scholam; paths in [backups.md](backups.md), and `/etc/restic` is
+   both), one each on scholam (home) and auspex (podman); paths in
+   [backups.md](backups.md), and `/etc/restic` is
    `0700 root` so these need sudo:
    `sudo restic -r <repo> --password-file /etc/restic/password key add --new-password-file <file>`.
 2. Edit the vault and merge it; the reconcile applies it.

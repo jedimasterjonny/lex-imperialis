@@ -40,6 +40,18 @@ compromised must not be able to open another host's backups. An empty
 `restic_backup_password` is rejected at converge. Assumes the `nfs` role has
 mounted the target; podman-volumes mode also assumes `podman`.
 
+The unit's `RequiresMountsFor=` makes the share's fstab mount unit a hard
+requirement on every fleet host. A share that is mounted but dead — the NAS down
+under a `hard` mount — starts the service, which the start timeout kills, so
+`*BackupFailed` fires as usual. A share merely unmounted is mounted by the
+timer's start job and the run proceeds; one that cannot be mounted — the NAS
+down, the export refused — fails that job instead: the service never starts,
+its `ExecStopPost` never writes `<name>_backup_success 0`, and `*BackupFailed`
+cannot fire — `NfsShareUnmounted` pages within ten minutes, and
+`*BackupOverdue` eight days after the last run, success or failure, since the
+timestamp advances on every run. The guard below is the second line, for a
+share that goes away after the mount job succeeded.
+
 `restic_backup_root` must be a live mountpoint, asserted immediately before the
 repository is created and again before the snapshot is written — not once at the
 top, because in podman-volumes mode the quiesce runs in between and stopping the
@@ -73,6 +85,7 @@ Consumer-set (no default):
 
 Tunable (defaulted): `restic_backup_root`, `restic_backup_tag`,
 `restic_backup_paths`, `restic_backup_excludes`, `restic_backup_podman_volumes`,
+`restic_backup_podman_volume_excludes`,
 `restic_backup_script_dir`, `restic_backup_textfile_dir`,
 `restic_backup_keep_weekly`, `restic_backup_keep_monthly`,
 `restic_backup_check_read_data_weeks`, `restic_backup_timeout_start_sec`,
@@ -82,7 +95,7 @@ Tunable (defaulted): `restic_backup_root`, `restic_backup_tag`,
 disables the start timeout altogether rather than inheriting
 `DefaultTimeoutStartSec`, so unset means *infinity*: with `hard` NFS a wedged call
 holds the unit in `activating` indefinitely, and in podman-volumes mode it does so
-with every container stopped. Nothing else covers that — `SystemdUnitFailed`
+with the quiesced containers stopped. Nothing else covers that — `SystemdUnitFailed`
 excludes these units by regex, and a unit stuck in `activating` never reaches
 `failed`. On expiry the script takes SIGTERM, its EXIT trap restarts the
 containers, and the failed unit trips the usual `*BackupFailed` alert.
@@ -92,22 +105,22 @@ containers, and the failed unit trips the usual `*BackupFailed` alert.
 - **Path backup** (default) — snapshots the absolute paths in
   `restic_backup_paths`. No quiescing: the snapshot is crash-consistent.
 - **Podman-volumes** (`restic_backup_podman_volumes: true`) — the sources are the
-  host's podman volume mountpoints, enumerated at run time; the quadlet container
-  units are quiesced for a consistent snapshot and always restarted (a trap, so
-  they return even if the backup fails). A quadlet glob matching nothing fails the
-  run rather than proceeding: this mode exists to avoid snapshotting a live
-  database, so nothing to quiesce means a broken assumption, not an idle night.
+  host's podman volume mountpoints, enumerated at run time; the containers
+  mounting them are quiesced for a consistent snapshot and always restarted (a
+  trap, so they return even if the backup fails). Which running container
+  mounts which volume comes from `podman inspect` — quadlet labels each
+  container with its unit, and the mounts are whatever the unit wrote, in any
+  form — not from a parse of the quadlet files.
   The service is additionally ordered `After=multi-user.target` in this mode. The
   timer is `Persistent=true`, so a host that was off over its window fires a
   catch-up run at boot, and unordered that run races the quadlet units' start —
-  the quiesce finds none of them active yet, stops nothing, and snapshots a live
-  database while reporting success. The zero-match guard does not cover it: the
-  `.container` files are all present, they are simply not started. Every quadlet
-  unit is `Type=notify` with `Before=multi-user.target`, so the target is reached
-  only once each container has signalled ready. Ordering only, so a container that
-  fails to start delays nothing, and a no-op for the normal scheduled run. Path
-  mode does not take this ordering — it has nothing to quiesce. Deliberately not an
-  "the quiesce stopped at least one unit" assertion instead: a fleet stopped for
+  the quiesce finds none of them running yet, stops nothing, and the containers
+  then start into a snapshot in progress. Every quadlet unit is `Type=notify`
+  with `Before=multi-user.target`, so the target is reached only once each
+  container has signalled ready. Ordering only, so a container that fails to
+  start delays nothing, and a no-op for the normal scheduled run. Path mode does
+  not take this ordering — it has nothing to quiesce. Deliberately not an "the
+  quiesce stopped at least one unit" assertion instead: a fleet stopped for
   maintenance quiesces nothing and is genuinely consistent, so that would fail
   correct runs.
   This mode also installs `<name>-restore.sh`, the inverse of the backup for
@@ -115,6 +128,27 @@ containers, and the failed unit trips the usual `*BackupFailed` alert.
   an optional snapshot ID (default `latest`), so a recovery can skip past a bad
   snapshot instead of being stuck with whichever is newest. A path backup restores
   by hand with `restic restore`.
+
+  The quiesce stops only a container with something in the snapshot to keep
+  consistent: one mounting no named volume (cadvisor, node_exporter, the
+  exporters) rides through the run, and so does one whose named volumes are all
+  in `restic_backup_podman_volume_excludes`, the volumes left out of the
+  snapshot. One that also mounts an included volume is stopped like any other,
+  so a volume added later to a container that stays up is never snapshotted
+  live. A container no unit owns — an ad-hoc `podman run`, as rogue-trader's
+  wp wrapper and database dump are for seconds at a time — has nothing to
+  stop: one holding a volume in the snapshot is logged and snapshotted live,
+  as it always was. The restore takes its stop set differently, from the
+  `.container` files in the quadlet directory, refusing when that glob matches
+  nothing: an ad-hoc container is stopped by neither, and a `.kube` or
+  subdirectory quadlet — none deployed — would be quiesced by the backup only
+  (a pod's members are `.container` files, so the glob sees them). One refusal
+  guards the exclusion itself: a name matching no volume on the host — renamed
+  under it, or a typo — would otherwise return that volume to the snapshot and
+  its container to the quiesce while reporting success. A volume not created
+  yet, because its container has never started, trips the same refusal; the
+  message names the missing volume, the page the host. The restore already leaves a host
+  volume the snapshot lacks untouched, so an excluded volume is never restored.
 
   The restore reads the **whole snapshot into a scratch target first** and swaps
   it into the live volumes only once that has succeeded, so a repository that is

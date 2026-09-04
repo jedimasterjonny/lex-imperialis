@@ -126,9 +126,11 @@ that is already running. Each container adopts it whenever its unit next restart
 since quadlet's `ExecStart` is `podman run --replace --rm`. The role does not force
 that: it would fire on whichever unattended `arbites` tick first saw the
 change, and plex and beets are not safe to kill mid-transcode or mid-import. Left
-alone, solar turns over at whichever comes first of the weekly `autoupdate` reboot
-and `podman_backup`'s quiesce; scholam runs no backup, so its reboot is the only
-one. To land it sooner, restart the units by hand.
+alone, a container with a volume in the backup turns over at whichever comes
+first of the weekly `autoupdate` reboot and `podman_backup`'s quiesce; one
+without — cadvisor, the exporters, auspex's prometheus with its volume excluded
+— and everything on scholam, which runs no backup, waits for the reboot. To
+land it sooner, restart the units by hand.
 
 Reverting the commit is *not* a rollback: it deletes the task, not the file, so the
 drop-in stays and containers keep coming back on crun. To go back, delete

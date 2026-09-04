@@ -47,9 +47,9 @@ first (below), or drive the others from any machine meeting the above.
 The full backup architecture — all seven layers — is in [`backups.md`](backups.md);
 this is the recovery-relevant summary.
 
-`podman_backup` runs on `solar` and `rogue-trader` only, writing a per-host
+`podman_backup` runs on `solar`, `rogue-trader` and `auspex`, writing a per-host
 restic repo to `/nfs/astropath/<hostname>-podman-backup` on the NAS. The repo
-holds every podman named volume — so all container state (databases, app config,
+holds every podman named volume but `auspex`'s TSDB — so all container state (databases, app config,
 Plex library and history, the WordPress site) travels in it. Media on the NFS
 shares is not in the repo; it lives on the NAS and is the NAS's own concern.
 
@@ -64,12 +64,12 @@ no podman repo; its recoverable state is the git repo, `.vault_pass`, and its
 `/home` restic repo. `administratum` (the NAS) is the backup *target*; its DR is
 DSM's job (see below).
 
-`auspex` runs no backup role either, and unlike scholam it is not stateless: its
-Prometheus TSDB is set to retain a year of the fleet's monitoring history on a
-single NVMe with no RAID, no scrub and no repo. That is accepted rather than
-overlooked — it is derived data, so losing it costs dashboards and not recovery —
-but that NVMe, which carries Alertmanager's state and Uptime Kuma's hand-entered
-monitors beside the TSDB, is the one part of the fleet with no copy anywhere.
+`auspex` runs `podman_backup` alone, minus its Prometheus TSDB: a year of the
+fleet's monitoring history on a single NVMe with no RAID, no scrub and no repo.
+That is accepted rather than overlooked — it is derived data, so losing it costs
+dashboards and not recovery — but it makes the TSDB the one part of the fleet
+with no copy anywhere. Alertmanager's silences and Uptime Kuma's hand-entered
+monitors beside it are in the host's podman repo.
 
 **Off-site copy:** three Synology Hyper Backup tasks mirror the on-NAS backups
 off-site to a Hetzner storage box over rsync, each a plain true mirror (latest
@@ -133,12 +133,14 @@ rules above do not cover these tasks. See [administratum](#administratum-nas).
 4. Once step 3 has converged clean — `sudo podman volume ls` shows the expected
    volumes — pause the reconciler and hold the backup timer, then restore over
    the fresh ones. An unpaused reconciler applies from `main` and can restart
-   these units mid-swap; an unmasked timer can snapshot the freshly-initialised
-   state as `latest`, which is what a later restore would then read back:
+   these units mid-swap; an unheld timer can snapshot the freshly-initialised
+   state as `latest`, which is what a later restore would then read back.
+   `stop`, not `mask`: the timer is a real file under `/etc/systemd/system`,
+   which `mask` refuses to overwrite.
 
    ```bash
    sudo touch /var/lib/arbites/pause
-   sudo systemctl mask --now podman-backup.timer
+   sudo systemctl stop podman-backup.timer
    sudo /usr/local/sbin/podman-restore.sh
    ```
 
@@ -179,7 +181,6 @@ rules above do not cover these tasks. See [administratum](#administratum-nas).
 5. Once the restore is verified, lift the holds:
 
    ```bash
-   sudo systemctl unmask podman-backup.timer
    sudo systemctl start podman-backup.timer
    sudo rm /var/lib/arbites/pause
    ```
@@ -305,7 +306,7 @@ throwaway, never on this server.** So step 7 is mandatory, not optional, and ste
    backup timer for the same reason as solar step 4:
 
    ```bash
-   sudo systemctl mask --now podman-backup.timer
+   sudo systemctl stop podman-backup.timer
    sudo podman volume create wordpress-db-dump
    sudo /usr/local/sbin/podman-restore.sh
    ```
@@ -352,7 +353,6 @@ throwaway, never on this server.** So step 7 is mandatory, not optional, and ste
    ```bash
    sudo systemctl restart wordpress wordpress-valkey
    sudo systemctl enable --now wordpress-cron.timer wordpress-db-dump.timer
-   sudo systemctl unmask podman-backup.timer
    sudo systemctl start podman-backup.timer
    ```
 
@@ -455,18 +455,21 @@ play, run locally, then the home restore.
 
 ## auspex (Raspberry Pi 5)
 
-No NFS mount and no backup role, so nothing here is restored from a repo. What it
-does hold is the fleet's entire monitoring history: Prometheus's TSDB, retained
-for up to a year, on the NVMe mounted at `/var/lib/containers`. There is no copy of that
-anywhere — accepted, because it is derived data whose loss costs dashboards
-rather than recovery, but it means the card and the drive fail differently.
+One podman repo, `auspex-podman-backup` on `astropath`, holding every named
+volume but the TSDB — Uptime Kuma's monitors and Alertmanager's silences, the
+state entered by hand. The rest of what the host holds is the fleet's entire
+monitoring history: Prometheus's TSDB, retained for up to a year, on the NVMe
+mounted at `/var/lib/containers`. There is no copy of that anywhere — accepted,
+because it is derived data whose loss costs dashboards rather than recovery, but
+it means the card and the drive fail differently.
 
 **A card rebuild does not touch the NVMe.** Reflashing the SD card and re-applying
 the play remounts the existing store, so the TSDB, Alertmanager's silences and
-every other named volume survive the procedure below. Losing the NVMe itself is
-what loses the history, and nothing restores it — fit a replacement, then give it
-an **ext4** filesystem labelled `containers` (`sudo mkfs.ext4 -L containers
-/dev/<partition>`), and the fleet starts recording again from empty. `LABEL=` is
+every other named volume survive the procedure below, and step 6 is not needed.
+Losing the NVMe itself is what loses the history, and nothing restores it — fit
+a replacement, then give it an **ext4** filesystem labelled `containers`
+(`sudo mkfs.ext4 -L containers /dev/<partition>`), and the fleet starts
+recording again from empty; the repo puts the rest back. `LABEL=` is
 the filesystem label, not the partition name: a partition merely *named*
 `containers` never resolves, and because the mount carries `nofail` the play then
 reports green while the whole container store lands on the SD card. Confirm with
@@ -486,6 +489,11 @@ reports green while the whole container store lands on the SD card. Confirm with
    ```bash
    make apply PLAY=auspex
    ```
+
+   If the NVMe was lost, hold the backup timer at once — the apply armed it
+   for the next Wednesday 00:30 — and pause the reconciler, both until step 6:
+   `sudo systemctl stop podman-backup.timer` here, and
+   `sudo touch /var/lib/arbites/pause` on scholam.
 
 4. Re-seed the host key, or the reconcile stops fleet-wide. A re-image generates a
    new one, and the entry in `arbites`'s `known_hosts` then MISMATCHES rather than
@@ -510,8 +518,26 @@ reports green while the whole container store lands on the SD card. Confirm with
    in this repo may configure DSM. See
    [`roles/offsite_mirror/README.md`](../roles/offsite_mirror/README.md).
 
+6. After a lost NVMe only, restore the podman volumes the way solar's are,
+   under the holds step 3 put in place:
+
+   ```bash
+   sudo /usr/local/sbin/podman-restore.sh
+   ```
+
+   If a Wednesday run landed before the hold, `latest` is a snapshot of the
+   empty volumes the apply created: name the one before it, as solar's step 4
+   does — `sudo /usr/local/sbin/podman-restore.sh <id>`, with IDs from
+   `restic snapshots`. It names `prometheus-data` as a host volume the
+   snapshot does not hold and leaves it alone — the exclusion, not a fault —
+   and stops every container for the swap, Prometheus included. Lift the holds
+   only once the restore is verified, as solar's step 5 does:
+   `sudo systemctl start podman-backup.timer` here, then
+   `sudo rm /var/lib/arbites/pause` on scholam. A restore that stopped part-way
+   keeps both holds in place while it is investigated.
+
 Anything deliberately silenced before a loss that took the NVMe with it starts
-firing again after step 3. The outage itself is a hole in the history rather than
+firing again after step 3, unless step 6 brought the silences back. The outage itself is a hole in the history rather than
 a fault to repair: nothing buffers samples on the fleet's behalf, so what was not
 scraped is simply gone.
 
@@ -547,12 +573,14 @@ Recover the appliance with DSM (Hyper Backup / the RAID) — intact disks under 
 reinstalled DSM need the volume encryption key from Prerequisites — then re-export
 the shares the fleet mounts, **with the same options**, which are part of what has
 to be recreated and are in no backup. `astropath` maps root to the `admin` account
-(DSM's "Map root to admin"): both share roots are ACL-gated to `jonny` and
+(DSM's "Map root to admin"): the backup share roots are ACL-gated to `jonny` and
 `administrators`, so any other squash identity is refused and restic silently
 cannot write its repos. `scriptorum` keeps "No mapping", which is what lets rootful
-podman traverse it at container start. `solar`, `scholam` and `rogue-trader` all
-mount `astropath`; `solar` and `scholam` also mount `scriptorum`. Those mounts are
-what the arr stack and the backups run on.
+podman traverse it at container start. `solar`, `scholam` and `auspex` mount
+`astropath`; `rogue-trader` mounts its own `xenos` export under that name, with
+the same mapping and exported to it alone, which is the share's whole point — a
+compromised public box reaches only its own repos; `solar` and `scholam` also
+mount `scriptorum`. Those mounts are what the arr stack and the backups run on.
 
 The off-site coverage probe on `auspex` breaks too: re-add its public key
 (`/etc/offsite-mirror/id_ed25519.pub`) to the `jonny` account's `authorized_keys`
@@ -580,8 +608,8 @@ Hyper Backup config (see [`secret-rotation.md`](secret-rotation.md)) — if that
 went with the NAS, reset the sub-account password in the Console.
 
 Then restore those tasks' sets to return the repos to
-`/volume2/astropath/` and `/volume2/xenos/`, and the photo library to its share; solar's, scholam's, and
-rogue-trader's backups can then be restored as normal. The laptop's `time-machine`
+`/volume2/astropath/` and `/volume2/xenos/`, and the photo library to its share; solar's, scholam's,
+rogue-trader's and auspex's backups can then be restored as normal. The laptop's `time-machine`
 SMB share on `scriptorum` is not mirrored off-site, so it is not recovered — the
 laptop simply resumes Time Machine onto the rebuilt share.
 

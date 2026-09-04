@@ -12,6 +12,8 @@
     # Matches restic_backup_timeout_start_sec in the engine defaults, as systemd
     # renders it back.
     restic_backup_timeout: 1h
+    # The share stand-in's fstab mount unit, as systemd names it from the path.
+    restic_backup_mount_unit: var-tmp-backup.mount
   tasks:
     - name: Confirm restic is installed and runnable
       ansible.builtin.command: restic version
@@ -94,7 +96,8 @@
     # Type=oneshot leaves the start timeout disabled unless the unit sets one, so
     # unset means infinity rather than the manager's 90s default. With `hard` NFS
     # that lets a wedged call hold the service in activating indefinitely — in
-    # podman-volumes mode with every container stopped — and nothing catches it:
+    # podman-volumes mode with the quiesced containers stopped — and nothing
+    # catches it:
     # SystemdUnitFailed excludes these units by regex, and a unit stuck in
     # activating never reaches failed to begin with.
     - name: Read the backup service's state
@@ -206,23 +209,26 @@
     # The exclusive forget --prune is refused and every scheduled run fails until
     # the lock is cleared by hand, with the snapshot itself already saved. Plant one
     # the way reality does, by killing a restic mid-lock, and assert the run clears
-    # it rather than tripping over it.
+    # it rather than tripping over it. restic writes the lock as <id>-tmp-<n> and
+    # renames it into place; a kill between the two leaves a stray tmp file that is
+    # no lock and that unlock does not clear, so wait for the rename.
     - name: Plant a stale lock from a killed restic
       ansible.builtin.shell: |
         set -u
         locks={{ restic_backup_repo | quote }}/locks
+        has_lock() { [ -n "$(find "$locks" -maxdepth 1 -type f ! -name '*-tmp-*' -print -quit 2>/dev/null)" ]; }
         restic --password-file /etc/restic/password \
             --repo {{ restic_backup_repo | quote }} backup /usr >/dev/null 2>&1 &
         pid=$!
         for _ in $(seq 1 200); do
-            [ -n "$(ls -A "$locks" 2>/dev/null)" ] && break
+            has_lock && break
             sleep 0.1
         done
         kill -9 "$pid" 2>/dev/null
         wait "$pid" 2>/dev/null
         # Fail loudly rather than leave the assertion below proving nothing: a lock
         # that never appeared, or that the killed run tidied up, is not a test.
-        [ -n "$(ls -A "$locks" 2>/dev/null)" ]
+        has_lock
       changed_when: true
       become: true
 
@@ -321,14 +327,33 @@
     # up into, and reports as a success while the real repo silently stops
     # receiving snapshots. Run last, and remount, so a standalone `make verify`
     # re-run still starts from a mounted share.
+    #
+    # Unmounted with its fstab entry intact, because that is the state the
+    # NetworkManager dispatcher leaves a share in (roles/nfs). The unit's
+    # RequiresMountsFor= then makes the fstab mount unit a hard requirement, so
+    # systemd remounts the share before the run, which lands in the repository
+    # as it should — on every fleet host, whose fstab generator gives that unit
+    # a fragment (scholam, systemd 261: Requires=nfs-astropath.mount). The incus
+    # Tumbleweed image ships no such generator, so there the unit has no
+    # fragment, RequiresMountsFor= can pull nothing in, and the run reaches the
+    # script's own guard and is refused. Both are worth asserting, per platform
+    # as the convention has it, with the fragment's presence asserted alongside
+    # so an image that changes turns the run red rather than re-routing it.
+    # Either way the root filesystem under the mount must stay empty.
     - name: Unmount the share stand-in
       ansible.posix.mount:
         path: "{{ restic_backup_repo_root }}"
         state: unmounted
       become: true
 
-    # ignore_errors, not failed_when: false — the run is meant to fail, and
-    # failed_when would clear the very flag the assertion below reads.
+    - name: Read whether the stand-in's mount unit has an fstab fragment
+      ansible.builtin.systemd_service:
+        name: "{{ restic_backup_mount_unit }}"
+      register: restic_backup_mount_unit_state
+      become: true
+
+    # ignore_errors, not failed_when: false — the guard's run is meant to fail,
+    # and failed_when would clear the very flag the assertion below reads.
     - name: Fire the backup service with the repository root unmounted
       ansible.builtin.systemd_service:
         name: probe-backup.service
@@ -343,6 +368,20 @@
       register: restic_backup_metric_unmounted
       become: true
 
+    - name: Read whether the share came back under the run
+      ansible.builtin.command: "mountpoint -q {{ restic_backup_repo_root }}"
+      register: restic_backup_remounted
+      changed_when: false
+      failed_when: false
+
+    # Unmount again before looking: a remounted share now covers the directory
+    # a shadow repo would sit in.
+    - name: Unmount the share stand-in again
+      ansible.posix.mount:
+        path: "{{ restic_backup_repo_root }}"
+        state: unmounted
+      become: true
+
     - name: List anything the unmounted run left on the root filesystem
       ansible.builtin.find:
         paths: "{{ restic_backup_repo_root }}"
@@ -351,16 +390,36 @@
       register: restic_backup_shadow
       become: true
 
-    - name: An unmounted root fails the run and leaves no shadow repo
+    - name: Nothing landed on the root filesystem beneath the mount
       ansible.builtin.assert:
         that:
-          - restic_backup_unmounted_run is failed
-          - "'probe_backup_success 0' in (restic_backup_metric_unmounted.content | b64decode)"
           - restic_backup_shadow.files | length == 0
         fail_msg: >-
           the backup wrote to an unmounted repository root:
           {{ restic_backup_shadow.files | map(attribute='path') | list }}
         quiet: true
+
+    - name: The guard refuses an unmounted root
+      ansible.builtin.assert:
+        that:
+          - restic_backup_mount_unit_state.status.FragmentPath | default('') | length == 0
+          - restic_backup_unmounted_run is failed
+          - "'probe_backup_success 0' in (restic_backup_metric_unmounted.content | b64decode)"
+          - restic_backup_remounted.rc != 0
+        fail_msg: the unmounted run was not refused, or the image now generates a mount unit from fstab
+        quiet: true
+      when: "'debian' not in group_names"
+
+    - name: RequiresMountsFor brings the share back before the run
+      ansible.builtin.assert:
+        that:
+          - restic_backup_mount_unit_state.status.FragmentPath | default('') | length > 0
+          - restic_backup_unmounted_run is not failed
+          - "'probe_backup_success 1' in (restic_backup_metric_unmounted.content | b64decode)"
+          - restic_backup_remounted.rc == 0
+        fail_msg: "the share was not remounted for the run (mountpoint rc {{ restic_backup_remounted.rc }})"
+        quiet: true
+      when: "'debian' in group_names"
 
     - name: Remount the share stand-in
       ansible.posix.mount:

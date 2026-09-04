@@ -42,6 +42,10 @@ restic_backup_excludes: []
 # restore script. Off for a plain path backup.
 restic_backup_podman_volumes: false
 
+# Podman-volumes mode only: named volumes left out of the snapshot, whose
+# containers ride through the quiesce. The README has the rule and its guards.
+restic_backup_podman_volume_excludes: []
+
 # Installed under /usr/local/sbin: root-only, like the other oneshots. Script
 # basenames derive from restic_backup_name (<name>-backup.sh, its metric hook,
 # and <name>-restore.sh in podman-volumes mode).
@@ -55,8 +59,8 @@ restic_backup_textfile_dir: /var/lib/node_exporter/textfile_collector
 # Ceiling on a single run, as systemd TimeoutStartSec. Type=oneshot disables the
 # start timeout entirely (the manager's DefaultTimeoutStartSec does not apply), so
 # an unset value is infinity, not 90s — and with `hard` NFS a tunnel flap parks a
-# restic call indefinitely, in podman-volumes mode with every container already
-# stopped by the quiesce. Nothing would catch it: SystemdUnitFailed excludes these
+# restic call indefinitely, in podman-volumes mode with the quiesced containers
+# already stopped. Nothing would catch it: SystemdUnitFailed excludes these
 # units by regex, and a unit wedged in activating is never `failed` anyway. On
 # expiry systemd SIGTERMs the script, whose EXIT trap restarts the containers, and
 # the unit fails so ExecStopPost records success 0 and *BackupFailed fires. Sized

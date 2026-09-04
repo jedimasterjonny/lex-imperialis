@@ -91,11 +91,14 @@
     # keeps this exact path. An NM update that renames or relocates it restores
     # the unmount silently — the /etc file stays exactly where it is and every
     # other assertion here stays green — so assert the shadow still has a target.
+    # openSUSE only: Debian's NetworkManager ships no such script, so there the
+    # no-op shadows nothing by design.
     - name: Read the stock dispatcher script the shadow displaces
       ansible.builtin.stat:
         path: /usr/lib/NetworkManager/dispatcher.d/nfs
       register: nfs_stock_dispatcher
       become: true
+      when: "'debian' not in group_names"
 
     - name: The stock script is still at the path the shadow displaces
       ansible.builtin.assert:
@@ -106,3 +109,4 @@
           /usr/lib/NetworkManager/dispatcher.d/nfs is gone: NetworkManager has
           moved or renamed it, so the /etc no-op shadows nothing
         quiet: true
+      when: "'debian' not in group_names"

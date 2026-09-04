@@ -180,7 +180,7 @@ works the chain through.
 systemd re-arms every calendar timer on the change itself, so the role notifies
 nothing — but a `Persistent=` timer whose slot the shift moves into the past
 fires its catch-up run at that moment, which on a host running `podman_backup`
-means stopping every container mid-play. Only a host whose zone actually changes
+means stopping the containers it backs up mid-play. Only a host whose zone actually changes
 is exposed, and only for the hour before each such slot — but `arbites` reaches
 `main` within 15 minutes, so it is the **merge** that picks the moment, not a
 hand-apply. Land a zone change clear of those windows, or pause the reconciler

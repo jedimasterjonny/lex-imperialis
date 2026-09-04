@@ -1,5 +1,17 @@
 ---
+# Two platforms, one per distribution the role deploys to: auspex mounts the
+# backup share on Debian. Groups rather than facts, so verify can gate on
+# group_names without gathering. The hetzner tier launches its first platform
+# only, so CI's VM runs the openSUSE arm alone — see the README.
 platforms:
   - name: "lex-nfs-libvirt-${MOLECULE_RUN_ID:-local}"
     image: https://download.opensuse.org/tumbleweed/appliances/openSUSE-Tumbleweed-Minimal-VM.x86_64-Cloud.qcow2
     image_checksum: sha256:https://download.opensuse.org/tumbleweed/appliances/openSUSE-Tumbleweed-Minimal-VM.x86_64-Cloud.qcow2.sha256
+    groups:
+      - opensuse
+  - name: "lex-nfs-debian-${MOLECULE_RUN_ID:-local}"
+    image: https://cloud.debian.org/images/cloud/trixie/latest/debian-13-genericcloud-amd64.qcow2
+    image_checksum: sha512:https://cloud.debian.org/images/cloud/trixie/latest/SHA512SUMS
+    osinfo: debian13
+    groups:
+      - debian
