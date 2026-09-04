@@ -24,6 +24,7 @@ carries none at all — the two columns below are not independent.
 | wireguard | `WireguardTunnelDown`, off the restart cycle its healthcheck drives | yes |
 | beets | probe via caddy | **none** — never kill a running import |
 | plex | probe of `:32400/identity` (host-networked, not proxied) | **none** — never kill a running transcode |
+| tautulli | probe of `/status` via caddy | yes |
 | recyclarr | nothing — no endpoint | none |
 
 transmission is the one restarting app with state to lose: a `SIGKILL` forces a
@@ -48,6 +49,12 @@ point that costs less than staying wedged.
   mounts the libraries read-only at their native flat paths (`/movies`,
   `/tv`, `/music`) to match its restored database, passes `/dev/dri` through
   for hardware transcoding, and gets a tmpfs `/transcode`.
+- **tautulli** — Plex activity and history; talks only to plex, over the LAN
+  at the host's port. No media mount, and not on the tunnel. Two runtime
+  settings it owns, neither codified: the Plex connection, and **Enable API**
+  under Settings → Web Interface, which its setup wizard leaves off. With the
+  API off `/api/v2` answers 404 and homepage's widget reads as an API error,
+  while `/status` — unauthenticated, and what the probe watches — stays green.
 - **recyclarr** — TRaSH-guides sync over the importers' APIs; no media
   mount, no webui. Its config is repo-rendered (see **Recyclarr config**); the
   importer API keys it talks to are repo-owned (see **API keys**).

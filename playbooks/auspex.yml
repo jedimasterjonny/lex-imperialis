@@ -188,6 +188,7 @@
           - https://lidarr.{{ caddy_domain }}/ping
           - https://prowlarr.{{ caddy_domain }}/ping
           - https://beets.{{ caddy_domain }}/
+          - https://tautulli.{{ caddy_domain }}/status
           - https://grafana.{{ caddy_domain }}/api/health
           # homepage serves the apex, so this probes caddy itself on the way through.
           - https://{{ caddy_domain }}/api/healthcheck
