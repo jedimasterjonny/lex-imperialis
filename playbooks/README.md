@@ -13,7 +13,8 @@ descriptive:
   and only Debian host, and the whole of the monitoring stack: Prometheus scrapes
   the fleet, holds the TSDB on its NVMe and evaluates every rule, blackbox_exporter
   probes the public sites, solar's services and the NAS's NFS port,
-  Alertmanager notifies, and Uptime Kuma keeps a status page.
+  Alertmanager notifies, and Uptime Kuma keeps a status page; a podman backup
+  covers every volume but the TSDB.
 - **rogue-trader** — the Hetzner VPS serving the public WordPress site.
 
 `vars/` holds spec a play reads with `vars_files:` instead of carrying inline:

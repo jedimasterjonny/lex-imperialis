@@ -11,7 +11,7 @@ second copy. Seven layers:
 
 | Layer | Protects | On the NAS | Cadence | Owned by |
 | --- | --- | --- | --- | --- |
-| Podman volume backup | container state on `solar` and `rogue-trader` | per-host restic repo under `astropath`, `xenos` for `rogue-trader` | weekly | `podman_backup` role — this repo |
+| Podman volume backup | container state on `solar`, `rogue-trader` and `auspex` (its TSDB excluded) | per-host restic repo under `astropath`, `xenos` for `rogue-trader` | weekly | `podman_backup` role — this repo |
 | Home directory backup | `/home` on `solar`, `scholam`, and `rogue-trader` | per-host restic repo under `astropath`, `xenos` for `rogue-trader` | weekly | `home_backup` role — this repo |
 | Photo library | the Google Photos archive | `/scriptorum/photos` | on demand | [`negative-space`](https://github.com/jedimasterjonny/negative-space) — external |
 | Laptop Time Machine | the operator's laptop | `time-machine` SMB share, a sibling of `scriptorum` on the same array (1 TB cap) | hourly when the laptop is on the network | macOS + DSM — external |
@@ -36,30 +36,37 @@ consumers of the shared `restic_backup` engine. Their repos share one export,
 `astropath`, except `rogue-trader`'s: the public box writes to `xenos`, exported
 to it alone, so a compromise there reaches its own two repos and no others. The
 rest are DSM tasks on the
-NAS or an external app — recorded here, not codified. `auspex` runs neither
-role: its Prometheus TSDB and Alertmanager state have no copy, accepted as
-derived data. Uptime Kuma's database sits beside them with no copy either, and
-it is not derived: its monitors and status pages are entered by hand, and a
-lost drive means entering them again. Recovery is in
+NAS or an external app — recorded here, not codified. `auspex` runs
+`podman_backup` alone, and without its Prometheus TSDB: a year of derived data
+with no copy, accepted, since losing it costs dashboards and it re-records from
+empty. What its repo holds is the hand-entered state beside it — Uptime Kuma's
+monitors and status pages, Alertmanager's silences. Recovery is in
 [`disaster-recovery.md`](disaster-recovery.md).
 
 ## Podman volume backup
 
-`podman_backup` snapshots every podman named volume on `solar` and
-`rogue-trader` — databases, app config, the Plex library and history, the
-WordPress site — with restic to `/nfs/astropath/<hostname>-podman-backup`,
-weekly, keeping 8 weekly then 6 monthly snapshots. Every container on the host
-is stopped for the snapshot — under two minutes — and restarted before the
-integrity check, so the databases are quiesced rather than caught mid-write.
+`podman_backup` snapshots every podman named volume on `solar`,
+`rogue-trader` and `auspex` — databases, app config, the Plex library and
+history, the WordPress site, Uptime Kuma's monitors — with restic to
+`/nfs/astropath/<hostname>-podman-backup`, weekly, keeping 8 weekly then 6
+monthly snapshots. Every quadlet container mounting a snapshotted volume is
+stopped for the snapshot — under two minutes — and restarted before the
+integrity check, so the databases are quiesced rather than caught mid-write;
+the rest ride through, as does a container no unit owns, which is logged and
+snapshotted live.
+`auspex` is the one host with a volume left out
+(`restic_backup_podman_volume_excludes`): its Prometheus TSDB, so Prometheus
+rides through too.
+
 Each run `restic check`s the repo and re-reads a rotating slice of the data
 packs — the whole repo over successive runs — so structural corruption and
 bit-rot inside the repo page as `PodmanBackupFailed` instead of surfacing at
-restore; a missed run raises `PodmanBackupOverdue`. The two hosts are staggered
-— `solar` Wednesday 00:00 and `rogue-trader` Wednesday 01:00 — so neither is
-writing to the backup array while the other is. Both finish well inside the Wednesday
-02:00 off-site mirror window below, an hour of clearance year-round. That
-clearance is the reason the stagger runs earlier rather than later: the mirror
-must find both repos complete. `scholam` carries no podman repo: its only
+restore; a missed run raises `PodmanBackupOverdue`. The hosts are staggered
+— `solar` Wednesday 00:00, `auspex` 00:30 and `rogue-trader` 01:00 — so none
+is writing to the backup array while another is. All finish well inside the
+Wednesday 02:00 off-site mirror window below, an hour of clearance year-round.
+That clearance is the reason the stagger runs earlier rather than later: the
+mirror must find every repo complete. `scholam` carries no podman repo: its only
 podman workload, `node_exporter`, defines no named volume, so `podman_backup`
 is left off its play. Container media on the NFS shares is deliberately out of
 the repo — it lives on the NAS and is re-acquirable. Role mechanics:
@@ -141,8 +148,8 @@ corrupted photo is gone from both copies within a week. They sit on separate
 weekly slots so they don't contend on the uplink, each after the run it copies
 so it never captures a mid-write repo:
 
-- **`podman-backup`** — the two `*-podman-backup` restic repos (`solar`,
-  `rogue-trader`), Wednesday 02:00, after both hosts' Wednesday runs.
+- **`podman-backup`** — the three `*-podman-backup` restic repos (`solar`,
+  `auspex`, `rogue-trader`), Wednesday 02:00, after the hosts' Wednesday runs.
 - **`home-backup`** — the `*-home-backup` restic repos (`solar`, `scholam`,
   `rogue-trader`), Thursday 04:00, after the hosts' Thursday runs.
 - **`photos-backup`** — the `/scriptorum/photos` library, Tuesday 03:00.
@@ -206,7 +213,7 @@ only other copy. Two DSM Hyper Backup tasks write the restic repos to the
 Cloudflare R2 bucket `reclusiam`, provisioned in
 [`terraform/r2-reclusiam.tf`](../terraform/r2-reclusiam.tf) and hinted to
 Western Europe — port-wander is in Finland, so a regional loss cannot take both.
-`podman-backup-r2` copies the two `*-podman-backup` repos on Wednesday 06:00 and
+`podman-backup-r2` copies the three `*-podman-backup` repos on Wednesday 06:00 and
 `home-backup-r2` the three `*-home-backup` repos on Thursday 06:00 — four hours
 behind the port-wander mirror of the same repos for podman, two for home, so the
 two copies never read the backup array or the uplink at once. They share the

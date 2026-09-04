@@ -51,6 +51,7 @@ Network API: `setting/mgmt` still reports the older combined scheme's
 | Tue 03:00 | `autoupdate` — auspex | `autoupdate_oncalendar`, `auspex.yml` |
 | Tue 03:00 | `photos-backup` → port-wander | DSM task config |
 | Wed 00:00 | `podman_backup` — solar | `podman_backup_oncalendar`, `solar.yml` |
+| Wed 00:30 | `podman_backup` — auspex | `podman_backup_oncalendar`, `auspex.yml` |
 | Wed 01:00 | `podman_backup` — rogue-trader | `podman_backup_oncalendar`, role default |
 | Wed 02:00 | `podman-backup` → port-wander | DSM task config |
 | Wed 06:00 | `podman-backup-r2` → reclusiam | DSM task config |

@@ -11,9 +11,10 @@ restarts the units, then runs a verifying `restic check`; the engine README
 covers the snapshot, prune, integrity-check, retry, and metric mechanics.
 
 Assumes `podman` is installed and the `nfs` role has mounted the target. Runs on
-`solar` and `rogue-trader`; `scholam`'s only podman workload (`node_exporter`) is
-stateless, so it carries no podman repo, and `auspex`'s TSDB and Alertmanager
-state are accepted as derived data — see
+`solar`, `rogue-trader` and `auspex`; `scholam`'s only podman workload
+(`node_exporter`) is stateless, so it carries no podman repo. `auspex` leaves
+its Prometheus TSDB out — the engine's `restic_backup_podman_volume_excludes`,
+set in `playbooks/auspex.yml` with the why. See
 [`docs/backups.md`](../../docs/backups.md).
 
 ## Restore

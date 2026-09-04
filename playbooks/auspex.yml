@@ -48,6 +48,28 @@
     # to title that alert with. Resolving to the LAN address from inside the
     # container is the same path the node and cadvisor jobs already take.
     prometheus_self_target: auspex:9090
+    # The astropath export, for podman_backup below and nothing else: this host
+    # serves no media and its home is not backed up. The NAS must export it to
+    # this host first, as it does to solar and scholam — a DSM setting, with
+    # the same root-to-admin mapping (docs/disaster-recovery.md).
+    nfs_shares:
+      - name: astropath
+        server: administratum
+        export: /volume2/astropath
+    # Half an hour after solar's Wed 00:00 run, under a minute long, on the same
+    # export, and ahead of rogue-trader's 01:00 on its own — well inside the
+    # Wed 02:00 mirror window (docs/schedule.md).
+    podman_backup_oncalendar: "Wed *-*-* 00:30:00"
+    # Every named volume but the TSDB: a year of the fleet's series, tens of
+    # gigabytes of derived data that would dominate the repo and both off-site
+    # copies, re-recorded from empty rather than restored. Prometheus stays up
+    # through the run for the same reason. What is snapshotted is what is
+    # entered by hand — Uptime Kuma's monitors and Alertmanager's silences.
+    restic_backup_podman_volume_excludes:
+      - prometheus-data
+    # This host's restic key. One per host, so a host that is compromised can
+    # open only its own repos.
+    restic_backup_password: "{{ auspex_restic_password }}"
     # Bind the LAN rather than the role's loopback default: solar's caddy fronts
     # this for the browser (caddy_proxied_hosts in solar.yml) and homepage's
     # widget reads it. The exposure is the one prometheus above already accepts.
@@ -99,6 +121,7 @@
       - name: podman-backup
         folders:
           - /astropath/solar-podman-backup
+          - /astropath/auspex-podman-backup
           - /xenos/rogue-trader-podman-backup
       - name: home-backup
         folders:
@@ -282,7 +305,11 @@
     # A second watch on the fleet's services, with the status page and history
     # the pair above does not keep. Here for the reason blackbox_exporter is: a
     # monitor of solar's services that does not live on solar. Its monitors and
-    # status pages are entered in its UI, not declared here — and this host runs
-    # no podman_backup, so they have no copy either.
+    # status pages are entered in its UI, not declared here; podman_backup
+    # below is their copy.
     - uptime_kuma
+    # The share only podman_backup needs, so it sits beside it rather than up
+    # with the base roles: a mount the NAS refuses stops nothing above it.
+    - nfs
+    - podman_backup
     - inquisition
