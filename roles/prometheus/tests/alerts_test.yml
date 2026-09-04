@@ -2158,6 +2158,32 @@ tests:
         alertname: WordpressBoostCriticalCssStale
         exp_alerts: []
 
+  # The regenerate flag is Boost's own word, not derived from the state, so it
+  # is the one signal a healthy-looking generated state cannot mask. A page save
+  # sets it too, so it has to stand a week before it is worth a hand.
+  - interval: 5m
+    name: a week-old regenerate suggestion alerts, a fresher one does not
+    input_series:
+      - series: 'wordpress_boost_critical_css_regenerate_suggested{job="node",instance="rogue-trader:9100"}'
+        values: "1x2100"
+    alert_rule_test:
+      - eval_time: 7d5m
+        alertname: WordpressBoostCriticalCssRegenerateSuggested
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: rogue-trader:9100
+            exp_annotations:
+              summary: "Jetpack Boost asks for a critical CSS regeneration on rogue-trader:9100"
+              description: >-
+                Boost on rogue-trader:9100 has flagged a plugin, theme or content change
+                since its critical CSS was generated for over a week. Regenerate from the
+                Boost admin page.
+      - eval_time: 6d23h55m
+        alertname: WordpressBoostCriticalCssRegenerateSuggested
+        exp_alerts: []
+
   # A provider whose pages carry no external stylesheet fails every run, so the
   # error gauge is published for context and deliberately carries no rule. This
   # pins that: a healthy install with a permanently failing provider is silent.

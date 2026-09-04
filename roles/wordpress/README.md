@@ -90,7 +90,11 @@ run. The role does not manage the plugin, so `wordpress_boost_installed` is 0 on
 a WordPress host without Boost and `WordpressBoostCriticalCssMissing` gates on
 it; `WordpressBoostCriticalCssStale` gates on
 `wordpress_boost_critical_css_generated` instead, so a never-generated install
-raises one alert rather than two. `WordpressBoostFailed` /
+raises one alert rather than two. `WordpressBoostCriticalCssRegenerateSuggested`
+relays Boost's own regenerate flag once it has stood a week: the two rules
+above can't see it, since the state stays `generated` and the timestamp recent,
+and a page save alone sets it, so anything shorter would fire on every content
+edit. `WordpressBoostFailed` /
 `WordpressBoostOverdue` cover the check itself — the script always exits 0, so
 the overdue rule is what catches a stopped timer or a deleted script.
 

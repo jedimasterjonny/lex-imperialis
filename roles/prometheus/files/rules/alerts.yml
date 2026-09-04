@@ -1217,6 +1217,24 @@ groups:
             The critical CSS on {{ $labels.instance }} was generated over 30 days ago
             and no longer reflects any theme or markup change since. Regenerate it from
             the Boost admin page.
+      # Boost raises its own regenerate suggestion when a plugin toggles (an
+      # auto-update does), the theme switches or a page is saved — its word that
+      # the stored CSS may no longer match the markup, which the two rules above
+      # can't see: state stays generated and the timestamp recent. A page save
+      # sets it too, so a short for: would fire on every content edit; a week
+      # makes it the same kind of nudge as the stale rule. No install gate: the
+      # check publishes 0 with Boost absent.
+      - alert: WordpressBoostCriticalCssRegenerateSuggested
+        expr: wordpress_boost_critical_css_regenerate_suggested == 1
+        for: 7d
+        labels:
+          severity: warning
+        annotations:
+          summary: "Jetpack Boost asks for a critical CSS regeneration on {{ $labels.instance }}"
+          description: >-
+            Boost on {{ $labels.instance }} has flagged a plugin, theme or content change
+            since its critical CSS was generated for over a week. Regenerate from the
+            Boost admin page.
       # The six-hourly metric holds success=0 constant until the next run, so a
       # single transient wp-cli blip would satisfy a short for:; 12h (over two
       # checks) fires only on a sustained failure, matching WordpressUpdateCheckFailed.
