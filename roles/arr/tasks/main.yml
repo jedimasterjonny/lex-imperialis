@@ -242,6 +242,21 @@
   when: "'transmission' in arr_enabled"
   notify: Restart transmission for arr
 
+# s6-supervise SIGKILLs a longrun's finish script after 5 s unless the service
+# dir carries a timeout-finish, and the image ships none; transmission's finish
+# waits for the daemon to flush resume data after `--exit`, ~8 s with a full
+# queue, and a killed daemon re-verifies every active torrent on the next start.
+- name: Deploy transmission's s6 finish timeout
+  ansible.builtin.copy:
+    content: "{{ arr_transmission_stop_grace_ms }}\n"
+    dest: "{{ arr_transmission_timeout_finish }}"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  when: "'transmission' in arr_enabled"
+  notify: Restart transmission for arr
+
 # A daily timer catalogs the music library into the standing beets DB so it
 # tracks what lidarr adds — catalog only, no re-tag and no media writes. The
 # config bind-mounts read-only into beets at /config/managed, so its host dir

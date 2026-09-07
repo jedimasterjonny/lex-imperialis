@@ -129,6 +129,12 @@ arr_api_keys:
 arr_transmission_username: ""
 arr_transmission_password: ""
 
+# How long s6 lets transmission's finish script wait for the daemon to flush
+# resume data after `transmission-remote --exit` before SIGKILLing it. The image
+# ships no timeout-finish, so s6-supervise's 5 s default applied; a full queue
+# takes ~8 s on solar. Kept under the unit's 90 s stop timeout.
+arr_transmission_stop_grace_ms: 60000
+
 # Recyclarr's TRaSH config — the radarr/sonarr quality-profile + custom-format
 # configs and the !secret api keys — renders here and bind-mounts read-only into
 # the container (on top of the /config volume, which keeps its guide cache).
