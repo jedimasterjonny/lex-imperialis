@@ -33,21 +33,9 @@
   become: true
   notify: Restart grafana
 
-# Fetched at the pinned revision (renovate-managed) rather than vendored, and
-# held in the register rather than written to disk, because the next task rewrites
-# it on the way in. Skipped under --check: uri declares no check-mode support, so
-# the explicit guard only states what would happen anyway, and mirrors the copy
-# below, which does need it.
-- name: Fetch the dashboards
-  ansible.builtin.uri:
-    url: https://grafana.com/api/dashboards/{{ item.id }}/revisions/{{ item.revision }}/download
-    return_content: true
-  when: not ansible_check_mode
-  register: grafana_fetched
-  loop: "{{ grafana_dashboards }}"
-  loop_control:
-    label: "{{ item.file }}"
-
+# Fetched on the controller and rewritten on the way in: get_url then replace
+# would re-download over the rewritten file and report changed every converge.
+#
 # A grafana.com export names its datasource with an __inputs placeholder —
 # "${DS_PROMETHEUS}" on every panel — which the UI's import form substitutes and
 # the FILE PROVISIONER does not. Provisioned as published, such a dashboard reaches
@@ -65,17 +53,20 @@
 # ${ds_prometheus}, which IS a declared variable, and a case-insensitive match
 # would break the one family of dashboards that was working.
 - name: Provision the dashboards, resolving the export's datasource placeholders
+  vars:
+    grafana_download: https://grafana.com/api/dashboards/{{ item.id }}/revisions/{{ item.revision }}/download
   ansible.builtin.copy:
-    content: "{{ item.content | regex_replace('\\$\\{DS_[A-Z0-9_.-]+\\}', grafana_datasource_uid) }}"
-    dest: /etc/grafana/dashboards/{{ item.item.file }}
+    content: >-
+      {{ lookup('ansible.builtin.url', grafana_download, split_lines=false)
+         | regex_replace('\$\{DS_[A-Z0-9_.-]+\}', grafana_datasource_uid) }}
+    dest: /etc/grafana/dashboards/{{ item.file }}
     owner: root
     group: root
     mode: "0644"
   become: true
-  when: not ansible_check_mode
-  loop: "{{ grafana_fetched.results }}"
+  loop: "{{ grafana_dashboards }}"
   loop_control:
-    label: "{{ item.item.file }}"
+    label: "{{ item.file }}"
   notify: Restart grafana
 
 # Keeps the password out of the world-readable unit; grafana reads it from the
