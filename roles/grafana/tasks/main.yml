@@ -43,12 +43,6 @@
 # every panel on it fails to resolve one. The dashboard still lists and still
 # opens, so nothing short of reading a panel notices.
 #
-# This is not only the unpoller dashboards: of the six pinned here, 1860 and 16124
-# declare a real templating datasource variable and carry no placeholder, while
-# 15798 carries one on all 24 of its panel and target references — so "Docker
-# monitoring" has been provisioning broken for as long as it has been deployed,
-# and this rewrite is what fixes it.
-#
 # The pattern is uppercase-only deliberately: 1860's panels reference
 # ${ds_prometheus}, which IS a declared variable, and a case-insensitive match
 # would break the one family of dashboards that was working.
