@@ -137,8 +137,9 @@
         that:
           - "'arbites.sh' in arbites_service.status.ExecStart"
           - "'arbites-metric.sh' in arbites_service.status.ExecStopPost"
+          - "'autoupdate.service' in arbites_service.status.ExecCondition"
           - arbites_env_file in arbites_service.status.EnvironmentFiles
-        fail_msg: "the service is not wired to the reconcile script, metric hook and environment file"
+        fail_msg: "the service is not wired to the reconcile script, metric hook, autoupdate condition and environment file"
         quiet: true
 
     - name: Run the metric hook as a successful run would

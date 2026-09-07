@@ -30,6 +30,10 @@ jitter; `Persistent`, so a reboot-missed run catches up). The script:
 5. records the applied SHA only on a clean apply; a failure leaves the old
    value, so the next run retries.
 
+The unit's `ExecCondition` skips a cycle outright while `autoupdate.service` is
+active: the Friday dup and this timer both land at 04:00, and the dup holds the
+zypper lock the role's package query needs. The skip is a success, not a failure.
+
 An `ExecStopPost` hook writes the outcome to `arbites_metric_file`
 (`arbites_textfile_dir/arbites.prom`): `arbites_success` (1/0 from
 `$SERVICE_RESULT`), `arbites_last_run_timestamp_seconds`, and
