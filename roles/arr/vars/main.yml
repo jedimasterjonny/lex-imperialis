@@ -35,6 +35,9 @@ arr_media_access:
   transmission: rw
   plex: ro
 
+# Mounted over the image's s6 service dir so s6-rc compiles it in at start.
+arr_transmission_timeout_finish: /etc/arr/transmission-timeout-finish
+
 arr_apps:
   radarr:
     image: lscr.io/linuxserver/radarr:6.3.0@sha256:95ba0801df4d9d1d79d0d9a3849f656542497dab061d91b87ad4f53a71aff3ef
@@ -153,6 +156,9 @@ arr_apps:
     port: 9091
     netns: wireguard
     data: [downloads]
+    # ro config under /etc, so no :Z (see beets). The finish script waits for the
+    # daemon to flush after --exit; without this file s6 SIGKILLs that wait at 5 s.
+    binds: ["{{ arr_transmission_timeout_finish }}:/etc/s6-overlay/s6-rc.d/svc-transmission/timeout-finish:ro"]
     # Shares wireguard's netns, so the RPC webui answers on localhost here. -sS
     # without -f treats an auth-on 401 the same as an auth-off 200 (both mean
     # "responding"), so it needs no credentials — which would otherwise leak into

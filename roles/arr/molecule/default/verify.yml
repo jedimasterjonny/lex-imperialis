@@ -488,6 +488,19 @@
         fail_msg: /etc/arr/transmission.env is missing or not 0600 root
         quiet: true
 
+    # The stop grace only holds if s6-rc compiled the mounted timeout-finish in.
+    - name: Read transmission's s6 finish timeout inside the container
+      ansible.builtin.command: podman exec transmission cat /etc/s6-overlay/s6-rc.d/svc-transmission/timeout-finish
+      become: true
+      register: arr_transmission_timeout
+      changed_when: false
+
+    - name: Transmission's finish script gets the stop grace, not s6's 5 s default
+      ansible.builtin.assert:
+        that: arr_transmission_timeout.stdout | int == arr_transmission_stop_grace_ms
+        fail_msg: transmission's s6 timeout-finish is not the configured stop grace
+        quiet: true
+
     - name: Probe transmission RPC without credentials
       ansible.builtin.command: >-
         podman exec transmission

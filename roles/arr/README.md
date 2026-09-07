@@ -29,7 +29,10 @@ carries none at all — the two columns below are not independent.
 
 transmission is the one restarting app with state to lose: a `SIGKILL` forces a
 re-verify of active torrents. The kill only fires after ~15m of a dead RPC, by which
-point that costs less than staying wedged.
+point that costs less than staying wedged. A plain stop must not kill it either: its
+finish script waits for the daemon to flush after `transmission-remote --exit`, and
+s6 would `SIGKILL` that wait at 5 s, so the role mounts a `timeout-finish` of
+`arr_transmission_stop_grace_ms` into the service dir.
 
 ## Apps
 
