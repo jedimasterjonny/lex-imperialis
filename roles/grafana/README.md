@@ -27,13 +27,9 @@ sites dir).
   fetched from grafana.com at its pinned revision, and mounts the directory
   read-only.
 - **The datasource placeholder is rewritten on the way in.** A grafana.com export
-  names its datasource with an `__inputs` placeholder — `${DS_PROMETHEUS}` — which
-  the UI's import form substitutes and the **file provisioner does not**, so the
-  dashboard provisions pointing at a variable it never declares. It still lists and
-  still opens, so nothing short of reading a panel notices. The role rewrites those
-  to `grafana_datasource_uid`. All three unpoller dashboards carry them, and so
-  does 15798 — **Docker monitoring** had been provisioning broken until this
-  landed. Upper case only, deliberately; the task's comment says why.
+  names its datasource with an `__inputs` placeholder that the file provisioner
+  does not substitute; the role rewrites those to `grafana_datasource_uid`. Upper
+  case only; the task's comment says why.
 
 State lives in the `grafana-data` named volume, handed to the image's `grafana`
 user (472) with `:U`.
