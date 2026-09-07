@@ -22,11 +22,14 @@ AddCapability=CHOWN DAC_OVERRIDE FOWNER NET_BIND_SERVICE SETGID SETUID
 EnvironmentFile=/etc/wordpress/app.env
 Volume=wordpress-html:/var/www/html
 {# Read-only must-use plugin, mounted as a single file so it never shadows the #}
-{# site's own mu-plugins already in the volume. #}
-Volume=/etc/wordpress/mu-plugins/wordpress-hardening.php:/var/www/html/wp-content/mu-plugins/wordpress-hardening.php:ro,Z
+{# site's own mu-plugins already in the volume. Both file binds are z, not Z: #}
+{# the wp wrapper's --volumes-from inherits them, and Z stamps the host file #}
+{# with the private MCS pair of whichever container mounted last, so every #}
+{# cron run left apache unable to read either file. #}
+Volume=/etc/wordpress/mu-plugins/wordpress-hardening.php:/var/www/html/wp-content/mu-plugins/wordpress-hardening.php:ro,z
 {# Read-only apache drop-in disabling PHP under wp-content/uploads, so a webshell #}
 {# written into that writable tree can't execute. #}
-Volume=/etc/wordpress/uploads-no-exec.conf:/etc/apache2/conf-enabled/uploads-no-exec.conf:ro,Z
+Volume=/etc/wordpress/uploads-no-exec.conf:/etc/apache2/conf-enabled/uploads-no-exec.conf:ro,z
 {# DB-independent liveness — a static asset, so a database blip never #}
 {# restart-loops apache; HealthOnFailure=kill + Restart=on-failure self-heals. #}
 HealthCmd=curl -fsS http://127.0.0.1/wp-includes/images/blank.gif -o /dev/null
