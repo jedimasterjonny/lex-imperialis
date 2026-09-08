@@ -38,11 +38,10 @@ Creates a Hetzner VM from the MicroOS snapshot `packer/` builds, compiling
 `rogue-trader.bu` into the `user_data` Ignition reads at first boot. Its cloud
 firewall lives in `terraform/` (`firewall-rogue-trader.tf`), not here.
 Provision-once — `user_data` applies only on first boot, so a re-run is a no-op.
-Run from the repo root, with the vault for the hcloud token:
+Run from the repo root:
 
 ```bash
-ansible-playbook bootstrap/rogue-trader.yml \
-  -e @inventory/group_vars/all/vault.yml --vault-password-file .vault_pass
+ansible-playbook bootstrap/rogue-trader.yml --vault-password-file .vault_pass
 ```
 
 Needs `butane` on PATH (the `dev` role installs it) — the play compiles the
@@ -69,8 +68,7 @@ attachment. Hetzner takes fresh `user_data` on a rebuild, so the Ignition config
 compiled here is what first-boots.
 
 ```bash
-ansible-playbook bootstrap/rogue-trader.yml \
-  -e @inventory/group_vars/all/vault.yml --vault-password-file .vault_pass \
+ansible-playbook bootstrap/rogue-trader.yml --vault-password-file .vault_pass \
   -e rogue_trader_state=rebuild
 ```
 
@@ -87,8 +85,7 @@ than this file.
 The same play creates a differently-named throwaway to rehearse against:
 
 ```bash
-ansible-playbook bootstrap/rogue-trader.yml \
-  -e @inventory/group_vars/all/vault.yml --vault-password-file .vault_pass \
+ansible-playbook bootstrap/rogue-trader.yml --vault-password-file .vault_pass \
   -e rogue_trader_name=rogue-trader-spike
 ```
 

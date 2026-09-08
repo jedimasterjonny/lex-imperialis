@@ -11,8 +11,7 @@
 #
 # Provision-once: user_data applies only at first boot, so re-running is a no-op.
 # Run from the repo root:
-#   ansible-playbook bootstrap/rogue-trader.yml \
-#     -e @inventory/group_vars/all/vault.yml --vault-password-file .vault_pass
+#   ansible-playbook bootstrap/rogue-trader.yml --vault-password-file .vault_pass
 #
 # Then converge the host: ansible-playbook playbooks/rogue-trader.yml.
 - name: Provision rogue-trader
@@ -43,9 +42,7 @@
       {{ rogue_trader_images.hcloud_image_info
          | selectattr('status', 'equalto', 'available') | list }}
     rogue_trader_image_id: "{{ rogue_trader_available | map(attribute='id') | max }}"
-  # hcloud_token_emmas_edit comes from the vault, supplied at run time:
-  # -e @inventory/group_vars/all/vault.yml. Kept out of vars_files so
-  # ansible-lint (no vault password in CI) need not decrypt it.
+  # hcloud_token_emmas_edit: the implicit localhost still reads group_vars/all.
   tasks:
     - name: Find the MicroOS snapshots packer has built
       hetzner.hcloud.image_info:
