@@ -201,6 +201,11 @@
       "abandonmentThreshold": null
     },
     {
+      "description": "Release-quiet, not abandoned: shellcheck-py tracks shellcheck's own 15-17 month release gaps, and pre-commit-hooks ships a major every 10-16 months. Both crossed the one-year default in 2026-08 with commits weeks old.",
+      "matchPackageNames": ["shellcheck-py", "pre-commit/pre-commit-hooks"],
+      "abandonmentThreshold": "2 years"
+    },
+    {
       "description": "config:best-practices skips indirect gomod deps, so enable them for this go.mod or the Blowfish theme never updates. site-gate catches a break, and hugo-gosum-autofix completes go.sum and re-triggers it.",
       "matchManagers": ["gomod"],
       "matchFileNames": ["jonnyoc-site/go.mod"],
