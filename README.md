@@ -94,9 +94,9 @@ flowchart TD
   end
 
   subgraph Hetzner
-    rogue[rogue-trader]
-    pw[(port-wander)]
     ci@{ shape: procs, label: "lex-ci" }
+    pw[(port-wander)]
+    rogue[rogue-trader]
   end
 
   subgraph Google Cloud
@@ -115,8 +115,8 @@ flowchart TD
   nas -.->|S3| reclusiam
   rogue -.->|proxy| pw
 
-  gh -.->|arbites| Home
   gh -.->|molecule| ci
+  gh -.->|arbites| Home
   gh -.->|firebase deploy| site
   gh -.->|tofu| tf
 ```
