@@ -15,7 +15,9 @@ nfs_mount_root: /nfs
 #   _netdev   order the mount after the network is online
 #   hard      retry indefinitely rather than return I/O errors and risk data loss
 #   noatime   drop atime write-backs: fewer round trips, less load on the NAS
-nfs_mount_options: "_netdev,noatime,nfsvers=4.1,hard,rsize=1048576,wsize=1048576"
+#   nconnect  four transports to the server instead of one, so one bulk reader
+#             cannot queue every other client's I/O behind it
+nfs_mount_options: "_netdev,noatime,nfsvers=4.1,hard,rsize=1048576,wsize=1048576,nconnect=4"
 
 # Shares to mount, set per host. Each item: name (mounts at /nfs/<name>), server,
 # export. Empty by default, so the role is a no-op until a host defines shares.
