@@ -104,7 +104,7 @@ arr_apps:
     # in flight, and killing it mid-import leaves the library and quarantine
     # inconsistent. Its blackbox probe is the alert.
   plex:
-    image: lscr.io/linuxserver/plex:1.43.3@sha256:7f9a1d574958fc2f177c14ca190d4b811a58c274477f5bae8fb44ee676fb96bf
+    image: lscr.io/linuxserver/plex:1.43.3@sha256:de95bb12db3ed4e34ad5983113b8af967cfd77786e15669c0703c22133e10107
     uid: 3006
     caps: [CHOWN, DAC_OVERRIDE, KILL, SETGID, SETUID]
     port: 32400
