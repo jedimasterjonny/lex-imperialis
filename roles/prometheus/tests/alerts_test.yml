@@ -2876,43 +2876,108 @@ tests:
         alertname: UnifiDeviceRebootLoop
         exp_alerts: []
 
-  # The operator's two calibration points, encoded so neither can drift: a radio
-  # that sustains congestion must alert, and a radio that briefly spikes ABOVE the
-  # incident level must not. The second is what the mean buys over a for: — one
-  # large transfer takes a channel to 0.8 for five minutes, and that is not a
-  # fault. The third series is the busiest radio's real idle reading, so a
-  # threshold dropped anywhere near normal fails here.
+  # The calibration points, encoded so none can drift. Six radios — every identity
+  # the fleet has — driving all four threshold clauses and both causes, because the
+  # band thresholds are the one thing the two rules still spell out separately and
+  # nothing but these cases would catch one arm drifting from the other.
+  #
+  # Band x cause, all four corners: 2.4 self (Downstairs), 2.4 external (Upstairs,
+  # at 50m), non-2.4 self (Upstairs 6), non-2.4 external (Downstairs 5). Each
+  # threshold is bracketed from below as well, by a radio sitting just under it and
+  # required to stay silent — which is why three of the radios are read at several
+  # evaluations, at a different level each time. One carries no self-share
+  # series at all, and two sit just either side of the classifier, which the rules
+  # spell out separately exactly as they do the thresholds. Twelve mutations —
+  # four thresholds and the classifier, each moved both ways — red this case, and
+  # that was checked by doing it rather than assumed. The levels are synthetic:
+  # these are the fleet's radio identities carrying invented series, so a radio here
+  # may be busy where the real one is switched off.
   - interval: 1m
-    name: a congested radio alerts while a brief spike and a normal one do not
+    name: airtime alerts split by cause, per-band thresholds, bursts ignored
     input_series:
-      - series: 'unpoller_device_radio_channel_utilization_total_ratio{name="Upstairs AP",band="2.4",radio="ng",radio_name="wifi0"}'
-        values: "0.6x20 0.3x0 0.6x39"
-      # The incident this rule was written for, at the level and duration the
-      # calibration comment cites: ten minutes at 0.70 over a 0.17 background. Its
+      # A ten-minute event at the 0.70 the calibration comment cites, over a 0.17
+      # background chosen below that comment's 0.219 median to make the case the
+      # harder one — the comment's own incident ran for hours, and ten minutes is
+      # the shorter recurrence the 15m window exists to catch. Its
       # 15m mean is 0.5233 and it fires; at 30m the same event averages under 0.4
-      # and does not. This series is the only thing pinning the window's UPPER
-      # bound — without it the range can be widened back to 30m, silently losing
-      # the very event that motivated the rule, while the description still reads
-      # "over 15 minutes".
+      # and does not, so widening the range back to 30m reds this case rather than
+      # silently losing the event that motivated the rule while the description
+      # still reads "over 15 minutes". Three other radios also fail a 30m range at
+      # this evaluation, but this is the one whose margin is deliberate. Its own
+      # share is 0.8 of the total throughout, so the Self arm must claim it.
       - series: 'unpoller_device_radio_channel_utilization_total_ratio{name="Downstairs AP",band="2.4",radio="ng",radio_name="wifi0"}'
         values: "0.17x15 0.7x9 0.17x34"
+      - series: 'unpoller_device_radio_channel_utilization_receive_ratio{name="Downstairs AP",band="2.4",radio="ng",radio_name="wifi0"}'
+        values: "0.085x15 0.35x9 0.085x34"
+      - series: 'unpoller_device_radio_channel_utilization_transmit_ratio{name="Downstairs AP",band="2.4",radio="ng",radio_name="wifi0"}'
+        values: "0.051x15 0.21x9 0.051x34"
+      # The ch-100 neighbour in shape, not in detail: a 5 GHz radio taken to 0.55
+      # over its real 0.03 background, a fifth of the medium its own. The real event
+      # ran lower and far more one-sided; this is rounder on purpose, so the
+      # arithmetic below is checkable by eye. Its 15m mean is
+      # 0.3767 — above this band's 0.3 and BELOW the 0.5 every band once shared, so
+      # this series fails the moment 5 GHz is put back on a single fleet-wide
+      # threshold, which is the whole point of it. It then settles to 0.28, still
+      # external — read at 50m that is the other side of the same threshold, quiet
+      # at 0.3 and alerting at 0.25, so without it External's non-2.4 threshold can
+      # be lowered with every gate green. Its last phase, 0.4 at a 0.45 self-share,
+      # sits just below the classifier and is read at 90m.
       - series: 'unpoller_device_radio_channel_utilization_total_ratio{name="Downstairs AP",band="5",radio="na",radio_name="wifi1"}'
-        values: "0.15x20 0.8x4 0.15x34"
+        values: "0.03x15 0.55x9 0.03x9 0.28x39 0.4x30"
+      - series: 'unpoller_device_radio_channel_utilization_receive_ratio{name="Downstairs AP",band="5",radio="na",radio_name="wifi1"}'
+        values: "0.003x15 0.055x9 0.003x9 0.028x39 0.1x30"
+      - series: 'unpoller_device_radio_channel_utilization_transmit_ratio{name="Downstairs AP",band="5",radio="na",radio_name="wifi1"}'
+        values: "0.003x15 0.055x9 0.003x9 0.028x39 0.08x30"
+      # A 2.4 radio read at three evaluations: quiet at 0.4, congested at 0.7, then
+      # settled at 0.45. At 25m the 0.4 sits between that band's p99 of 0.339 and its
+      # 0.5, so it must stay silent — collapse 2.4 back to a shared 0.3 and it
+      # starts alerting. At 50m it is above 0.5 with only a seventh of the medium
+      # its own, which with the 75m evaluation is what drives External's 2.4 clause
+      # from both sides: no other 2.4 reading here is ever classified external.
+      - series: 'unpoller_device_radio_channel_utilization_total_ratio{name="Upstairs AP",band="2.4",radio="ng",radio_name="wifi0"}'
+        values: "0.4x30 0.7x28 0.45x30"
+      - series: 'unpoller_device_radio_channel_utilization_receive_ratio{name="Upstairs AP",band="2.4",radio="ng",radio_name="wifi0"}'
+        values: "0.2x30 0.05x28 0.02x30"
+      - series: 'unpoller_device_radio_channel_utilization_transmit_ratio{name="Upstairs AP",band="2.4",radio="ng",radio_name="wifi0"}'
+        values: "0.12x30 0.05x28 0.02x30"
+      # One large transfer: five minutes at 0.80, which is ABOVE any threshold here
+      # instantaneously, over a real 5 GHz background. Its 15m mean is 0.2867 and it
+      # must stay silent — this is the case that says 0.3 rather than the 0.25 the
+      # percentiles alone would allow, and written against the instantaneous gauge
+      # instead of the mean the rule pages every time someone starts a download.
       - series: 'unpoller_device_radio_channel_utilization_total_ratio{name="Upstairs AP",band="5",radio="na",radio_name="wifi1"}'
-        values: "0.17x60"
+        values: "0.03x20 0.8x4 0.03x34"
+      - series: 'unpoller_device_radio_channel_utilization_receive_ratio{name="Upstairs AP",band="5",radio="na",radio_name="wifi1"}'
+        values: "0.015x20 0.4x4 0.015x34"
+      - series: 'unpoller_device_radio_channel_utilization_transmit_ratio{name="Upstairs AP",band="5",radio="na",radio_name="wifi1"}'
+        values: "0.009x20 0.24x4 0.009x34"
+      # A non-2.4 radio saturated by its OWN traffic — the mirror of the neighbour
+      # series above. It is what pins Self's non-2.4 clause from above: every other
+      # non-2.4 radio past 0.3 here is external. Its last phase, 0.4 at a 0.55
+      # self-share, sits just above the classifier and is read at 75m and 90m.
+      - series: 'unpoller_device_radio_channel_utilization_total_ratio{name="Upstairs AP",band="6",radio="6e",radio_name="wifi2"}'
+        values: "0.02x15 0.5x9 0.02x34 0.4x30"
+      - series: 'unpoller_device_radio_channel_utilization_receive_ratio{name="Upstairs AP",band="6",radio="6e",radio_name="wifi2"}'
+        values: "0.01x15 0.3x9 0.01x34 0.13x30"
+      - series: 'unpoller_device_radio_channel_utilization_transmit_ratio{name="Upstairs AP",band="6",radio="6e",radio_name="wifi2"}'
+        values: "0.006x15 0.18x9 0.006x34 0.09x30"
+      # A radio congested past its threshold with NO receive or transmit series at
+      # all — unpoller dropping a field, or a radio type that never had one. `and`
+      # would find nothing to match and drop the alert silently, which is
+      # indistinguishable from a healthy radio; `unless` has nothing to subtract and
+      # reports it, which is why the rules are written that way round. This case
+      # fails the moment External goes back to a self-share comparison of its own.
+      - series: 'unpoller_device_radio_channel_utilization_total_ratio{name="Downstairs AP",band="6",radio="6e",radio_name="wifi2"}'
+        values: "0.01x15 0.5x9 0.01x34"
     alert_rule_test:
-      # 25m is the one evaluation that carries every property at once, and it is on
-      # the file's 5m grid — an off-grid time would be floored silently. Here the
-      # spiking radio reads 0.8 instantaneously, ABOVE the incident level, while its
-      # 15m mean is at its own peak of 0.37 — the spike ends here deliberately, so
-      # the window holds all five of its samples rather than one. The congested
-      # radio also dips to 0.3 for one sample inside the window, which min_over_time
-      # would swallow: that dip is what makes the MEAN load-bearing rather than any
-      # aggregation over the range. Written against the
-      # instantaneous gauge instead of the mean, this rule pages every time someone
-      # starts a large download, and this evaluation is what says so.
+      # Four radios fire at 25m, but all six are asserted here, because an exp_alerts
+      # list is exhaustive — and two of them are asserted silent at 25m and nowhere
+      # else: the burst radio, whose silence is its whole purpose, and the 2.4 radio
+      # at 0.40. Every evaluation sits on the file's 5m grid; an off-grid time would
+      # be floored silently. Every series runs past the last window that reads it, so
+      # no window is a short tail whose mean would change if the evaluation moved.
       - eval_time: 25m
-        alertname: UnifiRadioAirtimeHigh
+        alertname: UnifiRadioAirtimeHighSelf
         exp_alerts:
           - exp_labels:
               severity: warning
@@ -2921,12 +2986,73 @@ tests:
               radio: ng
               radio_name: wifi0
             exp_annotations:
-              summary: "Downstairs AP 2.4 GHz airtime at 52.33%"
+              summary: "Downstairs AP 2.4 GHz airtime at 52.33%, our own"
               description: >-
                 The 2.4 GHz radio on Downstairs AP has averaged 52.33% airtime over 15
-                minutes — every client on that channel is slow. Compare its receive
-                and transmit ratios against total: close to it is our own saturation,
-                far below is a neighbouring network, and the remedy differs.
+                minutes and most of it is this AP's own traffic — one of our devices is
+                filling the channel. A weak client is the usual cause rather than a busy
+                one: it transmits at the lowest rate and so costs the most airtime per
+                byte. Compare per-client PHY rates and retries via
+                `stat/report/5minutes.user`.
+          - exp_labels:
+              severity: warning
+              name: Upstairs AP
+              band: "6"
+              radio: 6e
+              radio_name: wifi2
+            exp_annotations:
+              summary: "Upstairs AP 6 GHz airtime at 34%, our own"
+              description: >-
+                The 6 GHz radio on Upstairs AP has averaged 34% airtime over 15 minutes
+                and most of it is this AP's own traffic — one of our devices is filling
+                the channel. A weak client is the usual cause rather than a busy one: it
+                transmits at the lowest rate and so costs the most airtime per byte.
+                Compare per-client PHY rates and retries via
+                `stat/report/5minutes.user`.
+      # The same evaluation on the other arm. That the two arms name disjoint radios
+      # is the assertion: a classifier that claimed a radio twice, or swapped the two
+      # sets, still passes a test that only counts alerts.
+      - eval_time: 25m
+        alertname: UnifiRadioAirtimeHighExternal
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              name: Downstairs AP
+              band: "5"
+              radio: na
+              radio_name: wifi1
+            exp_annotations:
+              summary: "Downstairs AP 5 GHz airtime at 37.67%, from outside"
+              description: >-
+                The 5 GHz radio on Downstairs AP has averaged 37.67% airtime over 15
+                minutes and it is not ours to account for — under half the medium is
+                this AP's own traffic, or its share could not be measured at all. A
+                neighbouring network or a non-WiFi emitter is holding the channel and our
+                clients are its victims, so look outward: `stat/rogueap` names what else
+                is on that channel, and the remedy is to move off it rather than to find
+                a device here.
+          - exp_labels:
+              severity: warning
+              name: Downstairs AP
+              band: "6"
+              radio: 6e
+              radio_name: wifi2
+            exp_annotations:
+              summary: "Downstairs AP 6 GHz airtime at 33.67%, from outside"
+              description: >-
+                The 6 GHz radio on Downstairs AP has averaged 33.67% airtime over 15
+                minutes and it is not ours to account for — under half the medium is
+                this AP's own traffic, or its share could not be measured at all. A
+                neighbouring network or a non-WiFi emitter is holding the channel and our
+                clients are its victims, so look outward: `stat/rogueap` names what else
+                is on that channel, and the remedy is to move off it rather than to find
+                a device here.
+      # 50m, where the 2.4 radio that was quiet at 0.4 is now at 0.7 with a seventh
+      # of the medium its own — the fourth corner of the band x cause matrix. It
+      # pins External's 2.4 clause from above; the 75m case pins it from below.
+      - eval_time: 50m
+        alertname: UnifiRadioAirtimeHighExternal
+        exp_alerts:
           - exp_labels:
               severity: warning
               name: Upstairs AP
@@ -2934,12 +3060,104 @@ tests:
               radio: ng
               radio_name: wifi0
             exp_annotations:
-              summary: "Upstairs AP 2.4 GHz airtime at 58%"
+              summary: "Upstairs AP 2.4 GHz airtime at 70%, from outside"
               description: >-
-                The 2.4 GHz radio on Upstairs AP has averaged 58% airtime over 15
-                minutes — every client on that channel is slow. Compare its receive
-                and transmit ratios against total: close to it is our own saturation,
-                far below is a neighbouring network, and the remedy differs.
+                The 2.4 GHz radio on Upstairs AP has averaged 70% airtime over 15
+                minutes and it is not ours to account for — under half the medium is
+                this AP's own traffic, or its share could not be measured at all. A
+                neighbouring network or a non-WiFi emitter is holding the channel and our
+                clients are its victims, so look outward: `stat/rogueap` names what else
+                is on that channel, and the remedy is to move off it rather than to find
+                a device here.
+      # The same evaluation on the other arm, empty: that corner's complement. That
+      # the two arms stay disjoint is already carried by the 25m pair above, so this
+      # asserts the radio is claimed once rather than twice.
+      - eval_time: 50m
+        alertname: UnifiRadioAirtimeHighSelf
+        exp_alerts: []
+      # 75m, the same 2.4 radio settled to 0.45 and still external. It is below its
+      # band's 0.5 and must stay silent, which is the ONLY thing stopping External's
+      # 2.4 threshold being lowered: every other 2.4 reading here is either
+      # self-classified or already above 0.5. The same radio is read again at 90m,
+      # still at 0.45, so the clause is held twice over rather than by one case.
+      - eval_time: 75m
+        alertname: UnifiRadioAirtimeHighExternal
+        exp_alerts: []
+      # The same evaluation on the Self arm, where the 6 GHz radio sits at 0.4 with a
+      # self-share of 0.55 — deliberately just inside the classifier's 0.5, where
+      # every other radio with data at this evaluation is at 0.8 or above, or 0.2 or
+      # below. The classifier constant is written out in both rules exactly as the
+      # thresholds are, so moving one arm's and not the other's opens the same gap:
+      # raise Self's to 0.6 and this radio is dropped by Self's `and` AND by
+      # External's `unless`, alerting on neither. The 90m pair below brackets the
+      # classifier from the other side.
+      - eval_time: 75m
+        alertname: UnifiRadioAirtimeHighSelf
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              name: Upstairs AP
+              band: "6"
+              radio: 6e
+              radio_name: wifi2
+            exp_annotations:
+              summary: "Upstairs AP 6 GHz airtime at 40%, our own"
+              description: >-
+                The 6 GHz radio on Upstairs AP has averaged 40% airtime over 15 minutes
+                and most of it is this AP's own traffic — one of our devices is filling
+                the channel. A weak client is the usual cause rather than a busy one: it
+                transmits at the lowest rate and so costs the most airtime per byte.
+                Compare per-client PHY rates and retries via
+                `stat/report/5minutes.user`.
+      # 90m, the mirror of the 75m Self case on the other arm: the neighbour radio
+      # settles to 0.4 with a self-share of 0.45, just UNDER the classifier where the
+      # 75m radio sat just over. Lower External's constant alone to 0.4 and its
+      # `unless` starts subtracting this radio while Self's `and` still refuses it —
+      # the same both-arms-drop gap, from the other side. With the 75m case this
+      # brackets the classifier as well as the thresholds. The 6 GHz radio is still
+      # self-saturated here and comes along.
+      - eval_time: 90m
+        alertname: UnifiRadioAirtimeHighExternal
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              name: Downstairs AP
+              band: "5"
+              radio: na
+              radio_name: wifi1
+            exp_annotations:
+              summary: "Downstairs AP 5 GHz airtime at 40%, from outside"
+              description: >-
+                The 5 GHz radio on Downstairs AP has averaged 40% airtime over 15
+                minutes and it is not ours to account for — under half the medium is
+                this AP's own traffic, or its share could not be measured at all. A
+                neighbouring network or a non-WiFi emitter is holding the channel and our
+                clients are its victims, so look outward: `stat/rogueap` names what else
+                is on that channel, and the remedy is to move off it rather than to find
+                a device here.
+      # The Self arm at the same evaluation, naming ONE radio. This is what catches
+      # the classifier drifting the other way: lower Self's constant to 0.4 and the
+      # 0.45-share neighbour above is claimed by both arms at once — two pages for
+      # one radio rather than none. Asserting the set, not just its non-emptiness,
+      # is what makes that visible.
+      - eval_time: 90m
+        alertname: UnifiRadioAirtimeHighSelf
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              name: Upstairs AP
+              band: "6"
+              radio: 6e
+              radio_name: wifi2
+            exp_annotations:
+              summary: "Upstairs AP 6 GHz airtime at 40%, our own"
+              description: >-
+                The 6 GHz radio on Upstairs AP has averaged 40% airtime over 15 minutes
+                and most of it is this AP's own traffic — one of our devices is filling
+                the channel. A weak client is the usual cause rather than a busy one: it
+                transmits at the lowest rate and so costs the most airtime per byte.
+                Compare per-client PHY rates and retries via
+                `stat/report/5minutes.user`.
 
   # Each direction is faulted on its own port, so dropping either term of the sum
   # leaves that port silent and fails here. The third port is the control that

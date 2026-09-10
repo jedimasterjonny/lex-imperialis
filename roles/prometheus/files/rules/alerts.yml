@@ -207,24 +207,48 @@ groups:
       # describing it. A saturated channel is slow for every client on it, and no
       # host-side exporter can see the medium at all.
       #
-      # 0.5, not 70. unpoller divides UniFi's 0-100 cu_total by 100, so this is a
-      # RATIO — a threshold written as 70 would never fire, and nothing else in the
-      # file would say so.
+      # Ratios, not percentages. unpoller divides UniFi's 0-100 cu_* fields by 100,
+      # so every threshold here is 0-1 — one written as 70 would never fire, and
+      # nothing else in the file would say so.
       #
-      # Calibrated from live readings rather than history, because the controller
-      # keeps none: its 5minutes/hourly/daily .ap report tables span a week and
-      # carry no cu_* field at all, so airtime exists only as the instantaneous
-      # value in stat/device. The two points that do exist are the busiest radio
-      # here sitting at 0.17, and the incident this rule was written for — a
-      # crashed device in a null packet storm, which held a radio at 0.70 for most
-      # of a day and was found only by eye, in a dashboard. 0.5 is ~3x the observed
-      # normal and clear of the known-bad. Worth revisiting once the TSDB holds a
-      # few weeks of it.
+      # Calibrated on the TSDB, the only source that can yield the 15m mean these
+      # rules evaluate. The table is that mean over the 15 days before the incident
+      # that prompted them — all the history unpoller had. `POST
+      # stat/report/daily.ap` carries the same cu_total per band 92 days back, but
+      # as daily means: too coarse to set a threshold on, and cited only for the one
+      # thing it does show, that no chronic congestion sits behind these numbers:
       #
-      # That the fault was a crashed device is why this rule is not redundant with
-      # UnifiDeviceDisconnected: the device stayed adopted and stayed talking to the
-      # controller. It was flooding, not absent, so the site health count never
-      # moved. Airtime is the only signal that saw it.
+      #   band  median   p99    max     threshold
+      #   2.4   0.219    0.339  0.750   0.5
+      #   5     0.029    0.097  0.185   0.3
+      #   6     0.002    0.097  0.169   0.3
+      #
+      # 2.4 keeps the 0.5 every band once shared. It is 3.5x the others at p99 and
+      # 4x at max; 0.5 sits at 1.5x its own p99, and the only samples above it in
+      # those 15 days are one real incident — the bulb below, whose 0.750 is this
+      # row's max. The p99 is therefore computed over a window that already contains
+      # an incident, which makes the 1.5x margin a floor rather than an estimate. The
+      # row assumes ONE active 2.4 radio — the second AP's is tx_power_mode disabled
+      # — so re-read it before
+      # re-enabling that one. 5 and 6 GHz share 0.3 because their distributions are
+      # identical to two decimal places at p99; 0.3 is 1.6x the busiest 15m mean
+      # either produced in the window, and neither crossed it once.
+      #
+      # 0.3 and not the 0.25 the percentiles alone would allow, because one large
+      # transfer binds tighter than they do: five minutes at 0.80 over a real 5 GHz
+      # background averages 0.287, which 0.25 would page for and 0.3 rides out.
+      # The band thresholds differ but that invariant does not. Replayed against the
+      # recorded series of the incident that prompted all this — a neighbour's mesh
+      # bursting a 5 GHz radio across 80 minutes, peaking at a 0.507 15m mean — the
+      # old flat 0.5 alerts for 4 of those 80 minutes and 0.3 for 64.
+      #
+      # A third incident, older than both and older than the table: the fault this
+      # rule was originally written for, found by eye in a dashboard before unpoller
+      # was recording, was a crashed device in a null packet storm holding a radio at
+      # 0.70 for most of a day. That is why this is not redundant with
+      # UnifiDeviceDisconnected: the device stayed adopted and stayed
+      # talking to the controller. It was flooding, not absent, so the site health
+      # count never moved. Airtime is the only signal that saw it.
       #
       # avg_over_time rather than a for: of the same length. Airtime is a sampled
       # instantaneous gauge and a noisy one, so a for: — which demands every
@@ -238,23 +262,75 @@ groups:
       #
       # 15m and not 30m. The known incident ran for hours, so any window would have
       # caught it and the window is not calibrated against it — it is chosen so a
-      # SHORTER recurrence is caught too. At 30m a ten-minute event at 0.70 against
-      # this background averages 0.35 and would pass unremarked; at 15m it reaches
-      # 0.52 and fires. The other side is bounded by test rather than by argument:
-      # a five-minute transfer spike at 0.80 averages 0.37 over 15m, and the
-      # promtool case fails if that ever starts alerting.
-      - alert: UnifiRadioAirtimeHigh
-        expr: avg_over_time(unpoller_device_radio_channel_utilization_total_ratio[15m]) > 0.5
+      # SHORTER recurrence is caught too. At 30m a ten-minute event at 0.70 over the
+      # 2.4 median above averages 0.38 and would pass unremarked; at 15m it reaches
+      # 0.54 and fires. The other side is the burst case, bounded by test rather
+      # than by argument.
+      #
+      # One fault, split by cause, because the two share nothing but the symptom: a
+      # channel we are filling ourselves is a device to find, a channel someone else
+      # is filling is a channel to leave. cu_self_rx + cu_self_tx is the AP's own
+      # share of the medium; against cu_total it separates the two with room to
+      # spare — the 2.4 bulb incident, the one inside the table's window, ran
+      # 0.71-0.85 self against the ch-100 neighbour's 0.02-0.08 — so 0.5 splits them
+      # nowhere near either cluster. Written
+      # `self > 0.5 * total`, not `self / total > 0.5`: precedence puts the multiply
+      # first without a paren and leaves no division to reason about. The _ratio
+      # series carry a label set identical to _total_ratio, checked against the live
+      # exporter rather than assumed.
+      #
+      # `and` here, `unless` there, over the same classifier text rather than that
+      # comparison and its negation: while the two texts match the arms are exact
+      # complements, which two identical lines make easy to hold and a `> 0.5`
+      # maintained beside a `<= 0.5` does not. It also picks the right default when
+      # cu_self_rx or cu_self_tx goes missing — `and` would drop the alert and leave
+      # a healthy-looking radio, `unless` reports External, and a share that cannot
+      # be measured cannot be blamed.
+      #
+      # PromQL cannot emit two alertnames from one rule, so every constant is spelt
+      # out in both arms and none of that duplication is self-checking: edit one and
+      # not the other and a radio alerts on neither name, or on both. A recording
+      # rule would make each appear once; declined because this file ships none and
+      # the first costs a convention everywhere. The promtool case holds it instead,
+      # bracketing all four thresholds and the classifier from both sides — twelve
+      # mutations, every one red.
+      - alert: UnifiRadioAirtimeHighExternal
+        expr: >-
+          (avg_over_time(unpoller_device_radio_channel_utilization_total_ratio{band="2.4"}[15m]) > 0.5
+          or avg_over_time(unpoller_device_radio_channel_utilization_total_ratio{band!="2.4"}[15m]) > 0.3)
+          unless avg_over_time(unpoller_device_radio_channel_utilization_receive_ratio[15m])
+          + avg_over_time(unpoller_device_radio_channel_utilization_transmit_ratio[15m])
+          > 0.5 * avg_over_time(unpoller_device_radio_channel_utilization_total_ratio[15m])
         labels:
           severity: warning
         annotations:
-          summary: "{{ $labels.name }} {{ $labels.band }} GHz airtime at {{ $value | humanizePercentage }}"
+          summary: "{{ $labels.name }} {{ $labels.band }} GHz airtime at {{ $value | humanizePercentage }}, from outside"
           description: >-
             The {{ $labels.band }} GHz radio on {{ $labels.name }} has averaged
-            {{ $value | humanizePercentage }} airtime over 15 minutes — every client on
-            that channel is slow. Compare its receive and transmit ratios against
-            total: close to it is our own saturation, far below is a neighbouring
-            network, and the remedy differs.
+            {{ $value | humanizePercentage }} airtime over 15 minutes and it is not ours
+            to account for — under half the medium is this AP's own traffic, or its share
+            could not be measured at all. A neighbouring network or a non-WiFi emitter is
+            holding the channel and our clients are its victims, so look outward:
+            `stat/rogueap` names what else is on that channel, and the remedy is to move
+            off it rather than to find a device here.
+      - alert: UnifiRadioAirtimeHighSelf
+        expr: >-
+          (avg_over_time(unpoller_device_radio_channel_utilization_total_ratio{band="2.4"}[15m]) > 0.5
+          or avg_over_time(unpoller_device_radio_channel_utilization_total_ratio{band!="2.4"}[15m]) > 0.3)
+          and avg_over_time(unpoller_device_radio_channel_utilization_receive_ratio[15m])
+          + avg_over_time(unpoller_device_radio_channel_utilization_transmit_ratio[15m])
+          > 0.5 * avg_over_time(unpoller_device_radio_channel_utilization_total_ratio[15m])
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.name }} {{ $labels.band }} GHz airtime at {{ $value | humanizePercentage }}, our own"
+          description: >-
+            The {{ $labels.band }} GHz radio on {{ $labels.name }} has averaged
+            {{ $value | humanizePercentage }} airtime over 15 minutes and most of it is
+            this AP's own traffic — one of our devices is filling the channel. A weak
+            client is the usual cause rather than a busy one: it transmits at the lowest
+            rate and so costs the most airtime per byte. Compare per-client PHY rates
+            and retries via `stat/report/5minutes.user`.
       # Wired packet loss, from the only place the fleet can see it. There is no
       # per-client loss metric — and the client families are filtered out at ingest
       # anyway — so the switch port is the instrument: an erroring port is a
