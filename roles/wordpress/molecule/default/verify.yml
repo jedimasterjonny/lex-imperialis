@@ -104,6 +104,28 @@
         fail_msg: "a legitimate uploads media file did not serve"
         quiet: true
 
+    # The same contract under wp-includes, which core loads by include and never
+    # by URL: a planted .php (the tree is as writable as uploads) and core's own
+    # version.php are denied outright, PATH_INFO form included. The over-block
+    # half is the blank.gif fetch below — a static asset in the same tree.
+    - name: Plant a webshell under wp-includes
+      ansible.builtin.command: >-
+        podman exec wordpress sh -c
+        'printf "<?php echo 42*42; ?>" > /var/www/html/wp-includes/evil.php'
+      become: true
+      changed_when: true
+
+    - name: PHP under wp-includes is denied
+      ansible.builtin.uri:
+        url: "http://127.0.0.1{{ item }}"
+        headers:
+          Host: "{{ wordpress_domains[0] }}"
+        status_code: [403]
+      loop:
+        - /wp-includes/evil.php
+        - /wp-includes/evil.php/x.jpg
+        - /wp-includes/version.php
+
     # blank.gif is core's healthcheck target, so it is present; caddy stamps the
     # one-year immutable cache header on it as a static asset.
     - name: A static asset answers for the cache-header check
