@@ -27,9 +27,11 @@ Volume=wordpress-html:/var/www/html
 {# with the private MCS pair of whichever container mounted last, so every #}
 {# cron run left apache unable to read either file. #}
 Volume=/etc/wordpress/mu-plugins/wordpress-hardening.php:/var/www/html/wp-content/mu-plugins/wordpress-hardening.php:ro,z
-{# Read-only apache drop-in disabling PHP under wp-content/uploads, so a webshell #}
-{# written into that writable tree can't execute. #}
+{# Read-only apache drop-ins: PHP disabled under wp-content/uploads and denied #}
+{# under wp-includes, so a webshell written into either writable tree can't #}
+{# execute. #}
 Volume=/etc/wordpress/uploads-no-exec.conf:/etc/apache2/conf-enabled/uploads-no-exec.conf:ro,z
+Volume=/etc/wordpress/wp-includes-no-exec.conf:/etc/apache2/conf-enabled/wp-includes-no-exec.conf:ro,z
 {# DB-independent liveness — a static asset, so a database blip never #}
 {# restart-loops apache; HealthOnFailure=kill + Restart=on-failure self-heals. #}
 HealthCmd=curl -fsS http://127.0.0.1/wp-includes/images/blank.gif -o /dev/null

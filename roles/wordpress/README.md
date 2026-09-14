@@ -208,6 +208,10 @@ sets `php_admin_flag engine off` and `AllowOverride None` on `wp-content/uploads
 so a webshell uploaded into the writable docroot can't execute and no attacker
 `.htaccess` can re-enable it. Enforced in apache, not the caddy edge, because an
 attacker `.htaccess` `AddType` would slip a `.png` webshell past any edge rule.
+A second drop-in (`files/wp-includes-no-exec.conf`) denies direct requests for
+`.php` under `wp-includes`, which core only ever loads by include: a scanner
+fingerprinting `version.php` or fatalling a block file gets a 403, as does a
+webshell written into that equally writable tree.
 
 ## Deploy
 
