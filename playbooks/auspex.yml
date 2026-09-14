@@ -178,13 +178,11 @@
           - 1.1.1.1:443
         labels:
           probe: uplink-canary
-      # The public sites end-to-end: each a 2xx through the Cloudflare/Firebase edge
-      # (redirect zones answer 3xx first, which http_2xx follows), plus per-site TLS
-      # expiry.
+      # The public sites end-to-end: each a 2xx through the Cloudflare/Firebase edge,
+      # plus per-site TLS expiry.
       - module: http_2xx
         targets:
           - https://jonnyoc.uk
-          - https://www.jonnyoc.uk
           - https://emmasedit.com
           # emmasedit.com's permalink HTML is edge-cached for two hours (terraform's
           # cache_html rule), so the probe above is a Cloudflare cache hit and would
@@ -194,6 +192,14 @@
           # Boost never stores a feed, so every check is a full WordPress render,
           # database included, ~1 KB. Uptime Kuma carries the same URL as a monitor.
           - https://emmasedit.com/feed/?probe=origin
+      # The aliases, which exist only to 301 to the canonical site (terraform's
+      # edge redirect rules): probed for the redirect itself and not followed — the
+      # destination has its own target above, and every followed redirect is a
+      # warning in the exporter's journal. Each still reports its own TLS expiry,
+      # which is the alias's certificate rather than the destination's.
+      - module: http_3xx
+        targets:
+          - https://www.jonnyoc.uk
           - https://www.emmasedit.com
           - https://jonnyoc.co.uk
           - https://www.jonnyoc.co.uk
@@ -225,8 +231,9 @@
       # Uptime Kuma on this host, the liveness alert for it as for solar's
       # services above. Direct rather than through solar's caddy, which fronts it
       # for the browser: probed that way, solar down would read as this host's
-      # monitor down too.
-      - module: http_2xx
+      # monitor down too. Its root 302s to the dashboard, and that answer is
+      # Kuma's own, so it is the liveness signal — asserted, not followed.
+      - module: http_3xx
         targets:
           - http://auspex:3001/
       # The NAS, which runs no exporter and, now that Prometheus has left it, has
