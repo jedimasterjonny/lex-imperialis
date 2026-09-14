@@ -8,8 +8,7 @@ blackbox_exporter_config_dir: /etc/blackbox_exporter
 # the scraping role's blackbox address (prometheus_blackbox_address).
 blackbox_exporter_listen_address: 127.0.0.1:9115
 
-# Prober modules rendered into blackbox.yml. The http_2xx module follows redirects
-# (the redirect zones answer 3xx before the final 2xx) and probes over IPv4.
+# Prober modules rendered into blackbox.yml. The http modules probe over IPv4.
 blackbox_exporter_modules:
   http_2xx:
     prober: http
@@ -28,6 +27,22 @@ blackbox_exporter_modules:
       follow_redirects: true
       preferred_ip_protocol: ip4
       valid_status_codes: [200, 401]
+  # For a target whose whole job is to redirect — the www and .co.uk aliases that
+  # 301 to the canonical site, Uptime Kuma's root that 302s to its dashboard. It
+  # asserts the redirect and stops there: following it would only re-probe a
+  # destination that has its own http_2xx target, and the exporter logs a
+  # warning for every redirect it follows — five such targets at 15s was 40k
+  # journal lines a week on the Pi. Any redirect status is accepted: the claim is
+  # that the alias redirects, not with which code (the edge rules answer 301,
+  # Kuma 302). The TLS expiry it reports is the alias's own certificate, where a
+  # followed probe reported the destination's.
+  http_3xx:
+    prober: http
+    timeout: 5s
+    http:
+      follow_redirects: false
+      preferred_ip_protocol: ip4
+      valid_status_codes: [301, 302, 307, 308]
   # A bare TCP connect, for a host that serves the fleet something other than
   # HTTP. Its one use is the NAS's NFS port: the NAS runs no exporter and, since
   # Prometheus moved off it, nothing on the fleet notices it going away — the old

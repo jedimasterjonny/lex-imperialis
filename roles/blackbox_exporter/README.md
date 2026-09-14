@@ -27,12 +27,16 @@ the host does.
   directory bind-mounted read-only into the container.
 - `blackbox_exporter_listen_address` — address the exporter binds `/probe` and
   `/metrics` on; loopback by default so it is not exposed on the LAN.
-- `blackbox_exporter_modules` — prober modules rendered into `blackbox.yml`. Four
-  by default. Two are HTTP, both following redirects (the redirect zones answer 3xx
-  before the final 2xx) and probing over IPv4: `http_2xx`, and `http_2xx_or_401`,
-  which additionally accepts a `401`. The latter is for an auth-walled endpoint,
-  where the `401` is itself proof the daemon is up and serving — accepting it keeps
-  that service's credentials off the exporter. `tcp_connect` is a bare
+- `blackbox_exporter_modules` — prober modules rendered into `blackbox.yml`. Five
+  by default. Three are HTTP, probing over IPv4: `http_2xx`; `http_2xx_or_401`,
+  which additionally accepts a `401` — for an auth-walled endpoint, where the
+  `401` is itself proof the daemon is up and serving, and accepting it keeps that
+  service's credentials off the exporter; and `http_3xx`, which accepts only a
+  redirect and does not follow it — for a target whose whole job is to redirect
+  (the www and `.co.uk` aliases, Uptime Kuma's root), asserting the redirect
+  itself rather than re-probing a destination that has its own target, and
+  sparing the exporter the warning it logs for every redirect it follows. Its
+  TLS expiry is the alias's own certificate, not the destination's. `tcp_connect` is a bare
   connect for a host serving the fleet something other than HTTP: its one use is
   the NAS's NFS port, which is the only signal the fleet has that the NAS is up now
   that Prometheus no longer runs there and dies with it. `tcp_ssh_banner` reads

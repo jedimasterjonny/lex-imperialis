@@ -50,6 +50,43 @@
         blackbox_exporter_loaded_modules: >-
           {{ (blackbox_exporter_loaded_config.content | from_yaml).modules }}
 
+    # http_3xx exists to assert a redirect without following it. The config half
+    # off what the exporter parsed: 'follow_redirects: false' has to survive, since
+    # the exporter's default is true and a dropped key would follow the 301 to a
+    # 2xx the module then rejects — red in production, but for the wrong reason.
+    - name: The http_3xx module is loaded, accepts a redirect and does not follow it
+      ansible.builtin.assert:
+        that:
+          - "'http_3xx' in blackbox_exporter_loaded_modules"
+          - not blackbox_exporter_loaded_modules.http_3xx.http.follow_redirects | default(true)
+          - 301 in blackbox_exporter_loaded_modules.http_3xx.http.valid_status_codes
+          - 302 in blackbox_exporter_loaded_modules.http_3xx.http.valid_status_codes
+        fail_msg: >-
+          the running blackbox_exporter did not load the http_3xx module, or loaded
+          it following redirects or without 301 and 302 among its valid_status_codes
+      vars:
+        blackbox_exporter_loaded_modules: >-
+          {{ (blackbox_exporter_loaded_config.content | from_yaml).modules }}
+
+    # The behavioural half: a 2xx is exactly what this module must reject, and the
+    # exporter's own health endpoint answers one with no external dependency. With
+    # valid_status_codes dropped the module degenerates into http_2xx and would
+    # pass here — and then pass in production against an alias whose redirect rule
+    # is gone and which serves the placeholder origin instead.
+    - name: Probe a 2xx target through the http_3xx module
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:9115/probe?target=http://127.0.0.1:9115/-/healthy&module=http_3xx"
+        return_content: true
+      register: blackbox_exporter_not_redirect_probe
+
+    - name: The http_3xx probe fails where no redirect is answered
+      ansible.builtin.assert:
+        that:
+          - "'probe_success 0' in blackbox_exporter_not_redirect_probe.content"
+        fail_msg: >-
+          the http_3xx probe succeeded against a target answering 2xx — its
+          valid_status_codes have been dropped and it is now http_2xx
+
     # The sentinel module comes from side_effect, which `make converge` does not
     # run — so gate the assert below on the rendered file rather than skipping it
     # whenever the module is missing. side_effect writes the file whether or not

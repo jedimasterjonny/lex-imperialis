@@ -1188,8 +1188,8 @@ tests:
 
   # ProbeDown reads probe_success — the prober module's own verdict — rather than the
   # status code, because targets legitimately answer other codes: transmission's RPC
-  # is auth-walled and answers 401 under http_2xx_or_401, and the redirect zones
-  # answer 3xx before the 2xx. Keyed on the code instead, this case pages about a
+  # is auth-walled and answers 401 under http_2xx_or_401, and the redirect aliases
+  # answer 3xx under http_3xx. Keyed on the code instead, this case pages about a
   # target working exactly as designed.
   - interval: 1m
     name: an auth-walled target answering its module stays silent while a dead one alerts
