@@ -150,7 +150,7 @@ arr_apps:
   # Shares the wireguard netns, so every peer connection rides the tunnel;
   # caddy reaches the webui at the wireguard container's transmission alias.
   transmission:
-    image: lscr.io/linuxserver/transmission:4.1.3@sha256:fc3b07f2f571c0392edd4dd386067138a0fe157d2158a976769409a292e43936
+    image: lscr.io/linuxserver/transmission:4.1.3@sha256:1a12fef3c89eca48b7be9e7d36b17b4eb4e1bcf5e1ee7fbf372e3a38b562939d
     uid: 1041
     caps: [CHOWN, DAC_OVERRIDE, KILL, SETGID, SETUID]
     port: 9091
