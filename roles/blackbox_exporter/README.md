@@ -34,9 +34,8 @@ the host does.
   service's credentials off the exporter; and `http_3xx`, which accepts only a
   redirect and does not follow it — for a target whose whole job is to redirect
   (the www and `.co.uk` aliases, Uptime Kuma's root), asserting the redirect
-  itself rather than re-probing a destination that has its own target, and
-  sparing the exporter the warning it logs for every redirect it follows. Its
-  TLS expiry is the alias's own certificate, not the destination's. `tcp_connect` is a bare
+  itself rather than re-probing a destination that has its own target. Its TLS
+  expiry is the alias's own certificate, not the destination's. `tcp_connect` is a bare
   connect for a host serving the fleet something other than HTTP: its one use is
   the NAS's NFS port, which is the only signal the fleet has that the NAS is up now
   that Prometheus no longer runs there and dies with it. `tcp_ssh_banner` reads
@@ -62,6 +61,10 @@ the host does.
   until it was recreated — the trap the compose deployment worked around. With a
   directory mount the restart handler suffices, and since the exporter reads its
   config only at start, that restart is what applies a change.
+- `--log.prober=error` on the per-probe logger. The exporter logs a WARN for
+  every redirect a probe meets, followed or not, and the five targets that exist
+  to redirect were 40k journal lines a week on the Pi's SD card. A failed probe
+  still logs its cause at error; the process logger stays at info.
 - No podman healthcheck. The co-located Prometheus scrapes it and
   `BlackboxExporterDown` alerts on that, so a network probe already monitors it —
   an exec check would add a restart backstop and nothing else.

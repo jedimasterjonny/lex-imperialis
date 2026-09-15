@@ -215,6 +215,18 @@
         fail_msg: "blackbox-exporter's capability or no-new-privileges posture has regressed"
         quiet: true
 
+    # The per-probe log level is a flag on the unit, so the only thing that can
+    # regress it is the flag going missing — and nothing else would notice: the
+    # exporter runs identically, just 40k lines a week louder.
+    - name: The per-probe logger is set to error
+      vars:
+        blackbox_exporter: "{{ blackbox_exporter_inspect.stdout | from_json | first }}"
+      ansible.builtin.assert:
+        that:
+          - "'--log.prober=error' in (blackbox_exporter.Config.Cmd | default([], true))"
+        fail_msg: "blackbox-exporter is not running with --log.prober=error"
+        quiet: true
+
     # The inquisition's `unpinned` class reads exactly this, and a quadlet whose
     # Image lost its digest is a container that silently drifts on the next pull.
     - name: The quadlet pins its image by digest

@@ -13,9 +13,14 @@ DropCapability=all
 {# The HTTP prober opens ordinary sockets and needs no capability back. The ICMP
    prober would want CAP_NET_RAW; it is not used. #}
 # The image's default command names a config path this role does not use, so it
-# is replaced wholesale.
+# is replaced wholesale. --log.prober governs only the per-probe logger: the
+# exporter logs a WARN for every redirect a probe meets, followed or not, and the
+# five targets that exist to redirect were 40k journal lines a week on this SD
+# card. At error a failed probe still logs its cause; the process logger stays at
+# info, so startup and config reloads remain visible.
 Exec=--config.file={{ blackbox_exporter_config_dir }}/blackbox.yml \
-  --web.listen-address={{ blackbox_exporter_listen_address }}
+  --web.listen-address={{ blackbox_exporter_listen_address }} \
+  --log.prober=error
 # The directory, not the file: a single-file bind mount pins an inode, so
 # Ansible's atomic write leaves the container reading the old config until it is
 # recreated — the trap the compose deployment had to work around. Mounting the
