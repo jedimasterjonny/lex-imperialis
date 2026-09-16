@@ -342,7 +342,7 @@ throwaway, never on this server.** So step 7 is mandatory, not optional, and ste
 
    ```bash
    sudo podman run --rm --network caddy --env-file /etc/wordpress/db.env \
-     --volume wordpress-db-dump:/dump:ro docker.io/library/mariadb:12.3.3@sha256:18a63083984079b94399c37e83aec865d2463d48e1c3b69c491cc48b76948732 \
+     --volume wordpress-db-dump:/dump:ro docker.io/library/mariadb:13.0.2@sha256:6364857ae6bd6640139189c632df94f76329c7b1402d33fb9e64b05bf1ca628d \
      sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" exec mariadb -h wordpress-db -uroot < /dump/wordpress.sql'
    ```
 
