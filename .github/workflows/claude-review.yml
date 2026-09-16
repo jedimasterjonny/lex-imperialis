@@ -57,6 +57,15 @@ jobs:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB is implemented with bubblewrap, which
+      # the runner image does not carry, and Claude Code refuses to *install*
+      # without it rather than degrading — three attempts, then the job fails
+      # before the agent starts. See the README.
+      - name: Install bubblewrap
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+
       - name: Review the pull request
         id: claude
         uses: anthropics/claude-code-action@7b0b255830a1fab6e602658672acad11c12d841d # v1

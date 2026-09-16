@@ -331,8 +331,15 @@ convenience would widen CI with it. `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` then keep
 `CLAUDE_OAUTH_TOKEN` and the Actions secrets out of every subprocess environment
 the agent can open; the action sets it itself only alongside
 `allowed_non_write_users`, but reads the caller's `env` ahead of that, so the job
-opts in directly. Last, `--disallowedTools` is the floor under an upstream
-widening, and deny beats allow. It names families rather than commands — `git`
+opts in directly. That scrubbing is implemented with bubblewrap, which the runner
+image does not carry, so the job installs it: Claude Code refuses to *install*
+when the variable is set and `bwrap` is missing, rather than running on without
+the isolation. Failing closed is the right call, but it fails in the install
+step, before the agent starts — the review job goes red with nothing posted and
+`review-outcome` skipped, which is what a digest bump of the action did on
+2026-09-16, unnoticed because nothing had carried the label since 2026-09-01.
+Last, `--disallowedTools` is the floor under an upstream widening, and deny
+beats allow. It names families rather than commands — `git`
 entire, so `git -c … push` is covered and not just `git push`, then `gh api`,
 `curl`, `wget`, `WebFetch` and `WebSearch` — plus `gh pr merge` and
 `gh pr review`, the two `gh pr` subcommands that would change what lands or what
