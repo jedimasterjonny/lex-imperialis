@@ -23,7 +23,7 @@ packer {
     hcloud = {
       source = "github.com/hetznercloud/hcloud"
       # renovate: datasource=github-releases depName=hetznercloud/packer-plugin-hcloud
-      version = "1.8.0"
+      version = "1.8.1"
     }
   }
 }
