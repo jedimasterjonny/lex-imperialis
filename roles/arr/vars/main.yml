@@ -89,7 +89,7 @@ arr_apps:
     healthcheck:
       cmd: curl -fsS http://127.0.0.1:8191/health
   beets:
-    image: lscr.io/linuxserver/beets:2.14.0@sha256:748b6fcdece5f3142cb555a4219b52ad9b9352763db02329ebe4dc3e21bce74d
+    image: lscr.io/linuxserver/beets:2.14.1@sha256:3e21faa842c31d11ca99c17a2c299f54871af5434554ae265b103e8f8322fa48
     uid: 1040
     caps: [CHOWN, DAC_OVERRIDE, KILL, SETGID, SETUID]
     port: 8337
