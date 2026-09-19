@@ -49,6 +49,30 @@ billing changes, which stay local operator applies). The pool/provider trust the
 whole owner; per-SA bindings pin the exact repo. `outputs.tf` exposes the
 provider resource name and the SA emails for the workflows' `auth` steps.
 
+`ci-runners.tf` is the permanent side of the ephemeral GitHub Actions runners
+for `jedimasterjonny/exactis`: a custom-mode VPC (`ci-runners`) with one subnet
+(`ci-runners-europe-west1`) and one ingress rule (`ci-runners-iap-ssh`, tcp:22
+from IAP's `35.235.240.0/20` and nothing else — admin access is a
+`--tunnel-through-iap` tunnel, never a public port). The VMs themselves are not
+managed here; a workflow in that repo creates one per job and deletes it at the
+end. Two cost decisions are load-bearing: no Cloud NAT (the runners take an
+ephemeral external IP for egress to github.com, nodejs.org, bun.sh and npm,
+which bills nothing where a NAT gateway bills per hour and per GB), and no
+Private Google Access, which that makes redundant. Inbound is shut by the
+absence of any ingress rule but the IAP one.
+
+Runner shape is measured, not chosen: `n4a-standard-8` (Axion, ARM64) on a
+`hyperdisk-balanced` boot disk (N4A refuses pd-balanced) from the
+`ubuntu-2404-lts-arm64` family, in `europe-west1` zones **b and c only** —
+not `-d`, which offers no N4A machine type at all, and not `europe-north1`,
+where the state bucket sits, which offers none either. Concurrency caps at
+**four** runners: the binding quota is `CPUS_ALL_REGIONS` at 32, not the N4A
+per-family quota of 200. A fifth concurrent job queues rather than fails. If
+that ceiling starts to bite, the fix is a quota-increase request for
+`CPUS_ALL_REGIONS` on
+`jonnyoc-infra-shared` in the Cloud console — not a change to this config, which
+sets no quota and cannot.
+
 State lives in a GCS bucket (`google_storage_bucket.tofu_state` in
 `infra-shared.tf` — `EUROPE-NORTH1`, versioned, UBLA + public-access-prevention),
 wired by the `backend "gcs"` in `main.tf`: remote state and locking, local

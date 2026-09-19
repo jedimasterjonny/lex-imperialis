@@ -22,6 +22,9 @@ locals {
     "cloudresourcemanager.googleapis.com",
     "cloudbilling.googleapis.com",
     "storage.googleapis.com",
+    # The ci-runners VPC and firewall rule, and the runner VMs a workflow
+    # creates in it (ci-runners.tf).
+    "compute.googleapis.com",
   ]
   github_owner = "jedimasterjonny"
   github_repo  = "jedimasterjonny/lex-imperialis"
@@ -203,6 +206,12 @@ resource "google_project_iam_member" "tofu_apply" {
     "infra-shared/projectiam"      = { project = google_project.infra_shared.project_id, role = "roles/resourcemanager.projectIamAdmin" }
     "infra-shared/serviceaccounts" = { project = google_project.infra_shared.project_id, role = "roles/iam.serviceAccountAdmin" }
     "infra-shared/wif"             = { project = google_project.infra_shared.project_id, role = "roles/iam.workloadIdentityPoolAdmin" }
+    # ci-runners.tf: the VPC and subnet, and the firewall rule over them.
+    # networkAdmin cannot touch firewall rules and securityAdmin cannot touch
+    # networks, so it takes both; roles/compute.admin would cover each but also
+    # hands CI the instances it has no business creating.
+    "infra-shared/networks"  = { project = google_project.infra_shared.project_id, role = "roles/compute.networkAdmin" }
+    "infra-shared/firewalls" = { project = google_project.infra_shared.project_id, role = "roles/compute.securityAdmin" }
     # objectUser writes the tofu_state bucket's state + lock objects. Granted at
     # project scope, not on the bucket: a google_storage_bucket_iam_member refresh
     # needs storage.buckets.getIamPolicy, which basic roles/viewer does NOT confer,
