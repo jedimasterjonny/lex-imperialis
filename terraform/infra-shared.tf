@@ -29,6 +29,10 @@ locals {
     # The ci-runners VPC and firewall rule, and the runner VMs a workflow
     # creates in it (ci-runners.tf).
     "compute.googleapis.com",
+    # The orphan reaper's Cloud Run job and the schedule that pokes it
+    # (ci-runners-reaper.tf).
+    "run.googleapis.com",
+    "cloudscheduler.googleapis.com",
   ]
   github_owner        = "jedimasterjonny"
   github_repo         = "${local.github_owner}/lex-imperialis"
@@ -230,6 +234,12 @@ resource "google_project_iam_member" "tofu_apply" {
     # hands CI the instances it has no business creating.
     "infra-shared/networks"  = { project = google_project.infra_shared.project_id, role = "roles/compute.networkAdmin" }
     "infra-shared/firewalls" = { project = google_project.infra_shared.project_id, role = "roles/compute.securityAdmin" }
+    # ci-runners-reaper.tf: the Cloud Run job, the schedule that pokes it, and
+    # the custom role it runs with. roleAdmin is project-scoped, so it can mint
+    # a role but only within a project whose IAM it already administers.
+    "infra-shared/run"       = { project = google_project.infra_shared.project_id, role = "roles/run.admin" }
+    "infra-shared/scheduler" = { project = google_project.infra_shared.project_id, role = "roles/cloudscheduler.admin" }
+    "infra-shared/roles"     = { project = google_project.infra_shared.project_id, role = "roles/iam.roleAdmin" }
     # objectUser writes the tofu_state bucket's state + lock objects. Granted at
     # project scope, not on the bucket: a google_storage_bucket_iam_member refresh
     # needs storage.buckets.getIamPolicy, which basic roles/viewer does NOT confer,

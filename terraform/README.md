@@ -90,6 +90,26 @@ account**. A create that omits `--service-account` is then refused for want of
 `actAs` on the default, rather than silently handed an editor token. That
 binding, not the workflow's good manners, is what keeps editor off the runners.
 
+`ci-runners-reaper.tf` is the orphan sweep. A runner is deleted by the same
+workflow that created it, so a cancelled job, a runner that never registers, or
+a workflow that dies mid-run leaves an `n4a-standard-8` billing indefinitely
+with nothing to notice. A Cloud Scheduler job pokes a Cloud Run job every
+fifteen minutes; it deletes any instance labelled `purpose=exactis-ci` created
+more than sixty minutes ago, so a leak costs at most about seventy-five
+minutes. The container is a pinned public `google-cloud-cli` image running nine
+lines of shell — no source archive, no Cloud Build, no Artifact Registry repo
+of ours, and the pin is renovate-tracked like every other image here. The
+identity is a custom role of seven permissions: it can list and delete
+instances and poll the resulting operation, and deliberately **cannot create
+one**.
+
+The sweep keys on the label rather than on a self-destruct, because
+`max_run_duration` + `instance_termination_action = DELETE` is set at create
+time by the very code whose failure the sweep exists to survive. The workflow
+should still pass both — belt there, braces here. Known gap: nothing alerts on
+a failed reaper execution (auspex's Prometheus watches the fleet, not GCP), so
+a sustained failure surfaces as a surprising bill rather than as a page.
+
 State lives in a GCS bucket (`google_storage_bucket.tofu_state` in
 `infra-shared.tf` — `EUROPE-NORTH1`, versioned, UBLA + public-access-prevention),
 wired by the `backend "gcs"` in `main.tf`: remote state and locking, local
