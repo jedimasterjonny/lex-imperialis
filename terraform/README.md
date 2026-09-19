@@ -182,6 +182,16 @@ and CI never touches the vault. `make tofu-apply` still
 applies locally for the rare change CI won't: project creation, billing, the
 state bucket, or a deliberate delete/replace.
 
+One more belongs on that list, and it is easy to miss: **a change that widens
+the `tofu-apply` SA's own roles cannot reliably be applied by CI**. The grant
+and the resources it authorises land in the same apply, with no dependency edge
+forcing an order and IAM propagation lagging behind the write that made it — so
+the create races the grant and 403s. A re-run usually succeeds once the grant
+has settled, but the first apply carrying new `tofu_apply` bindings is an
+operator's `make tofu-apply`, not CI's. The `ci-runners` files are exactly this
+case: they add `compute.networkAdmin`, `compute.securityAdmin`, `run.admin`,
+`cloudscheduler.admin` and `iam.roleAdmin` to that SA and then use all five.
+
 The gates need `tofu` and `tflint` on PATH — provisioned in CI by
 `setup-opentofu`/`setup-tflint`, and on the workstation by the `dev` role
 (OpenTofu from zypper, tflint pinned to the CI version). Elsewhere, install by
