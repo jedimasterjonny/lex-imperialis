@@ -73,3 +73,72 @@ resource "google_compute_firewall" "ci_runners_iap_ssh" {
   # nothing else, so the rule's target set and the intended one are already the
   # same. Give the rule a target the day something else joins this VPC.
 }
+
+# --- Identities ----------------------------------------------------------
+#
+# Two service accounts with nothing in common. exactis-ci-runner is the
+# provisioning identity the workflow federates in as, and may create and delete
+# instances. exactis-ci-runner-vm is attached to the VM, and is close to
+# powerless on purpose: a runner executes whatever a workflow in that repo says,
+# so whatever the VM's metadata token can reach, that code can reach.
+#
+# The split is also what keeps the project's default compute service account —
+# which Google grants roles/editor and attaches to any VM created without an
+# explicit one — off these runners. Attaching a service account needs
+# iam.serviceAccounts.actAs on it, and the provisioning identity has that on
+# exactly one account, so a create that omits --service-account is refused
+# rather than quietly handed an editor token. That is the enforcement; the
+# workflow naming the right account is only the happy path.
+
+resource "google_service_account" "exactis_ci_runner" {
+  project      = google_project.infra_shared.project_id
+  account_id   = "exactis-ci-runner"
+  display_name = "exactis CI runner provisioning"
+  description  = "Creates and deletes the ephemeral runner VMs, impersonated via WIF from ${local.github_repo_exactis}."
+
+  # iam.googleapis.com must be on before the SA can be created (from-zero).
+  depends_on = [google_project_service.infra_shared]
+}
+
+resource "google_service_account_iam_member" "exactis_ci_runner_wif" {
+  service_account_id = google_service_account.exactis_ci_runner.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = local.github_exactis_principal
+}
+
+# instanceAdmin.v1 is the narrowest predefined role that covers an instance
+# create: not just instances.create/delete but the disks.create,
+# images.useReadOnly, subnetworks.use, subnetworks.useExternalIp and
+# zoneOperations.get that one create actually touches. A custom role would trim
+# little the workflow does not use, and the project holds no compute outside
+# this VPC for the surplus to reach. roles/editor, for the avoidance of doubt,
+# is not on the table.
+resource "google_project_iam_member" "exactis_ci_runner" {
+  project = google_project.infra_shared.project_id
+  role    = "roles/compute.instanceAdmin.v1"
+  member  = google_service_account.exactis_ci_runner.member
+}
+
+resource "google_service_account" "exactis_ci_runner_vm" {
+  project      = google_project.infra_shared.project_id
+  account_id   = "exactis-ci-runner-vm"
+  display_name = "exactis CI runner VM"
+  description  = "Attached to the ephemeral runner VMs. Writes logs; nothing else."
+
+  depends_on = [google_project_service.infra_shared]
+}
+
+# The whole of the VM's authority. Not monitoring.metricWriter: nothing here
+# reads GCP metrics for a machine that lives a few minutes.
+resource "google_project_iam_member" "exactis_ci_runner_vm" {
+  project = google_project.infra_shared.project_id
+  role    = "roles/logging.logWriter"
+  member  = google_service_account.exactis_ci_runner_vm.member
+}
+
+# actAs, and only on this one account — see the section header.
+resource "google_service_account_iam_member" "exactis_ci_runner_actas" {
+  service_account_id = google_service_account.exactis_ci_runner_vm.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = google_service_account.exactis_ci_runner.member
+}

@@ -45,9 +45,13 @@ authenticate to GCP with no service-account keys. Three CI identities in
 impersonates the deploy SA in `jonnyoc-website`, a PR's `tofu plan` impersonates
 a read-only `tofu-plan` SA, and a merge's `tofu apply` impersonates a write
 `tofu-apply` SA (scoped to the two managed projects — no project create/delete or
-billing changes, which stay local operator applies). The pool/provider trust the
-whole owner; per-SA bindings pin the exact repo. `outputs.tf` exposes the
-provider resource name and the SA emails for the workflows' `auth` steps.
+billing changes, which stay local operator applies), and a fourth identity in
+`jedimasterjonny/exactis` impersonates the CI runner provisioning SA in
+`ci-runners.tf`. The pool/provider trust an explicit list of repositories — not
+the owner, so a new repo under it federates in only by an edit here — and the
+per-SA bindings then pin which single repo may impersonate each SA. `outputs.tf`
+exposes the provider resource name and the SA emails for the workflows' `auth`
+steps.
 
 `ci-runners.tf` is the permanent side of the ephemeral GitHub Actions runners
 for `jedimasterjonny/exactis`: a custom-mode VPC (`ci-runners`) with one subnet
@@ -72,6 +76,19 @@ that ceiling starts to bite, the fix is a quota-increase request for
 `CPUS_ALL_REGIONS` on
 `jonnyoc-infra-shared` in the Cloud console — not a change to this config, which
 sets no quota and cannot.
+
+Two service accounts, and the gap between them is the point.
+`exactis-ci-runner` is the provisioning identity the workflow federates in as
+(`roles/compute.instanceAdmin.v1`, the narrowest predefined role covering an
+instance create); `exactis-ci-runner-vm` is attached to the VM and holds
+`roles/logging.logWriter` and nothing else, because a runner executes whatever
+a workflow in that repo says and its metadata token is reachable by that code.
+The project's default compute SA carries Google's automatic `roles/editor` and
+is attached to any VM created without an explicit one — so the provisioning SA
+is granted `iam.serviceAccounts.actAs` on the runner VM SA **and no other
+account**. A create that omits `--service-account` is then refused for want of
+`actAs` on the default, rather than silently handed an editor token. That
+binding, not the workflow's good manners, is what keeps editor off the runners.
 
 State lives in a GCS bucket (`google_storage_bucket.tofu_state` in
 `infra-shared.tf` — `EUROPE-NORTH1`, versioned, UBLA + public-access-prevention),

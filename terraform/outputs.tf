@@ -20,3 +20,13 @@ output "tofu_apply_sa_email" {
   description = "Write service account the terraform.yml `tofu apply` job impersonates on merge to main."
   value       = google_service_account.tofu_apply.email
 }
+
+output "exactis_ci_runner_sa_email" {
+  description = "Provisioning service account the jedimasterjonny/exactis runner workflow impersonates; it federates through the same github_wif_provider above."
+  value       = google_service_account.exactis_ci_runner.email
+}
+
+output "exactis_ci_runner_vm_sa_email" {
+  description = "Service account the runner workflow must attach to each VM (--service-account). The provisioning SA can act as this one and no other, so omitting it fails the create rather than falling back to the default compute SA."
+  value       = google_service_account.exactis_ci_runner_vm.email
+}

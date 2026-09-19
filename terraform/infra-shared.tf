@@ -10,9 +10,13 @@
 #   - the Firebase Hosting deploy, impersonating the deploy SA in jonnyoc-website
 #   - `tofu plan` on a PR, impersonating the read-only tofu-plan SA created here
 #   - `tofu apply` on merge to main, impersonating the write tofu-apply SA here
-# The pool/provider trusts the whole owner; the per-SA bindings pin the exact
-# repo — and, for the write tofu-apply SA, the main branch — that may impersonate
-# each SA.
+# and a fourth from jedimasterjonny/exactis — its CI runner provisioning SA,
+# defined with the rest of that surface in ci-runners.tf.
+#
+# The pool/provider trust an explicit list of repositories, not the owner; the
+# per-SA bindings then pin which single repo — and, for the write tofu-apply SA,
+# which branch — may impersonate each SA. Federating a new repo is therefore two
+# deliberate edits here, never a side effect of creating a repo under the owner.
 
 locals {
   infra_shared_services = [
@@ -26,13 +30,20 @@ locals {
     # creates in it (ci-runners.tf).
     "compute.googleapis.com",
   ]
-  github_owner = "jedimasterjonny"
-  github_repo  = "jedimasterjonny/lex-imperialis"
+  github_owner        = "jedimasterjonny"
+  github_repo         = "${local.github_owner}/lex-imperialis"
+  github_repo_exactis = "${local.github_owner}/exactis"
 
   # The exact-repo principal the tofu-plan and deploy SA bindings trust (they run
   # on PRs too); the write tofu-apply SA gets the tighter repo + main-branch one.
   github_repo_principal = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${local.github_repo}"
   github_main_principal = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository_ref/${local.github_repo}@refs/heads/main"
+
+  # The exactis repo's principal, trusted only by the CI runner provisioning SA
+  # in ci-runners.tf. No branch clause: a runner is provisioned for any workflow
+  # in that repo, PR branches included, and what the identity may do is bounded
+  # by its roles rather than by which ref asked.
+  github_exactis_principal = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${local.github_repo_exactis}"
 }
 
 resource "google_project" "infra_shared" {
@@ -93,9 +104,16 @@ resource "google_iam_workload_identity_pool_provider" "github" {
     "attribute.repository_ref" = "assertion.repository + '@' + assertion.ref"
   }
 
-  # Only tokens minted for this owner's repos are accepted at all; the per-SA
-  # bindings below further restrict to the exact repository.
-  attribute_condition = "assertion.repository_owner == '${local.github_owner}'"
+  # Only tokens minted for one of these exact repositories are accepted at all;
+  # the per-SA bindings then decide which SA each may impersonate. This was an
+  # owner-wide condition, which meant every repo the owner would ever create —
+  # or accept a transfer of — could mint a token the pool accepts, leaving the
+  # per-SA bindings as the only thing between it and an impersonation. An
+  # allowlist makes federating a repo deliberate. Written as a disjunction of
+  # `==` rather than a CEL `in` over a list: the API documents the condition as
+  # "CEL logical operators and functions" without enumerating them, and a
+  # rejected condition halts the apply that carries it.
+  attribute_condition = "assertion.repository == '${local.github_repo}' || assertion.repository == '${local.github_repo_exactis}'"
 
   oidc {
     issuer_uri = "https://token.actions.githubusercontent.com"
