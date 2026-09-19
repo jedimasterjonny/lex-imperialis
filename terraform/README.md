@@ -45,9 +45,70 @@ authenticate to GCP with no service-account keys. Three CI identities in
 impersonates the deploy SA in `jonnyoc-website`, a PR's `tofu plan` impersonates
 a read-only `tofu-plan` SA, and a merge's `tofu apply` impersonates a write
 `tofu-apply` SA (scoped to the two managed projects — no project create/delete or
-billing changes, which stay local operator applies). The pool/provider trust the
-whole owner; per-SA bindings pin the exact repo. `outputs.tf` exposes the
-provider resource name and the SA emails for the workflows' `auth` steps.
+billing changes, which stay local operator applies), and a fourth identity in
+`jedimasterjonny/exactis` impersonates the CI runner provisioning SA in
+`ci-runners.tf`. The pool/provider trust an explicit list of repositories — not
+the owner, so a new repo under it federates in only by an edit here — and the
+per-SA bindings then pin which single repo may impersonate each SA. `outputs.tf`
+exposes the provider resource name and the SA emails for the workflows' `auth`
+steps.
+
+`ci-runners.tf` is the permanent side of the ephemeral GitHub Actions runners
+for `jedimasterjonny/exactis`: a custom-mode VPC (`ci-runners`) with one subnet
+(`ci-runners-europe-west1`) and one ingress rule (`ci-runners-iap-ssh`, tcp:22
+from IAP's `35.235.240.0/20` and nothing else — admin access is a
+`--tunnel-through-iap` tunnel, never a public port). The VMs themselves are not
+managed here; a workflow in that repo creates one per job and deletes it at the
+end. Two cost decisions are load-bearing: no Cloud NAT (the runners take an
+ephemeral external IP for egress to github.com, nodejs.org, bun.sh and npm,
+which bills nothing where a NAT gateway bills per hour and per GB), and no
+Private Google Access, which that makes redundant. Inbound is shut by the
+absence of any ingress rule but the IAP one.
+
+Runner shape is measured, not chosen: `n4a-standard-8` (Axion, ARM64) on a
+`hyperdisk-balanced` boot disk (N4A refuses pd-balanced) from the
+`ubuntu-2404-lts-arm64` family, in `europe-west1` zones **b and c only** —
+not `-d`, which offers no N4A machine type at all, and not `europe-north1`,
+where the state bucket sits, which offers none either. Concurrency caps at
+**four** runners: the binding quota is `CPUS_ALL_REGIONS` at 32, not the N4A
+per-family quota of 200. A fifth concurrent job queues rather than fails. If
+that ceiling starts to bite, the fix is a quota-increase request for
+`CPUS_ALL_REGIONS` on
+`jonnyoc-infra-shared` in the Cloud console — not a change to this config, which
+sets no quota and cannot.
+
+Two service accounts, and the gap between them is the point.
+`exactis-ci-runner` is the provisioning identity the workflow federates in as
+(`roles/compute.instanceAdmin.v1`, the narrowest predefined role covering an
+instance create); `exactis-ci-runner-vm` is attached to the VM and holds
+`roles/logging.logWriter` and nothing else, because a runner executes whatever
+a workflow in that repo says and its metadata token is reachable by that code.
+The project's default compute SA carries Google's automatic `roles/editor` and
+is attached to any VM created without an explicit one — so the provisioning SA
+is granted `iam.serviceAccounts.actAs` on the runner VM SA **and no other
+account**. A create that omits `--service-account` is then refused for want of
+`actAs` on the default, rather than silently handed an editor token. That
+binding, not the workflow's good manners, is what keeps editor off the runners.
+
+`ci-runners-reaper.tf` is the orphan sweep. A runner is deleted by the same
+workflow that created it, so a cancelled job, a runner that never registers, or
+a workflow that dies mid-run leaves an `n4a-standard-8` billing indefinitely
+with nothing to notice. A Cloud Scheduler job pokes a Cloud Run job every
+fifteen minutes; it deletes any instance labelled `purpose=exactis-ci` created
+more than sixty minutes ago, so a leak costs at most about seventy-five
+minutes. The container is a pinned public `google-cloud-cli` image running nine
+lines of shell — no source archive, no Cloud Build, no Artifact Registry repo
+of ours, and the pin is renovate-tracked like every other image here. The
+identity is a custom role of seven permissions: it can list and delete
+instances and poll the resulting operation, and deliberately **cannot create
+one**.
+
+The sweep keys on the label rather than on a self-destruct, because
+`max_run_duration` + `instance_termination_action = DELETE` is set at create
+time by the very code whose failure the sweep exists to survive. The workflow
+should still pass both — belt there, braces here. Known gap: nothing alerts on
+a failed reaper execution (auspex's Prometheus watches the fleet, not GCP), so
+a sustained failure surfaces as a surprising bill rather than as a page.
 
 State lives in a GCS bucket (`google_storage_bucket.tofu_state` in
 `infra-shared.tf` — `EUROPE-NORTH1`, versioned, UBLA + public-access-prevention),
@@ -120,6 +181,16 @@ secrets gated to the main-only `Segmentum Obscurus` environment, so no PR can re
 and CI never touches the vault. `make tofu-apply` still
 applies locally for the rare change CI won't: project creation, billing, the
 state bucket, or a deliberate delete/replace.
+
+One more belongs on that list, and it is easy to miss: **a change that widens
+the `tofu-apply` SA's own roles cannot reliably be applied by CI**. The grant
+and the resources it authorises land in the same apply, with no dependency edge
+forcing an order and IAM propagation lagging behind the write that made it — so
+the create races the grant and 403s. A re-run usually succeeds once the grant
+has settled, but the first apply carrying new `tofu_apply` bindings is an
+operator's `make tofu-apply`, not CI's. The `ci-runners` files are exactly this
+case: they add `compute.networkAdmin`, `compute.securityAdmin`, `run.admin`,
+`cloudscheduler.admin` and `iam.roleAdmin` to that SA and then use all five.
 
 The gates need `tofu` and `tflint` on PATH — provisioned in CI by
 `setup-opentofu`/`setup-tflint`, and on the workstation by the `dev` role

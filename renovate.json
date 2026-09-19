@@ -37,6 +37,12 @@
     },
     {
       "customType": "regex",
+      "description": "The gcloud image the exactis CI runner reaper's Cloud Run job runs. No autoReplaceStringTemplate: an in-place substitution leaves tofu fmt's alignment alone, where a reconstructed line would fail the fmt gate on renovate's own PR.",
+      "managerFilePatterns": ["/^terraform/ci-runners-reaper\\.tf$/"],
+      "matchStrings": ["# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+image\\s*=\\s*\"[^\\s:\"]+:(?<currentValue>[^\\s@\"]+)(?:@(?<currentDigest>sha256:[^\"]+))?\""]
+    },
+    {
+      "customType": "regex",
       "description": "Grafana dashboard revisions pinned in role vars; the role fetches them at converge.",
       "managerFilePatterns": ["/^roles/.+/vars/main\\.yml$/"],
       "matchStrings": ["# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+) packageName=(?<packageName>\\S+)\\s+\\S+: (?<currentValue>\\d+)"]
