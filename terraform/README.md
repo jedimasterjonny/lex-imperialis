@@ -80,9 +80,22 @@ sets no quota and cannot.
 Two service accounts, and the gap between them is the point.
 `exactis-ci-runner` is the provisioning identity the workflow federates in as
 (`roles/compute.instanceAdmin.v1`, the narrowest predefined role covering an
-instance create); `exactis-ci-runner-vm` is attached to the VM and holds
-`roles/logging.logWriter` and nothing else, because a runner executes whatever
-a workflow in that repo says and its metadata token is reachable by that code.
+instance create); `exactis-ci-runner-vm` is attached to the VM and holds two
+things only, because a runner executes whatever a workflow in that repo says
+and its metadata token is reachable by that code. Those two are
+`roles/logging.logWriter`, and a one-permission custom role
+(`compute.instances.delete`) that lets the runner delete itself when its work
+is done — the difference between a finished VM vanishing in seconds and
+waiting up to an hour for the reaper while a 100GB hyperdisk bills.
+
+That delete is **conditioned, not project-wide**:
+`resource.name.extract('/instances/{name}').startsWith('exactis-ci-')`, the
+prefix the runner workflow names its VMs with. IAM offers no "this instance
+and no other" attribute, so the binding is per-kind rather than per-machine —
+one runner could delete another, which is a set the reaper deletes wholesale
+regardless. It also offers no `contains()`, only `startsWith`, `endsWith` and
+`extract`, which is why the name is extracted rather than matched in place.
+
 The project's default compute SA carries Google's automatic `roles/editor` and
 is attached to any VM created without an explicit one — so the provisioning SA
 is granted `iam.serviceAccounts.actAs` on the runner VM SA **and no other

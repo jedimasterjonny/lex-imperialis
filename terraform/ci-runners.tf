@@ -128,12 +128,58 @@ resource "google_service_account" "exactis_ci_runner_vm" {
   depends_on = [google_project_service.infra_shared]
 }
 
-# The whole of the VM's authority. Not monitoring.metricWriter: nothing here
-# reads GCP metrics for a machine that lives a few minutes.
+# Not monitoring.metricWriter: nothing here reads GCP metrics for a machine
+# that lives a few minutes.
 resource "google_project_iam_member" "exactis_ci_runner_vm" {
   project = google_project.infra_shared.project_id
   role    = "roles/logging.logWriter"
   member  = google_service_account.exactis_ci_runner_vm.member
+}
+
+# The VM's second and last power: deleting itself once its work is done. It
+# does that over the Compute REST API with the token from its own metadata
+# server — Ubuntu's cloud image ships no gcloud — as a bare DELETE that does
+# not poll the operation it starts. So compute.instances.delete is the whole
+# requirement: not compute.zoneOperations.get, which only a polling client
+# needs, and not compute.disks.delete, which is for force-deleting a disk that
+# is not auto-delete. The boot disk is created with the instance and goes with
+# it.
+#
+# Without this the runner cannot tidy up after itself. The reaper would still
+# catch it, but only on a fifteen-minute sweep past a sixty-minute threshold,
+# so a finished VM would sit for up to an hour billing a 100GB hyperdisk
+# instead of disappearing in seconds.
+resource "google_project_iam_custom_role" "exactis_ci_runner_self_delete" {
+  project     = google_project.infra_shared.project_id
+  role_id     = "exactisCiRunnerSelfDelete"
+  title       = "exactis CI runner self-delete"
+  description = "Delete a CI runner instance. One permission, and pointedly not instances.create."
+
+  permissions = ["compute.instances.delete"]
+}
+
+# Conditioned on the instance name, not granted project-wide: the workflow
+# names its VMs exactis-ci-<run>-<attempt>-<n>, so the prefix is stable and the
+# binding holds this account to its own kind in a project that also carries the
+# state bucket and the WIF pool.
+#
+# Two things the condition cannot do. It cannot say "this instance and no
+# other" — IAM has no attribute for the caller's own identity as a resource —
+# so one runner could in principle delete another, which is a set of machines
+# the reaper deletes wholesale anyway. And it cannot use contains(): IAM
+# conditions expose only startsWith, endsWith and extract, so the name is
+# pulled out of the resource path with extract() rather than matched inside it.
+# Both forms were checked against the IAM lintPolicy API before landing here.
+resource "google_project_iam_member" "exactis_ci_runner_vm_self_delete" {
+  project = google_project.infra_shared.project_id
+  role    = google_project_iam_custom_role.exactis_ci_runner_self_delete.name
+  member  = google_service_account.exactis_ci_runner_vm.member
+
+  condition {
+    title       = "exactis CI runner instances only"
+    description = "Instances named exactis-ci-*, which is what the runner workflow creates."
+    expression  = "resource.type == 'compute.googleapis.com/Instance' && resource.name.extract('/instances/{name}').startsWith('exactis-ci-')"
+  }
 }
 
 # actAs, and only on this one account — see the section header.
