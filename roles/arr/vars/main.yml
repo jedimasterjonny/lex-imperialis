@@ -58,7 +58,7 @@ arr_apps:
     healthcheck:
       cmd: curl -fsS http://127.0.0.1:8989/ping
   lidarr:
-    image: lscr.io/linuxserver/lidarr:3.1.0@sha256:8ab0fd370b604ae034d9a9c261a9d8d873bece33d9736852e7ce4f3566e4a35d
+    image: lscr.io/linuxserver/lidarr:3.1.0@sha256:044d616beb43c5e7810991242c6a9c42b93ff238c8c0850684939634ea751208
     uid: 1037
     caps: [CHOWN, KILL, SETGID, SETUID]
     port: 8686
@@ -67,7 +67,7 @@ arr_apps:
     healthcheck:
       cmd: curl -fsS http://127.0.0.1:8686/ping
   prowlarr:
-    image: lscr.io/linuxserver/prowlarr:2.6.5@sha256:c96b56d94d116a9f4de94bc23d3381689492e6c3cfb7435320e8d982e406f99a
+    image: lscr.io/linuxserver/prowlarr:2.6.5@sha256:f2b26429893d4c4cb71941b7ee50b1bdecd9d5f9f9e02d5410615e9f4f7c8d95
     uid: 3004
     caps: [CHOWN, KILL, SETGID, SETUID]
     port: 9696
