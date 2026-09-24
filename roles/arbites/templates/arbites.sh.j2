@@ -64,6 +64,48 @@ fi
 
 echo "applying ${target:0:12} to the fleet"
 
+# Run from the clone root so ansible picks up the repo's ansible.cfg (inventory,
+# roles_path), exactly as make apply does.
+cd "$repo" || exit 1
+# UserKnownHostsFile makes the seeded known_hosts authoritative; CheckHostIP=no pins
+# on the connection name/address alone, so keyscanning each host as ansible reaches
+# it (including scholam's own loopback) suffices; empty array when off. The
+# =-joined form, because ansible (unlike ansible-playbook) has a -o of its own
+# and would read a separate "-o ..." value as that flag.
+{% if arbites_host_key_checking | bool %}
+ssh_extra_args=("--ssh-extra-args=-o UserKnownHostsFile={{ arbites_known_hosts_file }} -o GlobalKnownHostsFile=/dev/null -o CheckHostIP=no")
+{% else %}
+ssh_extra_args=()
+{% endif %}
+# Sync the venv to the just-fetched requirements before applying, so a bumped
+# ansible pin is in place up front and the self-apply's own pip task finds it
+# already satisfied — it never reinstalls ansible under the running process.
+"$venv/bin/pip" install --quiet --requirement requirements.txt
+apply_args=(--private-key "$ssh_key" --vault-password-file "$vault_pass" "${ssh_extra_args[@]}")
+# Hold the apply while any fleet host is mid-autoupdate. The unit's ExecCondition
+# already skips a cycle for this host's own dup; a remote host's holds the zypper
+# lock its package tasks need, or is a half-upgraded Python away from a reboot,
+# and every apply that landed in one of those windows failed there and paged
+# ArbitesFailed for a run the next tick completed cleanly. So ask every host
+# first. A hold is a clean no-op: last_applied stays put and the next cycle
+# retries. An unreachable host is not a hold — it falls through to the apply,
+# which fails loudly, as a down host should. ansible ad-hoc, so the inventory,
+# key and known_hosts are the apply's own, read through the json callback (which
+# ad-hoc loads only when told to). A host holds only on a state that says the
+# unit is running: anything else — inactive, failed, an error, no answer — lets
+# the apply go ahead, so a broken probe can never stall the reconcile silently.
+busy="$(ANSIBLE_LOAD_CALLBACK_PLUGINS=true ANSIBLE_STDOUT_CALLBACK=ansible.builtin.json \
+    "$venv/bin/ansible" all "${apply_args[@]}" \
+    --module-name ansible.builtin.command \
+    --args 'systemctl show --property=ActiveState --value autoupdate.service' 2>/dev/null \
+    | jq -r '.plays[0].tasks[0].hosts | to_entries[]
+        | select((.value.stdout // "") | test("^(active|activating|reloading|deactivating)$"))
+        | .key' || true)"
+if [ -n "$busy" ]; then
+    echo "autoupdate active on $(echo "$busy" | tr '\n' ' ')— holding ${target:0:12} until the next cycle"
+    exit 0
+fi
+
 # Open the deployment record this run's outcome will close (the ExecStopPost hook
 # posts the final state, reading the id back from this file). Clear any id first: a
 # run killed before its hook ran would otherwise hand its stale deployment this
@@ -89,22 +131,6 @@ if [ -n "${ARBITES_GITHUB_TOKEN:-}" ]; then
     fi
 fi
 
-# Run from the clone root so ansible picks up the repo's ansible.cfg (inventory,
-# roles_path), exactly as make apply does.
-cd "$repo" || exit 1
-# UserKnownHostsFile makes the seeded known_hosts authoritative; CheckHostIP=no pins
-# on the connection name/address alone, so keyscanning each host as ansible reaches
-# it (including scholam's own loopback) suffices; empty array when off.
-{% if arbites_host_key_checking | bool %}
-ssh_extra_args=(--ssh-extra-args "-o UserKnownHostsFile={{ arbites_known_hosts_file }} -o GlobalKnownHostsFile=/dev/null -o CheckHostIP=no")
-{% else %}
-ssh_extra_args=()
-{% endif %}
-# Sync the venv to the just-fetched requirements before applying, so a bumped
-# ansible pin is in place up front and the self-apply's own pip task finds it
-# already satisfied — it never reinstalls ansible under the running process.
-"$venv/bin/pip" install --quiet --requirement requirements.txt
-apply_args=(--private-key "$ssh_key" --vault-password-file "$vault_pass" "${ssh_extra_args[@]}")
 # A failed or killed apply can leave hosts part-way to different targets, and
 # the fast path reasons from the last applied *tree* — so it runs only when
 # the previous apply completed cleanly. The flag stands from here until this

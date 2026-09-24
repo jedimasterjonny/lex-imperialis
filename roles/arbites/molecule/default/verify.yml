@@ -60,6 +60,20 @@
         fail_msg: "the reconcile script does not wire the container fast path over the full apply"
         quiet: true
 
+    # A remote host mid-autoupdate fails the apply on its zypper lock or its
+    # half-upgraded interpreter; the script must ask the fleet before it applies,
+    # and it must do so before the deployment record is opened, or a held cycle
+    # closes a record it never applied.
+    - name: The reconcile script holds the apply while a fleet host is mid-autoupdate
+      vars:
+        script: "{{ arbites_script_content.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'ActiveState --value autoupdate.service' in script"
+          - script.index('autoupdate.service') < script.index('github_api deployments')
+        fail_msg: "the reconcile script does not hold the apply for a fleet host's autoupdate, ahead of the deployment record"
+        quiet: true
+
     # The deployment record is posted from both scripts, so both must carry the API
     # calls, and the token must reach them through the 0600 EnvironmentFile rather
     # than either 0755 script.

@@ -21,18 +21,25 @@ jitter; `Persistent`, so a reboot-missed run catches up). The script:
    is read as an inventory source and survives a revert);
 3. short-circuits if `main` has not advanced since the last applied SHA, so an
    idle cycle is near-free;
-4. otherwise applies, from the clone root (reusing the repo's `ansible.cfg`)
+4. asks every fleet host whether `autoupdate.service` is running and, if one is,
+   exits as a clean no-op with nothing recorded, so the next cycle retries — a
+   host mid-dup holds the zypper lock the package tasks need, or is a reboot
+   away, and an apply that lands in that window fails there. An unreachable
+   host is not a hold: it falls through to the apply, which fails loudly for it;
+5. otherwise applies, from the clone root (reusing the repo's `ansible.cfg`)
    with `arbites_venv_dir`'s ansible on `PATH`: a range that is nothing but
    renovate container bumps goes via the container fast path (below); anything
    else runs `bin/fleet-apply.sh` with `--diff` to the journal, sharding
    `playbooks/site.yml` by host so the remote hosts converge at once, scholam
    last so the run never restarts its own timer mid-apply;
-5. records the applied SHA only on a clean apply; a failure leaves the old
+6. records the applied SHA only on a clean apply; a failure leaves the old
    value, so the next run retries.
 
 The unit's `ExecCondition` skips a cycle outright while `autoupdate.service` is
-active: the Friday dup and this timer both land at 04:00, and the dup holds the
-zypper lock the role's package query needs. The skip is a success, not a failure.
+active on scholam itself: the Friday dup and this timer both land at 04:00, and
+the dup holds the zypper lock the role's package query needs. The skip is a
+success, not a failure. The other hosts' dups are step 4, asked only once an
+apply is due, so an idle cycle stays near-free.
 
 An `ExecStopPost` hook writes the outcome to `arbites_metric_file`
 (`arbites_textfile_dir/arbites.prom`): `arbites_success` (1/0 from
