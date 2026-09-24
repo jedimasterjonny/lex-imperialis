@@ -9,6 +9,7 @@ set -euo pipefail
 # the container is up, or beets deliberately stopped): don't fail the unit and
 # don't pull beets in — just catch up on the next run.
 systemctl is-active --quiet beets.service || { echo "beets not running; skipping catalog"; exit 0; }
+rc=0
 podman exec --user abc beets sh -c '
 set -eu
 cfg=/config/managed/library-config.yaml
@@ -24,4 +25,13 @@ items=$(beet -c "$cfg" ls)
 if [ -n "$items" ]; then
   beet -c "$cfg" update
 fi
-'
+' || rc=$?
+# 143 and 137 are the exec torn down under us: beets stopped or restarted
+# mid-run — a container bump landing on this tick, a backup stopping it. Nothing
+# is half-done that the next run does not redo, so that is a skip, not a failure
+# that pages for a job the next tick catches up.
+if [ "$rc" -eq 143 ] || [ "$rc" -eq 137 ]; then
+    echo "beets stopped mid-run; catching up on the next run"
+    exit 0
+fi
+exit "$rc"
