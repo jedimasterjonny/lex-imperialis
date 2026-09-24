@@ -268,11 +268,10 @@
           become: true
           register: dev_claude_config_verify
 
-        - name: Remote Control workspace is pre-trusted and onboarded
+        - name: Remote Control workspace is pre-trusted
           ansible.builtin.assert:
             that:
               - dev_claude_config_project.hasTrustDialogAccepted | default(false) | bool
-              - dev_claude_config_project.hasCompletedProjectOnboarding | default(false) | bool
             fail_msg: "workspace trust not seeded for {{ dev_remote_control_workdir }}"
             quiet: true
           vars:

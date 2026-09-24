@@ -258,9 +258,13 @@
 
     # Claude refuses to run in an untrusted directory, so without this the boot
     # session exits "Workspace not trusted" and Restart=always crash-loops the
-    # unit. Seed the per-directory trust keys (an interactively trusted project
-    # carries both) into the owner's app-managed ~/.claude.json for the workdir.
-    # The when-guard writes only when a key is missing, so once seeded a converge
+    # unit. Seed the per-directory trust key into the owner's app-managed
+    # ~/.claude.json for the workdir. Trust alone: hasTrustDialogAccepted is the
+    # key Claude checks and keeps, while hasCompletedProjectOnboarding — seeded
+    # beside it once — is one Claude's own writes drop again (no project in the
+    # live file carries it), so guarding on both had this task rewrite the file on
+    # 54 of 63 fleet applies, racing the running sessions' saves each time. The
+    # when-guard writes only when the key is missing, so once seeded a converge
     # skips it — no churn, no clobber of Claude's live writes; an absent file is
     # created minimal and Claude merges its own state on first run. no_log keeps
     # the owner's account and org identifiers out of --diff; the OAuth token
@@ -290,9 +294,6 @@
         # A templated YAML key is not rendered, so build the patch as a Jinja
         # literal where the workdir is the key expression.
         dev_claude_trust_patch: >-
-          {{ {'projects': {dev_remote_control_workdir: {'hasTrustDialogAccepted': true,
-             'hasCompletedProjectOnboarding': true}}} }}
-      when: >-
-        not (dev_claude_config_project.hasTrustDialogAccepted | default(false) | bool
-             and dev_claude_config_project.hasCompletedProjectOnboarding | default(false) | bool)
+          {{ {'projects': {dev_remote_control_workdir: {'hasTrustDialogAccepted': true}}} }}
+      when: not (dev_claude_config_project.hasTrustDialogAccepted | default(false) | bool)
       no_log: true
