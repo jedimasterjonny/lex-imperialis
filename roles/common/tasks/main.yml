@@ -148,13 +148,17 @@
 # week-stale list 404s on a version the mirror has already rotated away, and per
 # playbooks/README.md a play that cannot converge stalls the whole reconcile.
 # cache_valid_time keeps a converge within the hour from refetching, so this
-# stays idempotent across a reapply.
+# stays idempotent across a reapply. Past the hour the module reports the refetch
+# as a change — the lists moved, not the host — which put a changed=1 on auspex in
+# 43 of 63 fleet applies and hid real drift behind it; a list refresh is not a
+# change to anything this play declares.
 - name: Refresh the apt package lists
   ansible.builtin.apt:
     update_cache: true
     cache_valid_time: 3600
   when: ansible_facts['os_family'] == 'Debian'
   become: true
+  changed_when: false
 
 # Read the installed set once, so every package task in this play can skip itself
 # when there is nothing to install. The check is the expensive half: on a
