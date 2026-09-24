@@ -32,7 +32,10 @@ re-verify of active torrents. The kill only fires after ~15m of a dead RPC, by w
 point that costs less than staying wedged. A plain stop must not kill it either: its
 finish script waits for the daemon to flush after `transmission-remote --exit`, and
 s6 would `SIGKILL` that wait at 5 s, so the role mounts a `timeout-finish` of
-`arr_transmission_stop_grace_ms` into the service dir.
+`arr_transmission_stop_grace_ms` into the service dir. That grace holds only if
+podman waits for it — its own default `SIGKILL`s the container 10 s after
+`SIGTERM` — so the unit sets `StopTimeout=` to `arr_transmission_stop_timeout`,
+past the grace and under systemd's 90 s.
 
 ## Apps
 

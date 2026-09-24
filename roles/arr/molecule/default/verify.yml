@@ -501,6 +501,19 @@
         fail_msg: transmission's s6 timeout-finish is not the configured stop grace
         quiet: true
 
+    # The grace is moot if podman SIGKILLs the container at its 10 s default first.
+    - name: Read transmission's podman stop timeout
+      ansible.builtin.command: podman inspect transmission --format '{{ '{{' }}.Config.StopTimeout{{ '}}' }}'
+      become: true
+      register: arr_transmission_stop_timeout_live
+      changed_when: false
+
+    - name: Podman waits out the stop grace before it SIGKILLs transmission
+      ansible.builtin.assert:
+        that: arr_transmission_stop_timeout_live.stdout | int == arr_transmission_stop_timeout
+        fail_msg: transmission's podman stop timeout is not the configured value
+        quiet: true
+
     - name: Probe transmission RPC without credentials
       ansible.builtin.command: >-
         podman exec transmission

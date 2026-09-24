@@ -134,6 +134,12 @@ arr_transmission_password: ""
 # ships no timeout-finish, so s6-supervise's 5 s default applied; a full queue
 # takes ~8 s on solar. Kept under the unit's 90 s stop timeout.
 arr_transmission_stop_grace_ms: 60000
+# How long podman lets the container run on after SIGTERM before it SIGKILLs it.
+# Podman's default is 10 s, which lands before the finish script above has
+# flushed: every stop on solar ended in SIGKILL at 10 s, the grace never reached
+# and the unit left failed. Seconds — podman takes no finer unit — sized past the
+# grace and under the unit's 90 s stop timeout.
+arr_transmission_stop_timeout: 75
 
 # Recyclarr's TRaSH config — the radarr/sonarr quality-profile + custom-format
 # configs and the !secret api keys — renders here and bind-mounts read-only into
