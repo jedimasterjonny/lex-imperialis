@@ -32,7 +32,10 @@ re-verify of active torrents. The kill only fires after ~15m of a dead RPC, by w
 point that costs less than staying wedged. A plain stop must not kill it either: its
 finish script waits for the daemon to flush after `transmission-remote --exit`, and
 s6 would `SIGKILL` that wait at 5 s, so the role mounts a `timeout-finish` of
-`arr_transmission_stop_grace_ms` into the service dir.
+`arr_transmission_stop_grace_ms` into the service dir. That grace holds only if
+podman waits for it — its own default `SIGKILL`s the container 10 s after
+`SIGTERM` — so the unit sets `StopTimeout=` to `arr_transmission_stop_timeout`,
+past the grace and under systemd's 90 s.
 
 ## Apps
 
@@ -106,8 +109,11 @@ can't block new additions.
 The catalog config renders to `arr_beets_config_dir` on the host and bind-mounts
 read-only into beets at `/config/managed`; the script `podman exec`s into the
 running container so every path is `/data/...`. It skips cleanly when beets is
-down (so a boot-time catch-up can't fail the unit). The oneshot is ordered
-`After=beets.service` and the timer is `Persistent=true`. The container's own
+down (so a boot-time catch-up can't fail the unit), and when beets stops or
+restarts under it mid-run — a container bump landing on the tick, a backup
+stopping it — since the next run redoes what was cut short; the pipeline's
+script does the same. The oneshot is ordered `After=beets.service` and the
+timer is `Persistent=true`. The container's own
 `beet web` UI keeps using its default `/config` config, untouched.
 
 ## Music pipeline

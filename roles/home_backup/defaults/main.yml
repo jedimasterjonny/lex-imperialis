@@ -12,11 +12,12 @@ home_backup_paths:
   - /home
 
 # Re-acquirable churn to keep out of the repo: package/tool caches, virtualenvs,
-# the VS Code remote server, node_modules, and rootless podman's store. A pattern
-# without a slash matches that basename at any depth; one with a slash matches a
-# path suffix, so `.local/share/containers` catches every user's store without
-# touching some unrelated directory of that name. restic ships no restore of
-# these, but they rebuild on demand.
+# the VS Code remote server, bun's package cache (`.bun/install` — 77k files in
+# one week's snapshot on scholam), node_modules, and rootless podman's store. A
+# pattern without a slash matches that basename at any depth; one with a slash
+# matches a path suffix, so `.local/share/containers` catches every user's store
+# without touching some unrelated directory of that name. restic ships no restore
+# of these, but they rebuild on demand.
 #
 # The podman store is excluded whole, rootless volumes included. Every managed
 # workload is a rootful quadlet whose volumes `podman_backup` already covers, so
@@ -31,6 +32,7 @@ home_backup_paths:
 home_backup_excludes:
   - .cache
   - .npm
+  - .bun/install
   - .vscode-server
   - .venv
   - node_modules

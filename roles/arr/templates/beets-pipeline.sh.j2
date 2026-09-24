@@ -20,4 +20,14 @@ systemctl is-active --quiet beets.service || { echo "beets not running; skipping
 # inner shell's stdin (without it podman feeds /dev/null and the script silently
 # no-ops). The inner script is POSIX sh (the beets image is Alpine/busybox, no bash),
 # split into its own rendered template so the shellcheck-jinja hook analyses it.
-podman exec -i --user abc --env LIDARR__AUTH__APIKEY beets sh -s < {{ arr_beets_pipeline_inner_script }}
+rc=0
+podman exec -i --user abc --env LIDARR__AUTH__APIKEY beets sh -s < {{ arr_beets_pipeline_inner_script }} || rc=$?
+# 143 and 137 are the exec torn down under us: beets stopped or restarted
+# mid-run — a container bump landing on this tick, a backup stopping it. Nothing
+# is half-done that the next run does not redo, so that is a skip, not a failure
+# that pages for a job the next tick catches up.
+if [ "$rc" -eq 143 ] || [ "$rc" -eq 137 ]; then
+    echo "beets stopped mid-run; catching up on the next run"
+    exit 0
+fi
+exit "$rc"
