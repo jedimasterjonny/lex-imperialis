@@ -196,7 +196,25 @@
   environment:
     HOME: "{{ dev_user_home }}"
 
-- name: Deploy the owner's git and nvim dotfiles
+# Both run once, like the Claude installer: herdr owns what they write from then
+# on. The integration refuses without ~/.claude, which the Claude installer creates.
+- name: Install herdr for the owner
+  become: true
+  become_user: "{{ dev_user }}"
+  environment:
+    HOME: "{{ dev_user_home }}"
+  block:
+    - name: Install herdr with its upstream installer
+      ansible.builtin.shell:
+        cmd: set -o pipefail && curl -fsSL https://herdr.dev/install.sh | sh
+        creates: "{{ dev_herdr_bin }}"
+
+    - name: Install herdr's Claude Code integration
+      ansible.builtin.command:
+        cmd: "{{ dev_herdr_bin }} integration install claude"
+        creates: "{{ dev_user_home }}/.claude/hooks/herdr-agent-state.sh"
+
+- name: Deploy the owner's git, herdr and nvim dotfiles
   ansible.builtin.include_role:
     name: stow
   vars:
@@ -204,6 +222,7 @@
     stow_user_home: "{{ dev_user_home }}"
     stow_packages:
       - git
+      - herdr
       - nvim
 
 # Remote Control runs under the owner's own `systemd --user` manager, not a

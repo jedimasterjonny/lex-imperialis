@@ -1,8 +1,8 @@
 # dev
 
 Developer tooling for the workstation, on top of common (the owner account
-must exist). npm ships with the role; git and nvim dotfiles deploy via the
-stow role.
+must exist). npm ships with the role; git, herdr and nvim dotfiles deploy via
+the stow role.
 
 Claude Code installs once per user through the native installer, guarded by
 `creates:` — the binary self-updates in the background, so the role never
@@ -12,6 +12,19 @@ The installer is an unpinned `curl … | bash` against a rolling URL with no
 published checksum or datasource, so a hand-bumped hash would break converge on
 every upstream tweak (YAGNI); the trust anchor is `claude.ai` over TLS, accepted
 knowingly on the host that holds `.vault_pass` and fleet-wide NOPASSWD root.
+
+## herdr
+
+herdr installs from upstream's `install.sh` into `~/.local/bin`, once behind
+`creates:`. It is not pinned like tflint: the owner updates it with `herdr
+update`, which upstream supports only on script-managed installs, and a pin would
+undo those updates. The script checksum-verifies against a manifest on
+`herdr.dev`, so that host over TLS is the trust anchor.
+
+`herdr integration install claude`, which adds herdr's `SessionStart` hook to
+`~/.claude/settings.json`, runs whenever `herdr-agent-state.sh` is missing from
+`~/.claude/hooks`; the stowed config's `onboarding = false` skips the onboarding
+that would otherwise install it.
 
 ## Terraform gate tools
 

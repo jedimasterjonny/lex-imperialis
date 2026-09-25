@@ -174,16 +174,32 @@
           - dev_claude_stat.stat.executable
         fail_msg: "claude binary missing or not executable at {{ dev_claude_bin }}"
 
-    - name: Stat the stowed git and nvim configs
+    - name: Read the owner's Claude settings
+      ansible.builtin.slurp:
+        src: "{{ dev_user_home }}/.claude/settings.json"
+      become: true
+      register: dev_claude_settings_verify
+
+    # Only `herdr integration install` writes this hook, so it also proves the
+    # binary runs.
+    - name: The owner's Claude settings run herdr's hook
+      ansible.builtin.assert:
+        that:
+          - "'herdr-agent-state.sh' in dev_claude_settings_verify.content | b64decode"
+        fail_msg: "herdr's hook is missing from {{ dev_user_home }}/.claude/settings.json"
+        quiet: true
+
+    - name: Stat the stowed git, herdr and nvim configs
       ansible.builtin.stat:
         path: "{{ item }}"
       become: true
       loop:
         - "{{ dev_user_home }}/.gitconfig"
+        - "{{ dev_user_home }}/.config/herdr/config.toml"
         - "{{ dev_user_home }}/.config/nvim/init.lua"
       register: dev_dotfiles
 
-    - name: Git and nvim configs are stow symlinks
+    - name: Git, herdr and nvim configs are stow symlinks
       ansible.builtin.assert:
         that:
           - item.stat.exists

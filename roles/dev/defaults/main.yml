@@ -30,11 +30,12 @@ dev_packages:
   - python3-uv
   - ripgrep
 
-# Claude Code installs per-user via the native installer; the owner is the
-# target and the binary lands under their ~/.local.
+# Claude Code and herdr install per-user via their upstream installers; the
+# owner is the target and the binaries land under their ~/.local.
 dev_user: jonny
 dev_user_home: "/home/{{ dev_user }}"
 dev_claude_bin: "{{ dev_user_home }}/.local/bin/claude"
+dev_herdr_bin: "{{ dev_user_home }}/.local/bin/herdr"
 
 # npm's global prefix and the file it is read from. See README.
 dev_npm_prefix: "{{ dev_user_home }}/.local"
