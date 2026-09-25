@@ -391,6 +391,33 @@
           - "'/' ~ common_expected_bash_package ~ '/' in common_bashrc.stat.lnk_target"
         fail_msg: "the owner's .bashrc is not stowed from {{ common_expected_bash_package }}"
 
+    # No container runs NetworkManager, so this block is skipped on both
+    # platforms today; it states the contract for any tier that does boot one.
+    - name: Ask whether NetworkManager is running
+      ansible.builtin.command:
+        argv: [nmcli, --get-values, RUNNING, general]
+      register: common_nm_running
+      changed_when: false
+      failed_when: false
+
+    - name: Verify the default connection holds network-online for IPv4
+      when: common_nm_running.rc == 0 and common_nm_running.stdout == 'running'
+      block:
+        - name: Read the default connection's may-fail setting
+          ansible.builtin.shell: >-
+            set -o pipefail;
+            nmcli --get-values ipv4.may-fail connection show
+            "$(nmcli --get-values GENERAL.CONNECTION device show
+            "$(ip -4 route show default | awk '{print $5; exit}')")"
+          register: common_may_fail
+          changed_when: false
+
+        - name: The default connection does not come up without IPv4
+          ansible.builtin.assert:
+            that:
+              - common_may_fail.stdout == 'no'
+            fail_msg: "ipv4.may-fail is {{ common_may_fail.stdout }} on the default connection"
+
     - name: Read the system hostname
       ansible.builtin.command: hostname
       register: common_hostname_cmd

@@ -69,6 +69,13 @@ common_timezone: Europe/London
 common_ntp_sources:
   - time.cloudflare.com
 
+# Whether network-online.target waits for the IPv4 address on the connection
+# that carries the default route (ipv4.may-fail off), rather than for whichever
+# address family configures first. On: the fleet's exporters bind that address at
+# boot and lose the race to IPv6 link-local otherwise. See the README for what a
+# link with no DHCP answer then does, and does not do.
+common_online_requires_ipv4: true
+
 # Base tools, plus python3-selinux — the binding ansible.posix.selinux imports —
 # and chrony, whose sources the role configures.
 common_packages:

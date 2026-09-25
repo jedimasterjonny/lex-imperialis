@@ -228,6 +228,82 @@
     - Query the chronyd unit for common
     - Restart chronyd for common
 
+# network-online means the IPv4 address is configured. NetworkManager marks a
+# DHCP connection activated as soon as either family is up, and IPv6 link-local
+# wins by a second, so network-online.target — which every quadlet waits on — is
+# reached before the DHCPv4 lease lands, and node_exporter, cadvisor, prometheus
+# and uptime-kuma each lose their bind to the LAN address once per boot (Restart=
+# heals it 2 s later, at the cost of a failed start on the restart counter).
+# may-fail off on the connection that carries the default route holds the
+# activation, and so the target, until the address is there. It cannot stall a
+# boot: the target only Wants= the wait service, which times out and fails while
+# the target is reached anyway; what a link with no DHCP answer loses is coming up
+# IPv6-only, which nothing here uses. Gated on NetworkManager running — not merely
+# installed — so molecule's containers skip it, and the fleet's own weekly reboots
+# are what exercise it.
+- name: Ask whether NetworkManager is running
+  ansible.builtin.command:
+    argv:
+      - nmcli
+      - --get-values
+      - RUNNING
+      - general
+  register: common_nm_running
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+# Looked up, not assumed: the profile is named after the interface on the
+# Beelinks and "Wired connection 1" on auspex and the VPS.
+- name: Find the connection that carries the default route
+  ansible.builtin.command:
+    argv:
+      - nmcli
+      - --get-values
+      - GENERAL.CONNECTION
+      - device
+      - show
+      - "{{ ansible_facts['default_ipv4']['interface'] }}"
+  register: common_default_connection
+  changed_when: false
+  check_mode: false
+  when:
+    - common_online_requires_ipv4
+    - common_nm_running.rc == 0
+    - common_nm_running.stdout == 'running'
+
+# The module carries may-fail only alongside an ipv4.method, so the method is
+# read and handed back unchanged — a static host must not be flipped to DHCP —
+# and the type is read so a default route on anything but ethernet skips rather
+# than being told it is.
+- name: Read that connection's type and IPv4 method
+  ansible.builtin.command:
+    argv:
+      - nmcli
+      - --get-values
+      - connection.type,ipv4.method
+      - connection
+      - show
+      - "{{ common_default_connection.stdout }}"
+  register: common_default_connection_settings
+  changed_when: false
+  check_mode: false
+  when: common_default_connection.stdout | default('') | length > 0
+
+# Modifies the saved profile only; the live connection is left as it is, and the
+# setting takes effect at the next activation, which is the next boot.
+- name: Hold network-online until the default connection has its IPv4 address
+  community.general.nmcli:
+    conn_name: "{{ common_default_connection.stdout }}"
+    type: ethernet
+    method4: "{{ common_default_connection_settings.stdout_lines[1] }}"
+    may_fail4: false
+    state: present
+  become: true
+  when:
+    - common_default_connection_settings.stdout_lines is defined
+    - common_default_connection_settings.stdout_lines[0] == '802-3-ethernet'
+
 - name: Ensure the owner's supplementary groups exist
   ansible.builtin.group:
     name: "{{ item }}"
