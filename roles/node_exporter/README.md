@@ -29,7 +29,9 @@ public interface; pair that with a source-scoped `firewalld` rule. Opening
 
 When that address belongs to a VPN interface, set `node_exporter_after` to its
 unit (e.g. `wg-quick@wg0.service`) so the exporter starts after the interface
-and the bind can't race the address at boot.
+and the bind can't race the address at boot. A LAN address needs nothing here:
+`common` holds `network-online.target` until the default connection's IPv4
+address is configured (`common_online_requires_ipv4`).
 
 ## Textfile collector
 

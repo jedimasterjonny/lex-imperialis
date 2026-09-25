@@ -219,6 +219,33 @@ instead — see the comments on each. The gap that leaves is a host whose `chron
 is stopped: it takes the file but not the source, until the next start.
 `ClockNotSynchronised` catches that host, in hours rather than minutes.
 
+`common_online_requires_ipv4` makes network-online mean "the IPv4 address is
+configured": `ipv4.may-fail` is turned off on the NetworkManager connection that
+carries the default route, through `community.general.nmcli`. Without it NM marks
+a DHCP connection activated as soon as either family is up, IPv6 link-local wins
+by a second, and `network-online.target` — which every quadlet waits on — is
+reached before the DHCPv4 lease lands, so `node_exporter`, `cadvisor`,
+`prometheus` and `uptime_kuma` each lose their bind to the LAN address once per
+boot and lean on `Restart=` to recover.
+
+It cannot stall a boot. The target only *wants* `NetworkManager-wait-online`,
+which times out and is marked failed while the target is reached regardless,
+and sshd is ordered on `network.target`, not network-online. With no cable there
+is no carrier, the profile is never attempted, and the boot is unchanged. With a
+cable but no DHCP answer the activation fails after the DHCP timeout and NM keeps
+retrying it, where before it would have come up IPv6-only — which nothing on
+the fleet uses, the tunnel and every scrape included. On rogue-trader that is the
+Hetzner uplink; console recovery there does not depend on network state.
+
+The connection is looked up rather than assumed (`enp1s0` on the Beelinks,
+`Wired connection 1` on auspex and the VPS), and so is its `ipv4.method`, which
+the module needs alongside `may_fail4` and would otherwise be told — a static
+host must not be flipped to DHCP. A default route on anything but ethernet
+skips. The module only modifies the saved profile: the live connection is left
+alone and the setting takes effect at the next boot. Gated on NetworkManager
+*running*, so the incus containers skip the whole block — no molecule tier can
+exercise this, and the fleet's weekly autoupdate reboots are what do.
+
 `common_blacklisted_modules` bars kernel modules via
 `/etc/modprobe.d/common-blacklist.conf` — `blacklist` plus `install
 <module> /bin/false` — and unloads any already live rather than leaving
