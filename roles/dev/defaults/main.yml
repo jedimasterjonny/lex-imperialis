@@ -29,6 +29,8 @@ dev_packages:
   - python3-pip
   - python3-uv
   - ripgrep
+  # The xterm-ghostty terminfo herdr needs when attached from Ghostty.
+  - terminfo-ghostty
 
 # Claude Code and herdr install per-user via their upstream installers; the
 # owner is the target and the binaries land under their ~/.local.
