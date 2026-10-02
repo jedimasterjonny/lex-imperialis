@@ -130,7 +130,7 @@ arr_apps:
   # :32400 as homepage does — a connection made in its UI on first start, where
   # its API key is minted too. No media mount, no tunnel.
   tautulli:
-    image: lscr.io/linuxserver/tautulli:2.18.2@sha256:9e7b476ef14ae44a043b446614b5354777605eb9cb2bdbb2dbd1f99df031ac17
+    image: lscr.io/linuxserver/tautulli:2.18.2@sha256:bfcd2f3f6f89d2171d161ac1780723d1633f8de3c4c993d0dc52aa9edb729e16
     uid: 3010
     caps: [CHOWN, KILL, SETGID, SETUID]
     port: 8181
