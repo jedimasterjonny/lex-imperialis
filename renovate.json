@@ -178,11 +178,12 @@
       "groupName": "arr containers"
     },
     {
-      "description": "A plex restart kills active streams, so it merges 02:00-06:00 — the first streams start at 06:00, and podman_backup's stop-every-container run is done by 01:01. autoupdate's 03:00 reboot sits inside the window deliberately: an apply racing it only fails the run, which arbites retries, where an apply during the backup would leave restic a half-written config volume. groupName null takes plex out of the group above, which would otherwise merge it at any hour. platformAutomerge must stay off beside the schedule: GitHub's native auto-merge lands a PR as soon as it is green and ignores automergeSchedule (renovate#21436). No vulnerability alert reaches this either — renovate maps the docker datasource to no OSV or Dependabot ecosystem.",
+      "description": "A plex restart kills active streams, so it merges 02:00-06:00 — the first streams start at 06:00, and podman_backup's stop-every-container run is done by 01:01. autoupdate's 03:00 reboot sits inside the window deliberately: an apply racing it only fails the run, which arbites retries, where an apply during the backup would leave restic a half-written config volume. groupName null takes plex out of the group above, which would otherwise merge it at any hour. platformAutomerge must stay off beside the schedule: GitHub's native auto-merge lands a PR as soon as it is green and ignores automergeSchedule (renovate#21436). No vulnerability alert reaches this either — renovate maps the docker datasource to no OSV or Dependabot ecosystem. rebaseWhen conflicted because the hosted app runs about once inside the window: under auto, automerge means rebase-when-behind, other bumps land every night, so that one run always rebases, restarts CI and leaves the merge to a run past 06:00 — #798 starved five days that way.",
       "matchPackageNames": ["lscr.io/linuxserver/plex"],
       "groupName": null,
       "automergeSchedule": ["after 2am and before 6am"],
-      "platformAutomerge": false
+      "platformAutomerge": false,
+      "rebaseWhen": "conflicted"
     },
     {
       "description": "google and google-beta release in lockstep, so two PRs are the same bump twice. matchDatasources keeps this off google-github-actions/auth.",
