@@ -139,7 +139,7 @@ arr_apps:
     healthcheck:
       cmd: curl -fsS http://127.0.0.1:8181/status
   recyclarr:
-    image: ghcr.io/recyclarr/recyclarr:8.7.2@sha256:6e69e009e1cd7493ff6093e8e187b5d3788c75b4a2c0c5127b6a1beda1c19728
+    image: ghcr.io/recyclarr/recyclarr:8.7.3@sha256:9c6c74d52cfc6f740a5a3624aa83867e171bb70b90453ddb7a4048b8c80445f9
     uid: 3007
     # Repo-rendered config bind-mounted read-only on top of the /config volume
     # (the radarr/sonarr configs plus the !secret api keys in secrets.yml); the
