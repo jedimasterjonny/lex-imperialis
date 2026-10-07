@@ -58,7 +58,7 @@ arr_apps:
     healthcheck:
       cmd: curl -fsS http://127.0.0.1:8989/ping
   lidarr:
-    image: lscr.io/linuxserver/lidarr:3.1.0@sha256:044d616beb43c5e7810991242c6a9c42b93ff238c8c0850684939634ea751208
+    image: lscr.io/linuxserver/lidarr:3.1.0@sha256:67887807b13ae025c0fe979da298347c8609969087ab064c81d8e9acc1e06bbf
     uid: 1037
     caps: [CHOWN, KILL, SETGID, SETUID]
     port: 8686
