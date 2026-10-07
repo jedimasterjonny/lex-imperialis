@@ -67,7 +67,7 @@ arr_apps:
     healthcheck:
       cmd: curl -fsS http://127.0.0.1:8686/ping
   prowlarr:
-    image: lscr.io/linuxserver/prowlarr:2.6.5@sha256:f2b26429893d4c4cb71941b7ee50b1bdecd9d5f9f9e02d5410615e9f4f7c8d95
+    image: lscr.io/linuxserver/prowlarr:2.6.5@sha256:f9151e5bc1025c6d0a630d503210cdcb6bb55a7cc098562609d96a408d838902
     uid: 3004
     caps: [CHOWN, KILL, SETGID, SETUID]
     port: 9696
