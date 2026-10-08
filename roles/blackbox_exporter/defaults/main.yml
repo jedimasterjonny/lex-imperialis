@@ -68,9 +68,16 @@ blackbox_exporter_modules:
   # probed every 60s, and identifying the client beats leaving 1,440 aborted
   # pre-auth handshakes a day on it. `^SSH-` rather than `^SSH-2.0-` so a server
   # version bump on an endpoint we do not control cannot turn the probe red.
+  # 9s, not 5s: the budget includes the proxy's per-connection lookup, uncached,
+  # against Hetzner's resolvers, and glibc gives a silent resolver 5s before
+  # failing over — so at 5s every failover failed the probe. Hetzner's recursive
+  # DNS fault of 2026-10-08 flapped ProbeDown for five hours that way while the
+  # box answered by IP in 15ms. A lookup that fails outright still fails fast:
+  # the proxy closes the connection. The exporter caps a module at the scrape
+  # timeout (10s) less 0.5s.
   tcp_ssh_banner:
     prober: tcp
-    timeout: 5s
+    timeout: 9s
     tcp:
       preferred_ip_protocol: ip4
       query_response:
