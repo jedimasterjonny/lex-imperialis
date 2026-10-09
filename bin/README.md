@@ -109,7 +109,9 @@ through `vault-var.sh`, and bills real servers. See `packer/README.md`.
 
 Validates `terraform/` offline: `tofu init -backend=false` (skips the GCS state
 backend, so no cloud credentials are needed) then `tofu validate`. Backs the
-`tofu-validate` hook.
+`tofu-validate` hook. The init is `-lockfile=readonly`: Renovate's cloudflare
+locks lack the `manifest.json` hash a writing init adds, so the hook checks the
+lock rather than completing it.
 
 ## vault-var.sh
 
