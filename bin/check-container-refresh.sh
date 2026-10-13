@@ -10,6 +10,10 @@
 # Backs the container-refresh-gate hook.
 set -euo pipefail
 
+# Run as a commit hook, git exports GIT_DIR, GIT_INDEX_FILE and kin, which
+# point the scratch repo's git at the real repository instead.
+for var in $(git rev-parse --local-env-vars); do unset "$var"; done
+
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 src=$PWD/bin/container-refresh.sh
 swap=$PWD/bin/container-swap.sh
