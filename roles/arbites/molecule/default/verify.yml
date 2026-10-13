@@ -63,7 +63,8 @@
     # A remote host mid-autoupdate fails the apply on its zypper lock or its
     # half-upgraded interpreter; the script must ask the fleet before it applies,
     # and it must do so before the deployment record is opened, or a held cycle
-    # closes a record it never applied.
+    # closes a record it never applied — and before the venv sync, or a held
+    # cycle still touches the venv.
     - name: The reconcile script holds the apply while a fleet host is mid-autoupdate
       vars:
         script: "{{ arbites_script_content.content | b64decode }}"
@@ -71,7 +72,8 @@
         that:
           - "'ActiveState --value autoupdate.service' in script"
           - script.index('autoupdate.service') < script.index('github_api deployments')
-        fail_msg: "the reconcile script does not hold the apply for a fleet host's autoupdate, ahead of the deployment record"
+          - script.index('autoupdate.service') < script.index('/bin/pip')
+        fail_msg: "the reconcile script does not hold the apply for a fleet host's autoupdate, ahead of the venv sync and deployment record"
         quiet: true
 
     # The deployment record is posted from both scripts, so both must carry the API
