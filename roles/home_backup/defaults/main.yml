@@ -25,6 +25,8 @@ home_backup_paths:
 # the 3.5 GB that changed in one week on scholam. uv's managed Pythons go too,
 # but not the rest of uv's data dir, which holds its credentials. The rest of
 # `.claude` stays: its memory and session transcripts are not re-acquirable.
+# OpenTofu's `.terraform` (providers and modules `tofu init` refetches) took
+# most of what was left after one provider bump.
 #
 # The podman store is excluded whole, rootless volumes included. Every managed
 # workload is a rootful quadlet whose volumes `podman_backup` already covers, so
@@ -44,6 +46,7 @@ home_backup_excludes:
   - .venv
   - node_modules
   - .next
+  - .terraform
   - .local/share/containers
   - .local/share/claude/versions
   - .local/share/uv/python

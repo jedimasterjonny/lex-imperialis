@@ -38,7 +38,7 @@ that space cost, is in
 
 `home_backup_paths` sets what to snapshot, `home_backup_excludes` the
 re-acquirable churn to skip (caches, bun's package cache, virtualenvs,
-`node_modules`, Next.js's `.next`, uv's managed Pythons, Claude Code's downloaded binaries, and rootless podman's store — volumes included, since managed container state is rootful and
+`node_modules`, Next.js's `.next`, OpenTofu's `.terraform`, uv's managed Pythons, Claude Code's downloaded binaries, and rootless podman's store — volumes included, since managed container state is rootful and
 `podman_backup`'s) plus `.vault_pass`: the repo key comes from the vault, so a
 vault password inside a snapshot would turn any repo-key disclosure into a
 full-vault one. `home_backup_oncalendar` sets the timer; retention, the check
