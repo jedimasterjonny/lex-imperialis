@@ -28,6 +28,14 @@
 	@version_files path /readme.html /license.txt
 	respond @version_files 404
 
+	# The installer, the sample config, and files core only ever includes: no
+	# legitimate request names them once the site is installed, and executed out
+	# of context they fatal — setup-config.php reaching for the object cache at
+	# its 127.0.0.1 default on the way. Prefixes, so the /file.php/x PATH_INFO
+	# form that mod_php also runs is caught too.
+	@internal_files path /wp-config-sample.php* /wp-settings.php* /wp-admin/install.php* /wp-admin/setup-config.php* /wp-admin/includes/* /wp-content/advanced-cache.php* /wp-content/object-cache.php*
+	respond @internal_files 404
+
 	# Cache static assets for a year, deferred so it beats any Cache-Control the
 	# upstream sets. WordPress ?ver=-busts its css/js and renames re-uploaded
 	# media, so nothing served from a static URL goes stale.

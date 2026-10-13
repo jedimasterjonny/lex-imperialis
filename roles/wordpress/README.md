@@ -218,6 +218,12 @@ A second drop-in (`files/wp-includes-no-exec.conf`) denies direct requests for
 fingerprinting `version.php` or fatalling a block file gets a 403, as does a
 webshell written into that equally writable tree.
 
+The caddy block 404s the rest of what core only includes — `wp-settings.php`,
+`wp-admin/includes/`, the `wp-content` cache drop-ins — along with
+`wp-config-sample.php` and the installer, so scanners can no longer run them out
+of context into a 500. Install a fresh site with `wp core install`, not the web
+installer.
+
 ## Deploy
 
 Wire it after `podman` and `caddy`. Set `wordpress_domains` to the public names,

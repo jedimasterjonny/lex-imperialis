@@ -49,6 +49,26 @@
         - /readme.html
         - /license.txt
 
+    # Unfollowed, so the 404 is caddy's: on this uninstalled site apache would
+    # answer the files present 200 or 500, PATH_INFO form included, and rewrite
+    # the two absent drop-ins through index.php into a redirect to the installer.
+    - name: The installer and include-only files are blocked
+      ansible.builtin.uri:
+        url: "http://127.0.0.1{{ item }}"
+        headers:
+          Host: "{{ wordpress_domains[0] }}"
+        follow_redirects: none
+        status_code: [404]
+      loop:
+        - /wp-config-sample.php
+        - /wp-settings.php
+        - /wp-settings.php/x
+        - /wp-admin/install.php
+        - /wp-admin/setup-config.php
+        - /wp-admin/includes/admin.php
+        - /wp-content/advanced-cache.php
+        - /wp-content/object-cache.php
+
     # Prove PHP never executes under uploads, across every vector the drop-in must
     # cover: a dropped .php, the evil.php/x.jpg PATH_INFO form, and an attacker
     # .htaccess AddType trick on a .png. The marker (42*42 = 1764) must never
@@ -156,19 +176,19 @@
       become: true
       changed_when: false
 
-    # The install page rendering proves the whole chain: caddy proxies the
-    # request, wordpress serves PHP (so wordpress_config_extra is valid), and it
-    # reached the database — a failed connection answers 500, not the form.
+    # The install page rendering proves wordpress serves PHP (so
+    # wordpress_config_extra is valid) and reached the database — a failed
+    # connection answers 500, not the form. Asked of apache directly, since caddy
+    # 404s the installer.
     - name: The install page renders through the database
-      ansible.builtin.uri:
-        url: http://127.0.0.1/wp-admin/install.php
-        headers:
-          Host: "{{ wordpress_domains[0] }}"
-        return_content: true
+      ansible.builtin.command: >-
+        podman exec wordpress curl -fsS http://127.0.0.1/wp-admin/install.php
       register: wordpress_install
-      until: "'WordPress' in wordpress_install.content"
+      until: "'WordPress' in wordpress_install.stdout"
       retries: 30
       delay: 5
+      changed_when: false
+      become: true
 
     # daemon_reload is a no-op that just makes the module gather and return each
     # unit's systemctl-show properties to assert against; it reads, not mutates.
