@@ -2823,7 +2823,7 @@ tests:
               job: unpoller
               instance: 127.0.0.1:9130
             exp_annotations:
-              summary: "unpoller has not polled the UniFi controller in over 30 minutes"
+              summary: "unpoller has not polled the UniFi controller in over 5 minutes"
               description: "unpoller is serving a stale snapshot, so the unpoller_* series are frozen at their last values rather than absent."
       # Inside for:, so pending rather than firing — the sentinel matches from the
       # first sample, and without this the case above would pass a rule with no
@@ -2832,21 +2832,21 @@ tests:
         alertname: UnpollerPollOverdue
         exp_alerts: []
 
-  # The other arm: a poller that polled successfully once and then stopped, so the
-  # age climbs rather than sitting at the sentinel. Starts under the threshold and
-  # crosses it, which is also this rule's fresh-snapshot control — at 0m the age is
-  # a healthy 1700s and the rule must be silent, so a dropped or inverted threshold
-  # fails here.
+  # The other arm, and the fault behind its threshold: the 2026-10-12 hang replayed
+  # from its last fresh scrape, the age climbing 60s a minute exactly as recorded.
+  # At 5m the age is 349s, past the threshold but inside for:; at 10m it fires. A
+  # threshold at or above 349s would still be pending at 10m, so this bounds it
+  # from above; the case below bounds it from below.
   - interval: 1m
-    name: a snapshot that goes stale alerts, and a fresh one does not
+    name: the 2026-10-12 hang alerts ten minutes after the last refresh
     input_series:
       - series: 'unpoller_prometheus_cache_age_seconds{job="unpoller",instance="127.0.0.1:9130"}'
-        values: "1700+60x40"
+        values: "49+60x25"
     alert_rule_test:
-      - eval_time: 0m
+      - eval_time: 5m
         alertname: UnpollerPollOverdue
         exp_alerts: []
-      - eval_time: 15m
+      - eval_time: 10m
         alertname: UnpollerPollOverdue
         exp_alerts:
           - exp_labels:
@@ -2854,8 +2854,20 @@ tests:
               job: unpoller
               instance: 127.0.0.1:9130
             exp_annotations:
-              summary: "unpoller has not polled the UniFi controller in over 30 minutes"
+              summary: "unpoller has not polled the UniFi controller in over 5 minutes"
               description: "unpoller is serving a stale snapshot, so the unpoller_* series are frozen at their last values rather than absent."
+
+  # And from below: a snapshot held at exactly five minutes old never pages, so the
+  # threshold is 300s and strict. Every benign stall the TSDB holds peaked under it.
+  - interval: 1m
+    name: a snapshot five minutes old stays silent
+    input_series:
+      - series: 'unpoller_prometheus_cache_age_seconds{job="unpoller",instance="127.0.0.1:9130"}'
+        values: "300x20"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: UnpollerPollOverdue
+        exp_alerts: []
 
   # The controller's own count of adopted devices that have stopped talking to
   # it, one gauge per subsystem. Two properties in one case.

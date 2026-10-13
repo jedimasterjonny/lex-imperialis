@@ -115,16 +115,25 @@ groups:
       # for "no refresh has ever succeeded", so it is caught explicitly rather than
       # left to pass a > threshold it never can.
       #
-      # 30 missed refreshes at the poller's 60s interval, then 5m: the controller
-      # reboots itself for its own auto-updates and the poller picks straight back
-      # up, so only a stall that outlasts a firmware update is worth raising.
+      # 5 missed refreshes at the poller's 60s interval, then 5m, so a stall pages
+      # ten minutes in. Calibrated on the TSDB from the series' first sample on
+      # 2026-08-25: a healthy cache sawtooths 0-60s (p99.9 59s), and the longest
+      # stalls that were not a fault are 242s on 2026-08-29 and 209s on 2026-09-12,
+      # both the controller rebooting for its own update. Nothing benign reaches the
+      # threshold at all, so the for: is margin on top. auspex's weekly reboot
+      # takes the poller down with Prometheus and it reads fresh within a minute.
+      #
+      # It was 30m, and that missed the fault this rule exists for. On 2026-10-12
+      # the Network app stopped answering at 22:07Z and unpoller served its last
+      # snapshot, up still 1, until the console was restarted 21 minutes later;
+      # 30m plus its for: never came close. Replayed, this fires at ~22:17Z.
       - alert: UnpollerPollOverdue
-        expr: unpoller_prometheus_cache_age_seconds > 30 * 60 or unpoller_prometheus_cache_age_seconds < 0
+        expr: unpoller_prometheus_cache_age_seconds > 5 * 60 or unpoller_prometheus_cache_age_seconds < 0
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "unpoller has not polled the UniFi controller in over 30 minutes"
+          summary: "unpoller has not polled the UniFi controller in over 5 minutes"
           description: "unpoller is serving a stale snapshot, so the unpoller_* series are frozen at their last values rather than absent."
 
       # Read from the controller's own health endpoint rather than inferred from
