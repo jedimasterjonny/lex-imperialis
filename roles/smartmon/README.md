@@ -12,6 +12,12 @@ and published as:
   — the NVMe health log's spec-defined endurance and error counters. ATA wear
   attributes are vendor-specific and deliberately not parsed; an ATA disk is
   covered by the verdict alone.
+- `smartmon_nvme_unsafe_shutdowns{device}` — power lost without a shutdown
+  notification. No alert; it dates a power event after the fact.
+- `smartmon_self_test_passed{device}` / `smartmon_self_test_age_hours{device}`
+  — 0 from a failed self-test until a newer long test passes, as smartctl
+  counts it; power-on hours since the newest completed test. A device that can
+  self-test but never has ages from power-on; one that cannot publishes neither.
 - `smartmon_devices_checked` — the denominator that tells clean apart from a
   broken scan, which `SmartDevicesDisappeared` reads.
 
@@ -20,6 +26,11 @@ An `ExecStopPost` hook writes `smartmon_success` /
 crash mid-read records its failure without zeroing verdicts it never measured.
 A device whose report arrives truncated fails the whole run into that pair;
 one whose report arrives empty reads unhealthy.
+
+The same run then starts a self-test on every device that supports one —
+short on `smartmon_short_test_weekday`, long on `smartmon_long_test_day` — unless
+one is already running. The drive runs it in the background and the next read
+publishes the result; a refused start fails the run.
 
 `smartmon_textfile_dir` must match the `node_exporter` role's
 `node_exporter_textfile_directory`, or both files fall outside the collector's
@@ -32,13 +43,15 @@ its hook install — `/usr/local/sbin`, root-only like the other oneshots.
 The `prometheus` role's `hardware` group alerts: `SmartDeviceUnhealthy` (the
 verdict), `NvmeWearHigh` (endurance nearly spent), `NvmeMediaErrorsIncreasing`
 (the earliest pre-failure signal — the verdict often stays green while these
-climb), `SmartDevicesDisappeared`, and the `SmartmonFailed` /
-`SmartmonOverdue` pair.
+climb), `SmartSelfTestFailed`, `SmartSelfTestOverdue` (no self-test completed in
+35 days — the schedule has stopped), `SmartDevicesDisappeared`, and the
+`SmartmonFailed` / `SmartmonOverdue` pair.
 
 The smartmontools package ships its own poller, which Debian's postinst enables
 and starts — a second SMART daemon sweeping every 30 minutes and mailing root —
 so the role stops and disables the packaged unit on both distributions
-(`smartmon_smartd_unit`, its one distribution branch).
+(`smartmon_smartd_unit`, its one distribution branch) and schedules the
+self-tests from its own daily run instead.
 
 Wired onto `scholam`, `solar` and `auspex` — the hosts with physical disks.
 `rogue-trader` is excluded: a Hetzner Cloud virtio disk exposes no SMART.

@@ -67,6 +67,7 @@ Network API: `setting/mgmt` still reports the older combined scheme's
 | Sat 05:00 | UniFi update — OS and Application | UniFi console |
 | Sat 06:00 | `podman-image-prune` — auspex, rogue-trader, scholam, solar | `roles/podman/files/podman-image-prune.timer` |
 | Sun 03:30 | `tumbleweed-image-refresh` — scholam | `libvirt_image_refresh_oncalendar` |
+| Sun 06:17 | `smartmon` short self-test — auspex, scholam, solar | `smartmon_short_test_weekday` |
 | Sun 08:00 | `podman-backup-r2` integrity check | DSM task config |
 
 ## Daily and monthly
@@ -80,6 +81,7 @@ Network API: `setting/mgmt` still reports the older combined scheme's
 | 11:47 | `r2_mirror` probe — auspex | `r2_mirror_oncalendar` |
 | 1st 00:00 | `btrfs-scrub` — solar, scholam, rogue-trader | `btrfsmaintenance_scrub_period` |
 | 1st 00:30 | UniFi controller auto-backup | UniFi console |
+| 15th 06:17 | `smartmon` long self-test — auspex, scholam, solar | `smartmon_long_test_day` |
 | — | monthly btrfs scrub — both NAS arrays | DSM Storage Manager |
 
 ## Intervals

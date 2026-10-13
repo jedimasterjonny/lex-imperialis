@@ -1,11 +1,20 @@
 #!/usr/bin/env bash
 # {{ ansible_managed }}
 # Read SMART health off every disk smartctl can reach and publish it as
-# node_exporter textfile metrics — the early warning a btrfs scrub cannot give.
-# Runs unattended on smartmon.timer; the ExecStopPost hook records the outcome.
+# node_exporter textfile metrics — the early warning a btrfs scrub cannot give —
+# then start any self-test due today. Runs unattended on smartmon.timer; the
+# ExecStopPost hook records the outcome.
 set -euo pipefail
 
 dir="{{ smartmon_textfile_dir }}"
+short_weekday={{ smartmon_short_test_weekday }}
+long_day={{ smartmon_long_test_day }}
+
+# Today's self-test, if any; the monthly long subsumes the weekly short when
+# both fall on one day.
+due=
+[ "$(date +%u)" -ne "$short_weekday" ] || due=short
+[ "$(date +%d)" -ne "$long_day" ] || due=long
 
 {% raw %}
 # --scan enumerates only SMART-capable transports, so SD cards and loop devices
@@ -16,6 +25,7 @@ dir="{{ smartmon_textfile_dir }}"
 devices="$(smartctl --scan -j | jq -r '.devices[]?.name')"
 
 checked=0
+start=()
 mkdir -p "$dir"
 # Publish atomically: write a temp file the exporter's *.prom glob ignores, then
 # rename it over the target so no scrape reads a half-written file. 0644 so the
@@ -33,6 +43,12 @@ tmp="$(mktemp "$dir/.smartmon.prom.XXXXXX")"
     echo '# TYPE smartmon_nvme_percentage_used gauge'
     echo '# HELP smartmon_nvme_media_errors NVMe media and data integrity error count.'
     echo '# TYPE smartmon_nvme_media_errors gauge'
+    echo '# HELP smartmon_nvme_unsafe_shutdowns NVMe unsafe shutdown count (power lost without a shutdown notification).'
+    echo '# TYPE smartmon_nvme_unsafe_shutdowns gauge'
+    echo '# HELP smartmon_self_test_passed SMART self-test log verdict (0 if a test failed since the last passing long test).'
+    echo '# TYPE smartmon_self_test_passed gauge'
+    echo '# HELP smartmon_self_test_age_hours Power-on hours since the newest completed SMART self-test, or since power-on if none.'
+    echo '# TYPE smartmon_self_test_age_hours gauge'
     while IFS= read -r dev; do
         [ -n "$dev" ] || continue
         # Exit bits 0-2 are smartctl itself failing; bits 3+ flag disk trouble
@@ -59,8 +75,37 @@ tmp="$(mktemp "$dir/.smartmon.prom.XXXXXX")"
         # counter stays absent rather than minting a misleading 0.
         pct="$(jq -r '.nvme_smart_health_information_log.percentage_used // empty' <<<"$report")"
         media="$(jq -r '.nvme_smart_health_information_log.media_errors // empty' <<<"$report")"
+        unsafe="$(jq -r '.nvme_smart_health_information_log.unsafe_shutdowns // empty' <<<"$report")"
         [ -z "$pct" ] || echo "smartmon_nvme_percentage_used{device=\"$name\"} $pct"
         [ -z "$media" ] || echo "smartmon_nvme_media_errors{device=\"$name\"} $media"
+        [ -z "$unsafe" ] || echo "smartmon_nvme_unsafe_shutdowns{device=\"$name\"} $unsafe"
+        # ATA declares self-test support; NVMe prints a self-test log only when
+        # the controller implements the command.
+        if jq -e '.ata_smart_data.capabilities.self_tests_supported or .nvme_self_test_log' >/dev/null <<<"$report"; then
+            # Completed entries, newest first in both logs; aborted,
+            # interrupted and in-progress ones carry no result. A failure
+            # stands until a newer long test passes, as smartctl counts it —
+            # a passing short test reads too little to clear it. Age is the
+            # newest of any kind, from power-on if never tested. ATA stamps its
+            # log in 16-bit hours, hence the modulo.
+            jq -r --arg dev "$name" '
+                .power_on_time.hours as $poh | select($poh)
+                | [(.ata_smart_self_test_log.standard.table[]?
+                    | (.status.value / 16 | floor) as $s
+                    | select($s == 0 or ($s >= 3 and $s <= 8))
+                    | {passed: ($s == 0), long: (.type.value % 128 == 2), age: (($poh - .lifetime_hours) % 65536)}),
+                   (.nvme_self_test_log.table[]?
+                    | .self_test_result.value as $r
+                    | select($r == 0 or ($r >= 5 and $r <= 7))
+                    | {passed: ($r == 0), long: (.self_test_code.value == 2), age: ($poh - .power_on_hours)})] as $done
+                | ($done[:($done | map(.long and .passed) | index(true))] | all(.passed)) as $passed
+                | (select($done != []) | "smartmon_self_test_passed{device=\"\($dev)\"} \(if $passed then 1 else 0 end)"),
+                  "smartmon_self_test_age_hours{device=\"\($dev)\"} \($done[0].age // $poh)"' <<<"$report"
+            # Never over a running test: ATA status 0xF_, NVMe a current
+            # operation.
+            running="$(jq -r '.ata_smart_data.self_test.status.value >= 240 or .nvme_self_test_log.current_self_test_operation.value > 0' <<<"$report")"
+            [ -z "$due" ] || [ "$running" = true ] || start+=("$dev")
+        fi
         checked=$((checked + 1))
     done <<< "$devices"
     echo '# HELP smartmon_devices_checked SMART-capable devices this run read.'
@@ -70,3 +115,12 @@ tmp="$(mktemp "$dir/.smartmon.prom.XXXXXX")"
 chmod 0644 "$tmp"
 mv "$tmp" "$dir/smartmon.prom"
 {% endraw %}
+
+# After the publish, so a refused start fails the run without losing the read
+# or the other devices' starts. The drive runs the test in the background; the
+# next read picks up its result.
+rc=0
+for dev in "${start[@]}"; do
+    smartctl -t "$due" "$dev" || rc=1
+done
+exit "$rc"
