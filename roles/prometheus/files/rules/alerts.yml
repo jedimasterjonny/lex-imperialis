@@ -179,8 +179,26 @@ groups:
       # No for:. The 24h range is the smoothing — once the third reset lands the
       # expression stays true for a day — so a wait would only add latency. The
       # promtool cases pin that by asserting the evaluation the third reset lands on.
+      #
+      # Zero samples are dropped before counting, because the controller reports
+      # uptime 0 for devices that never went down. Every zero in the TSDB since
+      # 2026-08-25 is one: 19 runs of one to four samples, the device's uptime
+      # carrying on unbroken the far side of each — across the switches and APs
+      # whenever the controller restarted, and singly as the Network app wedged on
+      # 10-11 and 10-12. Three of those on the gateway inside a day fired this at
+      # 08:05Z on 10-12 for a device that had not rebooted, and two of them beside
+      # its one real reboot fired it again at 22:32Z. A real reboot survives the
+      # filter: uptime falls from large to small and climbs from there, so it is
+      # still one decrease whether or not the first sample after it reads 0. Over
+      # the same history the filtered form counts the six real reboots and nothing
+      # else.
+      #
+      # The comparison makes it an instant vector, so resets() needs a subquery to
+      # range over. 1m is the unpoller job's scrape interval: each step reads one
+      # sample, which makes the subquery the raw series minus its zeros. A coarser
+      # step could fold two reboots into one; a finer one re-reads samples.
       - alert: UnifiDeviceRebootLoop
-        expr: resets(unpoller_device_uptime_seconds[24h]) > 2
+        expr: resets((unpoller_device_uptime_seconds > 0)[24h:1m]) > 2
         labels:
           severity: warning
         annotations:
