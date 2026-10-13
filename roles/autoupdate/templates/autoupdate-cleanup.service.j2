@@ -1,0 +1,21 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Count the packages the last update left behind
+# MicroOS only, in place of autoupdate.service's pre-reboot hook: what the dup
+# removed is still installed in the snapshot it ran from, and counted there it
+# reads as orphaned for a week. At boot the count reads the snapshot the host is
+# running. After the network because zypper may refresh its metadata first, and
+# a repository that fails to load turns every package it carries into an orphan.
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/autoupdate-cleanup.sh
+# A oneshot has no start timeout and multi-user.target waits for it: bound a
+# zypper stuck on an unreachable mirror, so it fails the unit for
+# SystemdUnitFailed rather than holding boot completion with nothing reporting.
+TimeoutStartSec=10min
+
+[Install]
+WantedBy=multi-user.target

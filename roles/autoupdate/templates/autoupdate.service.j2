@@ -41,8 +41,13 @@ RestartSec=1h
 # than stranding the host on the pre-update kernel. Each script's header has what
 # it publishes and why. The cleanup is first because it is the one that changes
 # the system: the holds hook reads locks, which no removal touches, so it reports
-# the same either way and loses nothing by following.
+# the same either way and loses nothing by following. MicroOS has no cleanup
+# here: its dup lands in a snapshot this boot is not running, so a count taken
+# now reads the old one, and autoupdate-cleanup.service takes it after the
+# reboot instead.
+{% if not autoupdate_transactional | bool %}
 ExecStartPost=-/usr/local/sbin/autoupdate-cleanup.sh
+{% endif %}
 ExecStartPost=-/usr/local/sbin/autoupdate-holds.sh
 # Reboot here rather than hand the job to rebootmgr on MicroOS: a
 # transactional-update asked to reboot exits 0 even when rebootmgrd is down and

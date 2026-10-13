@@ -161,6 +161,26 @@
         fail_msg: "the metric hooks do not run ahead of the reboot, or failing one can fail the unit"
         quiet: true
 
+    # MicroOS's alone: elsewhere the pre-reboot hook above takes the count, and a
+    # second run at boot would repeat the removal on every reboot.
+    - name: Read the boot-time cleanup unit's load state
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - show
+          - autoupdate-cleanup.service
+          - --property=LoadState
+      register: autoupdate_boot_cleanup
+      changed_when: false
+      become: true
+
+    - name: The boot-time cleanup count is not installed off MicroOS
+      ansible.builtin.assert:
+        that:
+          - autoupdate_boot_cleanup.stdout == 'LoadState=not-found'
+        fail_msg: "autoupdate-cleanup.service is installed on a host whose update hook already counts"
+        quiet: true
+
     # The Debian platform is the only tier that can prove the takeover: no tier
     # boots MicroOS, and Tumbleweed ships no competing timer, so on that platform
     # the list is empty and this loops over nothing.
@@ -461,3 +481,20 @@
         ansible_facts:
           distribution: openSUSE MicroOS
           os_family: Suse
+
+    # The same shadowing, through the unit template: the dup's snapshot is not
+    # booted until the reboot, so the cleanup count leaves the hooks and the holds
+    # hook alone stays ahead of the reboot.
+    - name: The MicroOS update unit leaves the cleanup count to the boot
+      ansible.builtin.assert:
+        that:
+          - "'ExecStartPost=-/usr/local/sbin/autoupdate-cleanup.sh' not in autoupdate_microos_unit"
+          - "'ExecStartPost=-/usr/local/sbin/autoupdate-holds.sh' in autoupdate_microos_unit"
+        fail_msg: "the MicroOS update unit counts leftover packages before the reboot"
+        quiet: true
+      vars:
+        ansible_facts:
+          distribution: openSUSE MicroOS
+          os_family: Suse
+        autoupdate_microos_unit: >-
+          {{ lookup('ansible.builtin.template', playbook_dir ~ '/../../templates/autoupdate.service.j2') }}
