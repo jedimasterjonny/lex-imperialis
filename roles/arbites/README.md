@@ -36,10 +36,12 @@ jitter; `Persistent`, so a reboot-missed run catches up). The script:
    value, so the next run retries.
 
 The unit's `ExecCondition` skips a cycle outright while `autoupdate.service` is
-active on scholam itself: the Friday dup and this timer both land at 04:00, and
-the dup holds the zypper lock the role's package query needs. The skip is a
-success, not a failure. The other hosts' dups are step 4, asked only once an
-apply is due, so an idle cycle stays near-free.
+running on scholam itself: the Friday dup and this timer both land at 04:00, and
+the dup holds the zypper lock the role's package query needs. It reads
+`ActiveState` as step 4 does — a oneshot is `activating` for its whole run and
+its `Restart=` wait, which `is-active` denies. The skip is a success, not a
+failure: the metric hook reads `exec-condition` as one. The other hosts' dups
+are step 4, asked only once an apply is due, so an idle cycle stays near-free.
 
 An `ExecStopPost` hook writes the outcome to `arbites_metric_file`
 (`arbites_textfile_dir/arbites.prom`): `arbites_success` (1/0 from

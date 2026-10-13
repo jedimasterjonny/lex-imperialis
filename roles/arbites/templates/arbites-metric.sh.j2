@@ -3,7 +3,8 @@
 # systemd ExecStopPost hook for arbites.service: record the run's outcome
 # as a node_exporter textfile metric so Prometheus alerts when an unattended fleet
 # apply fails and main silently stops reaching the fleet. systemd sets
-# SERVICE_RESULT to "success" iff ExecStart exited 0.
+# SERVICE_RESULT to "success" iff ExecStart exited 0, and to "exec-condition"
+# when the unit's ExecCondition held the cycle — a skip, not a failure.
 set -euo pipefail
 
 dir="{{ arbites_textfile_dir }}"
@@ -11,7 +12,7 @@ last_applied="{{ arbites_last_applied_file }}"
 github_repo="{{ arbites_github_repo }}"
 deployment_id_file="{{ arbites_deployment_id_file }}"
 success=0
-[ "${SERVICE_RESULT:-}" = success ] && success=1
+case "${SERVICE_RESULT:-}" in success | exec-condition) success=1 ;; esac
 
 # The revision now live on the fleet; absent until the first successful apply.
 sha=unknown

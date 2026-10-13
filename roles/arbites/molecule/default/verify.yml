@@ -151,9 +151,8 @@
         that:
           - "'arbites.sh' in arbites_service.status.ExecStart"
           - "'arbites-metric.sh' in arbites_service.status.ExecStopPost"
-          - "'autoupdate.service' in arbites_service.status.ExecCondition"
           - arbites_env_file in arbites_service.status.EnvironmentFiles
-        fail_msg: "the service is not wired to the reconcile script, metric hook, autoupdate condition and environment file"
+        fail_msg: "the service is not wired to the reconcile script, metric hook and environment file"
         quiet: true
 
     - name: Run the metric hook as a successful run would
@@ -288,6 +287,26 @@
       changed_when: false
       become: true
 
+    # The unit's own ExecCondition, driven through systemd: a running oneshot is
+    # activating, which is-active denies, so a sleeping stand-in is the test. The
+    # pause flag makes a cycle the condition lets through exit before fleet work.
+    - name: Fire the reconcile with a stand-in autoupdate running, then stopped
+      ansible.builtin.shell: |
+        set -e
+        {{ item }}
+        systemctl start arbites.service
+        systemctl show --property=Result --value arbites.service
+        systemctl show --property=ActiveState --value autoupdate.service
+        grep '^arbites_success ' {{ arbites_metric_file }}
+      loop:
+        - systemd-run --unit=autoupdate --collect --service-type=oneshot --no-block sleep 300
+        - systemctl stop autoupdate.service
+      register: arbites_condition
+      changed_when: false
+      # The assert below reports the output; failing here would strand the flag.
+      failed_when: false
+      become: true
+
     # Cleared before the assert, not after it: the flag is the one mutation this
     # verify would otherwise leave behind, and it short-circuits the
     # unchanged-HEAD arm above, so a re-run against the same instance would fail
@@ -304,4 +323,14 @@
           - arbites_paused.rc == 0
           - "'paused' in arbites_paused.stdout"
         fail_msg: "the pause flag did not short-circuit the reconcile"
+        quiet: true
+
+    - name: The cycle is skipped, as a success, only while autoupdate is running
+      ansible.builtin.assert:
+        that:
+          - arbites_condition.results[0].stdout_lines == ['exec-condition', 'activating', 'arbites_success 1']
+          - arbites_condition.results[1].stdout_lines == ['success', 'inactive', 'arbites_success 1']
+        fail_msg: >-
+          the ExecCondition does not skip, as a success, just while autoupdate runs:
+          {{ arbites_condition.results | map(attribute='stdout_lines') | to_json }}
         quiet: true
