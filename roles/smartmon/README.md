@@ -12,6 +12,8 @@ and published as:
   — the NVMe health log's spec-defined endurance and error counters. ATA wear
   attributes are vendor-specific and deliberately not parsed; an ATA disk is
   covered by the verdict alone.
+- `smartmon_nvme_unsafe_shutdowns{device}` — power lost without a shutdown
+  notification. No alert; it dates a power event after the fact.
 - `smartmon_devices_checked` — the denominator that tells clean apart from a
   broken scan, which `SmartDevicesDisappeared` reads.
 

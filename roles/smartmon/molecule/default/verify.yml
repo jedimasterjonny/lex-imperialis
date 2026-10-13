@@ -154,7 +154,7 @@
       ansible.builtin.copy:
         content: |
           {"smart_status": {"passed": true},
-           "nvme_smart_health_information_log": {"percentage_used": 3, "media_errors": 0}}
+           "nvme_smart_health_information_log": {"percentage_used": 3, "media_errors": 0, "unsafe_shutdowns": 2}}
         dest: "{{ smartmon_stub_dir }}/report.json"
         owner: root
         group: root
@@ -174,7 +174,7 @@
       register: smartmon_healthy
       become: true
 
-    - name: A healthy device records its verdict and both NVMe counters
+    - name: A healthy device records its verdict and NVMe counters
       vars:
         prom: "{{ smartmon_healthy.content | b64decode }}"
       ansible.builtin.assert:
@@ -182,6 +182,7 @@
           - "'smartmon_device_healthy{device=\"nvme0\"} 1' in prom"
           - "'smartmon_nvme_percentage_used{device=\"nvme0\"} 3' in prom"
           - "'smartmon_nvme_media_errors{device=\"nvme0\"} 0' in prom"
+          - "'smartmon_nvme_unsafe_shutdowns{device=\"nvme0\"} 2' in prom"
           - "'smartmon_devices_checked 1\n' in prom"
         fail_msg: "a healthy NVMe report was not published in full"
         quiet: true

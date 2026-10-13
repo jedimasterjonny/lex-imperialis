@@ -33,6 +33,8 @@ tmp="$(mktemp "$dir/.smartmon.prom.XXXXXX")"
     echo '# TYPE smartmon_nvme_percentage_used gauge'
     echo '# HELP smartmon_nvme_media_errors NVMe media and data integrity error count.'
     echo '# TYPE smartmon_nvme_media_errors gauge'
+    echo '# HELP smartmon_nvme_unsafe_shutdowns NVMe unsafe shutdown count (power lost without a shutdown notification).'
+    echo '# TYPE smartmon_nvme_unsafe_shutdowns gauge'
     while IFS= read -r dev; do
         [ -n "$dev" ] || continue
         # Exit bits 0-2 are smartctl itself failing; bits 3+ flag disk trouble
@@ -59,8 +61,10 @@ tmp="$(mktemp "$dir/.smartmon.prom.XXXXXX")"
         # counter stays absent rather than minting a misleading 0.
         pct="$(jq -r '.nvme_smart_health_information_log.percentage_used // empty' <<<"$report")"
         media="$(jq -r '.nvme_smart_health_information_log.media_errors // empty' <<<"$report")"
+        unsafe="$(jq -r '.nvme_smart_health_information_log.unsafe_shutdowns // empty' <<<"$report")"
         [ -z "$pct" ] || echo "smartmon_nvme_percentage_used{device=\"$name\"} $pct"
         [ -z "$media" ] || echo "smartmon_nvme_media_errors{device=\"$name\"} $media"
+        [ -z "$unsafe" ] || echo "smartmon_nvme_unsafe_shutdowns{device=\"$name\"} $unsafe"
         checked=$((checked + 1))
     done <<< "$devices"
     echo '# HELP smartmon_devices_checked SMART-capable devices this run read.'
