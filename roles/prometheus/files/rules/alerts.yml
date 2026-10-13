@@ -879,6 +879,36 @@ groups:
             the limit for its class, 95C on the N150s and 80C on the Pi. Check the
             heatsink and that the fan is spinning.
 
+      # The Pi firmware's own under-voltage flag, which nothing else here sees: a
+      # sagging supply throttles the board and risks the NVMe holding this TSDB,
+      # and the host stays up through it. raspberrypi-hwmon polls the firmware every
+      # 2s and clears its sticky bit on each poll, so in0_lcrit_alarm means "under
+      # voltage in the last ~2s", not "since boot". The kernel's "Undervoltage
+      # detected!" log line is the durable record.
+      #
+      # max_over_time because a transient is easy to miss twice over: each 15s
+      # scrape sees only the last 2s, and an instant read at the 1m rule evaluation
+      # sees one scrape in four. The range reads every scrape. No for: — a set flag
+      # is the firmware's detection rather than a reading to threshold, and a
+      # transient would never hold one. 1h keeps a lone sighting firing for an hour,
+      # so a supply sagging every few minutes is one alert rather than a flapping one.
+      #
+      # node_exporter names the chip from the hwmon device path —
+      # soc_107c000000:firmware_raspberrypi_hwmon on this Pi 5 — so the match is on
+      # the driver's suffix, which a different board keeps. Every sample since
+      # auspex joined on 2026-08-11 reads 0.
+      - alert: HostUnderVoltage
+        expr: max_over_time(node_hwmon_in_lcrit_alarm_volts{chip=~".+_raspberrypi_hwmon"}[1h]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} has flagged its supply under-voltage"
+          description: >-
+            The Raspberry Pi firmware on {{ $labels.instance }} has flagged its supply
+            under-voltage within the last hour, which throttles the board and risks the
+            writes on its NVMe. Check the power supply and its cable; `journalctl -k -g
+            voltage` lists each event.
+
       # smartmon reads SMART daily, so a bad sample stands for ~24h of scrapes;
       # every for: below debounces the scrape stream, not the check.
       - alert: SmartDeviceUnhealthy

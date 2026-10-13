@@ -931,6 +931,52 @@ tests:
                 for its class, 95C on the N150s and 80C on the Pi. Check the heatsink
                 and that the fan is spinning.
 
+  # One flagged scrape at 90s, between evaluations, on the 15s node cadence. By
+  # 5m the flag reads 0 again, so an instant read would see nothing — only the range
+  # catches it, and with no for: it fires on that first evaluation. It holds through
+  # 60m and is gone by 65m, which pins the hour.
+  - interval: 15s
+    name: a single under-voltage sighting alerts for an hour
+    input_series:
+      - series: 'node_hwmon_in_lcrit_alarm_volts{chip="soc_107c000000:firmware_raspberrypi_hwmon",job="node",instance="auspex:9100",sensor="in0"}'
+        values: "0x5 1 0x300"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: HostUnderVoltage
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              chip: soc_107c000000:firmware_raspberrypi_hwmon
+              job: node
+              instance: auspex:9100
+              sensor: in0
+            exp_annotations:
+              summary: "auspex:9100 has flagged its supply under-voltage"
+              description: >-
+                The Raspberry Pi firmware on auspex:9100 has flagged its supply
+                under-voltage within the last hour, which throttles the board and risks
+                the writes on its NVMe. Check the power supply and its cable;
+                `journalctl -k -g voltage` lists each event.
+      - eval_time: 60m
+        alertname: HostUnderVoltage
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              chip: soc_107c000000:firmware_raspberrypi_hwmon
+              job: node
+              instance: auspex:9100
+              sensor: in0
+            exp_annotations:
+              summary: "auspex:9100 has flagged its supply under-voltage"
+              description: >-
+                The Raspberry Pi firmware on auspex:9100 has flagged its supply
+                under-voltage within the last hour, which throttles the board and risks
+                the writes on its NVMe. Check the power supply and its cable;
+                `journalctl -k -g voltage` lists each event.
+      - eval_time: 65m
+        alertname: HostUnderVoltage
+        exp_alerts: []
+
   # The firmware's own verdict. The 30m eval pins the for: 1h — the daily check
   # republishes a bad sample for ~24h of scrapes, so the window debounces the
   # scrape stream, not the check.
