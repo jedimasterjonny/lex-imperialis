@@ -54,6 +54,11 @@ language scopes, matching wp-admin's Updates screen — and writes them to
 `wordpress_update_check_last_run_timestamp_seconds`. A failed check still publishes:
 success flips to 0 and the last-good counts carry forward, so a transient wp-cli or
 wordpress.org blip neither masks a pending update nor resets its alert window.
+Before publishing a failure it retries once, `wordpress_update_check_retry_delay`
+(90s) later: the check's own cache refresh lets Jetpack Sync report a pending
+plugin update, WordPress.com pushes it over XML-RPC within seconds, and a later
+query in the same run loads the plugin mid-swap and fatals. A failure that
+persists fails the retry too and publishes 0.
 node_exporter scrapes the file (its `node_exporter_textfile_directory` must match),
 and the `prometheus` role's `WordpressUpdateAvailable` rule alerts per type once an
 update has been pending for a day — long enough for WordPress's own minor-core
@@ -212,6 +217,12 @@ A second drop-in (`files/wp-includes-no-exec.conf`) denies direct requests for
 `.php` under `wp-includes`, which core only ever loads by include: a scanner
 fingerprinting `version.php` or fatalling a block file gets a 403, as does a
 webshell written into that equally writable tree.
+
+The caddy block 404s the rest of what core only includes — `wp-settings.php`,
+`wp-admin/includes/`, the `wp-content` cache drop-ins — along with
+`wp-config-sample.php` and the installer, so scanners can no longer run them out
+of context into a 500. Install a fresh site with `wp core install`, not the web
+installer.
 
 ## Deploy
 

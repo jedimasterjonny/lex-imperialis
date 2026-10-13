@@ -22,15 +22,24 @@ last_count() {
 }
 
 # One && chain: any failing query (cli image, database, or wordpress.org API
-# unreachable) short-circuits to the else and flags the run failed. Translations
-# span core, plugins, and themes, so sum the three language scopes to match
-# wp-admin's Updates screen.
-if core=$(wp core check-update --format=count 2>/dev/null) \
-    && plugins=$(wp plugin list --update=available --format=count 2>/dev/null) \
-    && themes=$(wp theme list --update=available --format=count 2>/dev/null) \
-    && tcore=$(wp language core list --update=available --format=count 2>/dev/null) \
-    && tplugin=$(wp language plugin list --all --update=available --format=count 2>/dev/null) \
-    && ttheme=$(wp language theme list --all --update=available --format=count 2>/dev/null); then
+# unreachable) short-circuits and flags the attempt failed. Translations span
+# core, plugins, and themes, so sum the three language scopes to match wp-admin's
+# Updates screen.
+check() {
+    core=$(wp core check-update --format=count 2>/dev/null) \
+        && plugins=$(wp plugin list --update=available --format=count 2>/dev/null) \
+        && themes=$(wp theme list --update=available --format=count 2>/dev/null) \
+        && tcore=$(wp language core list --update=available --format=count 2>/dev/null) \
+        && tplugin=$(wp language plugin list --all --update=available --format=count 2>/dev/null) \
+        && ttheme=$(wp language theme list --all --update=available --format=count 2>/dev/null)
+}
+
+# The check's own cache refresh lets Jetpack Sync report a pending plugin update,
+# and WordPress.com pushes it over XML-RPC within seconds — so a later query in
+# the same attempt can load the plugin mid-swap and fatal. One retry, once the
+# swap has landed, absorbs that race; a failure that persists fails the retry too
+# and still publishes success=0.
+if check || { sleep {{ wordpress_update_check_retry_delay }} && check; }; then
     success=1
     translations=$((${tcore:-0} + ${tplugin:-0} + ${ttheme:-0}))
 else
