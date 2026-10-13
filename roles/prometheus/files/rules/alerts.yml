@@ -852,6 +852,37 @@ groups:
             {{ $labels.device }} on {{ $labels.instance }} has logged new media and
             data integrity errors over the last 7 days — the disk is degrading ahead
             of its own verdict.
+      # The drive found a fault on its own surface or electronics — like media
+      # errors, often ahead of its overall verdict. smartmon holds a failure
+      # until a newer long test passes, so the weekly short cannot clear a failed
+      # monthly long and flap this.
+      - alert: SmartSelfTestFailed
+        expr: smartmon_self_test_passed == 0
+        for: 1h
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.device }} on {{ $labels.instance }} has failed a SMART self-test"
+          description: >-
+            A self-test on {{ $labels.device }} ({{ $labels.instance }}) failed and no
+            long test has passed since. Read smartctl -l selftest for the failing
+            element, confirm the backups are current and replace the disk.
+      # smartmon starts a short self-test weekly and a long one monthly, so the
+      # newest result of either is normally under 8 days old. 35 days is the
+      # monthly cadence plus margin, four missed weeks: firing means the schedule
+      # has stopped, not that a week slipped. A device that cannot self-test
+      # publishes no age.
+      - alert: SmartSelfTestOverdue
+        expr: smartmon_self_test_age_hours > 35 * 24
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.device }} on {{ $labels.instance }} has not completed a SMART self-test in 35 days"
+          description: >-
+            {{ $labels.device }} on {{ $labels.instance }} last completed a SMART
+            self-test {{ $value }} power-on hours ago — smartmon's scheduled tests
+            are not starting or not finishing.
       # Every host running the check has at least one real disk, so a zero
       # denominator means the scan broke, not that hardware left: every rule
       # above reads clean by vacuum.
@@ -875,7 +906,8 @@ groups:
           summary: "SMART check failed on {{ $labels.instance }}"
           description: >-
             The last SMART check run on {{ $labels.instance }} failed — often a device
-            that stopped answering smartctl mid-run, which is itself a disk symptom.
+            that stopped answering smartctl mid-run or refused a self-test start,
+            which is itself a disk symptom.
       # The daily timer caps a healthy run at ~1 day old; 2 gives a day's grace
       # before flagging a run that never fired (the metric stops advancing).
       - alert: SmartmonOverdue

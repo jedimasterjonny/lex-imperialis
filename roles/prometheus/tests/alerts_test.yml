@@ -1016,6 +1016,61 @@ tests:
         alertname: NvmeMediaErrorsIncreasing
         exp_alerts: []
 
+  # A failed result beside a passed one: the rule keys on the result, not on
+  # the device having a log.
+  - interval: 5m
+    name: a failed SMART self-test alerts while a passed one stays silent
+    input_series:
+      - series: 'smartmon_self_test_passed{job="node",instance="solar:9100",device="sda"}'
+        values: "0x30"
+      - series: 'smartmon_self_test_passed{job="node",instance="solar:9100",device="sdb"}'
+        values: "1x30"
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: SmartSelfTestFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: node
+              instance: solar:9100
+              device: sda
+            exp_annotations:
+              summary: "sda on solar:9100 has failed a SMART self-test"
+              description: >-
+                A self-test on sda (solar:9100) failed and no long test has passed since.
+                Read smartctl -l selftest for the failing element, confirm the backups
+                are current and replace the disk.
+      - eval_time: 30m
+        alertname: SmartSelfTestFailed
+        exp_alerts: []
+
+  # Either side of 35 days: 841 hours fires, 840 stays silent, which pins the
+  # threshold to the number it claims.
+  - interval: 5m
+    name: a SMART self-test older than 35 days alerts while one at the threshold stays silent
+    input_series:
+      - series: 'smartmon_self_test_age_hours{job="node",instance="solar:9100",device="sda"}'
+        values: "841x30"
+      - series: 'smartmon_self_test_age_hours{job="node",instance="solar:9100",device="sdb"}'
+        values: "840x30"
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: SmartSelfTestOverdue
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: solar:9100
+              device: sda
+            exp_annotations:
+              summary: "sda on solar:9100 has not completed a SMART self-test in 35 days"
+              description: >-
+                sda on solar:9100 last completed a SMART self-test 841 power-on hours
+                ago — smartmon's scheduled tests are not starting or not finishing.
+      - eval_time: 30m
+        alertname: SmartSelfTestOverdue
+        exp_alerts: []
+
   # The denominator rule: a scan that reads nothing on a host that runs the
   # check means the scan broke, and every verdict rule above reads clean by
   # vacuum.
@@ -1059,7 +1114,8 @@ tests:
               summary: "SMART check failed on solar:9100"
               description: >-
                 The last SMART check run on solar:9100 failed — often a device that
-                stopped answering smartctl mid-run, which is itself a disk symptom.
+                stopped answering smartctl mid-run or refused a self-test start, which
+                is itself a disk symptom.
       - eval_time: 30m
         alertname: SmartmonFailed
         exp_alerts: []

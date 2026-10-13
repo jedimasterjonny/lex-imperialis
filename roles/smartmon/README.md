@@ -43,8 +43,9 @@ its hook install — `/usr/local/sbin`, root-only like the other oneshots.
 The `prometheus` role's `hardware` group alerts: `SmartDeviceUnhealthy` (the
 verdict), `NvmeWearHigh` (endurance nearly spent), `NvmeMediaErrorsIncreasing`
 (the earliest pre-failure signal — the verdict often stays green while these
-climb), `SmartDevicesDisappeared`, and the `SmartmonFailed` /
-`SmartmonOverdue` pair.
+climb), `SmartSelfTestFailed`, `SmartSelfTestOverdue` (no self-test completed in
+35 days — the schedule has stopped), `SmartDevicesDisappeared`, and the
+`SmartmonFailed` / `SmartmonOverdue` pair.
 
 The smartmontools package ships its own poller, which Debian's postinst enables
 and starts — a second SMART daemon sweeping every 30 minutes and mailing root —
