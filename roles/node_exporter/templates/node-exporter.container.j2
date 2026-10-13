@@ -47,6 +47,9 @@ Volume=/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket:ro
 Exec=--path.rootfs=/host --web.listen-address={{ node_exporter_listen_address }} --collector.textfile.directory=/host{{ node_exporter_textfile_directory }} --collector.systemd --collector.systemd.enable-restarts-metrics --collector.systemd.unit-include=.+[.]service|nfs-.+[.]mount --collector.systemd.unit-exclude=[0-9a-f]{64}-[0-9a-f]+[.]service
 
 [Service]
+# node_exporter dies on the stop's SIGTERM and exits 143, which systemd would
+# otherwise record as a failed stop.
+SuccessExitStatus=143
 Restart=on-failure
 TimeoutStartSec=900
 

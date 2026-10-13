@@ -212,3 +212,31 @@
           PidMode={{ node_exporter.HostConfig.PidMode | default('', true) }}
           Binds={{ node_exporter.HostConfig.Binds | default([], true) }}
         quiet: true
+
+    # node_exporter exits 143 on the stop's SIGTERM. Unless the unit counts that
+    # as clean, every stop — each backup, each reboot — leaves it failed and
+    # SystemdUnitFailed pending.
+    - name: Stop node-exporter
+      ansible.builtin.systemd_service:
+        name: node-exporter
+        state: stopped
+      become: true
+
+    # The module returns the unit's properties as it found them, so the start
+    # reads back how the stop ended.
+    - name: Start node-exporter again
+      ansible.builtin.systemd_service:
+        name: node-exporter
+        state: started
+      become: true
+      register: node_exporter_restart
+
+    - name: The stop left node-exporter inactive, not failed
+      ansible.builtin.assert:
+        that:
+          - node_exporter_restart.status.ActiveState == 'inactive'
+          - node_exporter_restart.status.Result == 'success'
+        fail_msg: >-
+          the stop left node-exporter {{ node_exporter_restart.status.ActiveState }}
+          with result {{ node_exporter_restart.status.Result }}
+        quiet: true
