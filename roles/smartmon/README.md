@@ -14,6 +14,10 @@ and published as:
   covered by the verdict alone.
 - `smartmon_nvme_unsafe_shutdowns{device}` — power lost without a shutdown
   notification. No alert; it dates a power event after the fact.
+- `smartmon_self_test_passed{device}` / `smartmon_self_test_age_hours{device}`
+  — 0 from a failed self-test until a newer long test passes, as smartctl
+  counts it; power-on hours since the newest completed test. A device that can
+  self-test but never has ages from power-on; one that cannot publishes neither.
 - `smartmon_devices_checked` — the denominator that tells clean apart from a
   broken scan, which `SmartDevicesDisappeared` reads.
 

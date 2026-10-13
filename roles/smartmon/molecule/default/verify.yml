@@ -126,7 +126,8 @@
 
     # ── Stub arms: no tier's instance carries a disk smartctl can read, so the
     # parse is driven through a stubbed smartctl that answers --scan with one
-    # NVMe device and everything else with a canned report.
+    # device, nvme0, and everything else with whichever canned report is
+    # planted.
     - name: Create the stub directory
       ansible.builtin.file:
         path: "{{ smartmon_stub_dir }}"
@@ -154,6 +155,7 @@
       ansible.builtin.copy:
         content: |
           {"smart_status": {"passed": true},
+           "power_on_time": {"hours": 100},
            "nvme_smart_health_information_log": {"percentage_used": 3, "media_errors": 0, "unsafe_shutdowns": 2}}
         dest: "{{ smartmon_stub_dir }}/report.json"
         owner: root
@@ -174,7 +176,7 @@
       register: smartmon_healthy
       become: true
 
-    - name: A healthy device records its verdict and NVMe counters
+    - name: A healthy device records its verdict and NVMe counters, and no self-test
       vars:
         prom: "{{ smartmon_healthy.content | b64decode }}"
       ansible.builtin.assert:
@@ -184,7 +186,101 @@
           - "'smartmon_nvme_media_errors{device=\"nvme0\"} 0' in prom"
           - "'smartmon_nvme_unsafe_shutdowns{device=\"nvme0\"} 2' in prom"
           - "'smartmon_devices_checked 1\n' in prom"
-        fail_msg: "a healthy NVMe report was not published in full"
+          - "'smartmon_self_test_age_hours{' not in prom"
+        fail_msg: "a healthy NVMe report without self-test support was not published as such"
+        quiet: true
+
+    # ── Self-test arms. An ATA log, newest first: a long test interrupted, a
+    # short that passed 24h ago, and a long that failed before it — which the
+    # passing short is too shallow to clear.
+    - name: Plant an ATA report with a self-test log
+      ansible.builtin.copy:
+        content: |
+          {"smart_status": {"passed": true},
+           "power_on_time": {"hours": 12539},
+           "ata_smart_data": {"self_test": {"status": {"value": 0, "passed": true}},
+                              "capabilities": {"self_tests_supported": true}},
+           "ata_smart_self_test_log": {"standard": {"table": [
+             {"type": {"value": 2, "string": "Extended offline"},
+              "status": {"value": 33, "string": "Interrupted (host reset)"}, "lifetime_hours": 12530},
+             {"type": {"value": 1, "string": "Short offline"},
+              "status": {"value": 0, "string": "Completed without error", "passed": true}, "lifetime_hours": 12515},
+             {"type": {"value": 2, "string": "Extended offline"},
+              "status": {"value": 115, "string": "Completed: read failure", "passed": false},
+              "lifetime_hours": 12400, "lba": 1234}]}}}
+        dest: "{{ smartmon_stub_dir }}/report.json"
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Run the SMART check against the ATA report
+      ansible.builtin.command: "{{ smartmon_script }}"
+      environment:
+        PATH: "{{ smartmon_stub_path }}"
+      changed_when: false
+      become: true
+
+    - name: Read the SMART metrics after the ATA run
+      ansible.builtin.slurp:
+        src: "{{ smartmon_prom }}"
+      register: smartmon_ata
+      become: true
+
+    - name: The failed long test stands, aged from the newest completed test
+      vars:
+        prom: "{{ smartmon_ata.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'smartmon_self_test_passed{device=\"nvme0\"} 0' in prom"
+          - "'smartmon_self_test_age_hours{device=\"nvme0\"} 24' in prom"
+        fail_msg: "the ATA self-test log's failure or age was misread"
+        quiet: true
+
+    # A log, newest first, of a passed short, a passed long, and a failed short
+    # the long cleared.
+    - name: Plant an NVMe report with a cleared self-test failure
+      ansible.builtin.copy:
+        content: |
+          {"smart_status": {"passed": true},
+           "power_on_time": {"hours": 6278},
+           "nvme_smart_health_information_log": {"percentage_used": 1, "media_errors": 0, "unsafe_shutdowns": 2},
+           "nvme_self_test_log": {
+             "current_self_test_operation": {"value": 0, "string": "No self-test in progress"},
+             "table": [{"self_test_code": {"value": 1, "string": "Short"},
+                        "self_test_result": {"value": 0, "string": "Completed without error"}, "power_on_hours": 6110},
+                       {"self_test_code": {"value": 2, "string": "Extended"},
+                        "self_test_result": {"value": 0, "string": "Completed without error"}, "power_on_hours": 6000},
+                       {"self_test_code": {"value": 1, "string": "Short"},
+                        "self_test_result": {"value": 7, "string": "Completed: failed segments"},
+                        "segment": 3, "power_on_hours": 5900}]}}
+        dest: "{{ smartmon_stub_dir }}/report.json"
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Run the SMART check against the NVMe report
+      ansible.builtin.command: "{{ smartmon_script }}"
+      environment:
+        PATH: "{{ smartmon_stub_path }}"
+      changed_when: false
+      become: true
+
+    - name: Read the SMART metrics after the NVMe run
+      ansible.builtin.slurp:
+        src: "{{ smartmon_prom }}"
+      register: smartmon_nvme
+      become: true
+
+    - name: The cleared failure reads passed
+      vars:
+        prom: "{{ smartmon_nvme.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'smartmon_self_test_passed{device=\"nvme0\"} 1' in prom"
+          - "'smartmon_self_test_age_hours{device=\"nvme0\"} 168' in prom"
+        fail_msg: "the NVMe self-test log was misread"
         quiet: true
 
     # ── Empty-report arm: a smartctl that dies printing nothing. jq exits 0 on
