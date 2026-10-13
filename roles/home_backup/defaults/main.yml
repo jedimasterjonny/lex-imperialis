@@ -19,6 +19,15 @@ home_backup_paths:
 # without touching some unrelated directory of that name. restic ships no restore
 # of these, but they rebuild on demand.
 #
+# Next.js's build and dev cache (`.next`) and Claude Code's self-downloaded
+# binaries (`.local/share/claude/versions`, plus `.claude/remote`: the remote
+# server's binaries, account-synced plugins and daemon runtime state) were 2.6 of
+# the 3.5 GB that changed in one week on scholam. uv's managed Pythons go too,
+# but not the rest of uv's data dir, which holds its credentials. The rest of
+# `.claude` stays: its memory and session transcripts are not re-acquirable.
+# OpenTofu's `.terraform` (providers and modules `tofu init` refetches) took
+# most of what was left after one provider bump.
+#
 # The podman store is excluded whole, rootless volumes included. Every managed
 # workload is a rootful quadlet whose volumes `podman_backup` already covers, so
 # what accumulates here is ad-hoc operator testing — 2 GB of image layers on
@@ -36,7 +45,12 @@ home_backup_excludes:
   - .vscode-server
   - .venv
   - node_modules
+  - .next
+  - .terraform
   - .local/share/containers
+  - .local/share/claude/versions
+  - .local/share/uv/python
+  - .claude/remote
   - .vault_pass
 
 # Weekly, on a slot no other scheduled job uses — a day after the podman backup
