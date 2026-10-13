@@ -115,16 +115,25 @@ groups:
       # for "no refresh has ever succeeded", so it is caught explicitly rather than
       # left to pass a > threshold it never can.
       #
-      # 30 missed refreshes at the poller's 60s interval, then 5m: the controller
-      # reboots itself for its own auto-updates and the poller picks straight back
-      # up, so only a stall that outlasts a firmware update is worth raising.
+      # 5 missed refreshes at the poller's 60s interval, then 5m, so a stall pages
+      # ten minutes in. Calibrated on the TSDB from the series' first sample on
+      # 2026-08-25: a healthy cache sawtooths 0-60s (p99.9 59s), and the longest
+      # stalls that were not a fault are 242s on 2026-08-29 and 209s on 2026-09-12,
+      # both the controller rebooting for its own update. Nothing benign reaches the
+      # threshold at all, so the for: is margin on top. auspex's weekly reboot
+      # takes the poller down with Prometheus and it reads fresh within a minute.
+      #
+      # It was 30m, and that missed the fault this rule exists for. On 2026-10-12
+      # the Network app stopped answering at 22:07Z and unpoller served its last
+      # snapshot, up still 1, until the console was restarted 21 minutes later;
+      # 30m plus its for: never came close. Replayed, this fires at ~22:17Z.
       - alert: UnpollerPollOverdue
-        expr: unpoller_prometheus_cache_age_seconds > 30 * 60 or unpoller_prometheus_cache_age_seconds < 0
+        expr: unpoller_prometheus_cache_age_seconds > 5 * 60 or unpoller_prometheus_cache_age_seconds < 0
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "unpoller has not polled the UniFi controller in over 30 minutes"
+          summary: "unpoller has not polled the UniFi controller in over 5 minutes"
           description: "unpoller is serving a stale snapshot, so the unpoller_* series are frozen at their last values rather than absent."
 
       # Read from the controller's own health endpoint rather than inferred from
@@ -170,13 +179,72 @@ groups:
       # No for:. The 24h range is the smoothing — once the third reset lands the
       # expression stays true for a day — so a wait would only add latency. The
       # promtool cases pin that by asserting the evaluation the third reset lands on.
+      #
+      # Zero samples are dropped before counting, because the controller reports
+      # uptime 0 for devices that never went down. Every zero in the TSDB since
+      # 2026-08-25 is one: 19 runs of one to four samples, the device's uptime
+      # carrying on unbroken the far side of each — across the switches and APs
+      # whenever the controller restarted, and singly as the Network app wedged on
+      # 10-11 and 10-12. Three of those on the gateway inside a day fired this at
+      # 08:05Z on 10-12 for a device that had not rebooted, and two of them beside
+      # its one real reboot fired it again at 22:32Z. A real reboot survives the
+      # filter: uptime falls from large to small and climbs from there, so it is
+      # still one decrease whether or not the first sample after it reads 0. Over
+      # the same history the filtered form counts the six real reboots and nothing
+      # else.
+      #
+      # The comparison makes it an instant vector, so resets() needs a subquery to
+      # range over. 1m is the unpoller job's scrape interval: each step reads one
+      # sample, which makes the subquery the raw series minus its zeros. A coarser
+      # step could fold two reboots into one; a finer one re-reads samples.
       - alert: UnifiDeviceRebootLoop
-        expr: resets(unpoller_device_uptime_seconds[24h]) > 2
+        expr: resets((unpoller_device_uptime_seconds > 0)[24h:1m]) > 2
         labels:
           severity: warning
         annotations:
           summary: "UniFi device {{ $labels.name }} has rebooted {{ $value }} times in 24 hours"
           description: "{{ $labels.name }} ({{ $labels.type }}) is power-cycling rather than running — check its injector, its cable and its supply."
+      # The gateway's Network app degrading, which nothing else here sees: the
+      # console keeps answering, every device stays adopted and unpoller keeps
+      # polling, slowly, until the app stops answering outright. That was the
+      # 2026-10-12 hang, which this would have raised four and a half days early.
+      #
+      # Calibrated on the TSDB from 2026-08-25, as 3h means of the gateway's load15:
+      #
+      #   normal days, daily median   0.57-0.73
+      #   normal days, max            1.34   2026-09-01 evening
+      #   run-up, daily median        1.13 on 10-07, rising to 3.02 on 10-12
+      #
+      # 1.75 sits 1.3x over the busiest normal 3h, firmware days included. The
+      # run-up crossed it at 10-08 08:11Z and held it, bar one 38-minute dip, until
+      # the console was restarted, and it drained 2h after. A 1h mean crossed the
+      # same threshold five times on the way; the 3h window holds it to two alerts.
+      # avg_over_time rather than a for: also because the wedged app emits
+      # whole zero records between normal ones, load, memory and CPU all 0: a for:
+      # restarts on each, where a 3h mean loses 1/180 of itself.
+      #
+      # Load and not memory, the obvious candidate, which does not discriminate. It
+      # creeps between console reboots as a matter of course: its 1h mean reached
+      # 0.83 on the normal days before the 08-29 firmware reboot, as high as the
+      # run-up, and the run-up's highs were spikes — `> 0.85 for 1h` would not have
+      # fired even during the hang. CPU rose with load, and at the same 1.3x margin
+      # fires 26 minutes later, so a second rule on it would add nothing.
+      #
+      # type="udm" because the switches and APs report a load as well and run it
+      # hotter: the Core Switch's 3h mean has reached 3.9, and both APs' 2.0.
+      - alert: UnifiGatewayLoadHigh
+        expr: avg_over_time(unpoller_device_load_average_15{type="udm"}[3h]) > 1.75
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.name }} has averaged a load of {{ printf \"%.2f\" $value }} for 3 hours"
+          description: >-
+            The 15-minute load on {{ $labels.name }} has averaged {{ printf "%.2f" $value }}
+            over 3 hours against a norm near 0.6 — the UniFi Network app wedging, as it
+            did for five days before it hung on 2026-10-12. If the console's `/api/system`
+            answers promptly while `/proxy/network/status` hangs, it is the app and not
+            the console: restart the Network app, or the console, before it stops
+            answering.
       # The outcome check on UniFi's own auto-update. That schedule cannot be read
       # back over any documented API — the console's per-component rows are
       # authoritative, and the Site Manager field that looks like it says whether
@@ -810,6 +878,36 @@ groups:
             {{ $labels.instance }} has held its CPU at {{ $value }}C for 15 minutes — past
             the limit for its class, 95C on the N150s and 80C on the Pi. Check the
             heatsink and that the fan is spinning.
+
+      # The Pi firmware's own under-voltage flag, which nothing else here sees: a
+      # sagging supply throttles the board and risks the NVMe holding this TSDB,
+      # and the host stays up through it. raspberrypi-hwmon polls the firmware every
+      # 2s and clears its sticky bit on each poll, so in0_lcrit_alarm means "under
+      # voltage in the last ~2s", not "since boot". The kernel's "Undervoltage
+      # detected!" log line is the durable record.
+      #
+      # max_over_time because a transient is easy to miss twice over: each 15s
+      # scrape sees only the last 2s, and an instant read at the 1m rule evaluation
+      # sees one scrape in four. The range reads every scrape. No for: — a set flag
+      # is the firmware's detection rather than a reading to threshold, and a
+      # transient would never hold one. 1h keeps a lone sighting firing for an hour,
+      # so a supply sagging every few minutes is one alert rather than a flapping one.
+      #
+      # node_exporter names the chip from the hwmon device path —
+      # soc_107c000000:firmware_raspberrypi_hwmon on this Pi 5 — so the match is on
+      # the driver's suffix, which a different board keeps. Every sample since
+      # auspex joined on 2026-08-11 reads 0.
+      - alert: HostUnderVoltage
+        expr: max_over_time(node_hwmon_in_lcrit_alarm_volts{chip=~".+_raspberrypi_hwmon"}[1h]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} has flagged its supply under-voltage"
+          description: >-
+            The Raspberry Pi firmware on {{ $labels.instance }} has flagged its supply
+            under-voltage within the last hour, which throttles the board and risks the
+            writes on its NVMe. Check the power supply and its cable; `journalctl -k -g
+            voltage` lists each event.
 
       # smartmon reads SMART daily, so a bad sample stands for ~24h of scrapes;
       # every for: below debounces the scrape stream, not the check.

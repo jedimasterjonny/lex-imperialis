@@ -931,6 +931,52 @@ tests:
                 for its class, 95C on the N150s and 80C on the Pi. Check the heatsink
                 and that the fan is spinning.
 
+  # One flagged scrape at 90s, between evaluations, on the 15s node cadence. By
+  # 5m the flag reads 0 again, so an instant read would see nothing — only the range
+  # catches it, and with no for: it fires on that first evaluation. It holds through
+  # 60m and is gone by 65m, which pins the hour.
+  - interval: 15s
+    name: a single under-voltage sighting alerts for an hour
+    input_series:
+      - series: 'node_hwmon_in_lcrit_alarm_volts{chip="soc_107c000000:firmware_raspberrypi_hwmon",job="node",instance="auspex:9100",sensor="in0"}'
+        values: "0x5 1 0x300"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: HostUnderVoltage
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              chip: soc_107c000000:firmware_raspberrypi_hwmon
+              job: node
+              instance: auspex:9100
+              sensor: in0
+            exp_annotations:
+              summary: "auspex:9100 has flagged its supply under-voltage"
+              description: >-
+                The Raspberry Pi firmware on auspex:9100 has flagged its supply
+                under-voltage within the last hour, which throttles the board and risks
+                the writes on its NVMe. Check the power supply and its cable;
+                `journalctl -k -g voltage` lists each event.
+      - eval_time: 60m
+        alertname: HostUnderVoltage
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              chip: soc_107c000000:firmware_raspberrypi_hwmon
+              job: node
+              instance: auspex:9100
+              sensor: in0
+            exp_annotations:
+              summary: "auspex:9100 has flagged its supply under-voltage"
+              description: >-
+                The Raspberry Pi firmware on auspex:9100 has flagged its supply
+                under-voltage within the last hour, which throttles the board and risks
+                the writes on its NVMe. Check the power supply and its cable;
+                `journalctl -k -g voltage` lists each event.
+      - eval_time: 65m
+        alertname: HostUnderVoltage
+        exp_alerts: []
+
   # The firmware's own verdict. The 30m eval pins the for: 1h — the daily check
   # republishes a bad sample for ~24h of scrapes, so the window debounces the
   # scrape stream, not the check.
@@ -2823,7 +2869,7 @@ tests:
               job: unpoller
               instance: 127.0.0.1:9130
             exp_annotations:
-              summary: "unpoller has not polled the UniFi controller in over 30 minutes"
+              summary: "unpoller has not polled the UniFi controller in over 5 minutes"
               description: "unpoller is serving a stale snapshot, so the unpoller_* series are frozen at their last values rather than absent."
       # Inside for:, so pending rather than firing — the sentinel matches from the
       # first sample, and without this the case above would pass a rule with no
@@ -2832,21 +2878,21 @@ tests:
         alertname: UnpollerPollOverdue
         exp_alerts: []
 
-  # The other arm: a poller that polled successfully once and then stopped, so the
-  # age climbs rather than sitting at the sentinel. Starts under the threshold and
-  # crosses it, which is also this rule's fresh-snapshot control — at 0m the age is
-  # a healthy 1700s and the rule must be silent, so a dropped or inverted threshold
-  # fails here.
+  # The other arm, and the fault behind its threshold: the 2026-10-12 hang replayed
+  # from its last fresh scrape, the age climbing 60s a minute exactly as recorded.
+  # At 5m the age is 349s, past the threshold but inside for:; at 10m it fires. A
+  # threshold at or above 349s would still be pending at 10m, so this bounds it
+  # from above; the case below bounds it from below.
   - interval: 1m
-    name: a snapshot that goes stale alerts, and a fresh one does not
+    name: the 2026-10-12 hang alerts ten minutes after the last refresh
     input_series:
       - series: 'unpoller_prometheus_cache_age_seconds{job="unpoller",instance="127.0.0.1:9130"}'
-        values: "1700+60x40"
+        values: "49+60x25"
     alert_rule_test:
-      - eval_time: 0m
+      - eval_time: 5m
         alertname: UnpollerPollOverdue
         exp_alerts: []
-      - eval_time: 15m
+      - eval_time: 10m
         alertname: UnpollerPollOverdue
         exp_alerts:
           - exp_labels:
@@ -2854,8 +2900,20 @@ tests:
               job: unpoller
               instance: 127.0.0.1:9130
             exp_annotations:
-              summary: "unpoller has not polled the UniFi controller in over 30 minutes"
+              summary: "unpoller has not polled the UniFi controller in over 5 minutes"
               description: "unpoller is serving a stale snapshot, so the unpoller_* series are frozen at their last values rather than absent."
+
+  # And from below: a snapshot held at exactly five minutes old never pages, so the
+  # threshold is 300s and strict. Every benign stall the TSDB holds peaked under it.
+  - interval: 1m
+    name: a snapshot five minutes old stays silent
+    input_series:
+      - series: 'unpoller_prometheus_cache_age_seconds{job="unpoller",instance="127.0.0.1:9130"}'
+        values: "300x20"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: UnpollerPollOverdue
+        exp_alerts: []
 
   # The controller's own count of adopted devices that have stopped talking to
   # it, one gauge per subsystem. Two properties in one case.
@@ -2931,6 +2989,72 @@ tests:
       - eval_time: 160m
         alertname: UnifiDeviceRebootLoop
         exp_alerts: []
+
+  # The 2026-10-12 false positive, replayed: the controller reporting uptime 0 for a
+  # gateway that never went down — singly, and in the runs of two and four a
+  # restarting controller produces — beside an AP that really reboots three times
+  # and reads 0 first each time. At 35m the AP's third 0 has landed but its uptime
+  # has not climbed back yet, so a rule counting zeros would already fire; at 40m
+  # that reboot counts, and the gateway, three zero runs in, stays silent.
+  - interval: 1m
+    name: zero uptime samples do not count as reboots, and a reboot behind one does
+    input_series:
+      - series: 'unpoller_device_uptime_seconds{type="udm",site_name="Default",name="Cloud Gateway Fiber",source="unifi"}'
+        values: "1000+60x10 0 2000+60x10 0x1 3000+60x10 0x3 4000+60x10"
+      - series: 'unpoller_device_uptime_seconds{type="uap",site_name="Default",name="Downstairs AP",source="unifi"}'
+        values: "3000+60x10 0 60+60x10 0 60+60x10 0 60+60x14"
+    alert_rule_test:
+      - eval_time: 35m
+        alertname: UnifiDeviceRebootLoop
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: UnifiDeviceRebootLoop
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              type: uap
+              site_name: Default
+              name: Downstairs AP
+              source: unifi
+            exp_annotations:
+              summary: "UniFi device Downstairs AP has rebooted 3 times in 24 hours"
+              description: "Downstairs AP (uap) is power-cycling rather than running — check its injector, its cable and its supply."
+
+  # The 10-07 step: a gateway at its 0.6 norm for 3h whose load then jumps to 2.0.
+  # The 3h mean reaches 1.728 at 320m and 1.767 at 325m, so the two evaluations
+  # bracket the threshold to within 0.04 and the window with it: a 1h mean would
+  # be firing well before 320m, and a 6h one still silent at 325m. The Core Switch
+  # beside it runs hotter than the gateway ever has outside the incident, and
+  # stays silent because only the gateway is selected.
+  - interval: 5m
+    name: a gateway whose load steps up alerts on the 3h mean, and a busy switch does not
+    input_series:
+      - series: 'unpoller_device_load_average_15{type="udm",site_name="Default",name="Cloud Gateway Fiber",source="unifi"}'
+        values: "0.6x35 2x40"
+      - series: 'unpoller_device_load_average_15{type="usw",site_name="Default",name="Core Switch",source="unifi"}'
+        values: "3.9x75"
+    alert_rule_test:
+      - eval_time: 320m
+        alertname: UnifiGatewayLoadHigh
+        exp_alerts: []
+      - eval_time: 325m
+        alertname: UnifiGatewayLoadHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              type: udm
+              site_name: Default
+              name: Cloud Gateway Fiber
+              source: unifi
+            exp_annotations:
+              summary: "Cloud Gateway Fiber has averaged a load of 1.77 for 3 hours"
+              description: >-
+                The 15-minute load on Cloud Gateway Fiber has averaged 1.77 over 3 hours
+                against a norm near 0.6 — the UniFi Network app wedging, as it did for
+                five days before it hung on 2026-10-12. If the console's `/api/system`
+                answers promptly while `/proxy/network/status` hangs, it is the app and
+                not the console: restart the Network app, or the console, before it
+                stops answering.
 
   # The calibration points, encoded so none can drift. Six radios — every identity
   # the fleet has — driving all four threshold clauses and both causes, because the

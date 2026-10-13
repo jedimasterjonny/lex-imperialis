@@ -21,6 +21,6 @@ unpoller_verify_ssl: false
 
 # How often the poller refreshes the cache it serves. Upstream decouples this from
 # the scrape, so it is what actually drives API calls against the gateway; the
-# unpoller job scrapes at the same 60s, and UnpollerPollOverdue's 30m threshold is
+# unpoller job scrapes at the same 60s, and UnpollerPollOverdue's 5m threshold is
 # sized in multiples of it.
 unpoller_interval: 60s
