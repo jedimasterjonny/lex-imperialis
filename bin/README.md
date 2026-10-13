@@ -141,6 +141,17 @@ terminal and in the reconciler's journal alike. Each host is attempted even when
 another has failed — unlike a plain `site.yml` run, where a host that loses its
 play aborts every play imported after it — and any failure still exits non-zero.
 
+## apply-paths.sh
+
+Prints the paths changed between two commits that a fleet apply may read: the
+diff, `--no-renames` so a move lists the side it left, minus a fixed list no
+play or `arbites` script reads — `.github/`, `terraform/`, `jonnyoc-site/`,
+`packer/`, `docs/`, the molecule harness and role scenarios, role READMEs and
+root markdown, `requirements-dev.txt`, `.pre-commit-config.yaml` and `renovate.json`.
+`arbites.sh` records a range that prints nothing without applying it. An entry
+that something an apply runs does read leaves its changes unapplied while the
+reconcile reports green, so keep the list to what nothing reaches.
+
 ## container-refresh.sh
 
 The `arbites` container fast path: given the last-applied and target SHAs,
@@ -185,4 +196,6 @@ mirrors. The swap payload: a scratch root (`CONTAINER_SWAP_ROOT`) with
 `systemctl` stubbed, asserting the no-op, swap-and-bounce, revert-on-failure
 and no-mapping classes. Exists because the fast path fails closed: a
 regression breaks nothing visibly, every range just takes the correct, slow
-full apply forever. Backs the `container-refresh-gate` hook.
+full apply forever. Also `apply-paths.sh`, in the same scratch repo: an inert
+range prints nothing, a read path prints, a move prints the side it left, an
+unknown base fails. Backs the `container-refresh-gate` hook.

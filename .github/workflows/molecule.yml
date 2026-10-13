@@ -108,7 +108,7 @@ jobs:
             # the shared set, as .pre-commit-config.yaml already does — a hetzner
             # leg would bill a real VM to prove nothing about them. The bin
             # scripts deliberately absent are the ones a real path runs:
-            # expand-role-consumers.sh (this job), fleet-apply.sh,
+            # expand-role-consumers.sh (this job), fleet-apply.sh, apply-paths.sh,
             # container-refresh.sh and container-swap.sh (arbites' root apply and
             # its container fast path) and vault-var.sh (the hetzner tier's own
             # token lookup). Listing the exemptions, not the inclusions, keeps a

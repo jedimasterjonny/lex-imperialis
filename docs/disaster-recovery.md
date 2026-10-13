@@ -359,13 +359,14 @@ throwaway, never on this server.** So step 7 is mandatory, not optional, and ste
 9. Resume the reconciler on scholam: `sudo rm /var/lib/arbites/pause`. Confirm
    the next fire *applied in full* — `journalctl -u arbites.service` should
    show an `applying <sha>` line followed by `[rogue-trader]`-prefixed play
-   output, not `origin/main unchanged`, and not only `container-refresh: bump`
+   output, not `origin/main unchanged` or `changes nothing an apply reads`, and
+   not only `container-refresh: bump`
    lines (a bump-only range prints `applying <sha>` while swapping pins
    fleet-wide and converging nothing else — it proves nothing about a
    recovered host's config). If only the fast path ran,
    `make apply PLAY=rogue-trader` re-converges the host directly.
    `last-applied-sha` reaching HEAD is necessary, not sufficient: on a static
-   `main` the short-circuit satisfies it without connecting to anything, so a
+   `main`, or one moved only in paths no apply reads, the short-circuit satisfies it without connecting to anything, so a
    botched step 6 re-pin would still read as healthy.
 10. `rogue-trader` also carries a `rogue-trader-home-backup` repo (its `/home` is
    minimal — service-account skeletons only); restore it by hand as in
