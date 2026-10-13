@@ -522,6 +522,50 @@
         fail_msg: "the update-check metric is missing a success, timestamp, or per-type gauge line"
         quiet: true
 
+    # The retry, driven through a stand-in wp ahead of the wrapper on PATH that
+    # fails its first N calls: one failure is the plugin-swap race and must be
+    # retried away; a second, on the retry, is a fault that persists and must
+    # still publish success 0.
+    - name: Create the wp stand-in's directory
+      ansible.builtin.file:
+        path: /run/wp-stand-in
+        state: directory
+        mode: "0755"
+      become: true
+
+    - name: Install a wp stand-in that fails a set number of calls
+      ansible.builtin.copy:
+        dest: /run/wp-stand-in/wp
+        content: |
+          #!/bin/sh
+          n=$(cat /run/wp-stand-in/failures)
+          if [ "$n" -gt 0 ]; then echo $((n - 1)) > /run/wp-stand-in/failures; exit 1; fi
+          echo 0
+        mode: "0755"
+      become: true
+
+    - name: Run the update check against the stand-in
+      ansible.builtin.shell: >-
+        echo {{ item.failures }} > /run/wp-stand-in/failures
+        && PATH=/run/wp-stand-in:$PATH /usr/local/sbin/wp-update-check.sh
+        && cat {{ wordpress_textfile_dir }}/wordpress-updates.prom
+      loop:
+        - {failures: 1, success: 1}
+        - {failures: 2, success: 0}
+      register: wordpress_update_retry
+      changed_when: false
+      become: true
+
+    - name: One failure is retried away and a second still publishes the failure
+      ansible.builtin.assert:
+        that:
+          - "('wordpress_update_check_success ' ~ item.item.success) in item.stdout"
+        fail_msg: "{{ item.item.failures }} failed call(s) did not publish success {{ item.item.success }}"
+        quiet: true
+      loop: "{{ wordpress_update_retry.results }}"
+      loop_control:
+        label: "{{ item.item.failures }} failure(s)"
+
     - name: The boost timer is active
       ansible.builtin.systemd_service:
         name: wordpress-boost.timer

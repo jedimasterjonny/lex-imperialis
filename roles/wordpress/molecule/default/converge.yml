@@ -11,6 +11,9 @@
     wordpress_domains:
       - wordpress.home.arpa
     caddy_wildcard: false
+    # verify drives the update check's retry through failures, which would
+    # otherwise each idle the production delay.
+    wordpress_update_check_retry_delay: 1
   tasks:
     - name: Apply the podman role
       ansible.builtin.include_role:

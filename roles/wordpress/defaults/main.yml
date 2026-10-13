@@ -36,6 +36,11 @@ wordpress_db_user: wordpress
 # node_exporter_textfile_directory so Prometheus scrapes what they write.
 wordpress_textfile_dir: /var/lib/node_exporter/textfile_collector
 
+# Seconds a failed update check waits before its one retry. The plugin swap that
+# WordPress.com pushes in reply to the check's own cache refresh lands within
+# ~10s of it; molecule shortens this so its failing runs don't idle.
+wordpress_update_check_retry_delay: 90
+
 # Database passwords (vault-sourced). Empty leaves the stack uninitialised:
 # mariadb needs them to create the database on first boot. Molecule sets
 # throwaway values; the fleet sources them from the vault.
