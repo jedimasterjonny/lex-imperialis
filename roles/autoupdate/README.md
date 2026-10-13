@@ -85,11 +85,13 @@ when the dup changed nothing and deleted its own snapshot. rogue-trader is
 minimal by construction, so it reports, and the operator clears it by hand with
 `transactional-update run zypper remove --clean-deps <names>` over what
 `zypper packages --unneeded` lists — then reboots, because that removal lands in
-a new snapshot while the running system's RPM database is unchanged, so re-running
-the hook republishes the same count. For the same reason MicroOS counts describe
-the snapshot the host is running, not the one the dup just built: the hook runs
-before the reboot, so what it publishes is always one update behind. Immaterial
-while the count is zero, and worth remembering when it is not.
+a new snapshot while the running system's RPM database is unchanged. For the same
+reason the MicroOS count is not an `ExecStartPost` hook at all: before the reboot
+the running snapshot still carries everything the dup removed, which counted
+there reads as orphaned for a week. `autoupdate-cleanup.service` runs the script
+at boot instead, so the count describes the snapshot the host is running — after
+the update's reboot and after a hand removal's alike. A count that fails there
+leaves the unit failed, which `SystemdUnitFailed` reports.
 
 The hook is `-`-prefixed for more than the metric's sake: a solver problem in the
 removal must not cost the host its reboot onto the new kernel. A failed removal
@@ -137,8 +139,10 @@ reads is worth.
 
 rogue-trader is where the transactional arm runs, and the only place that arm's
 command is proven: no molecule tier boots MicroOS, so the scenario pins the
-selector against shadowed facts and nothing more, and the cleanup's transactional
-arm — which only decides not to remove — is never rendered under test at all. The
+selector and the update unit's missing cleanup hook against shadowed facts and
+nothing more. The boot unit is asserted absent elsewhere, never installed or
+booted under test, and the cleanup's transactional arm — which only decides not
+to remove — is never rendered under test at all. The
 removal on the other two arms is proven for real: the scenario strands a
 dependency on each platform and asserts the hook uninstalls it. The
 stop-before-mask ordering is no longer unproven either — the Debian platform

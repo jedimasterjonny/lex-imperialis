@@ -20,7 +20,9 @@
 #              operator to take package by package.
 #
 # Runs from the update rather than a timer of its own, and ahead of the reboot,
-# for the same reasons as the holds hook beside it.
+# for the same reasons as the holds hook beside it — bar MicroOS, where what the
+# update removed stays installed until the reboot into its snapshot, so
+# autoupdate-cleanup.service runs it at boot instead.
 set -euo pipefail
 
 dir="{{ autoupdate_textfile_dir }}"

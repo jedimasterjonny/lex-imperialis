@@ -1186,9 +1186,11 @@ groups:
       # that fails to load turns every package it carries into an orphan, so keying an
       # unattended removal on that class would strip a host over a mirror outage.
       #
-      # Written by the same hook as the holds gauge and inheriting its cadence: it
-      # moves at that host's weekly update and no faster, so removing an orphan by
-      # hand does not clear this until the next run rewrites the file — which is why
+      # Written by the same hook as the holds gauge and inheriting its cadence — bar
+      # MicroOS, where autoupdate-cleanup.service writes it at boot, once the dup's
+      # snapshot is the one running: it moves at that host's weekly update and no
+      # faster, so removing an orphan by hand does not clear this until the next run
+      # rewrites the file — which is why
       # the republish is in the description rather than left to be worked out. Unlike
       # the holds gauge it resolves on the value, not by staleness: the label set is
       # fixed and two wide, so the hook publishes both classes every run, zero

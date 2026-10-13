@@ -63,6 +63,27 @@
     mode: "0644"
   become: true
 
+# MicroOS's dup lands in a snapshot the host runs only after the reboot, so the
+# cleanup count moves to boot there; enabled, not started, as a oneshot started
+# on every converge would report changed every time.
+- name: Count leftover packages at boot on MicroOS
+  when: autoupdate_transactional | bool
+  become: true
+  block:
+    - name: Install the boot-time cleanup count
+      ansible.builtin.template:
+        src: autoupdate-cleanup.service.j2
+        dest: /etc/systemd/system/autoupdate-cleanup.service
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Enable the boot-time cleanup count
+      ansible.builtin.systemd_service:
+        name: autoupdate-cleanup.service
+        enabled: true
+        daemon_reload: true
+
 - name: Enable and start the update timer
   ansible.builtin.systemd_service:
     name: autoupdate.timer
