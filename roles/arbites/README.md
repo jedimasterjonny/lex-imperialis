@@ -21,7 +21,10 @@ jitter; `Persistent`, so a reboot-missed run catches up). The script:
    is read as an inventory source and survives a revert). The role only seeds
    the clone; this is the one place it moves;
 3. short-circuits if `main` has not advanced since the last applied SHA, so an
-   idle cycle is near-free;
+   idle cycle is near-free — and records the new SHA without applying it when
+   the range changes nothing an apply reads (`bin/apply-paths.sh`: CI,
+   terraform, the site, docs, test scenarios), unless the previous apply did
+   not complete;
 4. asks every fleet host whether `autoupdate.service` is running and, if one is,
    exits as a clean no-op with nothing recorded, so the next cycle retries — a
    host mid-dup holds the zypper lock the package tasks need, or is a reboot
@@ -54,9 +57,10 @@ has stopped firing.
 ## Container fast path
 
 Most merges are renovate image bumps, and a full fleet apply is a slow way to
-move one pin. When the newly fetched range is nothing but such bumps,
-`bin/container-refresh.sh` applies it by swapping the pinned refs in place on
-every host and bouncing just the quadlet units that carried them
+move one pin. When the newly fetched range is nothing but such bumps, give or
+take paths no apply reads (step 3), `bin/container-refresh.sh` applies it by
+swapping the pinned refs in place on every host and bouncing just the quadlet
+units that carried them
 (`playbooks/container-refresh.yml`). Anything else — and any anomaly — takes
 `bin/fleet-apply.sh`, the known-correct path. The gate's acceptance rules and
 the swap, revert and bounce mechanics live with the scripts (`bin/README.md`);
@@ -78,7 +82,9 @@ and a host rolled back out-of-band (a MicroOS snapshot revert, a restored
 quadlet) is the same shape: its older ref matches no bump, the coverage assert
 is satisfied by the hosts that did match, and the run reports green. Recovery
 procedures re-apply by hand for exactly this reason
-(`docs/disaster-recovery.md`).
+(`docs/disaster-recovery.md`). A merge that changes nothing an apply reads
+(step 3) trades the same invariant outright: it applies nothing, so it no
+longer doubles as a periodic drift revert either.
 
 ## Bootstrap (one-time)
 
@@ -160,9 +166,9 @@ duplicates in the GitHub UI what the alert rules already catch, and only the ale
 are load-bearing. Leaving the token unset (the default, and molecule) skips the
 calls entirely.
 
-Only a run that actually applies opens a record, so an idle or paused cycle posts
-nothing and the environment shows one deployment per merge rather than one per
-15-minute tick. The history is public, like the rest of this repo: it discloses the
+Only a run that actually applies opens a record, so an idle, paused or
+record-only cycle posts nothing and the environment shows one deployment per
+applied merge rather than one per 15-minute tick. The history is public, like the rest of this repo: it discloses the
 SHA applied and when, which is the apply cadence, and nothing about the fleet.
 
 ## Trust model

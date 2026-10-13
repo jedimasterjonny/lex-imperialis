@@ -62,6 +62,17 @@ if [ "$last_applied_sha" = "$target" ]; then
     exit 0
 fi
 
+# A range that changes nothing an apply reads is recorded without one: no hold,
+# no deployment record. Only after a clean apply — a failed one may have left
+# hosts past the tree last_applied names. No diffable base falls through.
+if [ ! -e "$incomplete_flag" ] \
+    && apply_paths="$("$repo/bin/apply-paths.sh" "$last_applied_sha" "$target")" \
+    && [ -z "$apply_paths" ]; then
+    echo "$target" >"$last_applied"
+    echo "${target:0:12} changes nothing an apply reads: recorded without applying"
+    exit 0
+fi
+
 echo "applying ${target:0:12} to the fleet"
 
 # Run from the clone root so ansible picks up the repo's ansible.cfg (inventory,

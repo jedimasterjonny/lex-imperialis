@@ -1,18 +1,24 @@
 #!/usr/bin/env bash
-# Fixture tests for arbites' container fast path: the range gate
-# (bin/container-refresh.sh) and the per-host swap payload
-# (bin/container-swap.sh). Both test hermetically — a scratch git repo with
-# the real gate script copied in and ansible-playbook stubbed on PATH; a
-# scratch filesystem root (CONTAINER_SWAP_ROOT) with systemctl stubbed — so
-# every accept, reject, swap, bounce and revert class is asserted. This exists
-# because the fast path fails closed: a regression would not break anything
-# visibly, every range would just take the correct, slow full apply forever.
+# Fixture tests for arbites' range classification: the container fast path's
+# range gate (bin/container-refresh.sh), its per-host swap payload
+# (bin/container-swap.sh), and the paths an apply reads (bin/apply-paths.sh).
+# All test hermetically — a scratch git repo with the real scripts copied in
+# and ansible-playbook stubbed on PATH; a scratch filesystem root
+# (CONTAINER_SWAP_ROOT) with systemctl stubbed — so every accept, reject,
+# swap, bounce and revert class is asserted. This exists because the fast path
+# fails closed: a regression would not break anything visibly, every range
+# would just take the correct, slow full apply forever.
 # Backs the container-refresh-gate hook.
 set -euo pipefail
+
+# Run as a commit hook, git exports GIT_DIR, GIT_INDEX_FILE and kin, which
+# point the scratch repo's git at the real repository instead.
+for var in $(git rev-parse --local-env-vars); do unset "$var"; done
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 src=$PWD/bin/container-refresh.sh
 swap=$PWD/bin/container-swap.sh
+paths=$PWD/bin/apply-paths.sh
 
 # The gate mirrors renovate.json's image-manager shapes; pin both managers
 # exactly — file patterns and the template pin_re transcribes — so reshaping
@@ -48,7 +54,7 @@ repo=$scratch/repo
 renovate='renovate[bot] <29139614+renovate[bot]@users.noreply.github.com>'
 git init -q -b main "$repo"
 mkdir -p "$repo/bin" "$repo/roles/demo/vars" "$repo/docs"
-cp "$src" "$repo/bin/"
+cp "$src" "$paths" "$repo/bin/"
 
 pin() { printf 'demo_image: %s\n' "$1" >"$repo/roles/demo/vars/main.yml"; }
 commit() { # $1: message; $2: author (defaults to renovate)
@@ -113,16 +119,19 @@ printf 'demo_image: %s\ndemo2_image: %s\n' "$ref_b" "$ref_b" \
 commit 'duplicate bumps'
 t 'two pins of the same image' accept
 
-# The runbook renovate co-bumps rides along; any other extra file rejects.
+# Paths no apply reads ride along — the runbook renovate co-bumps, a CI
+# bump; any other extra file rejects.
 pin "$ref_b"
 commit 'restore before rider case'
 pin "$ref_c"
 echo "$ref_c" >"$repo/docs/disaster-recovery.md"
-commit 'bump with runbook rider'
-t 'disaster-recovery.md rider' accept
+mkdir -p "$repo/.github"
+echo ci >"$repo/.github/ci.yml"
+commit 'bump with runbook and CI riders'
+t 'disaster-recovery.md and CI riders' accept
 
 pin "$ref_a"
-echo stray >"$repo/README.md"
+echo stray >"$repo/ansible.cfg"
 commit 'bump plus stray file'
 t 'range touching another file' reject
 
@@ -161,6 +170,42 @@ commit 'chained bumps'
 t 'pins that are not independent' reject
 
 t 'unknown base SHA' reject "$(printf '0%.0s' {1..40})" "$(sha HEAD)"
+
+# --- apply-paths.sh: the paths an apply reads ------------------------------
+ap() { "$repo/bin/apply-paths.sh" "$@" 2>/dev/null; }
+mkdir -p "$repo/.github" "$repo/roles/demo/molecule/default" "$repo/roles/demo/tasks" \
+    "$repo/roles/demo/files"
+for f in .github/ci.yml docs/runbook.md roles/demo/README.md \
+    roles/demo/molecule/default/verify.yml requirements-dev.txt; do
+    echo inert >"$repo/$f"
+done
+commit 'inert paths only'
+if [ -n "$(ap HEAD^ HEAD)" ]; then
+    echo 'FAIL: a range of inert paths must print nothing' >&2
+    fail=1
+fi
+
+echo task >"$repo/roles/demo/tasks/main.yml"
+echo notes >"$repo/roles/demo/files/notes.md"
+echo pin >"$repo/requirements.txt"
+echo changed >"$repo/.github/ci.yml"
+commit 'role task, shipped markdown and runtime pin beside CI'
+if [ "$(ap HEAD^ HEAD)" != $'requirements.txt\nroles/demo/files/notes.md\nroles/demo/tasks/main.yml' ]; then
+    echo 'FAIL: the paths an apply reads must print, and only those' >&2
+    fail=1
+fi
+
+git -C "$repo" mv roles/demo/tasks/main.yml docs/main.yml
+commit 'role file moved under docs/'
+if [ "$(ap HEAD^ HEAD)" != roles/demo/tasks/main.yml ]; then
+    echo 'FAIL: a move out of a read path must print its old side' >&2
+    fail=1
+fi
+
+if ap "$(printf '0%.0s' {1..40})" HEAD >/dev/null; then
+    echo 'FAIL: an unknown base must fail, not read as inert' >&2
+    fail=1
+fi
 
 # --- container-swap.sh: swap, bounce, revert -------------------------------
 # CONTAINER_SWAP_ROOT relocates the script's swept roots into the scratch dir,

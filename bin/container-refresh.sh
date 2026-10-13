@@ -10,7 +10,7 @@
 # exits non-zero with the reason in the journal, and the caller (arbites.sh)
 # runs bin/fleet-apply.sh, the known-correct path. The gate is deliberately
 # strict: every commit in the range authored by renovate[bot], only
-# roles/*/vars/main.yml touched (plus the runbook pin renovate co-bumps),
+# roles/*/vars/main.yml touched beside paths no apply reads (apply-paths.sh),
 # every changed line a digest-pinned image ref whose key and indentation are
 # unchanged and whose old and new refs name the same repository. Anything else
 # is someone else's change, and gets the full apply.
@@ -47,17 +47,15 @@ if [ -z "$authors" ] || grep -qv 'renovate\[bot\]' <<<"$authors"; then
 fi
 
 # Only the files renovate's image managers write — renovate.json owns these
-# shapes; keep them in step. docs/disaster-recovery.md rides along untouched:
-# renovate bumps the mariadb pin it hardcodes in the same PR as the wordpress
-# vars (same depName), and the runbook renders nowhere on a host, so its half
-# of the bump needs no applying.
+# shapes; keep them in step — beside the paths no apply reads, which
+# bin/apply-paths.sh drops: a CI bump in the same range rides along untouched,
+# as does the mariadb pin renovate co-bumps in docs/disaster-recovery.md.
 # Two steps, not a `git | grep -q` pipeline: -q closing the pipe early can
 # kill git with SIGPIPE, and under pipefail that 141 would read as "nothing
 # disallowed" — and the || grep needs to forgive is grep's no-match rc 1, not
 # a git failure, which must abort rather than read as an empty range.
-changed_files=$(git diff --name-only "$last" "$target")
-disallowed=$(grep -vE '^(roles/[^/]+/vars/main\.yml|docs/disaster-recovery\.md)$' \
-    <<<"$changed_files" || true)
+changed_files=$(bin/apply-paths.sh "$last" "$target")
+disallowed=$(grep -vE '^roles/[^/]+/vars/main\.yml$' <<<"$changed_files" || true)
 if [ -n "$disallowed" ]; then
     echo "container-refresh: range touches more than renovate's image pins"
     exit 1
