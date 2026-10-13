@@ -70,6 +70,43 @@
       loop_control:
         label: "{{ item.item.key }}"
 
+    # Outside s6's /init, the container exits 143 on the stop's SIGTERM. Unless
+    # the unit counts that as clean, every stop — each backup, each reboot —
+    # leaves it failed and SystemdUnitFailed pending.
+    - name: Stop each app that runs without s6
+      ansible.builtin.systemd_service:
+        name: "{{ item.key }}"
+        state: stopped
+      loop: "{{ arr_apps | dict2items | rejectattr('value.image', 'match', 'lscr\\.io/') | list }}"
+      loop_control:
+        label: "{{ item.key }}"
+      become: true
+
+    # The module returns the unit's properties as it found them, so the start
+    # reads back how the stop ended.
+    - name: Start each app that runs without s6 again
+      ansible.builtin.systemd_service:
+        name: "{{ item.key }}"
+        state: started
+      loop: "{{ arr_apps | dict2items | rejectattr('value.image', 'match', 'lscr\\.io/') | list }}"
+      loop_control:
+        label: "{{ item.key }}"
+      register: arr_restarted
+      become: true
+
+    - name: The stop left each app that runs without s6 inactive, not failed
+      ansible.builtin.assert:
+        that:
+          - item.status.ActiveState == 'inactive'
+          - item.status.Result == 'success'
+        fail_msg: >-
+          the stop left {{ item.item.key }} {{ item.status.ActiveState }}
+          with result {{ item.status.Result }}
+        quiet: true
+      loop: "{{ arr_restarted.results }}"
+      loop_control:
+        label: "{{ item.item.key }}"
+
     # lscr.io images drop their service to PUID:PGID as the abc account;
     # recyclarr runs under quadlet User= and has no account to read.
     - name: Read each app account inside its container

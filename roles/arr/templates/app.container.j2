@@ -108,6 +108,11 @@ HealthOnFailure=kill
 {% endif %}
 
 [Service]
+{% if not arr_lsio %}
+{# Outside s6's /init, the container exits 143 on the stop's SIGTERM, which #}
+{# systemd would otherwise record as a failed stop. #}
+SuccessExitStatus=143
+{% endif %}
 Restart=on-failure
 TimeoutStartSec=900
 
