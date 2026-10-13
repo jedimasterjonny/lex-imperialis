@@ -204,6 +204,47 @@ groups:
         annotations:
           summary: "UniFi device {{ $labels.name }} has rebooted {{ $value }} times in 24 hours"
           description: "{{ $labels.name }} ({{ $labels.type }}) is power-cycling rather than running — check its injector, its cable and its supply."
+      # The gateway's Network app degrading, which nothing else here sees: the
+      # console keeps answering, every device stays adopted and unpoller keeps
+      # polling, slowly, until the app stops answering outright. That was the
+      # 2026-10-12 hang, which this would have raised four and a half days early.
+      #
+      # Calibrated on the TSDB from 2026-08-25, as 3h means of the gateway's load15:
+      #
+      #   normal days, daily median   0.57-0.73
+      #   normal days, max            1.34   2026-09-01 evening
+      #   run-up, daily median        1.13 on 10-07, rising to 3.02 on 10-12
+      #
+      # 1.75 sits 1.3x over the busiest normal 3h, firmware days included. The
+      # run-up crossed it at 10-08 08:11Z and held it, bar one 38-minute dip, until
+      # the console was restarted, and it drained 2h after. A 1h mean crossed the
+      # same threshold five times on the way; the 3h window holds it to two alerts.
+      # avg_over_time rather than a for: also because the wedged app emits
+      # whole zero records between normal ones, load, memory and CPU all 0: a for:
+      # restarts on each, where a 3h mean loses 1/180 of itself.
+      #
+      # Load and not memory, the obvious candidate, which does not discriminate. It
+      # creeps between console reboots as a matter of course: its 1h mean reached
+      # 0.83 on the normal days before the 08-29 firmware reboot, as high as the
+      # run-up, and the run-up's highs were spikes — `> 0.85 for 1h` would not have
+      # fired even during the hang. CPU rose with load, and at the same 1.3x margin
+      # fires 26 minutes later, so a second rule on it would add nothing.
+      #
+      # type="udm" because the switches and APs report a load as well and run it
+      # hotter: the Core Switch's 3h mean has reached 3.9, and both APs' 2.0.
+      - alert: UnifiGatewayLoadHigh
+        expr: avg_over_time(unpoller_device_load_average_15{type="udm"}[3h]) > 1.75
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.name }} has averaged a load of {{ printf \"%.2f\" $value }} for 3 hours"
+          description: >-
+            The 15-minute load on {{ $labels.name }} has averaged {{ printf "%.2f" $value }}
+            over 3 hours against a norm near 0.6 — the UniFi Network app wedging, as it
+            did for five days before it hung on 2026-10-12. If the console's `/api/system`
+            answers promptly while `/proxy/network/status` hangs, it is the app and not
+            the console: restart the Network app, or the console, before it stops
+            answering.
       # The outcome check on UniFi's own auto-update. That schedule cannot be read
       # back over any documented API — the console's per-component rows are
       # authoritative, and the Site Manager field that looks like it says whether

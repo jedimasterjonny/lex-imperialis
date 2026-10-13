@@ -2974,6 +2974,42 @@ tests:
               summary: "UniFi device Downstairs AP has rebooted 3 times in 24 hours"
               description: "Downstairs AP (uap) is power-cycling rather than running — check its injector, its cable and its supply."
 
+  # The 10-07 step: a gateway at its 0.6 norm for 3h whose load then jumps to 2.0.
+  # The 3h mean reaches 1.728 at 320m and 1.767 at 325m, so the two evaluations
+  # bracket the threshold to within 0.04 and the window with it: a 1h mean would
+  # be firing well before 320m, and a 6h one still silent at 325m. The Core Switch
+  # beside it runs hotter than the gateway ever has outside the incident, and
+  # stays silent because only the gateway is selected.
+  - interval: 5m
+    name: a gateway whose load steps up alerts on the 3h mean, and a busy switch does not
+    input_series:
+      - series: 'unpoller_device_load_average_15{type="udm",site_name="Default",name="Cloud Gateway Fiber",source="unifi"}'
+        values: "0.6x35 2x40"
+      - series: 'unpoller_device_load_average_15{type="usw",site_name="Default",name="Core Switch",source="unifi"}'
+        values: "3.9x75"
+    alert_rule_test:
+      - eval_time: 320m
+        alertname: UnifiGatewayLoadHigh
+        exp_alerts: []
+      - eval_time: 325m
+        alertname: UnifiGatewayLoadHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              type: udm
+              site_name: Default
+              name: Cloud Gateway Fiber
+              source: unifi
+            exp_annotations:
+              summary: "Cloud Gateway Fiber has averaged a load of 1.77 for 3 hours"
+              description: >-
+                The 15-minute load on Cloud Gateway Fiber has averaged 1.77 over 3 hours
+                against a norm near 0.6 — the UniFi Network app wedging, as it did for
+                five days before it hung on 2026-10-12. If the console's `/api/system`
+                answers promptly while `/proxy/network/status` hangs, it is the app and
+                not the console: restart the Network app, or the console, before it
+                stops answering.
+
   # The calibration points, encoded so none can drift. Six radios — every identity
   # the fleet has — driving all four threshold clauses and both causes, because the
   # band thresholds are the one thing the two rules still spell out separately and
