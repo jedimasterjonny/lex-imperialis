@@ -119,16 +119,19 @@ printf 'demo_image: %s\ndemo2_image: %s\n' "$ref_b" "$ref_b" \
 commit 'duplicate bumps'
 t 'two pins of the same image' accept
 
-# The runbook renovate co-bumps rides along; any other extra file rejects.
+# Paths no apply reads ride along — the runbook renovate co-bumps, a CI
+# bump; any other extra file rejects.
 pin "$ref_b"
 commit 'restore before rider case'
 pin "$ref_c"
 echo "$ref_c" >"$repo/docs/disaster-recovery.md"
-commit 'bump with runbook rider'
-t 'disaster-recovery.md rider' accept
+mkdir -p "$repo/.github"
+echo ci >"$repo/.github/ci.yml"
+commit 'bump with runbook and CI riders'
+t 'disaster-recovery.md and CI riders' accept
 
 pin "$ref_a"
-echo stray >"$repo/README.md"
+echo stray >"$repo/ansible.cfg"
 commit 'bump plus stray file'
 t 'range touching another file' reject
 

@@ -148,17 +148,17 @@ diff, `--no-renames` so a move lists the side it left, minus a fixed list no
 play or `arbites` script reads — `.github/`, `terraform/`, `jonnyoc-site/`,
 `packer/`, `docs/`, the molecule harness and role scenarios, role READMEs and
 root markdown, `requirements-dev.txt`, `.pre-commit-config.yaml` and `renovate.json`.
-`arbites.sh` records a range that prints nothing without applying it. An entry
-that something an apply runs does read leaves its changes unapplied while the
-reconcile reports green, so keep the list to what nothing reaches.
+`arbites.sh` records a range that prints nothing without applying it, and
+`container-refresh.sh` gates only on what it prints. An entry that something
+an apply runs does read leaves its changes unapplied while the reconcile
+reports green, so keep the list to what nothing reaches.
 
 ## container-refresh.sh
 
 The `arbites` container fast path: given the last-applied and target SHAs,
 decides whether the range is nothing but renovate image bumps — every commit
-renovate[bot]'s, only `roles/*/vars/main.yml` touched (plus
-`docs/disaster-recovery.md`, whose mariadb pin renovate co-bumps and which
-renders nowhere on a host), every changed line a tag-and-digest image pin
+renovate[bot]'s, only `roles/*/vars/main.yml` touched beside paths no apply
+reads (`apply-paths.sh`), every changed line a tag-and-digest image pin
 moving within its repository under an unchanged key, no bump chaining into
 another's — and, when it is, applies them through
 `playbooks/container-refresh.yml` instead of a full fleet apply. Exits zero
@@ -190,7 +190,7 @@ decommission rules already carry.
 
 Fixture tests for the fast path's two scripts. The gate: a scratch git repo
 with the real script copied in and `ansible-playbook` stubbed on PATH, every
-accept and reject class asserted — the runbook rider and the nested arr shape
+accept and reject class asserted — the runbook and CI riders and the nested arr shape
 included — plus an exact pin of the renovate.json manager shapes the gate
 mirrors. The swap payload: a scratch root (`CONTAINER_SWAP_ROOT`) with
 `systemctl` stubbed, asserting the no-op, swap-and-bounce, revert-on-failure

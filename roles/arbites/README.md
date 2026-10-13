@@ -57,9 +57,10 @@ has stopped firing.
 ## Container fast path
 
 Most merges are renovate image bumps, and a full fleet apply is a slow way to
-move one pin. When the newly fetched range is nothing but such bumps,
-`bin/container-refresh.sh` applies it by swapping the pinned refs in place on
-every host and bouncing just the quadlet units that carried them
+move one pin. When the newly fetched range is nothing but such bumps, give or
+take paths no apply reads (step 3), `bin/container-refresh.sh` applies it by
+swapping the pinned refs in place on every host and bouncing just the quadlet
+units that carried them
 (`playbooks/container-refresh.yml`). Anything else — and any anomaly — takes
 `bin/fleet-apply.sh`, the known-correct path. The gate's acceptance rules and
 the swap, revert and bounce mechanics live with the scripts (`bin/README.md`);
