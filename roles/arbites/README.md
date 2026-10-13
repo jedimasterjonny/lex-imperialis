@@ -18,7 +18,8 @@ jitter; `Persistent`, so a reboot-missed run catches up). The script:
    `arbites_repo_dir` — `origin/main` is the only source of truth, never
    a local or feature branch, and never a file the reset would have left behind
    (`inventory` is a *directory* to `ansible.cfg`, so an untracked file under it
-   is read as an inventory source and survives a revert);
+   is read as an inventory source and survives a revert). The role only seeds
+   the clone; this is the one place it moves;
 3. short-circuits if `main` has not advanced since the last applied SHA, so an
    idle cycle is near-free;
 4. asks every fleet host whether `autoupdate.service` is running and, if one is,
