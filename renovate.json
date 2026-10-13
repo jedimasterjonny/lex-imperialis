@@ -11,7 +11,7 @@
   "description": [
     "minimumReleaseAge holds a version bump for 3 days. Automerge reaches root-equivalent containers and arbites applies a merge within ~15 min, so an unheld bump could be live in one cycle with nobody in the loop.",
     "internalChecksFilter is strict, so a too-young version opens no PR at all. vulnerabilityAlerts (renovate's own defaults, not configured here) clears minimumReleaseAge with prCreation immediate, so an OSV fix still lands at once. Digest updates and container images are exempt — see the rules below.",
-    "No global automergeSchedule: an automerged bump lands as soon as it is green, at any hour. plex alone is windowed — see the rule below. Landing no longer forces an open operator branch to rebase, main's ruleset having gone loose; .github/workflows/README.md covers what that trades away.",
+    "No global automergeSchedule: an automerged bump lands as soon as it is green, at any hour. The arr role's containers alone are windowed — see the arr containers rule below. Landing no longer forces an open operator branch to rebase, main's ruleset having gone loose; .github/workflows/README.md covers what that trades away.",
     "Squash merging must stay off in the repository settings, not only in main's ruleset: renovate takes its automerge method from the repo settings — squash first where allowed, then merge — and never reads the ruleset, so with squash on GitHub rejects every enablePullRequestAutoMerge call. Automerge then degrades rather than stops, falling back to renovate merging inside its own run: one PR per run, and only in a run that clears any schedule. That reads as a backlog, not a fault. Rebase merging is off for the repo's merge-commit convention, not for this."
   ],
   "semanticCommits": "enabled",
@@ -173,14 +173,9 @@
       "allowedVersions": "<8"
     },
     {
-      "description": "Grouped so a batch of image bumps merges and applies once rather than per image. No window here: a restart at the wrong moment costs a re-verify or a re-run — see the plex rule below. Matched by file: the role's vars hold nothing else renovate manages, so a new container joins without a rule change.",
+      "description": "Grouped so a batch of image bumps merges and applies once rather than per image, and merged 02:00-06:00: a wireguard bump recreates the netns every tunnelled app shares, bouncing the lot, and a plex restart kills active streams. The window opens well after podman_backup's stop-every-container run, done by 00:01, and closes as the first streams start. autoupdate's 03:00 reboot sits inside it deliberately: an apply racing it only fails the run, which arbites retries, where an apply during the backup would leave restic a half-written config volume. platformAutomerge must stay off beside the schedule: GitHub's native auto-merge lands a PR as soon as it is green and ignores automergeSchedule (renovate#21436). No vulnerability alert reaches this either — renovate maps the docker datasource to no OSV or Dependabot ecosystem. rebaseWhen conflicted because the hosted app runs about once inside the window: under auto, automerge means rebase-when-behind, other bumps land every night, so that one run always rebases, restarts CI and leaves the merge to a run past 06:00 — #798 starved five days that way. Matched by file: the role's vars hold nothing else renovate manages, so a new container joins without a rule change.",
       "matchFileNames": ["roles/arr/vars/main.yml"],
-      "groupName": "arr containers"
-    },
-    {
-      "description": "A plex restart kills active streams, so it merges 02:00-06:00 — the first streams start at 06:00, and podman_backup's stop-every-container run is done by 01:01. autoupdate's 03:00 reboot sits inside the window deliberately: an apply racing it only fails the run, which arbites retries, where an apply during the backup would leave restic a half-written config volume. groupName null takes plex out of the group above, which would otherwise merge it at any hour. platformAutomerge must stay off beside the schedule: GitHub's native auto-merge lands a PR as soon as it is green and ignores automergeSchedule (renovate#21436). No vulnerability alert reaches this either — renovate maps the docker datasource to no OSV or Dependabot ecosystem. rebaseWhen conflicted because the hosted app runs about once inside the window: under auto, automerge means rebase-when-behind, other bumps land every night, so that one run always rebases, restarts CI and leaves the merge to a run past 06:00 — #798 starved five days that way.",
-      "matchPackageNames": ["lscr.io/linuxserver/plex"],
-      "groupName": null,
+      "groupName": "arr containers",
       "automergeSchedule": ["after 2am and before 6am"],
       "platformAutomerge": false,
       "rebaseWhen": "conflicted"

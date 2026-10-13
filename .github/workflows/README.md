@@ -142,8 +142,10 @@ the base it was cut from, not the base it lands on.
 is true, so Renovate does refresh its own automerging branches — but only when a
 later run catches one behind, and platform automerge lands them the moment they
 go green, usually first. Everything else resolves to `conflicted` and is never
-refreshed: operator branches, and every dependency held off automerge in
-`renovate.json`, which is the highest-reach set in the repo.
+refreshed: operator branches, every dependency held off automerge in
+`renovate.json`, which is the highest-reach set in the repo, and the `arr`
+containers, pinned to it there so the one run inside their 02:00–06:00 automerge
+window merges rather than rebases.
 
 Strict also blocked merging a stale branch, which `unattended-author` was
 silently relying on: it applies the branch tree to the fleet and then merges,

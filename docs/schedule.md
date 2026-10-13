@@ -99,6 +99,6 @@ No wall-clock time to shift; a fixed anchor is local where one exists.
 - 6 h from 00:20 local — `wordpress-boost`, rogue-trader (`roles/wordpress/files/wordpress-boost.timer`)
 
 Renovate fires on its own cadence, not a schedule of ours, but `renovate.json`
-sets two `Europe/London` windows it must land inside: plex bumps automerge
-between 02:00 and 06:00, and the renovate pin's own PRs are created before 05:00
-on Mondays.
+sets two `Europe/London` windows it must land inside: the `arr` role's image
+bumps automerge between 02:00 and 06:00, and the renovate pin's own PRs are
+created before 05:00 on Mondays.
