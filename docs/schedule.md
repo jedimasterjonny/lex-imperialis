@@ -77,6 +77,7 @@ Network API: `setting/mgmt` still reports the older combined scheme's
 | 00:30 | `wordpress-db-dump` — rogue-trader | `roles/wordpress/files/wordpress-db-dump.timer` |
 | 04:00 | `beets-library` — solar | `arr_beets_library_oncalendar` |
 | 06:17 | `smartmon` — auspex, scholam, solar | `smartmon_oncalendar` |
+| 06:53 | recyclarr sync — solar, by the container's own cron in its `TZ` | `arr_recyclarr_cron_schedule` |
 | 11:17 | `offsite_mirror` probe — auspex | `offsite_mirror_oncalendar` |
 | 11:47 | `r2_mirror` probe — auspex | `r2_mirror_oncalendar` |
 | 1st 00:00 | `btrfs-scrub` — solar, scholam, rogue-trader | `btrfsmaintenance_scrub_period` |

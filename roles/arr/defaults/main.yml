@@ -146,3 +146,8 @@ arr_transmission_stop_timeout: 75
 # the container (on top of the /config volume, which keeps its guide cache).
 # arbites re-renders it, so the repo owns it instead of the volume.
 arr_recyclarr_config_dir: /etc/arr/recyclarr
+
+# When recyclarr's own cron syncs, in the container's arr_timezone. Its @daily
+# default is midnight, when solar's Wednesday podman_backup stops radarr and
+# sonarr under it; this keeps it clear of every job that does (docs/schedule.md).
+arr_recyclarr_cron_schedule: "53 6 * * *"

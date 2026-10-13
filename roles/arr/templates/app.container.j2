@@ -59,6 +59,9 @@ EnvironmentFile=/etc/arr/{{ item.key }}.env
 {# image and set the rpc user/password), kept out of the world-readable unit. #}
 EnvironmentFile=/etc/arr/transmission.env
 {% endif %}
+{% if item.key == 'recyclarr' %}
+Environment="CRON_SCHEDULE={{ arr_recyclarr_cron_schedule }}"
+{% endif %}
 {% if item.key == 'transmission' %}
 {# The finish script's flush outlasts podman's 10 s default grace; see the default. #}
 StopTimeout={{ arr_transmission_stop_timeout }}

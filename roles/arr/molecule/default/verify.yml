@@ -259,6 +259,21 @@
         fail_msg: "secrets.yml is missing or not 0600 recyclarr"
         quiet: true
 
+    # The image's entrypoint writes CRON_SCHEDULE into the crontab supercronic
+    # runs, so read that rather than the unit: a renamed variable would leave the
+    # image's midnight @daily in force and the unit still looking right.
+    - name: Read the crontab recyclarr's cron runs
+      ansible.builtin.command: podman exec recyclarr cat /tmp/crontab
+      become: true
+      register: arr_recyclarr_crontab
+      changed_when: false
+
+    - name: Recyclarr syncs on the configured schedule
+      ansible.builtin.assert:
+        that: arr_recyclarr_crontab.stdout == arr_recyclarr_cron_schedule ~ ' /cron.sh'
+        fail_msg: "recyclarr's crontab reads {{ arr_recyclarr_crontab.stdout }}"
+        quiet: true
+
     # exec defaults to container root, which bypasses file perms — drop to the
     # service account so the write exercises the shared group.
     - name: Probe a media write from beets
