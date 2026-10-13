@@ -77,10 +77,6 @@ ssh_extra_args=("--ssh-extra-args=-o UserKnownHostsFile={{ arbites_known_hosts_f
 {% else %}
 ssh_extra_args=()
 {% endif %}
-# Sync the venv to the just-fetched requirements before applying, so a bumped
-# ansible pin is in place up front and the self-apply's own pip task finds it
-# already satisfied — it never reinstalls ansible under the running process.
-"$venv/bin/pip" install --quiet --requirement requirements.txt
 apply_args=(--private-key "$ssh_key" --vault-password-file "$vault_pass" "${ssh_extra_args[@]}")
 # Hold the apply while any fleet host is mid-autoupdate. The unit's ExecCondition
 # already skips a cycle for this host's own dup; a remote host's holds the zypper
@@ -105,6 +101,13 @@ if [ -n "$busy" ]; then
     echo "autoupdate active on $(echo "$busy" | tr '\n' ' ')— holding ${target:0:12} until the next cycle"
     exit 0
 fi
+
+# Sync the venv to the just-fetched requirements before applying, so a bumped
+# ansible pin is in place up front and the self-apply's own pip task finds it
+# already satisfied — it never reinstalls ansible under the running process.
+# After the hold, so a held cycle never touches the venv; the probe above runs
+# on the venv as last synced, and fails open if that cannot read the tree.
+"$venv/bin/pip" install --quiet --requirement requirements.txt
 
 # Open the deployment record this run's outcome will close (the ExecStopPost hook
 # posts the final state, reading the id back from this file). Clear any id first: a

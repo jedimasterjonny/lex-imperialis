@@ -78,11 +78,15 @@
     quiet: true
   when: arbites_host_key_checking | bool
 
+# Seed only: arbites.sh owns moving the clone. An update here would move the tree
+# under the apply that is running this play, and the venv task below would then
+# build from requirements the reconcile never synced.
 - name: Clone the repository the reconciler applies from
   ansible.builtin.git:
     repo: "{{ arbites_clone_url }}"
     dest: "{{ arbites_repo_dir }}"
     version: "{{ arbites_branch }}"
+    update: false
   become: true
 
 - name: Build the ansible runtime venv from the repo's requirements
