@@ -27,6 +27,11 @@ crash mid-read records its failure without zeroing verdicts it never measured.
 A device whose report arrives truncated fails the whole run into that pair;
 one whose report arrives empty reads unhealthy.
 
+The same run then starts a self-test on every device that supports one —
+short on `smartmon_short_test_weekday`, long on `smartmon_long_test_day` — unless
+one is already running. The drive runs it in the background and the next read
+publishes the result; a refused start fails the run.
+
 `smartmon_textfile_dir` must match the `node_exporter` role's
 `node_exporter_textfile_directory`, or both files fall outside the collector's
 glob and every rule matches an empty vector — `ScheduledJobMetricMissing` is
@@ -44,7 +49,8 @@ climb), `SmartDevicesDisappeared`, and the `SmartmonFailed` /
 The smartmontools package ships its own poller, which Debian's postinst enables
 and starts — a second SMART daemon sweeping every 30 minutes and mailing root —
 so the role stops and disables the packaged unit on both distributions
-(`smartmon_smartd_unit`, its one distribution branch).
+(`smartmon_smartd_unit`, its one distribution branch) and schedules the
+self-tests from its own daily run instead.
 
 Wired onto `scholam`, `solar` and `auspex` — the hosts with physical disks.
 `rogue-trader` is excluded: a Hetzner Cloud virtio disk exposes no SMART.

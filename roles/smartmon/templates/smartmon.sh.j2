@@ -1,11 +1,20 @@
 #!/usr/bin/env bash
 # {{ ansible_managed }}
 # Read SMART health off every disk smartctl can reach and publish it as
-# node_exporter textfile metrics — the early warning a btrfs scrub cannot give.
-# Runs unattended on smartmon.timer; the ExecStopPost hook records the outcome.
+# node_exporter textfile metrics — the early warning a btrfs scrub cannot give —
+# then start any self-test due today. Runs unattended on smartmon.timer; the
+# ExecStopPost hook records the outcome.
 set -euo pipefail
 
 dir="{{ smartmon_textfile_dir }}"
+short_weekday={{ smartmon_short_test_weekday }}
+long_day={{ smartmon_long_test_day }}
+
+# Today's self-test, if any; the monthly long subsumes the weekly short when
+# both fall on one day.
+due=
+[ "$(date +%u)" -ne "$short_weekday" ] || due=short
+[ "$(date +%d)" -ne "$long_day" ] || due=long
 
 {% raw %}
 # --scan enumerates only SMART-capable transports, so SD cards and loop devices
@@ -16,6 +25,7 @@ dir="{{ smartmon_textfile_dir }}"
 devices="$(smartctl --scan -j | jq -r '.devices[]?.name')"
 
 checked=0
+start=()
 mkdir -p "$dir"
 # Publish atomically: write a temp file the exporter's *.prom glob ignores, then
 # rename it over the target so no scrape reads a half-written file. 0644 so the
@@ -91,6 +101,10 @@ tmp="$(mktemp "$dir/.smartmon.prom.XXXXXX")"
                 | ($done[:($done | map(.long and .passed) | index(true))] | all(.passed)) as $passed
                 | (select($done != []) | "smartmon_self_test_passed{device=\"\($dev)\"} \(if $passed then 1 else 0 end)"),
                   "smartmon_self_test_age_hours{device=\"\($dev)\"} \($done[0].age // $poh)"' <<<"$report"
+            # Never over a running test: ATA status 0xF_, NVMe a current
+            # operation.
+            running="$(jq -r '.ata_smart_data.self_test.status.value >= 240 or .nvme_self_test_log.current_self_test_operation.value > 0' <<<"$report")"
+            [ -z "$due" ] || [ "$running" = true ] || start+=("$dev")
         fi
         checked=$((checked + 1))
     done <<< "$devices"
@@ -101,3 +115,12 @@ tmp="$(mktemp "$dir/.smartmon.prom.XXXXXX")"
 chmod 0644 "$tmp"
 mv "$tmp" "$dir/smartmon.prom"
 {% endraw %}
+
+# After the publish, so a refused start fails the run without losing the read
+# or the other devices' starts. The drive runs the test in the background; the
+# next read picks up its result.
+rc=0
+for dev in "${start[@]}"; do
+    smartctl -t "$due" "$dev" || rc=1
+done
+exit "$rc"

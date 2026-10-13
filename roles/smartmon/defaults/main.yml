@@ -10,6 +10,12 @@ smartmon_textfile_dir: /var/lib/node_exporter/textfile_collector
 # read is milliseconds of local I/O, so the hosts need no staggering.
 smartmon_oncalendar: "*-*-* 06:17:00"
 
+# Self-test schedule, started by that daily run on its due day: a short test on
+# this weekday (date +%u, 7 is Sunday), a long one on this day of the month
+# (<= 28, so every month has it).
+smartmon_short_test_weekday: 7
+smartmon_long_test_day: 15
+
 # Installed scripts. /usr/local/sbin: root-only, like the other oneshots.
 smartmon_script: /usr/local/sbin/smartmon.sh
 smartmon_metric_script: /usr/local/sbin/smartmon-metric.sh

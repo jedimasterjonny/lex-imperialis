@@ -126,8 +126,10 @@
 
     # ── Stub arms: no tier's instance carries a disk smartctl can read, so the
     # parse is driven through a stubbed smartctl that answers --scan with one
-    # device, nvme0, and everything else with whichever canned report is
-    # planted.
+    # device, nvme0, echoes a self-test start (refusing it if STUB_REFUSE is
+    # set), and answers everything else with whichever canned report is
+    # planted. A stubbed date sets the day the self-test schedule reads; unset,
+    # no test is due.
     - name: Create the stub directory
       ansible.builtin.file:
         path: "{{ smartmon_stub_dir }}"
@@ -137,18 +139,31 @@
         mode: "0755"
       become: true
 
-    - name: Install the smartctl stub
+    - name: Install the smartctl and date stubs
       ansible.builtin.copy:
-        content: |
-          #!/bin/sh
-          case "$*" in
-              *--scan*) echo '{"devices":[{"name":"/dev/nvme0","type":"nvme"}]}' ;;
-              *) cat {{ smartmon_stub_dir }}/report.json ;;
-          esac
-        dest: "{{ smartmon_stub_dir }}/smartctl"
+        content: "{{ item.content }}"
+        dest: "{{ smartmon_stub_dir }}/{{ item.name }}"
         owner: root
         group: root
         mode: "0755"
+      loop:
+        - name: smartctl
+          content: |
+            #!/bin/sh
+            case "$*" in
+                *--scan*) echo '{"devices":[{"name":"/dev/nvme0","type":"nvme"}]}' ;;
+                -t*) echo "$*"; [ -z "$STUB_REFUSE" ] ;;
+                *) cat {{ smartmon_stub_dir }}/report.json ;;
+            esac
+        - name: date
+          content: |
+            #!/bin/sh
+            case "$1" in
+                +%u) echo "${STUB_WEEKDAY:-0}" ;;
+                +%d) echo "${STUB_DAY:-0}" ;;
+            esac
+      loop_control:
+        label: "{{ item.name }}"
       become: true
 
     - name: Plant a healthy NVMe report
@@ -163,10 +178,14 @@
         mode: "0644"
       become: true
 
+    # On a long-test day, so no start means no self-test support, not no test
+    # due.
     - name: Run the SMART check against the healthy report
       ansible.builtin.command: "{{ smartmon_script }}"
       environment:
         PATH: "{{ smartmon_stub_path }}"
+        STUB_DAY: "{{ smartmon_long_test_day }}"
+      register: smartmon_healthy_run
       changed_when: false
       become: true
 
@@ -187,6 +206,7 @@
           - "'smartmon_nvme_unsafe_shutdowns{device=\"nvme0\"} 2' in prom"
           - "'smartmon_devices_checked 1\n' in prom"
           - "'smartmon_self_test_age_hours{' not in prom"
+          - smartmon_healthy_run.stdout == ''
         fail_msg: "a healthy NVMe report without self-test support was not published as such"
         quiet: true
 
@@ -214,14 +234,37 @@
         mode: "0644"
       become: true
 
-    - name: Run the SMART check against the ATA report
+    # The last run's start is refused, so the read below also proves a refusal
+    # fails the run without losing the payload.
+    - name: Run the SMART check on a short-test day, a long-test day and neither
       ansible.builtin.command: "{{ smartmon_script }}"
       environment:
         PATH: "{{ smartmon_stub_path }}"
+        STUB_WEEKDAY: "{{ item.weekday }}"
+        STUB_DAY: "{{ item.day }}"
+        STUB_REFUSE: "{{ item.rc | default('') }}"
+      loop:
+        - {weekday: "{{ smartmon_short_test_weekday }}", day: 0, started: "-t short /dev/nvme0"}
+        - {weekday: "{{ smartmon_short_test_weekday }}", day: "{{ smartmon_long_test_day }}", started: "-t long /dev/nvme0"}
+        - {weekday: 0, day: 0, started: ""}
+        - {weekday: 0, day: "{{ smartmon_long_test_day }}", started: "-t long /dev/nvme0", rc: 1}
+      register: smartmon_ata_runs
       changed_when: false
+      failed_when: false
       become: true
 
-    - name: Read the SMART metrics after the ATA run
+    - name: Each run starts the self-test its day is due, and only that
+      ansible.builtin.assert:
+        that:
+          - item.stdout == item.item.started
+          - item.rc == item.item.rc | default(0)
+        fail_msg: "on weekday {{ item.item.weekday }}, day {{ item.item.day }}, started '{{ item.stdout }}', exited {{ item.rc }}"
+        quiet: true
+      loop: "{{ smartmon_ata_runs.results }}"
+      loop_control:
+        label: "{{ item.item.started or 'none' }}"
+
+    - name: Read the SMART metrics after the ATA runs
       ansible.builtin.slurp:
         src: "{{ smartmon_prom }}"
       register: smartmon_ata
@@ -237,16 +280,16 @@
         fail_msg: "the ATA self-test log's failure or age was misread"
         quiet: true
 
-    # A log, newest first, of a passed short, a passed long, and a failed short
-    # the long cleared.
-    - name: Plant an NVMe report with a cleared self-test failure
+    # A short test running over a log, newest first, of a passed short, a passed
+    # long, and a failed short the long cleared.
+    - name: Plant an NVMe report with a running self-test and a cleared failure
       ansible.builtin.copy:
         content: |
           {"smart_status": {"passed": true},
            "power_on_time": {"hours": 6278},
            "nvme_smart_health_information_log": {"percentage_used": 1, "media_errors": 0, "unsafe_shutdowns": 2},
            "nvme_self_test_log": {
-             "current_self_test_operation": {"value": 0, "string": "No self-test in progress"},
+             "current_self_test_operation": {"value": 1, "string": "Short self-test in progress"},
              "table": [{"self_test_code": {"value": 1, "string": "Short"},
                         "self_test_result": {"value": 0, "string": "Completed without error"}, "power_on_hours": 6110},
                        {"self_test_code": {"value": 2, "string": "Extended"},
@@ -260,10 +303,12 @@
         mode: "0644"
       become: true
 
-    - name: Run the SMART check against the NVMe report
+    - name: Run the SMART check on a long-test day over the running test
       ansible.builtin.command: "{{ smartmon_script }}"
       environment:
         PATH: "{{ smartmon_stub_path }}"
+        STUB_DAY: "{{ smartmon_long_test_day }}"
+      register: smartmon_nvme_run
       changed_when: false
       become: true
 
@@ -273,14 +318,15 @@
       register: smartmon_nvme
       become: true
 
-    - name: The cleared failure reads passed
+    - name: A running test is left alone and the cleared failure reads passed
       vars:
         prom: "{{ smartmon_nvme.content | b64decode }}"
       ansible.builtin.assert:
         that:
+          - smartmon_nvme_run.stdout == ''
           - "'smartmon_self_test_passed{device=\"nvme0\"} 1' in prom"
           - "'smartmon_self_test_age_hours{device=\"nvme0\"} 168' in prom"
-        fail_msg: "the NVMe self-test log was misread"
+        fail_msg: "a self-test was started over a running one, or the NVMe self-test log was misread"
         quiet: true
 
     # ── Empty-report arm: a smartctl that dies printing nothing. jq exits 0 on
