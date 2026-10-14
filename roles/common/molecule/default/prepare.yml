@@ -55,3 +55,13 @@
         user: "{{ common_user_name }}"
         key: "{{ common_fixture_owner_key_bare }}"
       become: true
+
+    # The fleet's openSUSE hosts run auditd and the image does not ship it, so
+    # the role's edit would skip and go untested. The package's own auditd.conf
+    # is what that edit must match; Debian stays bare, as auspex is.
+    - name: Install auditd as the openSUSE hosts carry it
+      ansible.builtin.package:
+        name: audit
+        state: present
+      become: true
+      when: "'debian' not in group_names"

@@ -252,6 +252,23 @@
         fail_msg: "the role created zypper configuration on a host that has no zypper"
       when: "'debian' in group_names"
 
+    - name: Read auditd's configuration
+      ansible.builtin.slurp:
+        path: /etc/audit/auditd.conf
+      register: common_auditd_conf_content
+      become: true
+      when: "'debian' not in group_names"
+
+    - name: The audit log is sized once, at 100 MiB, still rotating
+      ansible.builtin.assert:
+        that:
+          - common_auditd_lines | select('match', '^\\s*max_log_file\\s*=') | list == ['max_log_file = 100']
+          - "'max_log_file_action = ROTATE' in common_auditd_lines"
+        fail_msg: "auditd.conf does not carry exactly one max_log_file = 100 with rotation on"
+      vars:
+        common_auditd_lines: "{{ (common_auditd_conf_content.content | b64decode).splitlines() }}"
+      when: "'debian' not in group_names"
+
     - name: Stat sdbootutil's TPM prediction directory
       ansible.builtin.stat:
         path: /var/lib/pcrlock.d
