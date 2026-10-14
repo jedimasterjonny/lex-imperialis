@@ -193,7 +193,7 @@
     state: "{{ common_selinux_mode }}"
     policy: targeted
   become: true
-  when: ansible_selinux.status == 'enabled'
+  when: ansible_facts['selinux']['status'] == 'enabled'
 
 # auditd keeps five files; 100 MiB each holds 45 days at the busiest host's rate
 # even just after a rotation (README). Guarded on the package, which auspex does

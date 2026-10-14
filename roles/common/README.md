@@ -84,7 +84,7 @@ Also sets each host's hostname from the required `common_hostname`.
 Sets the SELinux mode from `common_selinux_mode` (default `enforcing`) via
 `ansible.posix.selinux`, so the fleet's mode is config-as-code rather than the OS
 default. Every fleet host already enforces, so it holds the mode rather than
-setting it, and converges as a no-op. Gated on `ansible_selinux.status ==
+setting it, and converges as a no-op. Gated on `ansible_facts['selinux']['status'] ==
 'enabled'`, so the SELinux-less molecule containers skip it.
 
 That module imports `python3-selinux`, which `common_packages` carries — so
