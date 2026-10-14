@@ -18,3 +18,12 @@
     state: restarted
   when: common_chronyd.status.ActiveState | default('') == 'active'
   become: true
+
+# conf alone: a restart can bounce the tunnel rogue-trader's SSH rides, and the
+# bare reload (systemctl reload) also rewrites resolv.conf.
+- name: Reload NetworkManager's configuration for common
+  ansible.builtin.command:
+    argv: [nmcli, general, reload, conf]
+  changed_when: true
+  when: common_nm_running.stdout | default('') == 'running'
+  become: true

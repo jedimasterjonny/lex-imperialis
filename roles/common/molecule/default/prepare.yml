@@ -65,3 +65,13 @@
         state: present
       become: true
       when: "'debian' not in group_names"
+
+    # Carries the connectivity uri= the openSUSE hosts have and pulls
+    # NetworkManager in, so verify can read its merged configuration. Installed,
+    # not started, so the role's NetworkManager-running gates still skip.
+    - name: Install NetworkManager as the openSUSE hosts carry it
+      ansible.builtin.package:
+        name: NetworkManager-branding-openSUSE
+        state: present
+      become: true
+      when: "'debian' not in group_names"

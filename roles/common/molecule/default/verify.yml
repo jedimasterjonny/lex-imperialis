@@ -435,6 +435,23 @@
               - common_may_fail.stdout == 'no'
             fail_msg: "ipv4.may-fail is {{ common_may_fail.stdout }} on the default connection"
 
+    # NetworkManager's own merge of every conf.d layer proves the drop-in is read,
+    # not just written. The Debian image ships no NetworkManager.
+    - name: Merge NetworkManager's configuration
+      ansible.builtin.command:
+        argv: [/usr/sbin/NetworkManager, --print-config]
+      register: common_nm_config
+      changed_when: false
+      become: true
+      when: "'debian' not in group_names"
+
+    - name: The connectivity check is disabled
+      ansible.builtin.assert:
+        that:
+          - common_nm_config.stdout is search('^\[connectivity\][^\[]*^enabled=false$', multiline=True)
+        fail_msg: "NetworkManager's merged [connectivity] section does not carry enabled=false"
+      when: "'debian' not in group_names"
+
     - name: Read the system hostname
       ansible.builtin.command: hostname
       register: common_hostname_cmd

@@ -315,6 +315,24 @@
     - common_default_connection_settings.stdout_lines is defined
     - common_default_connection_settings.stdout_lines[0] == '802-3-ethernet'
 
+# Gated on the directory, as podman's drop-in is: creating it here would read to
+# podman as NetworkManager being present.
+- name: Detect NetworkManager's drop-in directory
+  ansible.builtin.stat:
+    path: /etc/NetworkManager/conf.d
+  register: common_nm_confd
+
+- name: Disable NetworkManager's connectivity check
+  ansible.builtin.template:
+    src: connectivity.conf.j2
+    dest: /etc/NetworkManager/conf.d/common-connectivity.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  when: common_nm_confd.stat.exists
+  notify: Reload NetworkManager's configuration for common
+
 - name: Ensure the owner's supplementary groups exist
   ansible.builtin.group:
     name: "{{ item }}"
