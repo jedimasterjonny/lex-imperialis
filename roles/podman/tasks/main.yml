@@ -14,6 +14,54 @@
   when: podman_storage_device | length > 0
   become: true
 
+- name: Create the journal's directory on the container store's device
+  ansible.builtin.file:
+    path: /var/lib/containers/journal
+    state: directory
+    owner: root
+    group: systemd-journal
+    mode: "2755"
+  when: podman_storage_journal
+  become: true
+
+# nofail so a dead device still boots. systemd gives a bind mount
+# RequiresMountsFor= its source, so with the device missing the store's mount
+# fails and this fails with it; systemd-journal-flush.service, which carries
+# RequiresMountsFor=/var/log/journal, then never runs, and journald stays in /run.
+- name: Bind the journal onto the container store's device
+  ansible.posix.mount:
+    path: /var/log/journal
+    src: /var/lib/containers/journal
+    fstype: none
+    opts: bind,nofail
+    state: mounted
+  when: podman_storage_journal
+  become: true
+
+# Created rather than assumed: neither distribution ships it.
+- name: Create the journald drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: podman_storage_journal
+  become: true
+
+- name: Keep the journal persistent
+  ansible.builtin.copy:
+    src: journald-storage.conf
+    dest: /etc/systemd/journald.conf.d/50-storage.conf
+    owner: root
+    group: root
+    mode: "0644"
+  when: podman_storage_journal
+  become: true
+  notify:
+    - Restart journald for podman
+    - Flush the journal for podman
+
 # The Raspberry Pi firmware prepends cgroup_disable=memory to whatever this file
 # holds, so auspex boots without the memory controller: cgroup.controllers reads
 # `cpuset cpu io pids`, every container_memory_* series cadvisor exports is 0,

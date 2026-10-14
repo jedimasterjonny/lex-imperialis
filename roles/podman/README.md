@@ -75,6 +75,43 @@ device. Molecule asserts the guard instead — that the empty default leaves fst
 alone, so nothing here can write a mount onto the three other hosts that run this
 role and have no such device.
 
+## The journal on the store's device
+
+`podman_storage_journal` keeps the systemd journal persistent, on the store's
+device. Off by default; only `auspex` sets it. Raspberry Pi OS ships
+`40-rpi-volatile-storage.conf` (`Storage=volatile`) to spare the SD card, so its
+journal, and with it `podman logs` for every quadlet, was lost at each weekly
+`autoupdate` reboot.
+
+`/var/lib/containers/journal` is bind-mounted at `/var/log/journal`, and
+`/etc/systemd/journald.conf.d/50-storage.conf` sets `Storage=persistent` and
+`SystemMaxUse=4G`. journald merges `/etc`, `/run` and `/usr/lib` drop-ins in one
+lexical order by file name, so `50-` outranks the vendor's `40-` from a different
+directory. Check with `systemd-analyze cat-config systemd/journald.conf`.
+
+The bind is `nofail`. systemd gives a bind mount `RequiresMountsFor=` its source,
+so it requires the store's mount — undocumented in `systemd.mount(5)`, measured on
+257, and pinned by molecule — and `systemd-journal-flush.service` carries
+`RequiresMountsFor=/var/log/journal`. With the device missing, the store mount
+fails and so does the bind; the flush never runs, and journald stays volatile in
+`/run`, never writing to the card. The boot pays only the store mount's 90 s
+device wait, and `ContainerStoreMountMissing` raises it. A device
+that turns up after the wait is mounted by the next converge, bind included, but
+journald stays in `/run` until `journalctl --flush` or the next boot.
+
+On the first apply, journald restarts to read the drop-in and is then told to
+flush. A journal that has only ever been volatile has no
+`/run/systemd/journal/flushed`, so the restart alone would leave it in `/run`
+until the next boot. The flush moves the current boot's entries onto the device;
+earlier boots are already gone. `systemd-tmpfiles` applies the `adm` read ACL to
+the new directory at the next boot, so until then reading the journal needs
+`sudo`.
+
+Molecule stages the vendor drop-in on the Debian platform and asserts journald
+wrote through the bind, that the flush requires the bind, and that
+`local-fs.target` only wants it. The device-missing boot is unexercised: an incus
+container has no device to remove and does not boot through fstab.
+
 ## Memory cgroup controller
 
 The Raspberry Pi firmware prepends `cgroup_disable=memory` to whatever
