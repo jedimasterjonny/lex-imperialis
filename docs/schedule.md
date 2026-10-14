@@ -30,7 +30,7 @@ least watched from outside by `offsite_mirror` and `r2_mirror`, and the UniFi
 device update by `UnifiFirmwareUpdatePending`, which reads the outcome rather
 than the schedule: any 8-day span contains a window, so an update still pending
 across one has sat through it. Nothing watches the two R2 integrity checks, the
-array scrub, the controller auto-backup or Time Machine.
+array scrub, the controller auto-backup, the WAN speed test or Time Machine.
 
 `autoupdate` carries `RandomizedDelaySec=2h`, so its rows open a two-hour window
 rather than name a fire time.
@@ -74,6 +74,7 @@ Network API: `setting/mgmt` still reports the older combined scheme's
 
 | Time (Europe/London) | Job | Owner |
 | --- | --- | --- |
+| 00:00 | UniFi WAN speed test | UniFi console |
 | 00:30 | `wordpress-db-dump` — rogue-trader | `roles/wordpress/files/wordpress-db-dump.timer` |
 | 04:00 | `beets-library` — solar | `arr_beets_library_oncalendar` |
 | 06:17 | `smartmon` — auspex, scholam, solar | `smartmon_oncalendar` |
