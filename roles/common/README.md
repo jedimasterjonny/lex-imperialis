@@ -92,6 +92,23 @@ That module imports `python3-selinux`, which `common_packages` carries — so
 enough**: the install lands in a new snapshot, so the image has to ship the
 binding already. `packer/stage2-provision.yml` reads `common_packages` for that.
 
+Sets auditd's `max_log_file` to 100 MiB, against the shipped 8, on every host
+carrying the `audit` package: every openSUSE host, MicroOS included, and not
+`auspex`. auditd keeps five files, and the stock 40 MiB had aged the oldest
+record to 4.5 days on solar and rogue-trader (7.9 and 8.8 MiB a day, measured
+2026-10-14), so a sweep looking back three weeks found its AVCs gone. Five 100
+MiB files hold 45 days at the busier rate even just after a rotation. Nearly half
+that volume, and two thirds on rogue-trader, is SERVICE_START/STOP from podman
+healthchecks and the WireGuard refresh timers; excluding them alone would leave
+solar under ten days, so nothing is excluded. The file count stays at five
+because `auditd.conf(5)` warns that more files rotate slower, and these hosts run
+the kernel's default 64-record backlog.
+
+auditd reads the size at start, so the edit bites at the weekly `autoupdate`
+reboot. Nothing signals it: a lag of at most a week, on a change that needs a
+month to pay off. Molecule installs `audit` on the openSUSE platform so the edit
+runs against the shipped file.
+
 Seven of the fleet's package names resolve through a `Provides` of a versioned
 rpm — `python3-selinux` here, `python3-firewall` in firewalld,
 `python3-libvirt-python` and `python3-lxml` in libvirt, `python3`, `python3-pip`

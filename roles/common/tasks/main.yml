@@ -195,6 +195,17 @@
   become: true
   when: ansible_selinux.status == 'enabled'
 
+# auditd keeps five files; 100 MiB each holds 45 days at the busiest host's rate
+# even just after a rotation (README). Guarded on the package, which auspex does
+# not carry, so a file that ever moves fails loudly rather than skipping.
+- name: Size the audit log to hold a month of AVCs
+  ansible.builtin.lineinfile:
+    path: /etc/audit/auditd.conf
+    regexp: '^\s*max_log_file\s*='
+    line: max_log_file = 100
+  when: "'audit' in ansible_facts['packages']"
+  become: true
+
 # No OS branch because the module dispatches on `timedatectl` rather than on the
 # distribution, and all its systemd arm writes is /etc/localtime — which is why
 # a transactional host takes this outside a snapshot. See the README.
