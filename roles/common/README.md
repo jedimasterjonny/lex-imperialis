@@ -263,6 +263,26 @@ alone and the setting takes effect at the next boot. Gated on NetworkManager
 *running*, so the incus containers skip the whole block — no molecule tier can
 exercise this, and the fleet's weekly autoupdate reboots are what do.
 
+NetworkManager's connectivity check is off fleet-wide
+(`/etc/NetworkManager/conf.d/common-connectivity.conf`). On openSUSE the
+branding package aims it at `conncheck.opensuse.org` every 300 s, and a fault at
+that end flips the global state to `CONNECTED_SITE` with every link healthy —
+and adds 20000 to the device's default-route metric until the check recovers.
+Nothing else on the fleet reads the state: `NetworkManager-wait-online` runs
+`nm-online -s`, which waits for startup, and the one dispatcher script taking
+`connectivity-change`, chrony's `20-chrony-onoffline`, decides from routes.
+Disabled, NetworkManager reports full connectivity for any activated device with
+a default route. `/etc`'s `conf.d` is parsed after `/usr/lib`'s, so the drop-in
+wins whatever the vendor file is called; auspex sets no URI, so there it only
+keeps the check off. Skipped where `/etc/NetworkManager/conf.d` is absent, as
+podman's drop-in is.
+
+The handler is `nmcli general reload conf`, not a restart: it re-reads the
+configuration files alone, re-activating no connection and leaving
+`resolv.conf` untouched, which `systemctl reload` would rewrite. Molecule asserts
+the merged result with `NetworkManager --print-config` against the branding
+package; the reload needs a running daemon, which no container has.
+
 `common_blacklisted_modules` bars kernel modules via
 `/etc/modprobe.d/common-blacklist.conf` — `blacklist` plus `install
 <module> /bin/false` — and unloads any already live rather than leaving
