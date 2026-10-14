@@ -1,6 +1,17 @@
 ---
 - name: Converge
   hosts: all
+  # auspex's journal has only ever been volatile, so it has no flushed flag;
+  # this image boots persistent and does. Cleared, the role's restart alone
+  # leaves journald in /run, so verify finds a journal through the bind only if
+  # the role's flush ran. A handler on the staging task, so the idempotence pass
+  # clears nothing.
+  handlers:
+    - name: Clear journald's flushed flag, as auspex has none
+      ansible.builtin.file:
+        path: /run/systemd/journal/flushed
+        state: absent
+      become: true
   tasks:
     # The role's memory-cgroup task keys on the Raspberry Pi firmware's boot
     # partition, which auspex has and no image does, so stage one on the Debian
@@ -33,6 +44,29 @@
       become: true
       when: "'debian' in group_names"
 
+    # Raspberry Pi OS's own drop-in, which the Debian image does not carry: it is
+    # what the role's must outrank, so verify can prove the journal persists
+    # despite it rather than for want of it.
+    - name: Stage the Raspberry Pi volatile-journal drop-in
+      ansible.builtin.copy:
+        dest: /usr/lib/systemd/journald.conf.d/40-rpi-volatile-storage.conf
+        content: |
+          [Journal]
+          Storage=volatile
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+      when: "'debian' in group_names"
+      notify: Clear journald's flushed flag, as auspex has none
+
+    - name: Clear the flag before the role restarts journald
+      ansible.builtin.meta: flush_handlers
+
+    # The journal arm on the Debian platform only, as on auspex; openSUSE keeps
+    # the default, so verify can pin that it touches nothing there.
     - name: Apply the podman role
       ansible.builtin.include_role:
         name: podman
+      vars:
+        podman_storage_journal: "{{ 'debian' in group_names }}"

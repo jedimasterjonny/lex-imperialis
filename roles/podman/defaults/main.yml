@@ -46,3 +46,9 @@ podman_storage_device: ""
 # store: a device that enumerates a second past the timeout is skipped, podman
 # builds its store on the root filesystem, and a later converge mounts over it.
 podman_storage_options: "defaults,noatime,nofail,x-systemd.before=local-fs.target"
+
+# Keep the systemd journal persistent and on the store's device: a directory
+# beside the store, bind-mounted at /var/log/journal. For a host whose root is
+# the wrong medium for it and whose distribution keeps the journal volatile for
+# that reason — auspex, on an SD card under Raspberry Pi OS. See the README.
+podman_storage_journal: false

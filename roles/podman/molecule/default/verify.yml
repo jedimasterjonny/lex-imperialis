@@ -23,12 +23,85 @@
         path: /etc/fstab
       register: podman_fstab
 
+    # By mount point, not substring: the journal's bind on the Debian platform
+    # names /var/lib/containers as its source.
     - name: No container-store mount was written on the empty default
       ansible.builtin.assert:
         that:
-          - "'/var/lib/containers' not in (podman_fstab.content | b64decode)"
+          - (podman_fstab.content | b64decode) is not search('^\\S+\\s+/var/lib/containers\\s', multiline=True)
         fail_msg: "the role wrote a /var/lib/containers fstab entry with podman_storage_device unset"
         quiet: true
+
+    # The journal arm, on the Debian platform with the vendor's volatile drop-in
+    # staged. A journal file under the bind's source proves all three halves at
+    # once: the drop-in outranks the vendor's, the bind is live, and the flush ran.
+    - name: Find the persistent journal on the bind's source
+      ansible.builtin.find:
+        paths: /var/lib/containers/journal
+        patterns: system.journal
+        recurse: true
+      register: podman_journal_files
+      become: true
+      when: "'debian' in group_names"
+
+    - name: The journal persists onto the store's device despite the vendor's drop-in
+      ansible.builtin.assert:
+        that:
+          - podman_journal_files.matched == 1
+        fail_msg: "no system.journal under /var/lib/containers/journal: journald is not writing through the bind"
+        quiet: true
+      when: "'debian' in group_names"
+
+    # What a real boot builds from fstab, so reload first: a mount made at
+    # runtime has no fragment, and without one systemd turns the flush's
+    # RequiresMountsFor into After= alone.
+    - name: Read the boot ordering around the journal's bind
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        daemon_reload: true
+      loop:
+        - systemd-journal-flush.service
+        - var-log-journal.mount
+      register: podman_journal_units
+      become: true
+      when: "'debian' in group_names"
+
+    # The flush requires the bind, so a bind that fails leaves journald volatile
+    # rather than writing to the card; the bind requires the mount holding its
+    # source, so it fails with the store's; and local-fs.target only wants it,
+    # so a failure costs no boot. systemd adds the source requirement itself and
+    # does not document it, so it is pinned here as systemd derived it — the
+    # store's own mount is not exercisable, /var/lib/containers being no mount
+    # point in an incus container.
+    - name: The journal's bind is ordered for a boot with or without the device
+      ansible.builtin.assert:
+        that:
+          - "'var-log-journal.mount' in podman_journal_flush['Requires'].split()"
+          - "'/var/lib/containers/journal' in podman_journal_bind['RequiresMountsFor'].split()"
+          - "'local-fs.target' in podman_journal_bind['WantedBy'].split()"
+          - "'local-fs.target' not in podman_journal_bind['RequiredBy'] | default('') | split()"
+        fail_msg: "the journal bind's boot ordering is wrong"
+        quiet: true
+      vars:
+        podman_journal_flush: "{{ podman_journal_units.results[0].status }}"
+        podman_journal_bind: "{{ podman_journal_units.results[1].status }}"
+      when: "'debian' in group_names"
+
+    # openSUSE keeps the default, so nothing may have moved there.
+    - name: Probe for a journal bind on the default
+      ansible.builtin.command: findmnt --mountpoint /var/log/journal
+      register: podman_no_journal_bind
+      changed_when: false
+      failed_when: podman_no_journal_bind.rc not in [0, 1]
+      when: "'debian' not in group_names"
+
+    - name: The default leaves the journal where it was
+      ansible.builtin.assert:
+        that:
+          - podman_no_journal_bind.rc == 1
+        fail_msg: "/var/log/journal is a mount point with podman_storage_journal unset"
+        quiet: true
+      when: "'debian' not in group_names"
 
     # The Debian platform stands in for auspex, whose firmware command line
     # converge staged. What is pinned is the shape a Pi will still boot from —

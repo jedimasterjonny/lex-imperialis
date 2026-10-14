@@ -4,3 +4,19 @@
     name: NetworkManager
     state: reloaded
   become: true
+
+# journald has no reload. Its fd store holds the services' log streams across a
+# restart, so nothing loses its stdout.
+- name: Restart journald for podman
+  ansible.builtin.systemd_service:
+    name: systemd-journald
+    state: restarted
+  become: true
+
+# A journal that has only ever been volatile has no flushed flag in /run, so the
+# restarted journald stays there until asked; this moves it, and everything it
+# already holds, onto /var/log/journal.
+- name: Flush the journal for podman
+  ansible.builtin.command: journalctl --flush
+  changed_when: true
+  become: true
