@@ -1,5 +1,5 @@
 -r requirements.txt
-ansible-lint==26.9.0
+ansible-lint==26.10.0
 codespell==2.4.3
 molecule==26.9.0
 pre-commit==4.6.2
