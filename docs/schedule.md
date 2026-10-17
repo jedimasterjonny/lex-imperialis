@@ -65,7 +65,7 @@ Network API: `setting/mgmt` still reports the older combined scheme's
 | Fri 08:00 | `home-backup-r2` integrity check | DSM task config |
 | Sat 03:00 | UniFi update — managed devices | UniFi console |
 | Sat 05:00 | UniFi update — OS and Application | UniFi console |
-| Sat 06:00 | `podman-image-prune` — auspex, rogue-trader, scholam, solar | `roles/podman/files/podman-image-prune.timer` |
+| Sat 06:10 | `podman-image-prune` — auspex, rogue-trader, scholam, solar | `roles/podman/files/podman-image-prune.timer` |
 | Sun 03:30 | `tumbleweed-image-refresh` — scholam | `libvirt_image_refresh_oncalendar` |
 | Sun 06:17 | `smartmon` short self-test — auspex, scholam, solar | `smartmon_short_test_weekday` |
 | Sun 08:00 | `podman-backup-r2` integrity check | DSM task config |

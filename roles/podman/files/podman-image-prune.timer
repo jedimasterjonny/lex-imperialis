@@ -2,7 +2,9 @@
 Description=Weekly prune of unused podman images
 
 [Timer]
-OnCalendar=Sat *-*-* 06:00:00
+# Off the hour: wordpress-update-check fires on it, and a prune fails outright
+# when a concurrent `podman run` claims an image between its list and remove.
+OnCalendar=Sat *-*-* 06:10:00
 Persistent=true
 
 [Install]
