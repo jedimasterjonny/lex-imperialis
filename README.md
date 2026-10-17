@@ -78,6 +78,10 @@ flowchart TD
 Segmentum Obscurus:
 
 ```mermaid
+---
+config:
+  layout: dagre
+---
 flowchart TD
   subgraph GitHub
     gh[lex-imperialis]
