@@ -187,7 +187,7 @@ NetworkManager is told to leave podman's bridges (`podman*`) unmanaged via
 event that unmounts the `_netdev` NFS shares — which otherwise breaks the
 `podman_backup` run and the arr-stack restart. Skipped where NM is absent.
 
-A weekly timer (Saturday 06:00, persistent) runs
+A weekly timer (Saturday 06:10, persistent) runs
 `/usr/local/sbin/podman-image-prune.sh`, so superseded quadlet image pulls don't
 accumulate. The script prunes root's store, then every passwd user holding a
 store under `~/.local/share/containers` — an operator's ad-hoc `podman run`
