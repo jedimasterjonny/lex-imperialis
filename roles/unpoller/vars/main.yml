@@ -1,3 +1,3 @@
 ---
 # renovate's image manager bumps the tag.
-unpoller_image: ghcr.io/unpoller/unpoller:v5.6.0@sha256:c5665e42cae943d2d3930e3b960771dc36cb4c6239b414a9548a31f85c3d1001
+unpoller_image: ghcr.io/unpoller/unpoller:v5.6.2@sha256:4ba1eab360adb75231ab05b7ee8adf252e6cf4c5d67ba39536492efd1e4605bd
