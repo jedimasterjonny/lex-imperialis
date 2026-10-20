@@ -40,7 +40,7 @@ arr_transmission_timeout_finish: /etc/arr/transmission-timeout-finish
 
 arr_apps:
   radarr:
-    image: lscr.io/linuxserver/radarr:6.4.4@sha256:ff4430fe2d6159b4dbaac9903acfecee5aa68dec8c929259e2f3114c63f7a09e
+    image: lscr.io/linuxserver/radarr:6.4.4@sha256:fc0ae3c50f8128b97e84381903ec8d6845c3a569641cb7117c124376cccb57c1
     uid: 1038
     caps: [CHOWN, KILL, SETGID, SETUID]
     port: 7878
@@ -49,7 +49,7 @@ arr_apps:
     healthcheck:
       cmd: curl -fsS http://127.0.0.1:7878/ping
   sonarr:
-    image: lscr.io/linuxserver/sonarr:4.0.20@sha256:44b06045a98bc1f237b9ffefc4b28dab64cb29305e4a2a94875ae93b5224e4cc
+    image: lscr.io/linuxserver/sonarr:4.0.20@sha256:889dcc58c6aea859033985894b519b2e6b1e55d92527ed123f9f52e42ae7c97b
     uid: 1039
     caps: [CHOWN, KILL, SETGID, SETUID]
     port: 8989
@@ -58,7 +58,7 @@ arr_apps:
     healthcheck:
       cmd: curl -fsS http://127.0.0.1:8989/ping
   lidarr:
-    image: lscr.io/linuxserver/lidarr:3.1.0@sha256:67887807b13ae025c0fe979da298347c8609969087ab064c81d8e9acc1e06bbf
+    image: lscr.io/linuxserver/lidarr:3.1.0@sha256:985aa3dd452e6bee903f3c913fdb27a152450f9c6f9a6dc48691ab510ba87fe6
     uid: 1037
     caps: [CHOWN, KILL, SETGID, SETUID]
     port: 8686
@@ -67,7 +67,7 @@ arr_apps:
     healthcheck:
       cmd: curl -fsS http://127.0.0.1:8686/ping
   prowlarr:
-    image: lscr.io/linuxserver/prowlarr:2.6.5@sha256:4e992f9b9229bc8c97c666b10b042a7360bce1d99b196e8aa29fd9805849cbf1
+    image: lscr.io/linuxserver/prowlarr:2.6.5@sha256:b3b00047ed20f6ce2b16780145cb6a0acb51c9e28ea6aa6f5dcd33c7034f1797
     uid: 3004
     caps: [CHOWN, KILL, SETGID, SETUID]
     port: 9696
@@ -150,7 +150,7 @@ arr_apps:
   # Shares the wireguard netns, so every peer connection rides the tunnel;
   # caddy reaches the webui at the wireguard container's transmission alias.
   transmission:
-    image: lscr.io/linuxserver/transmission:4.1.3@sha256:d6caecad406774a18511be7bfa99ba5070c17a3bdd7a5d73091651841603273c
+    image: lscr.io/linuxserver/transmission:4.1.3@sha256:55aaeedf9fc354d34136387e15ee0ba4679096f20398dd2875867e5cd5cf8be5
     uid: 1041
     caps: [CHOWN, DAC_OVERRIDE, KILL, SETGID, SETUID]
     port: 9091
