@@ -173,6 +173,9 @@ jobs:
           # services as //&unconfined, which the confined container's own systemd
           # cannot signal, so its boot hangs (lxc/incus#3251).
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_unconfined=0
+          # Ubuntu's transmission-daemon profile attaches by path inside unconfined
+          # instances and enforces on 26.04, denying arr's /config/settings.json.
+          [ ! -f /etc/apparmor.d/transmission ] || sudo apparmor_parser -R /etc/apparmor.d/transmission
           sudo usermod -aG incus-admin "$USER"
 
       # No MOLECULE_RUN_ID: each incus leg gets its own ephemeral runner, so the

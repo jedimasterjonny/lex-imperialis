@@ -107,7 +107,8 @@ The libvirt tier is local-only; CI realises it as `hetzner`, since Hetzner
 Cloud cannot nest KVM. The incus job installs and inits incus on the runner (dir
 storage; `FORWARD ACCEPT` and IPv6 off to clear the runner's Docker/network
 defaults; Ubuntu's `apparmor_restrict_unprivileged_unconfined` off, or confined
-containers hang at boot) and runs molecule under the `incus-admin` group,
+containers hang at boot; Ubuntu's `transmission` profile unloaded, or it
+confines arr's daemon) and runs molecule under the `incus-admin` group,
 retrying a red run once — the transient openSUSE mirror and image-server
 flakes outlast a single run's in-play retries. The `hetzner` job passes
 `HCLOUD_TOKEN` from the `MOLECULE_HCLOUD_TOKEN` secret — a token scoped to a
