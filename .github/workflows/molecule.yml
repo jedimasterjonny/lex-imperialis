@@ -169,6 +169,10 @@ jobs:
           # blocks incus container NAT; the runner also has no IPv6 egress.
           sudo iptables -P FORWARD ACCEPT
           sudo incus network set incusbr0 ipv6.address none
+          # Ubuntu 26.04's AppArmor extension stacks systemd 259's userns-sandboxed
+          # services as //&unconfined, which the confined container's own systemd
+          # cannot signal, so its boot hangs (lxc/incus#3251).
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_unconfined=0
           sudo usermod -aG incus-admin "$USER"
 
       # No MOLECULE_RUN_ID: each incus leg gets its own ephemeral runner, so the
