@@ -24,3 +24,14 @@ provider "google-beta" {
   user_project_override = true
   billing_project       = "jonnyoc-website"
 }
+
+# exactis's Vercel projects. A personal Hobby account has no team, so no team_id.
+provider "vercel" {
+  api_token = var.vercel_api_token
+}
+
+# The exactis repo only.
+provider "github" {
+  owner = "jedimasterjonny"
+  token = var.github_token
+}
