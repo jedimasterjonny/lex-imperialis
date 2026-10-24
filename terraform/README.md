@@ -49,23 +49,39 @@ billing changes, which stay local operator applies). The pool/provider trust the
 whole owner; per-SA bindings pin the exact repo. `outputs.tf` exposes the
 provider resource name and the SA emails for the workflows' `auth` steps.
 
+`vercel-exactis.tf` and `github-exactis.tf` are the exactis app's hosting: its two
+Vercel projects on a personal Hobby account — `exactis`, production branch `main`,
+and `exactis-dev`, production branch `dev`, since Hobby has no custom environments
+— and the `jedimasterjonny/exactis` repo with its default branch. All were built
+by hand and imported, never created, by the `import` blocks in each file: Vercel
+ids `exactis` and `exactis-dev`, the repo and its default branch `exactis`. Their
+environment variables, the Neon database behind them, and the repo's (absent)
+branch protection are deliberately unmanaged; the file headers say why. These
+settings change only on purpose, so an apply here is rare and drift is the weekly
+plan's to catch, or a `make tofu-plan` on demand: a drift finding means either a
+dashboard change to fold into the config or one to revert, the operator's call
+either way.
+
 State lives in a GCS bucket (`google_storage_bucket.tofu_state` in
 `infra-shared.tf` — `EUROPE-NORTH1`, versioned, UBLA + public-access-prevention),
 wired by the `backend "gcs"` in `main.tf`: remote state and locking, local
 CLI-driven execution. The backend authenticates like the google provider — your
 gcloud ADC locally, WIF in CI — so there is no state token, and the read-only
 `tofu-plan` SA can read state while only the write `tofu-apply` SA can write it.
-Only the Cloudflare and Hetzner provider tokens come from the vault (locally —
-in CI the read-only plan tokens are plain repo secrets, and only the write apply
-tokens are `Segmentum Obscurus` environment secrets):
+Only the Cloudflare, Hetzner, Vercel and GitHub provider tokens come from the vault
+(locally — in CI the read-only plan tokens are plain repo secrets, and only the
+write apply tokens are `Segmentum Obscurus` environment secrets):
 
     export TF_VAR_cloudflare_api_token="$(bin/vault-var.sh terraform_cloudflare_api_token)"
     export TF_VAR_hcloud_token="$(bin/vault-var.sh hcloud_token_emmas_edit)"
+    export TF_VAR_vercel_api_token="$(bin/vault-var.sh terraform_vercel_api_token)"
+    export TF_VAR_github_token="$(bin/vault-var.sh terraform_github_token)"
     tofu -chdir=terraform init
     tofu -chdir=terraform plan
 
 `TF_VAR_hcloud_token` is the emmas-edit project's Hetzner token — it backs the
-`hcloud_server` data source and `vpc-firewall` above.
+`hcloud_server` data source and `vpc-firewall` above. Vercel has no read-only
+token scope, so CI's Vercel plan token can write, unlike the other plan tokens.
 
 The Google provider reads credentials by execution context: locally it uses your
 own Application Default Credentials — run `gcloud auth application-default login`
@@ -103,7 +119,7 @@ Gates (also enforced in CI and pre-commit):
     tflint --chdir=terraform      # bundled terraform ruleset; see .tflint.hcl
 
 `make tofu-fmt` / `tofu-validate` / `tofu-lint` wrap these (fmt writes); `make
-tofu-plan` / `tofu-apply` reach GCS state through your ADC, sourcing the two
+tofu-plan` / `tofu-apply` reach GCS state through your ADC, sourcing the
 provider tokens from the vault via `bin/vault-var.sh`.
 
 PRs touching `terraform/` (or this workflow) get a `tofu plan` in CI
@@ -114,8 +130,8 @@ plan is scanned for a delete or replace: finding one fails the required
 on a merge — so a destructive plan never applies unattended, while a routine
 in-place bump flows through. A weekly scheduled run plans `main` against live
 infra and fails on any drift. State (GCS) and GCP are keyless via WIF; in CI the
-plan authenticates with read-only Cloudflare/Hetzner tokens (plain repo secrets —
-a PR can't mutate with them), while the apply's write tokens are environment
+plan authenticates with read-only provider tokens (plain repo secrets —
+a PR can't mutate with them, bar Vercel's), while the apply's write tokens are environment
 secrets gated to the main-only `Segmentum Obscurus` environment, so no PR can read one
 and CI never touches the vault. `make tofu-apply` still
 applies locally for the rare change CI won't: project creation, billing, the
