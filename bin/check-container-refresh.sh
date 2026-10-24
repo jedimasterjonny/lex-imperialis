@@ -173,10 +173,10 @@ t 'unknown base SHA' reject "$(printf '0%.0s' {1..40})" "$(sha HEAD)"
 
 # --- apply-paths.sh: the paths an apply reads ------------------------------
 ap() { "$repo/bin/apply-paths.sh" "$@" 2>/dev/null; }
-mkdir -p "$repo/.github" "$repo/roles/demo/molecule/default" "$repo/roles/demo/tasks" \
-    "$repo/roles/demo/files"
-for f in .github/ci.yml docs/runbook.md roles/demo/README.md \
-    roles/demo/molecule/default/verify.yml requirements-dev.txt; do
+mkdir -p "$repo/.github" "$repo/.claude/skills/demo" \
+    "$repo/roles/demo/molecule/default" "$repo/roles/demo/tasks" "$repo/roles/demo/files"
+for f in .github/ci.yml .claude/skills/demo/SKILL.md docs/runbook.md \
+    roles/demo/README.md roles/demo/molecule/default/verify.yml requirements-dev.txt; do
     echo inert >"$repo/$f"
 done
 commit 'inert paths only'

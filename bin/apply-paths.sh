@@ -10,10 +10,10 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-# CI, the other deploy targets, the test harness, the hook toolchain and
-# prose. Everything else — roles bar their READMEs and scenarios, playbooks,
+# CI, agent skills, the other deploy targets, the test harness, the hook
+# toolchain and prose. Everything else — roles bar their READMEs and scenarios, playbooks,
 # inventory, ansible.cfg, requirements.txt, bin/ — an apply reads.
-inert='^(\.github/|terraform/|jonnyoc-site/|packer/|docs/|molecule/|roles/[^/]+/molecule/|roles/[^/]+/README\.md$|[^/]+\.md$|requirements-dev\.txt$|\.pre-commit-config\.yaml$|renovate\.json$)'
+inert='^(\.github/|\.claude/|terraform/|jonnyoc-site/|packer/|docs/|molecule/|roles/[^/]+/molecule/|roles/[^/]+/README\.md$|[^/]+\.md$|requirements-dev\.txt$|\.pre-commit-config\.yaml$|renovate\.json$)'
 
 # --no-renames: a rename lists only its new path, so a role file moved under
 # docs/ would read as inert. Two steps for the reason container-refresh.sh gives.

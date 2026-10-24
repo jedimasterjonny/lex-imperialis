@@ -22,9 +22,9 @@ jitter; `Persistent`, so a reboot-missed run catches up). The script:
    the clone; this is the one place it moves;
 3. short-circuits if `main` has not advanced since the last applied SHA, so an
    idle cycle is near-free — and records the new SHA without applying it when
-   the range changes nothing an apply reads (`bin/apply-paths.sh`: CI,
-   terraform, the site, docs, test scenarios), unless the previous apply did
-   not complete;
+   the range changes nothing an apply reads (`bin/apply-paths.sh`: CI, agent
+   skills, terraform, the site, docs, test scenarios), unless the previous apply
+   did not complete;
 4. asks every fleet host whether `autoupdate.service` is running and, if one is,
    exits as a clean no-op with nothing recorded, so the next cycle retries — a
    host mid-dup holds the zypper lock the package tasks need, or is a reboot
