@@ -57,14 +57,15 @@ jobs:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB is implemented with bubblewrap, which
-      # the runner image does not carry, and Claude Code refuses to *install*
-      # without it rather than degrading — three attempts, then the job fails
-      # before the agent starts. See the README.
-      - name: Install bubblewrap
+      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB sandboxes every Bash call with
+      # bubblewrap and socat, neither of which the runner image carries. Without
+      # bwrap, Claude Code refuses to install; without socat, it runs but every
+      # Bash call fails, so no `gh` runs and the review returns in seconds having
+      # posted nothing. See the README.
+      - name: Install the sandbox dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bubblewrap
+          sudo apt-get install -y bubblewrap socat
 
       - name: Review the pull request
         id: claude
