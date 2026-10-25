@@ -294,7 +294,11 @@ own discretion — #497 got a "no issues found" comment, while #485 and #491 got
 nothing from runs that spent four minutes doing the work — and an empty PR reads
 exactly like a review that never fired. So when the review succeeds and the
 Claude App left neither an issue comment nor an inline one, this job says so in
-a line of its own. It checks both lists, since findings land on the diff and the
+a line of its own, with the run's turn count and duration read from the
+action's execution file — numbers only, since that file is the transcript the
+action keeps out of the log. They tell a run that stopped before reviewing
+(#957: two and three turns, under seven seconds) from one that reviewed and
+stayed quiet. It checks both lists, since findings land on the diff and the
 summary does not, and matches `claude` and `claude[bot]` because GraphQL and
 REST disagree on a bot's login. It holds `pull-requests: write` for the same
 reason `request-signoff` does, and for the same reason is a job the agent's
