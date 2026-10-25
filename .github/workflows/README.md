@@ -294,7 +294,11 @@ own discretion — #497 got a "no issues found" comment, while #485 and #491 got
 nothing from runs that spent four minutes doing the work — and an empty PR reads
 exactly like a review that never fired. So when the review succeeds and the
 Claude App left neither an issue comment nor an inline one, this job says so in
-a line of its own. It checks both lists, since findings land on the diff and the
+a line of its own, with the run's turn count and duration read from the
+action's execution file — numbers only, since that file is the transcript the
+action keeps out of the log. They tell a run that stopped before reviewing
+(#957: two and three turns, under seven seconds) from one that reviewed and
+stayed quiet. It checks both lists, since findings land on the diff and the
 summary does not, and matches `claude` and `claude[bot]` because GraphQL and
 REST disagree on a bot's login. It holds `pull-requests: write` for the same
 reason `request-signoff` does, and for the same reason is a job the agent's
@@ -341,7 +345,12 @@ the isolation. Failing closed is the right call, but it fails in the install
 step, before the agent starts — the review job goes red with nothing posted and
 `review-outcome` skipped, which is what a digest bump of the action did on
 2026-09-16, unnoticed because nothing had carried the label since 2026-09-01.
-Last, `--disallowedTools` is the floor under an upstream widening, and deny
+Bash runs inside that sandbox, which also needs `socat`, and a missing `socat`
+fails quietly instead: Claude Code installs and starts, then every Bash call
+returns `socat not installed`, so no `gh` runs, the review exits clean in
+seconds, and the check is green — #957, the first labelled PR after bubblewrap
+went in. The job installs both, as the action itself does when it sets the
+scrub. Last, `--disallowedTools` is the floor under an upstream widening, and deny
 beats allow. It names families rather than commands — `git`
 entire, so `git -c … push` is covered and not just `git push`, then `gh api`,
 `curl`, `wget`, `WebFetch` and `WebSearch` — plus `gh pr merge` and
