@@ -30,9 +30,9 @@ that would otherwise install it.
 
 The `terraform/` pre-commit gates need `tofu` and `tflint` on PATH, so the
 workstation provisions both: OpenTofu from zypper (`opentofu` in `dev_packages`),
-and tflint — which has no zypper package — via its upstream install script,
-fetched at the `dev_tflint_version` tag and checksum-verifying its download. That
-pin matches the CI gate (`.github/workflows/lint.yml`), kept in sync by one renovate
+and tflint — which has no zypper package — from the `dev_tflint_version`
+release's `linux_amd64` zip, verified against that release's `checksums.txt`.
+Upstream deleted its install script in v0.65.0. That pin matches the CI gate (`.github/workflows/lint.yml`), kept in sync by one renovate
 custom manager that bumps both. Unlike Claude Code, tflint does not self-update,
 so a version check drives the install, not `creates:`.
 

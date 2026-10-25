@@ -93,7 +93,7 @@
     state: present
   become: true
 
-- name: Ensure unzip is present for the tflint installer
+- name: Ensure unzip is present to unpack tflint
   community.general.zypper:
     name: unzip
     state: present
@@ -136,9 +136,8 @@
   become: true
 
 # tflint has no zypper package, and does not self-update, so a version check
-# (not creates:) drives idempotence and picks up renovate bumps. The upstream
-# script checksum-verifies the download, and is fetched at the pinned tag rather
-# than master so the code piped into root's shell moves only when the pin does.
+# (not creates:) drives idempotence and picks up renovate bumps. The zip is
+# verified against the release's own checksums.txt.
 - name: Check the installed tflint version
   ansible.builtin.command: /usr/local/bin/tflint --version
   register: dev_tflint_installed
@@ -147,17 +146,33 @@
   check_mode: false
 
 - name: Install tflint at the pinned version
-  ansible.builtin.shell:
-    cmd: set -o pipefail && curl -fsSL https://raw.githubusercontent.com/terraform-linters/tflint/{{ dev_tflint_version }}/install_linux.sh | bash
   become: true
-  environment:
-    TFLINT_VERSION: "{{ dev_tflint_version }}"
   vars:
     dev_tflint_wanted: "TFLint version {{ dev_tflint_version | regex_replace('^v', '') }}"
+    dev_tflint_release: https://github.com/terraform-linters/tflint/releases/download/{{ dev_tflint_version }}
   # stdout_lines (exact line match), not stdout (substring), so pin 0.63.1 is not
   # falsely satisfied by an installed 0.63.10.
   when: dev_tflint_wanted not in dev_tflint_installed.stdout_lines
-  changed_when: true
+  block:
+    - name: Download the tflint release zip
+      ansible.builtin.get_url:
+        url: "{{ dev_tflint_release }}/tflint_linux_amd64.zip"
+        checksum: "sha256:{{ dev_tflint_release }}/checksums.txt"
+        dest: /tmp/tflint_linux_amd64.zip
+        mode: "0600"
+
+    - name: Unpack tflint into /usr/local/bin
+      ansible.builtin.unarchive:
+        src: /tmp/tflint_linux_amd64.zip
+        remote_src: true
+        dest: /usr/local/bin
+        include: [tflint]
+        mode: "0755"
+
+    - name: Remove the tflint release zip
+      ansible.builtin.file:
+        path: /tmp/tflint_linux_amd64.zip
+        state: absent
 
 # sudoers.d loads in sorted lexical order and the last match wins, so this
 # drop-in must sort after common's `wheel` file for its NOPASSWD to override that
