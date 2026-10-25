@@ -218,6 +218,12 @@
       "matchManagers": ["terraform"],
       "matchPackageNames": ["hashicorp/terraform"],
       "enabled": false
+    },
+    {
+      "description": "lint.yml's tflint_version is also a setup-tflint input the github-actions manager reads, and its PR bumps that copy alone: a workflow-only diff runs no molecule tier, so it automerges past the dev role (#965). The custom manager above bumps both pins together.",
+      "matchManagers": ["github-actions"],
+      "matchDepNames": ["tflint"],
+      "enabled": false
     }
   ]
 }
