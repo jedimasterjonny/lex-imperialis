@@ -172,6 +172,19 @@
     mode: "0644"
   become: true
 
+# One health_status event per run, at notice, past the LogLevelMax=notice podman
+# sets on its transient healthcheck unit. Nothing reads them; see the README.
+- name: Turn off podman's per-run healthcheck events
+  ansible.builtin.copy:
+    content: |
+      [engine]
+      healthcheck_events = false
+    dest: /etc/containers/containers.conf.d/20-healthcheck-events.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+
 - name: Install the prune script
   ansible.builtin.template:
     src: podman-image-prune.sh.j2

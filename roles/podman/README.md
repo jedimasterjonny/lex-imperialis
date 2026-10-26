@@ -220,3 +220,17 @@ pruned. It asserts nothing about the rootless prune's outcome: whether a
 container can run rootless podman at all varies by host, so that is green on one
 runner and a reported skip on another. Reclaim from a rootless store is proven
 against a real host instead.
+
+## Healthcheck events
+
+podman logs a `health_status` event on every healthcheck run, at notice, past
+the `LogLevelMax=notice` it sets on its transient healthcheck unit.
+`healthcheck_events = false` in `containers.conf.d/20-healthcheck-events.conf`
+turns them off. Nothing reads them: `HealthOnFailure=` acts inside the run, and
+a kill still logs as the quadlet unit's `status=137` and its failure. What goes
+is the `health_status=unhealthy` line ahead of that. The transient units are
+named `<container id>-<random>`, and quadlet recreates the container on every
+start, so no drop-in can reach them by name.
+
+Molecule runs a 1s healthcheck three times and asserts that only the probe's
+own `start` event reached the journal.
