@@ -149,5 +149,6 @@ role. One-time, on the host as `dev_user`:
 2. `systemctl --user start claude-remote-control.service` to bring it up now; the
    lingering manager starts it on every subsequent boot.
 
-Unit edits apply at the next restart or boot — there is no restart handler, so a
-converge never drops a live session.
+Unit edits apply once the user manager rereads the unit — at boot, or on
+`systemctl --user daemon-reload` — and the service next starts. The role never
+reloads or restarts it, so a converge never drops a live session.
