@@ -1147,7 +1147,11 @@ groups:
       # Coupled to autoupdate.service's Restart=on-failure: RestartSec=1h with
       # StartLimitBurst=4 retries a transient mirror miss for 3h, each attempt
       # rewriting the metric. Wait longer than that burst so only an update that
-      # has exhausted its retries pages, not one still healing itself.
+      # has exhausted its retries pages, not one still healing itself. Each retry
+      # first defers up to 15m to an apply in progress, and a successful one defers
+      # its reboot, and with it the metric's rewrite, up to 15m more: a signal stuck
+      # through every bound stretches the burst past 4h, so an update healing on its
+      # last retry can page minutes before it clears.
       - alert: AutoupdateFailed
         expr: autoupdate_success == 0
         for: 4h
@@ -1213,7 +1217,8 @@ groups:
       # enough to empty the latter: the host reboots weekly, and 14 days later that hole
       # would land under the offset, resolve a firing alert and re-fire it an hour later.
       #
-      # for: 3h outlasts autoupdate.timer's RandomizedDelaySec=2h, the same coupling
+      # for: 3h outlasts autoupdate.timer's RandomizedDelaySec=2h plus the 30m the service
+      # can defer the dup and then its reboot to an apply in progress, the same coupling
       # AutoupdateFailed's for: has to the retry burst. At 1h the margin was thinner than
       # the jitter, so a week with no published snapshot could fire this an hour before
       # the next dup landed and cleared it.
