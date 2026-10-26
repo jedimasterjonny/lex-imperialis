@@ -10,6 +10,18 @@ StartLimitBurst=4
 
 [Service]
 Type=oneshot
+# Defer the update while an Ansible apply is in progress on this host: the dup
+# holds the package lock the apply's package tasks need, and the reboot cuts its
+# SSH session mid-task. The mirror of arbites's hold, which only covers an update
+# already running when an apply is due; the repeat ahead of the reboot below
+# catches an apply that hold cannot see — one started by hand against this host,
+# one past its fail-open probe, one outlasting this bound. 15m outlasts a whole
+# fleet apply with margin, and `-` makes the bound a delay, never a skipped week.
+# Both bounds stack on the timer's jitter and still fit MicroOSBuildStale's for:
+# (3h). This one recurs on each retry, so only a signal stuck through a whole
+# failing burst outruns AutoupdateFailed's (4h), and that update has failed
+# regardless. Change a bound and recheck both.
+ExecStartPre=-/usr/bin/timeout 15m /usr/local/sbin/autoupdate-defer.sh
 # One ExecStart= per element, which Type=oneshot runs in order and aborts on the
 # first failure: apt needs its metadata refreshed before the dist-upgrade, where
 # zypper refreshes its own.
@@ -49,6 +61,7 @@ RestartSec=1h
 ExecStartPost=-/usr/local/sbin/autoupdate-cleanup.sh
 {% endif %}
 ExecStartPost=-/usr/local/sbin/autoupdate-holds.sh
+ExecStartPost=-/usr/bin/timeout 15m /usr/local/sbin/autoupdate-defer.sh
 # Reboot here rather than hand the job to rebootmgr on MicroOS: a
 # transactional-update asked to reboot exits 0 even when rebootmgrd is down and
 # the reboot silently never happens, which the metric below would still record

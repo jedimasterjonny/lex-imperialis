@@ -46,6 +46,8 @@ the dup holds the zypper lock the role's package query needs. It reads
 its `Restart=` wait, which `is-active` denies. The skip is a success, not a
 failure: the metric hook reads `exec-condition` as one. The other hosts' dups
 are step 4, asked only once an apply is due, so an idle cycle stays near-free.
+An update that fires mid-apply is `autoupdate`'s to hold: it defers itself, then
+its reboot, for up to 15 minutes each while the apply runs.
 
 An `ExecStopPost` hook writes the outcome to `arbites_metric_file`
 (`arbites_textfile_dir/arbites.prom`): `arbites_success` (1/0 from

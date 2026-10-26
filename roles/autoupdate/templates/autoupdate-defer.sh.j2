@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# autoupdate.service hook, run ahead of the update and again ahead of the reboot:
+# return once no Ansible apply is in progress on this host. Unbounded here; the
+# unit bounds it.
+#
+# Two live signals, so nothing can go stale:
+#   - an SSH connection of `ansible`, the account every play connects as
+#     (common_ansible_user): sshd's per-connection process running as that
+#     account, `sshd-session` from OpenSSH 9.8 and `sshd` before it. It spans
+#     the apply's first task to its last, plus the controller's ControlPersist
+#     idle window, which also covers a short gap between arbites's autoupdate
+#     probe and the apply it clears. Not any process the account owns: a
+#     rootless podman pause process left behind by an image prune keeps its
+#     user manager running for days, and would hold every update to the bound;
+#   - arbites.service running, on the control host, whose reconcile drives every
+#     other host from a root unit before it reaches this one. The same
+#     ActiveState set its own hold reads; elsewhere the unit is absent, which
+#     reads inactive.
+# Either failing to answer reads as no apply, so a broken check never holds.
+set -euo pipefail
+
+applying() {
+    pgrep -u ansible '^sshd' >/dev/null ||
+        [[ "$(systemctl show --property=ActiveState --value arbites.service)" =~ ^(active|activating|reloading|deactivating)$ ]]
+}
+
+applying || exit 0
+echo "deferring: an Ansible apply is in progress on this host"
+while applying; do
+    sleep 10
+done
