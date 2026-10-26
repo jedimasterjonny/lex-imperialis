@@ -283,7 +283,7 @@
     # interactive /login (absent in molecule), so the role never starts it;
     # starting it credential-less would crash-loop. There is deliberately no
     # restart handler, so applying a change never tears down a live remote session
-    # — edits take effect at the next restart or boot.
+    # — edits take effect at the next start after a user-manager reload.
     - name: Enable the Claude Code Remote Control user service for boot
       ansible.builtin.file:
         src: ../claude-remote-control.service

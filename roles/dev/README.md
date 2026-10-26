@@ -134,6 +134,11 @@ manager runs without a login session, and installs the unit at
 `~/.config/systemd/user/claude-remote-control.service`. `Restart=always` with no
 start-limit recovers it after the ~10-minute network-outage timeout.
 
+The unit sends stdout to `/dev/null`: the redrawn status display floods the
+journal and exposes the session links to anyone who can read it. Runtime notices
+and the give-up reason go with it, so the journal keeps only stderr, where startup
+failures land, and systemd's exit and restart records.
+
 The role pre-seeds workspace trust for `dev_remote_control_workdir` (a per-project
 key in the owner's `~/.claude.json`), so the one step it cannot automate is the
 owner's claude.ai login. The unit is enabled for boot but never started by the
@@ -144,5 +149,6 @@ role. One-time, on the host as `dev_user`:
 2. `systemctl --user start claude-remote-control.service` to bring it up now; the
    lingering manager starts it on every subsequent boot.
 
-Unit edits apply at the next restart or boot — there is no restart handler, so a
-converge never drops a live session.
+Unit edits apply once the user manager rereads the unit — at boot, or on
+`systemctl --user daemon-reload` — and the service next starts. The role never
+reloads or restarts it, so a converge never drops a live session.
