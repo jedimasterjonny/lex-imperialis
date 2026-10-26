@@ -27,3 +27,10 @@ ExecStart={{ storagebox_gateway_proxyd }} {{ storagebox_gateway_target }}
 # ProtectHome is the one worth tightening past what it implies.
 DynamicUser=yes
 ProtectHome=yes
+# The proxy's SELinux domain is granted no logging: under the default log target
+# it is denied the journal's native socket and falls back to bare stderr, which
+# journald files at info, out of reach of a priority filter. console skips the
+# socket, and SyslogLevel files the bare lines at err; the proxy logs nothing
+# below warning, so only its warnings are promoted with them.
+Environment=SYSTEMD_LOG_TARGET=console
+SyslogLevel=err
