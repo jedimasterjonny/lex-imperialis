@@ -9,6 +9,11 @@ Type=oneshot
 {# already running — but bounding it keeps a wedged exec from holding the timer #}
 {# past its own period. #}
 TimeoutStartSec=60s
+{# LogLevelMax= drops everything below notice from or about the unit, the #}
+{# manager's per-tick start/finish lines included; the logger lines (notice) and #}
+{# failures stay. The script prints only on failure; SyslogLevel= keeps that. #}
+LogLevelMax=notice
+SyslogLevel=notice
 {# The container and interface are fixed by the role: vars/main.yml names the app #}
 {# wireguard and binds its config in as wg_confs/wg0.conf, which is what wg-quick #}
 {# takes the interface name from. The probe is the container's own HealthCmd, so #}

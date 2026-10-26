@@ -259,7 +259,9 @@ local traffic does not.
   check's own `cmd`. It moves off the address in use, not onto whatever the pool
   answered with. Not a backstop: a re-point that does not take fails the next
   healthcheck and the kill proceeds as before. `files/arr-wireguard-refresh`
-  argues the gates and their order.
+  argues the gates and their order. A tick logs only a re-point
+  (`journalctl -t arr-wireguard-refresh`) or a failure (`-u`);
+  `systemctl list-timers` shows it is still ticking.
 - **Kill-switch** — with `arr_wireguard_conf` empty, the role generates a
   blackhole config: random keys, `AllowedIPs = 0.0.0.0/0`, a TEST-NET
   endpoint. wg0 comes up with a dead default route, so no confined app's
