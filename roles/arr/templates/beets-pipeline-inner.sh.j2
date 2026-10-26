@@ -1,6 +1,10 @@
 # {{ ansible_managed }}
 # shellcheck shell=sh
 set -eu
+# beets.service goes active before the image's init has remapped abc to PUID, so
+# an exec in that window (a boot-time catch-up) runs as the image's placeholder
+# uid, which cannot reach /data. Skip it; the next tick catches up.
+[ "$(id -u)" = "{{ arr_apps.beets.uid }}" ] || { echo "beets still starting; skipping pipeline"; exit 0; }
 # A podman exec inherits umask 022, but the staged copy must land group-writable:
 # importMode:Move removes each track from the staging dir as it moves it into the
 # library, and that needs group write on the dir (lidarr shares only the arr group
