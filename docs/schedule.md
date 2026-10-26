@@ -33,7 +33,8 @@ across one has sat through it. Nothing watches the two R2 integrity checks, the
 array scrub, the controller auto-backup, the WAN speed test or Time Machine.
 
 `autoupdate` carries `RandomizedDelaySec=2h`, so its rows open a two-hour window
-rather than name a fire time.
+rather than name a fire time. An apply in progress on the host defers the update,
+then its reboot, by up to 15 minutes each.
 
 UniFi updates on two rows, not one: managed devices first, the console's own OS
 and Application two hours later, so a bad device batch surfaces while the
