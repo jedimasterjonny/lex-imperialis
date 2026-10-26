@@ -178,6 +178,17 @@ containers.
 file lands, whatever the running containers are still on. The per-container truth
 is `podman inspect --format '{{ .OCIRuntime }}' <name>`.
 
+Where SELinux is enabled, every container start under crun logs one kernel line,
+SELinux refusing a cgroup2 mount (`mount invalid` …
+`different security settings`): cgroup2 has a single superblock, and crun asks
+for security settings that differ from the superblock's. crun's mount trips it —
+runc on the same kernel logs none — and it first appeared with the update that
+brought crun 1.30.1 and a new kernel together. The container starts regardless;
+the only cost is dmesg churn, heaviest where a container starts on a timer. It
+is upstream's to fix, so the repo changes nothing and it is no reason to go back
+to runc: recheck at the next crun update, and look harder only if the line ever
+sits beside a container that fails to start.
+
 The netavark firewalld-reload listener is enabled, so a firewalld reload
 reapplies netavark's rules instead of dropping published ports and
 inter-container networking.
@@ -201,6 +212,18 @@ under any other, and that directory exists only while its user holds a session
 or lingers. `--collect` is likewise required rather than tidy — without it a
 failed transient unit stays loaded and trips `SystemdUnitFailed` under an opaque
 `run-uNNNN` name.
+
+That session typically costs a rootless prune an SELinux denial, accepted rather
+than fixed. pam_selinux sets the exec context outright, so podman starts in
+`unconfined_t` instead of transitioning to `container_runtime_t`; rootless
+podman then re-execs itself in a new mount namespace, where its binary's mount is
+foreign, so the kernel treats the exec as nosuid, and the policy grants
+`unconfined_t` `nnp_transition` but not `nosuid_transition`. A refused default
+transition falls back to the caller's domain rather than failing the exec, so the
+re-exec carries on in `unconfined_t` and the prune completes in the same run that
+logs the denial. An `allow` would move the re-exec into `container_runtime_t` — a
+behaviour change to silence a log line. Revisit only if a rootless prune fails
+beside it.
 
 The account plays connect as (`podman_prune_skip_user`, from `ansible_user`) is
 skipped by name, and the run logs the skip. Its uid differs across the fleet, so
