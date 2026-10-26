@@ -173,8 +173,8 @@
   become: true
 
 - name: Install the prune script
-  ansible.builtin.copy:
-    src: podman-image-prune.sh
+  ansible.builtin.template:
+    src: podman-image-prune.sh.j2
     dest: /usr/local/sbin/podman-image-prune.sh
     owner: root
     group: root

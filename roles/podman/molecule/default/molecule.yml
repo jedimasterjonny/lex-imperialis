@@ -21,3 +21,11 @@ platforms:
     config:
       security.nesting: "true"
       raw.lxc: lxc.apparmor.profile=unconfined
+# One source for the account the prune skips, read by converge as the input and
+# by verify as the fixture. The role's default resolves to root here, which the
+# prune passes over before the name check, so it would test no skip.
+provisioner:
+  inventory:
+    group_vars:
+      all:
+        podman_prune_skip_user: pruneautomation

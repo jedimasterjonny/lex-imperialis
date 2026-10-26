@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# {{ ansible_managed }}
 set -euo pipefail
 
 # Bounded per store, so one prune wedged on a held store lock is killed and
@@ -23,6 +24,12 @@ users=$(getent passwd)
 while IFS=: read -r user _ uid _ _ home _; do
   [ "$uid" -ne 0 ] || continue # pruned above, and uid 0 resolves to that store
   [ -d "$home/.local/share/containers" ] || continue
+
+  # Full rationale in the role's README.
+  if [ "$user" = {{ podman_prune_skip_user | quote }} ]; then
+    echo "podman-image-prune: skipped ${user}, the account Ansible connects as"
+    continue
+  fi
 
   # Named before the attempt, so the journal records which stores the run
   # actually reached — the enumeration above is otherwise invisible, and a prune
