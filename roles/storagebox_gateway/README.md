@@ -86,6 +86,13 @@ grant, but it mutates a well-known port system-wide and needs `semanage`, which
 is exactly what is missing; the booleans are scoped to a domain that runs one
 service on this host.
 
+The domain grants no logging either, so the proxy's lines reach the journal as
+bare stderr at `info`. The unit forces that path and files it at `err`, so
+`journalctl -p err` sees the proxy's errors and the proxy no longer tries the
+journal socket it is denied. `console-prefixed` looks like the fix and is not:
+its `<N>` folds in the daemon facility, which journald's stream parser rejects,
+so the line stays at `info` with the prefix left in its text.
+
 ## What the container tier cannot test
 
 The scenario reads an SSH banner back through the listener, so the proxy is
