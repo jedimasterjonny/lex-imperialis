@@ -1,0 +1,6 @@
+# {{ ansible_managed }}
+# The package's fusermount -u is denied to init_t under SELinux; umount runs in
+# mount_t, as systemd's own mount units do. Not lazy, matching fusermount -u.
+[Service]
+ExecStopPost=
+ExecStopPost=-/usr/bin/umount /var/lib/lxcfs

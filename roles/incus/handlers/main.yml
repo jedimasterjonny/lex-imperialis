@@ -4,3 +4,10 @@
     name: NetworkManager
     state: reloaded
   become: true
+
+# Reload only: restarting lxcfs under running instances breaks their /proc
+# views, so the drop-in takes effect at lxcfs's next stop.
+- name: Reload systemd for incus
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  become: true

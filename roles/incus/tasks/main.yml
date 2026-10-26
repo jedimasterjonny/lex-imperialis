@@ -37,6 +37,25 @@
   when: incus_nm_confd.stat.exists
   notify: Reload NetworkManager for incus
 
+- name: Create the lxcfs drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/lxcfs.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+- name: Unmount lxcfs with umount rather than fusermount
+  ansible.builtin.template:
+    src: lxcfs-umount.conf.j2
+    dest: /etc/systemd/system/lxcfs.service.d/umount.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Reload systemd for incus
+
 # Both units: the socket for boot activation, the service so the daemon is up
 # now rather than on the first client connection.
 - name: Enable and start incus

@@ -83,3 +83,24 @@
         that: "'interface-name:veth*' in incus_nm_config.stdout"
         fail_msg: "NetworkManager does not hold instance veths unmanaged"
         quiet: true
+
+    # Every ExecStopPost entry as systemd loaded it, so the drop-in must have
+    # cleared the package's line and the reload picked it up.
+    - name: Read lxcfs's stop commands
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - show
+          - lxcfs.service
+          - --property=ExecStopPost
+      register: incus_lxcfs_stop
+      changed_when: false
+      become: true
+
+    - name: The lxcfs unit unmounts with umount alone, errors ignored
+      ansible.builtin.assert:
+        that:
+          - "'fusermount' not in incus_lxcfs_stop.stdout"
+          - "'argv[]=/usr/bin/umount /var/lib/lxcfs ; ignore_errors=yes ;' in incus_lxcfs_stop.stdout"
+        fail_msg: "the lxcfs unit does not unmount with umount alone"
+        quiet: true
