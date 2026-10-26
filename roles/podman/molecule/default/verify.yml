@@ -6,6 +6,9 @@
   # so changing the role's default fails this instead of moving the goalposts.
   vars:
     podman_expected_runtime: crun
+    podman_prune_fixture_users:
+      - prunerootless
+      - "{{ podman_prune_skip_user }}"
   tasks:
     # The guard, not the mount. An incus container cannot be given a block
     # device, so the store-on-a-device arm runs nowhere in CI — it is asserted
@@ -265,12 +268,13 @@
     # Before the clean fire, not after: the fixture below is torn down only on
     # the happy path, so a verify that failed mid-way strands a store that would
     # fail this fire on every later attempt, with no way back but destroy.
-    - name: Discard any prior fixture user
+    - name: Discard any prior fixture users
       ansible.builtin.user:
-        name: prunerootless
+        name: "{{ item }}"
         state: absent
         remove: true
         force: true
+      loop: "{{ podman_prune_fixture_users }}"
       become: true
 
     # Starting a oneshot unit blocks until it exits, so success means the
@@ -301,19 +305,21 @@
     # rootless podman at all varies by host, so the outcome is green on a runner
     # that manages it and a reported skip on one denied newuidmap. Reclaim from a
     # rootless store is proven on a real host instead.
-    - name: Create a user holding a rootless store
+    - name: Create users holding a rootless store
       ansible.builtin.user:
-        name: prunerootless
-        home: /home/prunerootless
+        name: "{{ item }}"
+        home: /home/{{ item }}
+      loop: "{{ podman_prune_fixture_users }}"
       become: true
 
-    - name: Give the user a rootless store
+    - name: Give the users a rootless store
       ansible.builtin.file:
-        path: /home/prunerootless/.local/share/containers
+        path: /home/{{ item }}/.local/share/containers
         state: directory
-        owner: prunerootless
-        group: prunerootless
+        owner: "{{ item }}"
+        group: "{{ item }}"
         mode: "0700"
+      loop: "{{ podman_prune_fixture_users }}"
       become: true
 
     # failed_when, because the outcome is the host-dependent half.
@@ -354,15 +360,25 @@
         fail_msg: "the prune did not reach the rootless store"
         quiet: true
 
+    # The skip line alone would pass a skip that logged and then pruned anyway.
+    - name: The skipped account's store was skipped, not pruned
+      ansible.builtin.assert:
+        that:
+          - "'podman-image-prune: skipped ' ~ podman_prune_skip_user ~ ', the account Ansible connects as' in podman_prune_log.stdout"
+          - "'podman-image-prune: ' ~ podman_prune_skip_user not in podman_prune_log.stdout"
+        fail_msg: "the prune did not skip {{ podman_prune_skip_user }}'s store"
+        quiet: true
+
     # force, because PAMName=login started a user manager for the fixture and
     # logind holds it for UserStopDelaySec (10s) after the session ends — inside
     # which userdel's busy check refuses the removal.
-    - name: Remove the rootless store
+    - name: Remove the rootless stores
       ansible.builtin.user:
-        name: prunerootless
+        name: "{{ item }}"
         state: absent
         remove: true
         force: true
+      loop: "{{ podman_prune_fixture_users }}"
       become: true
 
     # Leaves no failed unit behind, so the scenario does not end sitting on the

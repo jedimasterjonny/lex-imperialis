@@ -202,12 +202,21 @@ or lingers. `--collect` is likewise required rather than tidy — without it a
 failed transient unit stays loaded and trips `SystemdUnitFailed` under an opaque
 `run-uNNNN` name.
 
+The account plays connect as (`podman_prune_skip_user`, from `ansible_user`) is
+skipped by name, and the run logs the skip. Its uid differs across the fleet, so
+no uid cut-off would separate it. Every fleet container is rootful, so any store
+under it comes from a stray unprivileged `podman` call. Pruning it does harm: the
+prune's PAM session ends with its scope abandoned, still holding rootless
+podman's pause process, which keeps the account's user manager running until
+reboot. A stray store is deleted by hand.
+
 A store its owner has left unusable never stops the others being pruned: the run
 logs it, carries on, and exits non-zero at the end. `SystemdUnitFailed` does not
 exclude this unit, so that raises a warning without a bespoke metric or rule.
 
-Molecule proves the rootful prune and that enumeration finds a store created
-after converge. It asserts nothing about the rootless prune's outcome: whether a
+Molecule proves the rootful prune, that enumeration finds a store created after
+converge, and that the skipped account's store is logged as skipped and never
+pruned. It asserts nothing about the rootless prune's outcome: whether a
 container can run rootless podman at all varies by host, so that is green on one
 runner and a reported skip on another. Reclaim from a rootless store is proven
 against a real host instead.

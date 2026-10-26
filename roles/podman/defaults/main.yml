@@ -52,3 +52,7 @@ podman_storage_options: "defaults,noatime,nofail,x-systemd.before=local-fs.targe
 # the wrong medium for it and whose distribution keeps the journal volatile for
 # that reason — auspex, on an SD card under Raspberry Pi OS. See the README.
 podman_storage_journal: false
+
+# The account the weekly image prune skips: the one plays connect as. See the
+# README.
+podman_prune_skip_user: "{{ ansible_user | default('') }}"
