@@ -447,6 +447,24 @@
           {{ arr_refresh_before.stdout }} -> {{ arr_refresh_after.stdout }}
         quiet: true
 
+    # The manager tags its lines about the run above INVOCATION_ID, the run's own
+    # output _SYSTEMD_INVOCATION_ID; anything here got past the unit's LogLevelMax=.
+    - name: A clean refresh run leaves nothing in the journal
+      ansible.builtin.command:
+        argv:
+          - journalctl
+          - --quiet
+          - INVOCATION_ID={{ arr_refresh_blackhole.status.InvocationID }}
+          - +
+          - _SYSTEMD_INVOCATION_ID={{ arr_refresh_blackhole.status.InvocationID }}
+      register: arr_refresh_journal
+      become: true
+      changed_when: false
+      failed_when: >-
+        not arr_refresh_blackhole.status.InvocationID
+        or arr_refresh_journal.rc != 0
+        or arr_refresh_journal.stdout | length > 0
+
     # The other side of the guard, and the only way the container tier reaches the
     # part that actually re-points: a config whose Endpoint is a *name*. one.one.one.one
     # is a real two-address pool, and `wg set` needs no reachable peer to accept an
