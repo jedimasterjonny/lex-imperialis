@@ -48,6 +48,10 @@ The hostname is read from the keyfile (`wg show` reports only the resolved IP)
 and resolved against `wireguard_client_resolver` (`1.1.1.1`) rather than the
 system resolver, which a downed tunnel may take with it.
 
+A healthy tick logs nothing. A re-activation, or a failed one, is logged under
+`journalctl -t wireguard-refresh`. `-u` can miss those lines, as `logger` exits
+before journald attributes them to the unit.
+
 The `arr` role carries a second refresh, for the tunnel inside its container
 stack. Handshake age cannot trigger it there — see
 `roles/arr/files/arr-wireguard-refresh`.

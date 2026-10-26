@@ -113,16 +113,34 @@
 
     # With no wg0 interface in the container the script must exit cleanly at its
     # guard rather than error — the real re-activation path needs a live tunnel
-    # and a running NetworkManager, exercised on the host, not here.
-    - name: Run the refresh script with no tunnel present
-      ansible.builtin.command: /usr/local/sbin/wireguard-refresh wg0 1.1.1.1 150
-      register: wireguard_client_refresh_run
-      changed_when: false
+    # and a running NetworkManager, exercised on the host, not here. Run through
+    # the unit, whose start fails on a non-zero exit, so the journal check below
+    # reads a real invocation.
+    - name: The refresh exits cleanly with no tunnel present
+      ansible.builtin.systemd_service:
+        name: wireguard-refresh.service
+        state: started
       become: true
 
-    - name: It exits cleanly when the interface is absent
-      ansible.builtin.assert:
-        that:
-          - wireguard_client_refresh_run.rc == 0
-        fail_msg: "the refresh script errored without a wg0 interface present"
-        quiet: true
+    - name: Read the refresh run's invocation ID
+      ansible.builtin.systemd_service:
+        name: wireguard-refresh.service
+      register: wireguard_client_refresh_run
+      become: true
+
+    # PID 1's lines about this run carry INVOCATION_ID, journald stamps the run's
+    # own output _SYSTEMD_INVOCATION_ID; any match got past the unit's LogLevelMax=.
+    - name: A clean refresh run leaves nothing in the journal
+      ansible.builtin.command:
+        argv:
+          - journalctl
+          - --quiet
+          - INVOCATION_ID={{ wireguard_client_refresh_run.status.InvocationID }}
+          - +
+          - _SYSTEMD_INVOCATION_ID={{ wireguard_client_refresh_run.status.InvocationID }}
+      register: wireguard_client_refresh_journal
+      become: true
+      changed_when: false
+      failed_when: >-
+        wireguard_client_refresh_journal.rc != 0
+        or wireguard_client_refresh_journal.stdout | length > 0
