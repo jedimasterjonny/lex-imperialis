@@ -5,3 +5,8 @@ Description=Re-resolve the WireGuard {{ wireguard_client_interface }} endpoint o
 [Service]
 Type=oneshot
 ExecStart=/usr/local/sbin/wireguard-refresh {{ wireguard_client_interface }} {{ wireguard_client_resolver }} {{ wireguard_client_stale_seconds }}
+{# LogLevelMax= drops the manager's per-tick info lines about the unit; the #}
+{# logger lines (notice) and failures pass. The script prints only on failure, #}
+{# and stdout/stderr default to info, under the cut: SyslogLevel= lifts them. #}
+LogLevelMax=notice
+SyslogLevel=notice
