@@ -30,6 +30,11 @@ NoNewPrivileges=true
 DropCapability=all
 Volume=/:/rootfs:ro,rslave
 Volume=/sys:/sys:ro
+{# Without readable DMI (a Pi), cadvisor's system UUID falls back to its image's
+   own /etc/machine-id, which is absent. Gated so a DMI host's unit is unchanged. #}
+{% if not cadvisor_dmi_uuid.stat.readable | default(false) %}
+Volume=/etc/machine-id:/etc/machine-id:ro
+{% endif %}
 Exec=--port={{ cadvisor_port }}{% if cadvisor_listen_ip %} --listen_ip={{ cadvisor_listen_ip }}{% endif %} --housekeeping_interval={{ cadvisor_housekeeping_interval }} --store_container_labels=false --disable_metrics={{ cadvisor_disable_metrics }}
 
 [Service]
