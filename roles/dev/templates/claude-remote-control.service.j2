@@ -14,6 +14,10 @@ Environment=PATH={{ dev_user_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin:/us
 # Remote Control rejects API-key auth, so make sure an inherited key can't break it.
 UnsetEnvironment=ANTHROPIC_API_KEY
 ExecStart={{ dev_claude_bin }} remote-control
+# stdout is the continuously redrawn status display, session links included, and
+# floods the journal. StandardError defaults to inheriting stdout, so pin it.
+StandardOutput=null
+StandardError=journal
 Restart=always
 RestartSec=30
 
