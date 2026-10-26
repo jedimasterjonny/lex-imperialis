@@ -3,6 +3,14 @@
 # the fleet needs that socket enabled. It is left as the host found it rather than
 # disabled here — podman's host configuration belongs to roles/podman, not to a
 # consumer of it.
+
+# As root, like cadvisor: the file is root's own, so its dropped caps don't matter.
+- name: Check whether the host's DMI system UUID is readable
+  ansible.builtin.stat:
+    path: /sys/class/dmi/id/product_uuid
+  become: true
+  register: cadvisor_dmi_uuid
+
 - name: Install the cadvisor container unit
   ansible.builtin.template:
     src: cadvisor.container.j2

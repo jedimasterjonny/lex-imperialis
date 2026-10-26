@@ -112,3 +112,31 @@
       register: unpoller_pin
       changed_when: false
       failed_when: unpoller_pin.rc != 0
+
+    # unpoller exits 143 on the stop's SIGTERM. Unless the unit counts that as
+    # clean, every stop — each image bump, each reboot — leaves it failed and
+    # SystemdUnitFailed pending.
+    - name: Stop unpoller
+      ansible.builtin.systemd_service:
+        name: unpoller
+        state: stopped
+      become: true
+
+    # The module returns the unit's properties as it found them, so the start
+    # reads back how the stop ended.
+    - name: Start unpoller again
+      ansible.builtin.systemd_service:
+        name: unpoller
+        state: started
+      become: true
+      register: unpoller_restart
+
+    - name: The stop left unpoller inactive, not failed
+      ansible.builtin.assert:
+        that:
+          - unpoller_restart.status.ActiveState == 'inactive'
+          - unpoller_restart.status.Result == 'success'
+        fail_msg: >-
+          the stop left unpoller {{ unpoller_restart.status.ActiveState }}
+          with result {{ unpoller_restart.status.Result }}
+        quiet: true

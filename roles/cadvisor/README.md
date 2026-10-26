@@ -27,6 +27,10 @@ enforcing host it otherwise denies the inotify watch on `/sys/fs/cgroup`, which
 crashes cadvisor. A non-enforcing host (e.g. the incus molecule container)
 ignores it.
 
+Where the host's DMI system UUID is unreadable, the host's `/etc/machine-id` is
+also bound read-only: cadvisor's system-UUID lookup otherwise falls back to the
+image's own copy, which is absent, and logs the miss at every machine-info refresh.
+
 OOM-event detection is off: it reads `/dev/kmsg`, which an unprivileged container
 cannot, so `container_oom_events_total` stays flat. The rest of the collectors
 are unaffected.

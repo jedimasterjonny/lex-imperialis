@@ -25,6 +25,9 @@ EnvironmentFile=/etc/unpoller/env
 HealthCmd=none
 
 [Service]
+# unpoller dies on the stop's SIGTERM and exits 143, which systemd would
+# otherwise record as a failed stop.
+SuccessExitStatus=143
 Restart=on-failure
 TimeoutStartSec=900
 

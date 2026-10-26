@@ -44,6 +44,12 @@
           - "'container_cpu_usage_seconds_total{' in cadvisor_metrics.content"
         fail_msg: cadvisor served no container_cpu_usage_seconds_total metric
 
+    - name: The host's system UUID is found
+      ansible.builtin.assert:
+        that:
+          - cadvisor_metrics.content is search('machine_cpu_cores\{[^}]*system_uuid="[^"]+"')
+        fail_msg: cadvisor exports an empty system_uuid — it read neither DMI nor /etc/machine-id
+
     # The disable_metrics list is the role's cardinality contract, but it cannot be
     # proven by metric absence: the three collectors it disables beyond cadvisor's
     # stock defaults — percpu, app, perf_event — emit nothing in a cgroups-v2
@@ -78,15 +84,24 @@
         fail_msg: "cadvisor's capability or no-new-privileges posture has regressed"
         quiet: true
 
+    - name: Read whether the host's DMI system UUID is readable
+      ansible.builtin.stat:
+        path: /sys/class/dmi/id/product_uuid
+      become: true
+      register: cadvisor_dmi_uuid
+
     # Capabilities are only half the posture: --privileged, a widened mount set, a
     # borrowed namespace or an extra security-opt all leave BoundingCaps untouched,
     # so the assertion above passes while the container gains the host. Pin the rest
     # of the surface exactly — an equality on the mount set, not a substring, so an
     # *added* mount fails too. The podman API socket is the one that matters: it is
     # root-equivalent regardless of :ro, so its absence is the security contract.
+    # The machine-id bind renders only where root cannot read DMI (a local incus
+    # instance cannot, CI's can), so the expected set follows the stat above.
     - name: The cAdvisor container takes no privileged escape hatch
       vars:
         cadvisor: "{{ cadvisor_inspect.stdout | from_json | first }}"
+        cadvisor_dmi_readable: "{{ cadvisor_dmi_uuid.stat.readable | default(false) }}"
       ansible.builtin.assert:
         that:
           - not (cadvisor.HostConfig.Privileged | default(false, true))
@@ -95,11 +110,15 @@
           - cadvisor.HostConfig.NetworkMode | default('', true) == 'host'
           - cadvisor.HostConfig.PidMode | default('', true) != 'host'
           - cadvisor.HostConfig.IpcMode | default('', true) != 'host'
-          - cadvisor.HostConfig.Binds | default([], true) | map('regex_replace', ':[^:]*$', '') | sort == ['/:/rootfs', '/sys:/sys']
+          - >-
+            cadvisor.HostConfig.Binds | default([], true) | map('regex_replace', ':[^:]*$', '') | sort
+            == (['/:/rootfs', '/sys:/sys'] if cadvisor_dmi_readable | bool
+            else ['/:/rootfs', '/etc/machine-id:/etc/machine-id', '/sys:/sys'])
         fail_msg: >-
           cadvisor's namespace, security-opt or mount posture has regressed —
           SecurityOpt={{ cadvisor.HostConfig.SecurityOpt | default([], true) }}
           CgroupMode={{ cadvisor.HostConfig.CgroupMode | default('', true) }}
           PidMode={{ cadvisor.HostConfig.PidMode | default('', true) }}
           Binds={{ cadvisor.HostConfig.Binds | default([], true) }}
+          DMI readable={{ cadvisor_dmi_readable }}
         quiet: true
