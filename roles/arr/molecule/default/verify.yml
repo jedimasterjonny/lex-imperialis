@@ -837,6 +837,18 @@
           - "'musicbrainz' in arr_beets_pipeline_cfg.stdout"
         quiet: true
 
+    - name: Run the pipeline as the image's placeholder uid
+      ansible.builtin.shell: podman exec -i --user 911 beets sh -s < {{ arr_beets_pipeline_inner_script }}
+      become: true
+      register: arr_beets_pipeline_early
+      changed_when: false
+
+    - name: The pipeline skips cleanly before init has remapped abc
+      ansible.builtin.assert:
+        that:
+          - "'beets still starting' in arr_beets_pipeline_early.stdout"
+        quiet: true
+
     # Running the oneshot proves the wrapper resolves beet/find/curl inside the
     # container and exits 0 on the empty tree (no download dir), creating the
     # staging and quarantine dirs as a side effect.

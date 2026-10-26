@@ -109,7 +109,8 @@ can't block new additions.
 The catalog config renders to `arr_beets_config_dir` on the host and bind-mounts
 read-only into beets at `/config/managed`; the script `podman exec`s into the
 running container so every path is `/data/...`. It skips cleanly when beets is
-down (so a boot-time catch-up can't fail the unit), and when beets stops or
+down, or up but its init has not yet remapped `abc` from the image's placeholder
+uid (so a boot-time catch-up can't fail the unit), and when beets stops or
 restarts under it mid-run — a container bump landing on the tick, a backup
 stopping it — since the next run redoes what was cut short; the pipeline's
 script does the same. The oneshot is ordered `After=beets.service` and the

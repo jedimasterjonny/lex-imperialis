@@ -12,6 +12,9 @@ systemctl is-active --quiet beets.service || { echo "beets not running; skipping
 rc=0
 podman exec --user abc beets sh -c '
 set -eu
+# Until the image init remaps abc to PUID, just after start (a boot catch-up), this
+# runs as the placeholder uid, which cannot reach /data: skip, catch up next run.
+[ "$(id -u)" = "{{ arr_apps.beets.uid }}" ] || { echo "beets still starting; skipping catalog"; exit 0; }
 cfg=/config/managed/library-config.yaml
 # Import new albums first (incremental skips already-cataloged dirs), so a
 # transient update failure can never block new additions. Quiet comes from the
