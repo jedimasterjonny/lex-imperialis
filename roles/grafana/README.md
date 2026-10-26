@@ -25,7 +25,7 @@ sites dir).
 - **Dashboards** — `provisioning/dashboards/default.yml` points at
   `/etc/grafana/dashboards`, where the role writes each `grafana_dashboards` entry
   fetched from grafana.com at its pinned revision, and mounts the directory
-  read-only.
+  `ro,Z` so the provisioner can watch it under enforcing SELinux.
 - **The datasource placeholder is rewritten on the way in.** A grafana.com export
   names its datasource with an `__inputs` placeholder that the file provisioner
   does not substitute; the role rewrites those to `grafana_datasource_uid`. Upper

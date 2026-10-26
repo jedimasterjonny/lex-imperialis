@@ -10,8 +10,11 @@ DropCapability=all
 {# grafana runs non-root as its own user (472) on an unprivileged port, so it #}
 {# needs no capability back. #}
 EnvironmentFile=/etc/grafana/env
-Volume=/etc/grafana/provisioning:/etc/grafana/provisioning:ro
-Volume=/etc/grafana/dashboards:/etc/grafana/dashboards:ro
+# :Z relabels both mounts container_file_t on each start: container_t may read
+# the host's default /etc label but not watch it, and the dashboard provisioner
+# watches its directory.
+Volume=/etc/grafana/provisioning:/etc/grafana/provisioning:ro,Z
+Volume=/etc/grafana/dashboards:/etc/grafana/dashboards:ro,Z
 # :U hands the named volume to the image's grafana user (472), which owns its
 # state dir; rootful podman would otherwise create it root-owned.
 Volume=grafana-data:/var/lib/grafana:U
