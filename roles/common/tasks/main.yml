@@ -174,10 +174,20 @@
 # package, not zypper: it dispatches to the zypper module on openSUSE, whose
 # disable_recommends already defaults true, so this is behaviour-preserving there
 # and works on Debian besides. Every name in common_packages exists under both.
+#
+# python3-selinux is a Provides (README), so every converge runs a real zypper
+# install and with it the play's metadata refresh. Exit 106 is that refresh
+# failing, a mirror caught mid-publish: retried rather than accepted, which would
+# leave firewalld's Provides install to refresh and fail instead. It reaches the
+# module unchanged through transactional-update; apt never exits it.
 - name: Install base packages
   ansible.builtin.package:
     name: "{{ common_packages }}"
     state: present
+  register: common_base_install
+  until: common_base_install.rc | default(0) != 106
+  retries: 10
+  delay: 60
   become: true
 
 # Declare the SELinux mode fleet-wide instead of leaning on the OS default, so it
