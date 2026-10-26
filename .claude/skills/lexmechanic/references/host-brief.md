@@ -104,9 +104,11 @@ allowed.
 - `chronyc tracking|sources`.
 - `findmnt`, `df -l` (a bare `df` stats NFS), `free`, `uptime`, `ip -s link`.
 - `wg show <if> latest-handshakes|transfer`.
-- `ausearch -m avc --start <when>`. Formats differ by locale, so render
+- `ausearch --input-logs -m avc --start <when>`. Formats differ by locale, so render
   `<when>` on the host, `"$(date -d <start> +%x)"`, or use a keyword such as
-  `this-month`.
+  `this-month`. Keep `--input-logs`: over ssh without a tty, stdin is a pipe,
+  so ausearch reads that instead of the audit logs and reports `<no matches>`
+  every time.
 - `curl -s` GET only: no method, body, upload, auth, config or output-file
   option in any spelling. Only to the endpoints your add-on names.
 - **Readable files**, read as `sudo -n cat <file> | <filters>`:
