@@ -20,6 +20,8 @@ done
 # Dump over the caddy network through the live database container into the dump
 # volume — never the web docroot. flock serialises concurrent runs (a manual run
 # racing the timer's catch-up) so they can't interleave on the shared temp file.
+# -o keeps the lock fd out of podman (flock itself holds the lock): its network
+# tooling would inherit the fd, and SELinux denies it at the domain transition.
 # The inner shell writes a consistent single-transaction dump to that temp file
 # and renames it over the last good one only on success (set -e), so a failed run
 # leaves the previous dump intact. It authenticates as the non-root app user from
@@ -27,7 +29,7 @@ done
 # the dump command line.
 # The $WORDPRESS_DB_* refs are single-quoted for the inner sh -ec to expand, not here.
 # shellcheck disable=SC2016
-exec flock /run/wp-db-dump.lock podman run --rm \
+exec flock -o /run/wp-db-dump.lock podman run --rm \
     --env-file /etc/wordpress/app.env \
     --network caddy \
     --volume wordpress-db-dump:/dump \
