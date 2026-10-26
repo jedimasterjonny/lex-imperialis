@@ -40,7 +40,7 @@ jitter; `Persistent`, so a reboot-missed run catches up). The script:
    value, so the next run retries.
 
 The unit's `ExecCondition` skips a cycle outright while `autoupdate.service` is
-running on scholam itself: the Friday dup and this timer both land at 04:00, and
+running on scholam itself: this timer's 15-minute cycle can land inside the weekly dup, and
 the dup holds the zypper lock the role's package query needs. It reads
 `ActiveState` as step 4 does — a oneshot is `activating` for its whole run and
 its `Restart=` wait, which `is-active` denies. The skip is a success, not a
