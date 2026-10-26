@@ -157,9 +157,72 @@
             autoupdate_execstartpost.stdout | regex_findall('argv\\[\\]=(\\S+)')
             == ['/usr/local/sbin/autoupdate-cleanup.sh',
                 '/usr/local/sbin/autoupdate-holds.sh',
+                '/usr/bin/timeout',
                 '/usr/bin/systemctl']
         fail_msg: "the metric hooks do not run ahead of the reboot, or failing one can fail the unit"
         quiet: true
+
+    - name: The update and the reboot each defer to an apply, within a bound
+      ansible.builtin.assert:
+        that:
+          # Bounded and ignore-prefixed both times: either missing, and a signal
+          # that never clears skips the week's update rather than delaying it.
+          - autoupdate_defer_entry in autoupdate_service.status.ExecStartPre
+          - autoupdate_defer_entry in autoupdate_execstartpost.stdout
+        fail_msg: "the update or its reboot does not defer to an apply under a bound the unit ignores"
+        quiet: true
+      vars:
+        autoupdate_defer_entry: "argv[]=/usr/bin/timeout 15m /usr/local/sbin/autoupdate-defer.sh ; ignore_errors=yes"
+
+    - name: Create the account an apply connects as
+      ansible.builtin.user:
+        name: ansible
+        system: true
+        create_home: false
+      become: true
+
+    # sleep under sshd's per-connection process name: comm is the executable's
+    # file name, which is what the deferral matches.
+    - name: Stage a stand-in for an apply's SSH connection
+      ansible.builtin.copy:
+        src: /usr/bin/sleep
+        remote_src: true
+        dest: /usr/local/bin/sshd-session
+        owner: root
+        group: root
+        mode: "0755"
+      become: true
+
+    # The deferral against each signal held by a oneshot stand-in — the account's
+    # SSH connection, and arbites.service activating as a real reconcile reads —
+    # and against a stray process of the account outside any connection, which
+    # must not hold it. The stand-in's start is queued (--no-block), hence the
+    # pause before the deferral looks. A hold's message proves it saw the
+    # signal, its stand-in gone when it returns (no process of the account,
+    # arbites inactive) that it waited rather than returned at once, and rc 0
+    # that the bound did not cut it off. The stray's lack of a message, with it
+    # still running afterwards, shows the deferral ignored it.
+    - name: The deferral waits out each signal of an apply, and only those
+      ansible.builtin.shell: |
+        set -e
+        systemd-run --collect --service-type=oneshot --no-block {{ item.stand_in }} 5
+        sleep 1
+        timeout 60 /usr/local/sbin/autoupdate-defer.sh
+        pgrep -c -u ansible || :
+        systemctl show --property=ActiveState --value arbites.service
+      loop:
+        - stand_in: --uid=ansible /usr/local/bin/sshd-session
+          expect: ["deferring: an Ansible apply is in progress on this host", "0", inactive]
+        - stand_in: --unit=arbites sleep
+          expect: ["deferring: an Ansible apply is in progress on this host", "0", inactive]
+        - stand_in: --uid=ansible sleep
+          expect: ["1", inactive]
+      loop_control:
+        label: "{{ item.stand_in }}"
+      register: autoupdate_defer
+      changed_when: false
+      failed_when: autoupdate_defer.rc != 0 or autoupdate_defer.stdout_lines != item.expect
+      become: true
 
     # MicroOS's alone: elsewhere the pre-reboot hook above takes the count, and a
     # second run at boot would repeat the removal on every reboot.
@@ -484,7 +547,7 @@
 
     # The same shadowing, through the unit template: the dup's snapshot is not
     # booted until the reboot, so the cleanup count leaves the hooks and the holds
-    # hook alone stays ahead of the reboot.
+    # hook alone of the metric ones stays ahead of the reboot.
     - name: The MicroOS update unit leaves the cleanup count to the boot
       ansible.builtin.assert:
         that:

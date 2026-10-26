@@ -28,6 +28,26 @@ that clears in hours. `AutoupdateFailed`'s `for:` is set longer than the 3 h the
 burst spans, so a run still healing itself does not page — change one and change
 the other.
 
+The update, and again its reboot, defer to an Ansible apply in progress on the
+host — the mirror of `arbites`'s hold. Fired mid-apply, the update would take the
+package lock the apply's tasks need and reboot under its SSH session.
+`autoupdate-defer.sh` waits while `ansible`, the account every play connects
+as, holds an SSH connection — sshd's per-connection process running as it — or
+while `arbites.service` runs, which covers scholam while the reconcile is still
+driving the other hosts. Not any process the account owns: a rootless podman
+pause process left behind by `podman`'s image prune keeps its user manager
+running for days, and would hold every update to both bounds. The script runs
+as an `ExecStartPre` and as the last hook before the reboot, each under
+`timeout 15m` and `-`-prefixed, so a signal that never clears delays the week's
+update and never skips it; the unit reads `activating` throughout, so `arbites`
+keeps holding. Both bounds stack on the timer's jitter under `MicroOSBuildStale`'s
+`for:`, and on the retry burst under `AutoupdateFailed`'s — change a bound and
+recheck both. Two gaps: scholam's own update does not wait for an apply from
+scholam other than `arbites` while it drives the other hosts; and an apply that
+changes the unit's `ExecStartPost` lines while the host waits ahead of its reboot
+can leave systemd unable to resume that list, so that week's reboot is silently
+skipped.
+
 `autoupdate_transactional` and `autoupdate_debian`, derived from
 `ansible_facts`, select the command. `autoupdate_masked_timers` names the
 distribution's own update timers, which are stopped and masked so exactly one
@@ -113,7 +133,7 @@ reports that package, as it does for the update itself. And `--clean-deps` takes
 the dependencies the listed packages leave unneeded in turn, so the transaction
 is routinely larger than the count that triggered it.
 
-The other `ExecStartPost` hook writes `autoupdate-holds.prom` beside it:
+The next `ExecStartPost` hook writes `autoupdate-holds.prom` beside it:
 `autoupdate_package_hold{package}` per package this host holds back, from
 `zypper --xmlout --non-interactive ll` on openSUSE and `apt-mark showhold`
 on Debian — both local reads, with no repository load and nothing to fail on a

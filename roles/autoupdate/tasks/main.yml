@@ -29,12 +29,12 @@
     mode: "0644"
   become: true
 
-# autoupdate.service's three hooks, all writing node_exporter textfiles: the
+# autoupdate.service's hooks. The metric ones write node_exporter textfiles: the
 # ExecStopPost records each run's outcome so a silently failing unattended update
-# alerts, and the two ExecStartPost hooks publish what a successful run hides —
-# the packages it was told to leave behind, and the ones it left behind that the
+# alerts, and two ExecStartPost hooks publish what a successful run hides — the
+# packages it was told to leave behind, and the ones it left behind that the
 # cleanup could not remove.
-- name: Install the update metric scripts
+- name: Install the update hook scripts
   ansible.builtin.template:
     src: "{{ item }}.j2"
     dest: "/usr/local/sbin/{{ item }}"
@@ -45,8 +45,9 @@
     - autoupdate-metric.sh
     - autoupdate-holds.sh
     - autoupdate-cleanup.sh
+    - autoupdate-defer.sh
   # Consumed by autoupdate-metric.sh.j2, the shared run-metric template symlinked
-  # in from node_exporter; the holds and cleanup scripts ignore them.
+  # in from node_exporter; the other scripts ignore them.
   vars:
     run_metric_textfile_dir: "{{ autoupdate_textfile_dir }}"
     run_metric_name: autoupdate
