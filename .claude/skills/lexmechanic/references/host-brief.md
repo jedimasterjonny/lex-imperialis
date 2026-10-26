@@ -104,16 +104,21 @@ allowed.
 - `chronyc tracking|sources`.
 - `findmnt`, `df -l` (a bare `df` stats NFS), `free`, `uptime`, `ip -s link`.
 - `wg show <if> latest-handshakes|transfer`.
-- `ausearch -m avc --start <when>`. Formats differ by locale, so render
-  `<when>` on the host, `"$(date -d <start> +%x)"`, or use a keyword such as
-  `this-month`.
+- `env LC_ALL=C ausearch --input-logs -m avc,user_avc,selinux_err,user_selinux_err --start "$(LC_ALL=C date -d <start> +%x)"`.
+  Both halves need C: a date rendered in one locale and parsed in another
+  can be misread without an error (`09/10/26` is 10 September in C,
+  9 October in en_GB). No keyword: each starts at its own point
+  (`this-month` on the 1st) that can fall after `<start>`. Keep
+  `--input-logs`: over ssh without a tty, stdin is a pipe, so ausearch reads
+  that instead of the audit logs and reports `<no matches>` every time.
 - `curl -s` GET only: no method, body, upload, auth, config or output-file
   option in any spelling. Only to the endpoints your add-on names.
 - **Readable files**, read as `sudo -n cat <file> | <filters>`:
   `/var/log/transactional-update.log`, `/var/log/zypp/history`,
   `/var/log/apt/history.log`, the node_exporter textfile `*.prom` files, the
   `/var/lib/arbites/` state flags (`last-applied-sha`, `pause`,
-  `apply-incomplete`), `/proc/pressure/*`, `/sys/fs/selinux/enforce`, and on
+  `apply-incomplete`), `/proc/pressure/*`, `/sys/fs/selinux/enforce`,
+  `/etc/audit/auditd.conf`, and on
   auspex the fan's `/sys/class/thermal/cooling_device*/cur_state` and
   `/sys/devices/platform/cooling_fan/hwmon/hwmon*/fan1_input`. Unit files
   come through `systemctl cat`.
@@ -233,8 +238,10 @@ For example, and anything else that changes state:
 6. **Storage:** `df -l`, btrfs usage, device stats and last scrub, SMART
    verdict, attributes and **self-test log**, NFS mount health and the snapper
    snapshot count.
-7. **SELinux:** enforcing state, AVCs in the window, and whether an autorelabel
-   is armed. How many days does `/var/log/audit` actually hold?
+7. **SELinux:** enforcing state, kernel and userspace denials in the window
+   (count `grep -E 'avc: +denied'` lines: AVC records also log grants and
+   notices), SELinux errors, and whether an autorelabel is armed. How many
+   days does `/var/log/audit` actually hold?
 8. **Network:** NetworkManager state changes, DHCP, `ipv4.may-fail` on the
    default connection, the node_exporter boot bind race
    (`cannot assign requested address`) at every boot, and chrony sync.
