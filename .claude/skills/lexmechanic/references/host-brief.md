@@ -104,13 +104,14 @@ allowed.
 - `chronyc tracking|sources`.
 - `findmnt`, `df -l` (a bare `df` stats NFS), `free`, `uptime`, `ip -s link`.
 - `wg show <if> latest-handshakes|transfer`.
-- `env LC_ALL=C ausearch --input-logs -m avc,user_avc,selinux_err,user_selinux_err --start "$(LC_ALL=C date -d <start> +%x)"`.
+- `env LC_ALL=C ausearch -i --input-logs -m avc,user_avc,selinux_err,user_selinux_err,mac_status --start "$(LC_ALL=C date -d <start> +%x)"`.
   Both halves need C: a date rendered in one locale and parsed in another
   can be misread without an error (`09/10/26` is 10 September in C,
   9 October in en_GB). No keyword: each starts at its own point
   (`this-month` on the 1st) that can fall after `<start>`. Keep
   `--input-logs`: over ssh without a tty, stdin is a pipe, so ausearch reads
-  that instead of the audit logs and reports `<no matches>` every time.
+  that instead of the audit logs and reports `<no matches>` every time. Keep
+  `-i`: it decodes the hex PROCTITLE command line so the mask can match it.
 - `curl -s` GET only: no method, body, upload, auth, config or output-file
   option in any spelling. Only to the endpoints your add-on names.
 - **Readable files**, read as `sudo -n cat <file> | <filters>`:
@@ -139,8 +140,9 @@ commands and redirect.
 
 Every read that returns log, API or file text ends, on the host and as
 ansible, in this mask: journalctl, `systemctl status`, container logs, curl,
-`transmission-remote` and file reads alike. Journals and download URLs carry
-indexer keys, and Plex logs carry tokens:
+`transmission-remote`, `ausearch` and file reads alike. Journals, download
+URLs and the command lines in audit records carry indexer keys, and Plex logs
+carry tokens:
 
 ```bash
 sed -E 's/((api_?key|apikey|X-Plex-Token|passkey)=)[^&" ]+/\1<k>/Ig'
@@ -226,7 +228,8 @@ For example, and anything else that changes state:
    what each update installed. Was each scheduled reboot clean: shutdown
    duration, units killed on timeout?
 2. **Kernel:** `-p warning` per boot. Look for I/O errors, OOM, hung tasks,
-   btrfs/ext4 errors, NIC link flaps, NFS "not responding", and AVC denials.
+   btrfs/ext4 errors, NIC link flaps, and NFS "not responding". AVC denials
+   are item 7's.
 3. **Journal:** `-p err` and `-p warning`, grouped by unit with counts and
    first/last times. Include `systemctl --failed`, `NRestarts`, and every
    timer's run and failure counts.
@@ -238,10 +241,18 @@ For example, and anything else that changes state:
 6. **Storage:** `df -l`, btrfs usage, device stats and last scrub, SMART
    verdict, attributes and **self-test log**, NFS mount health and the snapper
    snapshot count.
-7. **SELinux:** enforcing state, kernel and userspace denials in the window
+7. **SELinux:** enforcing state and any change to it in the window
+   (`MAC_STATUS` records), kernel and userspace denials in the window
    (count `grep -E 'avc: +denied'` lines: AVC records also log grants and
-   notices), SELinux errors, and whether an autorelabel is armed. How many
-   days does `/var/log/audit` actually hold?
+   notices), SELinux errors, and whether an autorelabel is armed. Records
+   from before auditd starts may reach only the kernel log, so run
+   `journalctl -k -b <n> -g 'avc: +denied|enforcing=|command line:'` (no
+   `-p`) for each boot and report its hits per boot, apart from the ausearch
+   count. Each boot should show `enforcing=1` on its command line or one
+   `enforcing=1 old_enforcing=0`, the normal switch at policy load; any other
+   boot ran permissive: report it, unless its command line is missing too,
+   since then the journal lost that boot's start. How many days does
+   `/var/log/audit` actually hold?
 8. **Network:** NetworkManager state changes, DHCP, `ipv4.may-fail` on the
    default connection, the node_exporter boot bind race
    (`cannot assign requested address`) at every boot, and chrony sync.
