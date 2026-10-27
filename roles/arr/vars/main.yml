@@ -97,9 +97,8 @@ arr_apps:
     # music library — both must be one mount for hardlinks to work.
     data: root
     # Read-only Ansible-rendered beets configs land at /config/managed; the
-    # catalog timer runs `beet -c /config/managed/...`. ro config under /etc, so
-    # no :Z (container_t reads etc_t).
-    binds: ["{{ arr_beets_config_dir }}:/config/managed:ro"]
+    # catalog timer runs `beet -c /config/managed/...`.
+    binds: ["{{ arr_beets_config_dir }}:/config/managed:ro,Z"]
     # No healthcheck: never auto-kill beets — the pipeline timer can have an import
     # in flight, and killing it mid-import leaves the library and quarantine
     # inconsistent. Its blackbox probe is the alert.
@@ -143,10 +142,10 @@ arr_apps:
     uid: 3007
     # Repo-rendered config bind-mounted read-only on top of the /config volume
     # (the radarr/sonarr configs plus the !secret api keys in secrets.yml); the
-    # volume keeps recyclarr's TRaSH-guide cache. ro config under /etc, so no :Z.
+    # volume keeps recyclarr's TRaSH-guide cache.
     binds:
-      - "{{ arr_recyclarr_config_dir }}/secrets.yml:/config/secrets.yml:ro"
-      - "{{ arr_recyclarr_config_dir }}/configs:/config/configs:ro"
+      - "{{ arr_recyclarr_config_dir }}/secrets.yml:/config/secrets.yml:ro,Z"
+      - "{{ arr_recyclarr_config_dir }}/configs:/config/configs:ro,Z"
   # Shares the wireguard netns, so every peer connection rides the tunnel;
   # caddy reaches the webui at the wireguard container's transmission alias.
   transmission:
@@ -156,9 +155,9 @@ arr_apps:
     port: 9091
     netns: wireguard
     data: [downloads]
-    # ro config under /etc, so no :Z (see beets). The finish script waits for the
-    # daemon to flush after --exit; without this file s6 SIGKILLs that wait at 5 s.
-    binds: ["{{ arr_transmission_timeout_finish }}:/etc/s6-overlay/s6-rc.d/svc-transmission/timeout-finish:ro"]
+    # The finish script waits for the daemon to flush after --exit; without this
+    # file s6 SIGKILLs that wait at 5 s.
+    binds: ["{{ arr_transmission_timeout_finish }}:/etc/s6-overlay/s6-rc.d/svc-transmission/timeout-finish:ro,Z"]
     # Shares wireguard's netns, so the RPC webui answers on localhost here. -sS
     # without -f treats an auth-on 401 the same as an auth-off 200 (both mean
     # "responding"), so it needs no credentials — which would otherwise leak into
@@ -170,7 +169,9 @@ arr_apps:
     uid: 3009
     caps: [CHOWN, NET_ADMIN, SETGID, SETUID]
     sysctls: [net.ipv4.conf.all.src_valid_mark=1]
-    binds: ["{{ arr_wireguard_conf_path }}:/config/wg_confs/wg0.conf:ro"]
+    # arr-wireguard-refresh reads the host file too, but as unconfined_service_t,
+    # which :Z's private MCS label does not shut out.
+    binds: ["{{ arr_wireguard_conf_path }}:/config/wg_confs/wg0.conf:ro,Z"]
     # Auto-recover a dropped tunnel: probe connectivity through wg0 and, on
     # sustained failure, kill the container so systemd restarts it (PartOf
     # bounces transmission into the fresh netns). The template forces on_failure
