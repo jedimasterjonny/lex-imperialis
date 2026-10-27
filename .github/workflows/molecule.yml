@@ -160,10 +160,13 @@ jobs:
       # with --auto and a dir pool — the storage driver is irrelevant to the test.
       # The connection plugin runs incus as the runner user, so grant it socket
       # access via the incus-admin group and enter that group with sg.
+      # incus-base, not incus: the latter hard-depends on the QEMU VM stack (117 MB
+      # against ~30 MB), and on a slow Azure mirror that download alone outran
+      # the 30-minute timeout. The scenarios launch containers only.
       - name: Set up incus
         run: |
           sudo apt-get update
-          sudo apt-get install -y incus
+          sudo apt-get install -y incus-base
           sudo incus admin init --auto --storage-backend=dir
           # Docker (preinstalled on the runner) defaults FORWARD to DROP, which
           # blocks incus container NAT; the runner also has no IPv6 egress.
