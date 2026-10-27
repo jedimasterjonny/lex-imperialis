@@ -201,6 +201,62 @@
         fail_msg: "the probe container did not run under {{ podman_expected_runtime }}"
         quiet: true
 
+    - name: Mark the journal before the healthcheck probe
+      ansible.builtin.command: journalctl --quiet --lines=0 --show-cursor
+      become: true
+      register: podman_journal_mark
+      changed_when: false
+
+    # Runs via podman's transient timer, as a quadlet's healthcheck does.
+    # sleep ignores SIGTERM as PID 1, so a stop would wait out its timeout.
+    - name: Start a container with a healthcheck
+      ansible.builtin.command: >-
+        podman run --detach --replace --name podman-health-probe --network=none
+        --stop-timeout 0 --health-cmd /bin/true --health-interval 1s
+        --rootfs /:O sleep infinity
+      become: true
+      changed_when: false
+
+    # Three runs, so the earlier runs' events would have reached the journal
+    # before the read. Log is null until the first run finishes.
+    - name: Wait for the probe's healthcheck to run three times
+      ansible.builtin.command: podman inspect podman-health-probe
+      become: true
+      register: podman_health_probe
+      changed_when: false
+      until: (podman_health_probe.stdout | from_json)[0]['State']['Health']['Log'] | default([], true) | length >= 3
+      retries: 15
+      delay: 1
+
+    # The probe's start event is the control: it proves podman's events reach
+    # the journal under PODMAN_EVENT, so the absence of health_status cannot pass
+    # vacuously.
+    - name: Read the healthcheck events the runs left in the journal
+      ansible.builtin.command:
+        argv:
+          - journalctl
+          - --quiet
+          - --output=cat
+          - --after-cursor={{ podman_journal_mark.stdout.split() | last }}
+          - PODMAN_EVENT=health_status
+          - PODMAN_EVENT=start
+      become: true
+      register: podman_health_journal
+      changed_when: false
+
+    - name: Healthcheck runs leave no events in the journal
+      ansible.builtin.assert:
+        that:
+          - podman_health_journal.stdout_lines | length == 1
+          - "' container start ' in podman_health_journal.stdout"
+        fail_msg: "expected only the probe's start event: {{ podman_health_journal.stdout_lines }}"
+        quiet: true
+
+    - name: Remove the healthcheck probe
+      ansible.builtin.command: podman rm --force podman-health-probe
+      become: true
+      changed_when: false
+
     # aardvark-dns is only *recommended* by the podman package, so the role
     # installs it explicitly; podman info lists it under the backend's dns only
     # when present. netavark ships regardless, so it cannot stand in for this.
