@@ -10,8 +10,8 @@ Type=oneshot
 # the role always renders it, but a missing file must not wedge the timer — with no
 # token both scripts simply skip the deployment record.
 EnvironmentFile=-{{ arbites_env_file }}
-# Skip the cycle while autoupdate is running: its Friday dup and this timer both
-# land at 04:00, and the role's zypper query then fails on the lock (rc 7). A
+# Skip the cycle while autoupdate is running: this timer can tick inside
+# autoupdate's weekly dup, and the role's zypper query then fails on the lock (rc 7). A
 # condition exit of 1 leaves the unit inactive rather than failed, the metric
 # hook counts its exec-condition result as success, and the next cycle retries.
 # ActiveState, as arbites.sh's fleet hold reads it: a running oneshot is
