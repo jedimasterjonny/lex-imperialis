@@ -274,6 +274,14 @@ local traffic does not.
   modprobed only when `/sys/module/wireguard` is absent. The molecule
   instance is unprivileged with no kmod; prepare loads the module on the host
   instead.
+- **SELinux** — the container's `ip` logs `module_request` denials at each
+  wireguard start: the image's init and wg-quick look up interfaces that do not
+  exist yet, and a missing name looked up with `NET_ADMIN` makes the kernel ask
+  to autoload `netdev-<name>`. No such module exists and the tunnel comes up, so
+  it is accepted. The only grant is the `domain_kernel_load_modules` boolean,
+  which lets every domain on the host trigger an autoload — never that. Revisit
+  only if a request names anything but `netdev-<name>`, or wg0 never comes up
+  at a start that logs it.
 - **RPC auth** — `arr_transmission_username`/`arr_transmission_password`
   (vault) render to a 0600 `EnvironmentFile`; the LSIO image turns RPC auth on
   and sets the rpc user/password from them. Both empty (the default) leaves
