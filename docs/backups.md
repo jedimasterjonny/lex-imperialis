@@ -163,7 +163,8 @@ probe below — as `OffsiteMirrorTaskFailed` if DSM records the refusal in each
 task's cached manifest, and otherwise as `OffsiteMirrorTaskOverdue` once the last
 success ages past a week. Its `autoupdate` reboot sits at Wed 07:00 so a
 transactional reboot cannot cut the Wed 02:00 mirror: with the timer's two-hour
-randomised delay it lands 07:00–09:00, so the mirror is guaranteed five hours —
+randomised delay, and up to 30 minutes' deferral to an apply in progress, it
+lands 07:00–09:30, so the mirror is guaranteed five hours —
 see `playbooks/rogue-trader.yml` for the four-hour assumption that sets the
 slot.
 

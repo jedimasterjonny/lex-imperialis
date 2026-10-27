@@ -12,7 +12,7 @@ Image={{ node_exporter_image }}
 # report the host's interfaces, processes, and filesystems rather than its own.
 # label=disable lets container_t reach the host D-Bus socket for the systemd
 # collector; the enforcing fleet denies the connect otherwise (the trade-off
-# cadvisor makes for the podman socket).
+# cadvisor makes for its /sys/fs/cgroup inotify watch).
 Network=host
 PodmanArgs=--pid=host --security-opt=label=disable
 # Drop every capability and bar privilege escalation. Host introspection reads
@@ -27,8 +27,8 @@ DropCapability=all
 AddCapability=CAP_SYS_TIME
 Volume=/:/host:ro,rslave
 # Read-only host D-Bus system bus, mounted at the path the bus library dials
-# (/var/run, not /run — the image has no /var/run symlink), as cadvisor does for
-# the podman socket. No :Z — relabelling the host's socket would break host D-Bus.
+# (/var/run, not /run — the image has no /var/run symlink). No :Z — relabelling
+# the host's socket would break host D-Bus.
 Volume=/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket:ro
 # The textfile directory is read through the read-only /host bind, so batch jobs
 # drop *.prom files on the host without the exporter needing a writable mount.

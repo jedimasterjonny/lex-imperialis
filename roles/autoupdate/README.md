@@ -41,7 +41,8 @@ as an `ExecStartPre` and as the last hook before the reboot, each under
 `timeout 15m` and `-`-prefixed, so a signal that never clears delays the week's
 update and never skips it; the unit reads `activating` throughout, so `arbites`
 keeps holding. Both bounds stack on the timer's jitter under `MicroOSBuildStale`'s
-`for:`, and on the retry burst under `AutoupdateFailed`'s — change a bound and
+`for:`, and on the retry burst, which a signal held through every bound carries
+just past `AutoupdateFailed`'s — change a bound and
 recheck both. Two gaps: scholam's own update does not wait for an apply from
 scholam other than `arbites` while it drives the other hosts; and an apply that
 changes the unit's `ExecStartPost` lines while the host waits ahead of its reboot

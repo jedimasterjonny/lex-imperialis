@@ -17,7 +17,8 @@
     # Backup is copying, and its windows (Tue 03:00 photos, Wed 02:00 podman, Thu
     # 04:00 home — docs/schedule.md) are DSM's and invisible from here. The NAS
     # keeps Europe/London as this host does, so the gap holds all year: with the
-    # timer's RandomizedDelaySec=2h the reboot lands 07:00–09:00, an hour after a
+    # timer's RandomizedDelaySec=2h and up to 30m deferring the update and its
+    # reboot to an apply in progress, the reboot lands 07:00–09:30, an hour after a
     # Wed 02:00 mirror that runs under four. That hour is new — while the NAS sat
     # on fixed GMT the earliest reboot met the mirror's worst case exactly. A
     # first full mirror can exceed four hours; pause the timer for that one run

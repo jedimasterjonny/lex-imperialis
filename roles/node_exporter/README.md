@@ -69,7 +69,7 @@ The collector reads the host D-Bus system bus, so the container binds the host's
 path the bus library dials; the image has no `/var/run` symlink) and adds
 `--security-opt=label=disable` —
 the enforcing fleet otherwise denies `container_t` the socket connect (the same
-trade-off cadvisor makes for the podman socket). Reads use the default,
+trade-off cadvisor makes for its `/sys/fs/cgroup` inotify watch). Reads use the default,
 non-private bus connection, which systemd serves to any uid, so the exporter
 stays unprivileged.
 
