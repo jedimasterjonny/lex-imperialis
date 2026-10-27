@@ -15,6 +15,10 @@ role before molecule can run — the one host it cannot set up for itself.
   NetworkManager. A stopped instance returns its interface to the host netns
   renamed `vethXXXXXXXX`, and NM claiming that orphan strands it in the
   default firewalld zone, one per instance destroyed, until a reboot.
+- **lxcfs stop** — a drop-in swaps the package's `ExecStopPost` `fusermount -u`,
+  which SELinux denies `init_t`, for an equally non-lazy `umount`. The handler
+  only reloads systemd — restarting lxcfs breaks running instances' `/proc` —
+  so it takes effect at lxcfs's next stop.
 - **Storage** — btrfs pool on the fleet (`incus_storage_driver` at
   `incus_storage_source`); molecule's non-btrfs VMs override to a source-less
   `dir` pool, so the btrfs default is not molecule-tested.
