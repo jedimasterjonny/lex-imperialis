@@ -7,6 +7,6 @@ pre-commit==4.7.0
 # molecule scenario (the collection ships in ansible but not these).
 python-dateutil==3.0.0
 requests==2.34.2
-ruff==0.17.2
+ruff==0.17.3
 shellcheck-py==0.11.0.1
 yamllint==1.38.0
