@@ -31,5 +31,13 @@ terraform {
       source  = "hashicorp/google-beta"
       version = "~> 8.0"
     }
+    vercel = {
+      source  = "vercel/vercel"
+      version = "~> 5.24"
+    }
+    github = {
+      source  = "integrations/github"
+      version = "~> 6.13"
+    }
   }
 }
