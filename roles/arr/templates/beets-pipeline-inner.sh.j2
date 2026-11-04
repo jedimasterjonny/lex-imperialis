@@ -48,8 +48,12 @@ rm -rf "$STAGING"/*.partial
 trigger_lidarr() {
   [ -n "$KEY" ] || { echo "no lidarr key; not triggering $1"; return 1; }
   body="$(jq -nc --arg p "$1" '{name:"DownloadedAlbumsScan",path:$p,importMode:"Move"}')"
+  # -H @- reads the key from the here-document, off curl's world-readable argv.
   code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/api/v1/command" \
-    -H "X-Api-Key: $KEY" -H 'Content-Type: application/json' -d "$body")
+    -H @- -H 'Content-Type: application/json' -d "$body" <<EOF
+X-Api-Key: $KEY
+EOF
+  )
   case "$code" in
     2*) return 0 ;;
     4*) echo "lidarr rejected scan of $1 (HTTP $code)"; return 0 ;;

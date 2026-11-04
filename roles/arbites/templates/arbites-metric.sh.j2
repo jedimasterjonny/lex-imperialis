@@ -42,14 +42,15 @@ mv "$tmp" "{{ arbites_metric_file }}"
 # nothing. Deliberately after the metric: the .prom file is what the ArbitesFailed
 # alert reads, and it must never wait on a network call. Best-effort, and the id is
 # dropped whatever the post did, so a failed close cannot leak this run's outcome
-# onto the next run's record.
+# onto the next run's record. The token goes in through a header file so it stays
+# off curl's world-readable argv (printf is the builtin, so it execs nothing).
 if [ -n "${ARBITES_GITHUB_TOKEN:-}" ] && [ -s "$deployment_id_file" ]; then
     state=failure
     [ "$success" = 1 ] && state=success
     jq -nc --arg state "$state" --arg sha "$sha" \
         '{state: $state, description: ("fleet at " + $sha)}' \
         | curl --silent --show-error --fail --max-time 15 \
-            --header "Authorization: Bearer ${ARBITES_GITHUB_TOKEN:-}" \
+            --header @<(printf 'Authorization: Bearer %s\n' "${ARBITES_GITHUB_TOKEN:-}") \
             --header "Accept: application/vnd.github+json" \
             --header "X-GitHub-Api-Version: 2022-11-28" \
             --data @- \

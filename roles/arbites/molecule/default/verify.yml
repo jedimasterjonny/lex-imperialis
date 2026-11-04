@@ -116,6 +116,48 @@
         fail_msg: "the scripts do not post the deployment record, or one embeds the token"
         quiet: true
 
+    # Neither call can reach GitHub here, so a stand-in curl reports what each was
+    # handed: the token must arrive through the header file, never in argv.
+    - name: Run both deployment calls through an argv-recording curl
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          stub="$(mktemp -d)"
+          trap 'rm -rf "$stub"' EXIT
+          cat >"$stub/curl" <<'EOF'
+          #!/bin/bash
+          echo "argv: $*" >&2
+          for arg; do
+              if [[ $arg == @/dev/fd/* ]]; then sed 's/^/header: /' "${arg#@}" >&2; fi
+          done
+          cat >/dev/null
+          EOF
+          chmod +x "$stub/curl"
+          PATH="$stub:$PATH"
+          github_repo=unused
+          source <(sed -n '/^github_api() {/,/^}/p' {{ arbites_script }})
+          github_api deployments </dev/null
+          echo 1 >{{ arbites_deployment_id_file }}
+          SERVICE_RESULT=success {{ arbites_metric_script }}
+        executable: /bin/bash
+      environment:
+        ARBITES_GITHUB_TOKEN: molecule-fake-token
+      register: arbites_curl_calls
+      changed_when: false
+      become: true
+
+    - name: Both deployment calls carry the token in a header file, never in argv
+      vars:
+        arbites_curl_argv: "{{ arbites_curl_calls.stderr_lines | select('match', 'argv: ') | list }}"
+        arbites_curl_headers: "{{ arbites_curl_calls.stderr_lines | select('match', 'header: ') | list }}"
+      ansible.builtin.assert:
+        that:
+          - arbites_curl_argv | length == 2
+          - "'molecule-fake-token' not in (arbites_curl_argv | join)"
+          - "arbites_curl_headers == ['header: Authorization: Bearer molecule-fake-token'] * 2"
+        fail_msg: "the token reached curl's argv, or did not reach its header file: {{ arbites_curl_calls.stderr_lines }}"
+        quiet: true
+
     - name: Stat the environment file the token reaches the scripts through
       ansible.builtin.stat:
         path: "{{ arbites_env_file }}"
