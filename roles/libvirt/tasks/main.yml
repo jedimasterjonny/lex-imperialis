@@ -51,6 +51,19 @@
     mode: "2771"
   become: true
 
+# Most applies are the container-refresh path, which runs no roles, so the task
+# above can lag an upgrade by days. autoupdate reboots straight after one, so the
+# boot puts the store back instead.
+- name: Restore the image store's permissions at boot
+  ansible.builtin.copy:
+    content: |
+      z {{ libvirt_image_dir }} 2771 root libvirt
+    dest: /etc/tmpfiles.d/libvirt-image-store.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+
 - name: Install the Tumbleweed image refresh script
   ansible.builtin.template:
     src: tumbleweed-image-refresh.sh.j2

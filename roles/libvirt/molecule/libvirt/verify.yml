@@ -75,6 +75,40 @@
         fail_msg: "{{ libvirt_image_dir }} is not 2771 root:libvirt"
         quiet: true
 
+    # An upgrade, then the boot that follows it. The libvirt tier's first reboot
+    # powers the VM off (virt-install's cloud-init boot), so run tmpfiles as the
+    # boot does: from PID 1, over the whole config tree, in its own SELinux domain.
+    # The boot's unit tolerates a line it could not apply, so only the outcome
+    # counts.
+    - name: Put the image store on its packaged mode
+      ansible.builtin.file:
+        path: "{{ libvirt_image_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0711"
+      become: true
+
+    - name: Run tmpfiles as the boot does
+      ansible.builtin.command: systemd-run --wait --collect systemd-tmpfiles --create
+      changed_when: false
+      failed_when: false
+      become: true
+
+    - name: Stat the image store after tmpfiles
+      ansible.builtin.stat:
+        path: "{{ libvirt_image_dir }}"
+      register: libvirt_image_store_restored
+
+    - name: Tmpfiles puts the image store back to 2771 root:libvirt
+      ansible.builtin.assert:
+        that:
+          - libvirt_image_store_restored.stat.mode == '2771'
+          - libvirt_image_store_restored.stat.pw_name == 'root'
+          - libvirt_image_store_restored.stat.gr_name == 'libvirt'
+        fail_msg: "tmpfiles did not put {{ libvirt_image_dir }} back to 2771 root:libvirt"
+        quiet: true
+
     - name: Stat the image refresh script
       ansible.builtin.stat:
         path: "{{ libvirt_image_refresh_script }}"
