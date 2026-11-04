@@ -69,12 +69,12 @@ allowed.
 - **Container logs come from the unit's journal**, which spans every
   recreation: quadlet recreates the container on each restart, so
   `podman logs` covers only the current instance. Each container's unit is
-  named after it. Count on the host, never ship a whole log back, and end
-  samples in the mask (**Filters**):
+  named after it. Count on the host, never ship a whole log back, and send
+  samples through the mask (**Filters**):
 
   ```bash
   ssh -o BatchMode=yes -o ConnectTimeout=10 ansible@<addr> 'timeout 120 sudo -n journalctl -u <c> --since <start> -o cat -q | grep -ciE '"'"'error|fatal|panic'"'"''
-  ssh -o BatchMode=yes -o ConnectTimeout=10 ansible@<addr> 'timeout 120 sudo -n nice -n 19 ionice -c3 journalctl -u <c> --since <start> -o cat -q | grep -iE '"'"'error|fatal'"'"' | tail -n 20 | sed -E '"'"'s/((api_?key|apikey|X-Plex-Token|passkey)=)[^&" ]+/\1<k>/Ig'"'"''
+  ssh -o BatchMode=yes -o ConnectTimeout=10 ansible@<addr> 'timeout 120 sudo -n nice -n 19 ionice -c3 journalctl -u <c> --since <start> -o cat -q | grep -aiE '"'"'error|fatal'"'"' | tail -n 20 | LC_ALL=C sed -E '"'"'s/((api[-_]?key|[a-z0-9]+_key|X-Plex-Token|passkey|authkey|torrent_pass|token|signature|nonce|body[-_]?hash|passw(or)?d|secret)(=|%(25)*3D)(\\*")?)[^&" ]*[^&" \\]/\1<k>/Ig'"'"''
   ```
 
   `podman logs --since <start> <c> 2>&1`, piped the same way, only for a
@@ -82,7 +82,7 @@ allowed.
   `podman ps -a --filter label=PODMAN_SYSTEMD_UNIT`.
 - `dmesg -T --level=<levels>`.
 - `systemctl status|show|list-units|list-timers|cat|--failed`, with `--no-pager`
-  and `-n <lines>`; `status` ends in the mask. Restarts come
+  and `-n <lines>`; `status` goes through the mask. Restarts come
   from `systemctl show -p NRestarts <unit>`: quadlet recreates the container,
   so podman's `RestartCount` is always 0.
 - `podman ps -a --format …`, `podman system df`.
@@ -138,15 +138,25 @@ operand (its second operand is an output file), `wc`, `cut`, `tr`, `head`,
 `tail` (never `-f`); `jq` where it is installed. Not `awk`, which can run
 commands and redirect.
 
-Every read that returns log, API or file text ends, on the host and as
-ansible, in this mask: journalctl, `systemctl status`, container logs, curl,
-`transmission-remote`, `ausearch` and file reads alike. Journals, download
-URLs and the command lines in audit records carry indexer keys, and Plex logs
-carry tokens:
+Every read that returns log, API or file text goes, on the host and as
+ansible, through this mask: journalctl, `systemctl status`, container logs,
+curl, `transmission-remote`, `ausearch` and file reads alike. Journals, download
+URLs and the command lines in audit records carry indexer keys, Plex logs carry
+tokens, and web server logs carry signed query strings:
 
 ```bash
-sed -E 's/((api_?key|apikey|X-Plex-Token|passkey)=)[^&" ]+/\1<k>/Ig'
+LC_ALL=C sed -E 's/((api[-_]?key|[a-z0-9]+_key|X-Plex-Token|passkey|authkey|torrent_pass|token|signature|nonce|body[-_]?hash|passw(or)?d|secret)(=|%(25)*3D)(\\*")?)[^&" ]*[^&" \\]/\1<k>/Ig'
 ```
+
+It covers only those names, as `name=value`, quoted, escaped or URL-encoded;
+`LC_ALL=C` stops an invalid byte hiding a value. It misses every other name
+(`pass=`, `pwd=`, `auth=`, and `key=` and `sig=`, which audit records use),
+`name: value`, `name => value`, JSON, `key = value`, `--token x`, `user:pw@host`,
+a key in a URL path, and the tail of a quoted value with spaces. Mask before
+truncating: `cut`, `grep -o` and
+anything else that reduces a line goes after the mask, because it can leave a
+value without the `name=` the mask matches. Whole-line `grep` and `tail -n` may
+go before it.
 
 ## Never read
 
@@ -274,7 +284,7 @@ Tumbleweed; media stack in a WireGuard netns; caddy publishes.
   The mask runs on the host:
 
   ```bash
-  ssh -o BatchMode=yes -o ConnectTimeout=10 ansible@<addr> 'timeout 120 sudo -n podman exec <app> sh -c '"'"'printf "X-Api-Key: %s\n" "$<APP>__AUTH__APIKEY" | curl -s -H @- "http://localhost:<port>/api/<v>/<path>"'"'"' | sed -E '"'"'s/((api_?key|apikey|X-Plex-Token|passkey)=)[^&" ]+/\1<k>/Ig'"'"''
+  ssh -o BatchMode=yes -o ConnectTimeout=10 ansible@<addr> 'timeout 120 sudo -n podman exec <app> sh -c '"'"'printf "X-Api-Key: %s\n" "$<APP>__AUTH__APIKEY" | curl -s -H @- "http://localhost:<port>/api/<v>/<path>"'"'"' | LC_ALL=C sed -E '"'"'s/((api[-_]?key|[a-z0-9]+_key|X-Plex-Token|passkey|authkey|torrent_pass|token|signature|nonce|body[-_]?hash|passw(or)?d|secret)(=|%(25)*3D)(\\*")?)[^&" ]*[^&" \\]/\1<k>/Ig'"'"''
   ```
 
   `<path>` is one of `system/status`, `health`, `queue?pageSize=200`,
@@ -291,7 +301,7 @@ Tumbleweed; media stack in a WireGuard netns; caddy publishes.
   `USER` and `PASS`, and its `<port>` is filled in for you:
 
   ```bash
-  ssh -o BatchMode=yes -o ConnectTimeout=10 ansible@<addr> 'timeout 120 sudo -n podman exec transmission sh -c '"'"'TR_AUTH="$USER:$PASS" transmission-remote 127.0.0.1:<port> --authenv -l'"'"' | sed -E '"'"'s/((api_?key|apikey|X-Plex-Token|passkey)=)[^&" ]+/\1<k>/Ig'"'"''
+  ssh -o BatchMode=yes -o ConnectTimeout=10 ansible@<addr> 'timeout 120 sudo -n podman exec transmission sh -c '"'"'TR_AUTH="$USER:$PASS" transmission-remote 127.0.0.1:<port> --authenv -l'"'"' | LC_ALL=C sed -E '"'"'s/((api[-_]?key|[a-z0-9]+_key|X-Plex-Token|passkey|authkey|torrent_pass|token|signature|nonce|body[-_]?hash|passw(or)?d|secret)(=|%(25)*3D)(\\*")?)[^&" ]*[^&" \\]/\1<k>/Ig'"'"''
   ```
 
   Likewise `-si`, `-st`, `-t <ids> -f`, and `-t <ids> -i` piped through
