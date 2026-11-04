@@ -65,7 +65,9 @@ allowed.
   `-o short-iso|short-precise|cat` only (`json` and `export` carry coredump
   environments). Never `-f`. Narrow on the host
   (`journalctl -b <n> -u <unit> -g <pattern>`) rather than pulling a whole boot
-  back.
+  back. `-g` also matches sudo's own `COMMAND=` line from the audit's earlier
+  reads, so `grep -v COMMAND=` before counting. `--since <start> -k` reads only
+  the current boot, so kernel checks need `-b <n>`.
 - **Container logs come from the unit's journal**, which spans every
   recreation: quadlet recreates the container on each restart, so
   `podman logs` covers only the current instance. Each container's unit is
