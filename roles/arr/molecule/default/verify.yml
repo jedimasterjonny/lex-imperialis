@@ -866,6 +866,42 @@
       become: true
       changed_when: false
 
+    # The empty tree never reaches lidarr, so stage an album and poke the real app
+    # through a curl that reports its argv: a poke rather than a rejection proves
+    # the key arrived, and the report proves it stayed off the command line. The
+    # track stops a timer tick landing here from reading the album as imported.
+    - name: Poke lidarr with a staged album through an argv-recording curl
+      ansible.builtin.shell:
+        cmd: |
+          set -eu
+          album="{{ arr_beets_staging_dir }}/Some Staged Album"
+          trap 'podman exec --user abc beets rm -rf /tmp/argv-shim "$album" "/config/pipeline/pokes/Some Staged Album"' EXIT
+          podman exec --user abc beets mkdir -p /tmp/argv-shim "$album"
+          podman exec --user abc beets touch "$album/track.flac"
+          podman exec -i --user abc beets sh -c 'cat >/tmp/argv-shim/curl; chmod +x /tmp/argv-shim/curl' <<'EOF'
+          #!/bin/sh
+          echo "argv: $*" >&2
+          exec /usr/bin/curl "$@"
+          EOF
+          podman exec -i --user abc --env LIDARR__AUTH__APIKEY beets \
+            sh -c 'PATH=/tmp/argv-shim:$PATH exec sh -s' <{{ arr_beets_pipeline_inner_script }}
+        executable: /bin/bash
+      environment:
+        LIDARR__AUTH__APIKEY: "{{ arr_api_keys.lidarr }}"
+      register: arr_beets_lidarr_poke
+      changed_when: false
+      become: true
+
+    - name: The key reaches lidarr, and not through curl's argv
+      ansible.builtin.assert:
+        that:
+          - "'poked ' in arr_beets_lidarr_poke.stdout"
+          - "'rejected' not in arr_beets_lidarr_poke.stdout"
+          - "'argv: ' in arr_beets_lidarr_poke.stderr"
+          - arr_api_keys.lidarr not in arr_beets_lidarr_poke.stderr
+        fail_msg: "{{ arr_beets_lidarr_poke.stdout_lines + arr_beets_lidarr_poke.stderr_lines }}"
+        quiet: true
+
     # The ExecStopPost hook ran and published the backlog metric; the empty tree
     # has nothing parked, so both gauges read zero.
     - name: Read the backlog metric the ExecStopPost published
