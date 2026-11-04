@@ -85,10 +85,18 @@
     # detects MicroOS (read-only root plus /usr/sbin/transactional-update) and
     # transparently wraps zypper in transactional-update. Exercising it here
     # means a failure lands on a throwaway server rather than on rogue-trader.
+    #
+    # Exit 106 is a repository's metadata refresh failing, a mirror caught
+    # mid-publish. It reaches the module unchanged through transactional-update,
+    # which drops the snapshot, so each retry starts clean from the same base.
     - name: Install the packages the fleet roles need
       community.general.zypper:
         name: "{{ microos_packages }}"
         state: present
+      register: microos_package_install
+      until: microos_package_install.rc | default(0) != 106
+      retries: 10
+      delay: 60
 
     # --continue extends the snapshot the install above just created, rather
     # than branching a second one off the still-running old root, which would
