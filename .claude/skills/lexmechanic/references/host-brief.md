@@ -312,8 +312,15 @@ Tumbleweed; media stack in a WireGuard netns; caddy publishes.
   `--move`, `--remove-and-delete`, `--verify`, `--reannounce`, `--start` or
   `--stop`. Read how the last stops went from the journal: clean exit, or
   killed at the stop timeout.
-- **Plex:** `/identity` and its unit's journal, masked. No API call that
-  carries a token.
+- **Plex:** `/identity`, its unit's journal and its own logs, masked. No API
+  call that carries a token. HTTP answers are not in the journal: they are the
+  `Completed:` lines in Plex's logs, which hold binary bytes (so `grep -a`) and
+  tokens. The glob is not in time order, so read each line's date:
+
+  ```bash
+  ssh -o BatchMode=yes -o ConnectTimeout=10 ansible@<addr> 'timeout 120 sudo -n nice -n 19 ionice -c3 podman exec plex sh -c '"'"'cat "/config/Library/Application Support/Plex Media Server/Logs/"Plex\ Media\ Server*.log'"'"' | grep -a Completed: | tail -n 20 | LC_ALL=C sed -E '"'"'s/((api[-_]?key|[a-z0-9]+_key|X-Plex-Token|passkey|authkey|torrent_pass|token|signature|nonce|body[-_]?hash|passw(or)?d|secret)(=|%(25)*3D)(\\*")?)[^&" ]*[^&" \\]/\1<k>/Ig'"'"''
+  ```
+
 - **Also check:** WireGuard health kills, the beets jobs, recyclarr's cron,
   and whether anything is actually being acquired (scriptorum free space,
   grabs).
