@@ -93,12 +93,14 @@ journal socket it is denied. `console-prefixed` looks like the fix and is not:
 its `<N>` folds in the daemon facility, which journald's stream parser rejects,
 so the line stays at `info` with the prefix left in its text.
 
-Two `getattr` denials at each proxy start, not per connection, are accepted
-rather than fixed. They match libsystemd-shared's start-up probes — whether the
+Three denials at each proxy start, not per connection, are accepted rather than
+fixed. Two `getattr`s match libsystemd-shared's start-up probes — whether the
 process sits in the init pid namespace (`nsfs_t`) and whether the kernel has
-pidfs (`pidfs_t`) — neither of which the domain grants. The proxy starts and
-forwards regardless: the banner probe stays green and the mirrors complete.
-Revisit only if one ever lands beside a `ProbeDown` on this listener.
+pidfs (`pidfs_t`) — neither of which the domain grants. The third, a `search` on
+`/proc/sys/fs` (`sysctl_fs_t`), first appeared with systemd 261; its trigger is
+not established. The proxy starts and forwards regardless: its journal shows no
+errors, the banner probe stays green and the mirrors complete. Revisit only if
+one ever lands beside a `ProbeDown` on this listener.
 
 ## What the container tier cannot test
 
