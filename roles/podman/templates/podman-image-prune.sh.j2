@@ -6,9 +6,19 @@ set -euo pipefail
 # reported rather than eating the whole run's TimeoutStartSec budget. stdin from
 # /dev/null because --pipe would otherwise hand the child the caller's own stdin,
 # and anything reading it would swallow the rest of the loop.
+#
+# Retried once when podman itself fails (125), never after a RuntimeMaxSec kill
+# (systemd-run returns 1), so a wedged store still costs one bound, not two. Full
+# rationale in the role's README.
 prune() {
-  systemd-run --quiet --wait --pipe --collect --property=RuntimeMaxSec=5m "$@" \
-    /usr/bin/podman image prune --all --force </dev/null
+  local try rc
+  for try in 1 2; do
+    rc=0
+    systemd-run --quiet --wait --pipe --collect --property=RuntimeMaxSec=5m "$@" \
+      /usr/bin/podman image prune --all --force </dev/null || rc=$?
+    { [ "$rc" -eq 125 ] && [ "$try" -eq 1 ]; } || return "$rc"
+    echo "podman-image-prune: podman failed (125), retrying" >&2
+  done
 }
 
 # Stores are independent, so one failure must not skip the rest — including

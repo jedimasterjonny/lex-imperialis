@@ -233,6 +233,15 @@ prune's PAM session ends with its scope abandoned, still holding rootless
 podman's pause process, which keeps the account's user manager running until
 reboot. A stray store is deleted by hand.
 
+A prune lists unused images, then removes them, so a `podman run` that claims
+one in between fails the whole prune with `image is in use` (exit 125). The
+schedule cannot avoid it: `wordpress-cron`'s 5-minute timer counts from boot, so
+its phase drifts across any fixed prune time, and systemd's default one-minute
+`AccuracySec` merges the two wakeups when they fall close together (rogue-trader,
+2026-11-07). So each prune is retried once on 125. The retry lists the images
+again and finds the claimed one in use. A `RuntimeMaxSec` kill is not retried,
+so a wedged store still costs one bound.
+
 A store its owner has left unusable never stops the others being pruned: the run
 logs it, carries on, and exits non-zero at the end. `SystemdUnitFailed` does not
 exclude this unit, so that raises a warning without a bespoke metric or rule.
