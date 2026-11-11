@@ -1,6 +1,6 @@
 ---
 # renovate's image manager bumps the tag.
-homepage_image: ghcr.io/gethomepage/homepage:v2.7.0@sha256:19c5c09184458a41b7b5915e71463a39f36cd33540f41bdbed008791b8182d5f
+homepage_image: ghcr.io/gethomepage/homepage:v2.8.0@sha256:019d8f063a7299e7c1c51ee4a70b692291809af3244894fbec2c2ac7d1f71b18
 
 # The config files Ansible owns: rendered to /etc/homepage and each mounted
 # read-only over the seeded config volume, from this one list. Not a tunable —
