@@ -101,8 +101,10 @@ including a bare "wander", confirm before fanning out.
   to re-flag, and the operator's decisions not to re-raise. If no note is found
   anywhere, say so in the bottom line and mark every finding unbaselined.
 - **What reaches an agent:** each baseline item goes into a brief only as its
-  symptom and how to observe it. Strip every command, workaround, approval and
-  "fixed by" detail.
+  symptom, how to observe it and its expected answers. Strip every command,
+  workaround, approval and "fixed by" detail. Keep the expected answers beside
+  the finding ones, without the decision behind them: an agent given only the
+  finding half reports the expected answers as ACT.
 - **`docs/schedule.md`:** every expected blip. That covers each host's
   autoupdate reboot window, the backup windows, the Saturday UniFi updates, the
   monthly scrubs and the image prune.
@@ -301,7 +303,8 @@ repo:
 
 - the date and window;
 - what cleared;
-- each open item as its symptom and how to observe it, never the fix applied;
+- each open item as its symptom, how to observe it and its expected answers,
+  never the fix applied;
 - new benign patterns;
 - the operator's decisions, only as don't-raise or don't-build.
 
