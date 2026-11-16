@@ -78,7 +78,8 @@ when it will tell the operator something useful, within these limits:
 
 The known-safe forms:
 
-- `journalctl` with `-b`, `-k`, `-u`, `-p`, `-g`, `-n`, `-q`, `--since`,
+- `journalctl` with `-b`, `-k`, `-u`, `-t`, `-p` (a level and above, or a
+  `<from>..<to>` range), `-g`, `-n`, `-q`, `--since`,
   `--until`, `--no-pager`, `--list-boots`, `--disk-usage`, and
   `-o short-iso|short-precise|cat` only (`json` and `export` carry coredump
   environments). Never `-f`. Narrow on the host
