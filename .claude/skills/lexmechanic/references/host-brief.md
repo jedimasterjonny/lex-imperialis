@@ -155,10 +155,10 @@ The known-safe forms:
   add-on names.
 - **Readable files**, read as `sudo -n cat <file> | <filters>`:
   `/var/log/transactional-update.log`, `/var/log/zypp/history`,
-  `/var/log/apt/history.log`, the node_exporter textfile `*.prom` files, the
-  `/var/lib/arbites/` state flags (`last-applied-sha`, `pause`,
-  `apply-incomplete`), `/proc/pressure/*`, `/sys/fs/selinux/enforce`,
-  `/etc/audit/auditd.conf`, and on
+  `/var/log/apt/history.log`, the node_exporter textfile `*.prom` files,
+  `/proc/pressure/*`, `/sys/fs/selinux/enforce`, `/etc/audit/auditd.conf`, on
+  scholam the `/var/lib/arbites/` state flags (`last-applied-sha`, `pause`,
+  `apply-incomplete`), and on
   auspex the fan's `/sys/class/thermal/cooling_device*/cur_state` and
   `/sys/devices/platform/cooling_fan/hwmon/hwmon*/fan1_input`. Unit files
   come through `systemctl cat`.
