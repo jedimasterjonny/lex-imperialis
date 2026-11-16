@@ -336,9 +336,24 @@ Tumbleweed; media stack in a WireGuard netns; caddy publishes.
   `history/since?date=<start>`, `wanted/missing?pageSize=<n>`, `diskspace`,
   `system/task`, `log?pageSize=<n>`; for Prowlarr, `indexer`, `indexerstatus`,
   `applications`, `health`, `history`. Never `release`, `search`, `command`,
-  `*/test` or `config/*`: they run live searches or return keys
+  `*/test` or `config/*` (bar Lidarr's `config/downloadclient` and
+  `config/naming` below): they run live searches or return keys
   (`config/host` holds the API key). Parse on the host with `jq`, after the
   mask.
+- **Lidarr's runtime invariants**, only in this form, each path with its own
+  projection, which runs on the host:
+
+  ```bash
+  ssh -o BatchMode=yes -o ConnectTimeout=10 ansible@<addr> 'timeout 120 sudo -n podman exec lidarr sh -c '"'"'printf "X-Api-Key: %s\n" "$LIDARR__AUTH__APIKEY" | curl -s -H @- "http://localhost:<port>/api/v1/<path>"'"'"' | LC_ALL=C sed -E '"'"'s/((api[-_]?key|[a-z0-9]+_key|X-Plex-Token|passkey|authkey|torrent_pass|token|signature|nonce|body[-_]?hash|passw(or)?d|secret)(=|%(25)*3D)(\\*")?)[^&" ]*[^&" \\]/\1<k>/Ig'"'"' | jq -c '"'"'<projection>'"'"''
+  ```
+
+  `config/downloadclient` with `{enableCompletedDownloadHandling}` (false),
+  `config/naming` with `{renameTracks}` (true), and `downloadclient` with
+  `[.[] | {name, removeCompletedDownloads}]` (false). Any other answer, `null`,
+  `[]` or no output included, is ACT. The projection is the guard:
+  `downloadclient`'s `fields` hold the client's credentials as JSON the mask
+  does not match, so never read it bare or project `fields`, and if `jq` fails,
+  report it and stop.
 - **What to look for in the queues:** `statusMessages` (executables,
   unparsable names, `importBlocked`), downloads with no progress for days,
   Prowlarr indexer failures, rate limits and app-sync errors.
