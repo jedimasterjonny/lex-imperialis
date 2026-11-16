@@ -105,7 +105,14 @@ The known-safe forms:
   and `-n <lines>`, through the mask. Restarts come
   from `systemctl show -p NRestarts <unit>`: quadlet recreates the container,
   so podman's `RestartCount` is always 0.
-- `podman ps -a --format …`, `podman system df`.
+- `podman ps -a --format …`, `podman system df`. In `podman ps`, `.Labels` is a
+  string, so neither `.Labels.<key>` nor `index .Labels` works; read a label
+  with `.Label`:
+
+  ```bash
+  ssh -o BatchMode=yes -o ConnectTimeout=10 ansible@<addr> 'timeout 120 sudo -n podman ps -a --format '"'"'{{.Names}} {{.Label "PODMAN_SYSTEMD_UNIT"}}'"'"''
+  ```
+
 - `podman inspect` with exactly this format, or `--format '{{json .State.Health}}'`:
 
   ```bash
