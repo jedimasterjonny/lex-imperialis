@@ -78,7 +78,8 @@ when it will tell the operator something useful, within these limits:
 
 The known-safe forms:
 
-- `journalctl` with `-b`, `-k`, `-u`, `-p`, `-g`, `-n`, `-q`, `--since`,
+- `journalctl` with `-b`, `-k`, `-u`, `-t`, `-p` (a level and above, or a
+  `<from>..<to>` range), `-g`, `-n`, `-q`, `--since`,
   `--until`, `--no-pager`, `--list-boots`, `--disk-usage`, and
   `-o short-iso|short-precise|cat` only (`json` and `export` carry coredump
   environments). Never `-f`. Narrow on the host
@@ -105,7 +106,14 @@ The known-safe forms:
   and `-n <lines>`, through the mask. Restarts come
   from `systemctl show -p NRestarts <unit>`: quadlet recreates the container,
   so podman's `RestartCount` is always 0.
-- `podman ps -a --format …`, `podman system df`.
+- `podman ps -a --format …`, `podman system df`. In `podman ps`, `.Labels` is a
+  string, so neither `.Labels.<key>` nor `index .Labels` works; read a label
+  with `.Label`:
+
+  ```bash
+  ssh -o BatchMode=yes -o ConnectTimeout=10 ansible@<addr> 'timeout 120 sudo -n podman ps -a --format '"'"'{{.Names}} {{.Label "PODMAN_SYSTEMD_UNIT"}}'"'"''
+  ```
+
 - `podman inspect` with exactly this format, or `--format '{{json .State.Health}}'`:
 
   ```bash
@@ -124,7 +132,14 @@ The known-safe forms:
 - `coredumpctl list|info`.
 - `nmcli -g <fields> connection show <name>`, `nmcli -g <fields> device status`.
 - `chronyc tracking|sources`.
-- `findmnt`, `df -l` (a bare `df` stats NFS), `free`, `uptime`, `ip -s link`.
+- `findmnt`, `df -l` (a bare `df` stats NFS), `free`, `uptime`.
+- `ip -s link` only through a MAC mask (no sudo, hence `2>&1`): it prints the
+  MAC in `link/ether` and again in the `<xx>x<hex>` altname (`enx…`, `wlx…`):
+
+  ```bash
+  ssh -o BatchMode=yes -o ConnectTimeout=10 ansible@<addr> 'timeout 120 ip -s link show <if> 2>&1 | LC_ALL=C sed -E '"'"'s/([0-9a-f]{2}:){5}[0-9a-f]{2}/<mac>/Ig; s/([a-z]{2})x[0-9a-f]{12}/\1x<mac>/Ig'"'"''
+  ```
+
 - `wg show <if> latest-handshakes|transfer` only: `dump` prints the private key
   and `preshared-keys` the PSKs.
 - `env LC_ALL=C ausearch -i --input-logs -m avc,user_avc,selinux_err,user_selinux_err,mac_status --start "$(LC_ALL=C date -d <start> +%x)"`.
@@ -141,10 +156,10 @@ The known-safe forms:
   add-on names.
 - **Readable files**, read as `sudo -n cat <file> | <filters>`:
   `/var/log/transactional-update.log`, `/var/log/zypp/history`,
-  `/var/log/apt/history.log`, the node_exporter textfile `*.prom` files, the
-  `/var/lib/arbites/` state flags (`last-applied-sha`, `pause`,
-  `apply-incomplete`), `/proc/pressure/*`, `/sys/fs/selinux/enforce`,
-  `/etc/audit/auditd.conf`, and on
+  `/var/log/apt/history.log`, the node_exporter textfile `*.prom` files,
+  `/proc/pressure/*`, `/sys/fs/selinux/enforce`, `/etc/audit/auditd.conf`, on
+  scholam the `/var/lib/arbites/` state flags (`last-applied-sha`, `pause`,
+  `apply-incomplete`), and on
   auspex the fan's `/sys/class/thermal/cooling_device*/cur_state` and
   `/sys/devices/platform/cooling_fan/hwmon/hwmon*/fan1_input`. Unit files
   come through `systemctl cat`.
@@ -321,9 +336,24 @@ Tumbleweed; media stack in a WireGuard netns; caddy publishes.
   `history/since?date=<start>`, `wanted/missing?pageSize=<n>`, `diskspace`,
   `system/task`, `log?pageSize=<n>`; for Prowlarr, `indexer`, `indexerstatus`,
   `applications`, `health`, `history`. Never `release`, `search`, `command`,
-  `*/test` or `config/*`: they run live searches or return keys
+  `*/test` or `config/*` (bar Lidarr's `config/downloadclient` and
+  `config/naming` below): they run live searches or return keys
   (`config/host` holds the API key). Parse on the host with `jq`, after the
   mask.
+- **Lidarr's runtime invariants**, only in this form, each path with its own
+  projection, which runs on the host:
+
+  ```bash
+  ssh -o BatchMode=yes -o ConnectTimeout=10 ansible@<addr> 'timeout 120 sudo -n podman exec lidarr sh -c '"'"'printf "X-Api-Key: %s\n" "$LIDARR__AUTH__APIKEY" | curl -s -H @- "http://localhost:<port>/api/v1/<path>"'"'"' | LC_ALL=C sed -E '"'"'s/((api[-_]?key|[a-z0-9]+_key|X-Plex-Token|passkey|authkey|torrent_pass|token|signature|nonce|body[-_]?hash|passw(or)?d|secret)(=|%(25)*3D)(\\*")?)[^&" ]*[^&" \\]/\1<k>/Ig'"'"' | jq -c '"'"'<projection>'"'"''
+  ```
+
+  `config/downloadclient` with `{enableCompletedDownloadHandling}` (false),
+  `config/naming` with `{renameTracks}` (true), and `downloadclient` with
+  `[.[] | {name, removeCompletedDownloads}]` (false). Any other answer, `null`,
+  `[]` or no output included, is ACT. The projection is the guard:
+  `downloadclient`'s `fields` hold the client's credentials as JSON the mask
+  does not match, so never read it bare or project `fields`, and if `jq` fails,
+  report it and stop.
 - **What to look for in the queues:** `statusMessages` (executables,
   unparsable names, `importBlocked`), downloads with no progress for days,
   Prowlarr indexer failures, rate limits and app-sync errors.
