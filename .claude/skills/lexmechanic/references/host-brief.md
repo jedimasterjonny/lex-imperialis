@@ -131,7 +131,14 @@ The known-safe forms:
 - `coredumpctl list|info`.
 - `nmcli -g <fields> connection show <name>`, `nmcli -g <fields> device status`.
 - `chronyc tracking|sources`.
-- `findmnt`, `df -l` (a bare `df` stats NFS), `free`, `uptime`, `ip -s link`.
+- `findmnt`, `df -l` (a bare `df` stats NFS), `free`, `uptime`.
+- `ip -s link` only through a MAC mask (no sudo, hence `2>&1`): it prints the
+  MAC in `link/ether` and again in the `<xx>x<hex>` altname (`enx…`, `wlx…`):
+
+  ```bash
+  ssh -o BatchMode=yes -o ConnectTimeout=10 ansible@<addr> 'timeout 120 ip -s link show <if> 2>&1 | LC_ALL=C sed -E '"'"'s/([0-9a-f]{2}:){5}[0-9a-f]{2}/<mac>/Ig; s/([a-z]{2})x[0-9a-f]{12}/\1x<mac>/Ig'"'"''
+  ```
+
 - `wg show <if> latest-handshakes|transfer` only: `dump` prints the private key
   and `preshared-keys` the PSKs.
 - `env LC_ALL=C ausearch -i --input-logs -m avc,user_avc,selinux_err,user_selinux_err,mac_status --start "$(LC_ALL=C date -d <start> +%x)"`.
