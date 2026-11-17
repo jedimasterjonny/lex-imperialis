@@ -129,9 +129,9 @@ tofu-lint:
 	tflint --chdir=terraform
 
 # plan/apply store state in a GCS bucket (backend in main.tf), reached via your
-# gcloud ADC — no state token. The Cloudflare and Hetzner provider tokens come
-# from the vault via bin/vault-var.sh. See terraform/README.md.
-TOFU_VAULT_TOKENS = TF_VAR_cloudflare_api_token="$$(bin/vault-var.sh terraform_cloudflare_api_token)" TF_VAR_hcloud_token="$$(bin/vault-var.sh hcloud_token_emmas_edit)"
+# gcloud ADC — no state token. The provider tokens come from the vault via
+# bin/vault-var.sh. See terraform/README.md.
+TOFU_VAULT_TOKENS = TF_VAR_cloudflare_api_token="$$(bin/vault-var.sh terraform_cloudflare_api_token)" TF_VAR_hcloud_token="$$(bin/vault-var.sh hcloud_token_emmas_edit)" TF_VAR_vercel_api_token="$$(bin/vault-var.sh terraform_vercel_api_token)" TF_VAR_github_token="$$(bin/vault-var.sh terraform_github_token)"
 
 tofu-plan:
 	$(TOFU_VAULT_TOKENS) tofu -chdir=terraform plan
