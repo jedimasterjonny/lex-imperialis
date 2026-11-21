@@ -49,7 +49,7 @@ arr_apps:
     healthcheck:
       cmd: curl -fsS http://127.0.0.1:7878/ping
   sonarr:
-    image: lscr.io/linuxserver/sonarr:4.0.20@sha256:c7d1df25e428da6c9ace05daea0d34e59522978a3843ea1944812f855af4086c
+    image: lscr.io/linuxserver/sonarr:4.0.20@sha256:339814bbf50599ac3b59077c252f29833d0138b59a062d0e82ce37bdc7f04f86
     uid: 1039
     caps: [CHOWN, KILL, SETGID, SETUID]
     port: 8989
@@ -58,7 +58,7 @@ arr_apps:
     healthcheck:
       cmd: curl -fsS http://127.0.0.1:8989/ping
   lidarr:
-    image: lscr.io/linuxserver/lidarr:3.1.6@sha256:a91ef0642c15c9bd7c4260fee98fa99972c61601e37c8a96411d6a9cf0e9ad40
+    image: lscr.io/linuxserver/lidarr:3.1.6@sha256:8fb40ada166dd1880cb1b166df5bcbb081107523f20ab60df05c313e2052a467
     uid: 1037
     caps: [CHOWN, KILL, SETGID, SETUID]
     port: 8686
@@ -89,7 +89,7 @@ arr_apps:
     healthcheck:
       cmd: curl -fsS http://127.0.0.1:8191/health
   beets:
-    image: lscr.io/linuxserver/beets:2.14.1@sha256:ee3cd57afcd06077338a4fed68b4d050e31ec18cd6552d708a36e81932258a83
+    image: lscr.io/linuxserver/beets:2.14.1@sha256:94c3689c43f4ef99ccfe6b117c62c4d779734f8f773b53736b1223cc5c36901e
     uid: 1040
     caps: [CHOWN, DAC_OVERRIDE, KILL, SETGID, SETUID]
     port: 8337
@@ -149,7 +149,7 @@ arr_apps:
   # Shares the wireguard netns, so every peer connection rides the tunnel;
   # caddy reaches the webui at the wireguard container's transmission alias.
   transmission:
-    image: lscr.io/linuxserver/transmission:4.1.4@sha256:aaf349cd859ca9d5f34f394c56b8097c267a513283698adc4d07ee61d7cb1a85
+    image: lscr.io/linuxserver/transmission:4.1.4@sha256:5baf08cd73a566699f35baad3c4a84ba7d7057220566c5fb29969bf2292dc2ff
     uid: 1041
     caps: [CHOWN, DAC_OVERRIDE, KILL, SETGID, SETUID]
     port: 9091
