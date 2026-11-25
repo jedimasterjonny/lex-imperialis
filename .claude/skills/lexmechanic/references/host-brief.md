@@ -86,7 +86,11 @@ The known-safe forms:
   (`journalctl -b <n> -u <unit> -g <pattern>`) rather than pulling a whole boot
   back. `-g` also matches sudo's own `COMMAND=` line from the audit's earlier
   reads, so `grep -v COMMAND=` before counting. `--since <start> -k` reads only
-  the current boot, so kernel checks need `-b <n>`.
+  the current boot, with or without `--since`, so kernel checks need `-b <n>`, or
+  `-t kernel`, which spans every boot. `-g` matches the message, never the
+  identifier. `-o cat` on a container's unit prints a blank line after each
+  message, so count lines with `grep -c .`; and `-p warning` takes in every
+  container's stderr, so group it by `-t`.
 - **Container logs come from the unit's journal**, which spans every
   recreation: quadlet recreates the container on each restart, so
   `podman logs` covers only the current instance. Each container's unit is
@@ -106,7 +110,8 @@ The known-safe forms:
   and `-n <lines>`, through the mask. Restarts come
   from `systemctl show -p NRestarts <unit>`: quadlet recreates the container,
   so podman's `RestartCount` is always 0.
-- `podman ps -a --format …`, `podman system df`. In `podman ps`, `.Labels` is a
+- `podman ps -a --format …`, `podman system df` (never `-v`, which prints every
+  container's command line). In `podman ps`, `.Labels` is a
   string, so neither `.Labels.<key>` nor `index .Labels` works; read a label
   with `.Label`:
 
@@ -128,7 +133,8 @@ The known-safe forms:
   the mask misses: no `ps auxww`, `pgrep -a`, `podman top` or `/proc/*/cmdline`.
 - `smartctl -a|-x|-c|-j|-l selftest <dev>`.
 - `btrfs device stats <mnt>`, `btrfs scrub status <mnt>`,
-  `btrfs filesystem usage <mnt>`; `snapper list`.
+  `btrfs filesystem usage <mnt>`; `snapper list --disable-used-space`, never a
+  bare `snapper list`, which starts a btrfs quota rescan and logs a kernel warning.
 - `coredumpctl list|info`.
 - `nmcli -g <fields> connection show <name>`, `nmcli -g <fields> device status`.
 - `chronyc tracking|sources`.
@@ -198,6 +204,17 @@ truncating: `cut`, `grep -o` and
 anything else that reduces a line goes after the mask, because it can leave a
 value without the `name=` the mask matches. Whole-line `grep` and `tail -n` may
 go before it.
+
+That mask knows no addresses. A read that prints them goes through this one as
+well, after it: sshd's `Accepted` lines (key fingerprints and client addresses),
+`chronyc sources`, probe and proxy errors, web server and Plex request lines,
+kernel NIC lines and `nmcli`. It masks MACs, SSH key fingerprints and every IPv4
+address outside `10.*`, `127.*` and `192.168.*`, so the fleet's own stay
+readable; it does not know IPv6, so mask a public one by hand before quoting:
+
+```bash
+LC_ALL=C sed -E 's/([0-9a-f]{2}:){5}[0-9a-f]{2}/<mac>/Ig; s/SHA256:[A-Za-z0-9+\/]{43}/SHA256:<fp>/g; s/(^|[^0-9.])((10|127)\.[0-9]{1,3}|192\.168)(\.[0-9]{1,3}\.[0-9]{1,3})/\1\x01\2\4/g; s/(^|[^0-9.\x01])[0-9]{1,3}(\.[0-9]{1,3}){3}([^0-9.]|$)/\1<ip>\3/g; s/(^|[^0-9.\x01])[0-9]{1,3}(\.[0-9]{1,3}){3}([^0-9.]|$)/\1<ip>\3/g; s/\x01//g'
+```
 
 ## Never read
 
@@ -372,7 +389,9 @@ Tumbleweed; media stack in a WireGuard netns; caddy publishes.
 - **Plex:** `/identity`, its unit's journal and its own logs, masked. No API
   call that carries a token. HTTP answers are not in the journal: they are the
   `Completed:` lines in Plex's logs, which hold binary bytes (so `grep -a`) and
-  tokens. The glob is not in time order, so read each line's date:
+  tokens. Every `Request:` line says `Signed-in`; only `Signed-in Token (` means
+  the client presented a token. The glob is not in time order, so read each
+  line's date:
 
   ```bash
   ssh -o BatchMode=yes -o ConnectTimeout=10 ansible@<addr> 'timeout 120 sudo -n nice -n 19 ionice -c3 podman exec plex sh -c '"'"'cat "/config/Library/Application Support/Plex Media Server/Logs/"Plex\ Media\ Server*.log'"'"' | grep -a Completed: | tail -n 20 | LC_ALL=C sed -E '"'"'s/((api[-_]?key|[a-z0-9]+_key|X-Plex-Token|passkey|authkey|torrent_pass|token|signature|nonce|body[-_]?hash|passw(or)?d|secret)(=|%(25)*3D)(\\*")?)[^&" ]*[^&" \\]/\1<k>/Ig'"'"''
@@ -415,8 +434,11 @@ MicroOS VPS behind Cloudflare; SSH rides the WireGuard tunnel.
 - **Do nothing that could disturb networking.** If the host is unreachable,
   report UNREACHABLE; never reach it through another host.
 - **Not applicable here:** no SMART (virtual disk).
-- **Updates:** the `transactional-update` log and `snapper list` per reboot:
-  what each snapshot installed.
+- **Updates:** the `transactional-update` log and
+  `snapper list --disable-used-space` per reboot: what each snapshot installed.
+  Every snapshot but the newest should carry a cleanup algorithm; an empty
+  Cleanup column on an older one means nothing is marking snapshots for
+  pruning. Report the count of snapshots too.
 - **Site containers:** wordpress, wordpress-db, wordpress-valkey and caddy. If an
   access log exists (the caddy role sets none), count status codes and
   scanner paths in it, and confirm no hits bypass Cloudflare.
@@ -443,7 +465,9 @@ Tumbleweed control host; you are running on it.
   `ls-remote origin main`.
 - **Test and dev leftovers:** `incus list`, `incus storage volume list`,
   `incus image list`, `virsh list --all`, `virsh pool-list`,
-  `virsh vol-list <pool>`. List, never delete.
+  `virsh vol-list <pool>`. List, never delete. These start libvirt's query
+  daemons, which exit by themselves. No `virsh net-*`, `net-list` included: the
+  first network call of a boot starts libvirt's default network, and it stays up.
 - **Dev load:** memory and swap pressure from dev workloads, and home backup
   set growth as the backup job's journal reports it.
 - **Repo hygiene:** stale worktrees and branches in `<repo>`. Don't touch any

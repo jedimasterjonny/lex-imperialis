@@ -278,7 +278,8 @@ def namer(clients: list[dict], wan_ip: str | None) -> Callable[[dict | None], st
     """Name an endpoint: the gateway's own WAN, a client, LAN, or its scrubbed value."""
     by_ip, lan64 = {}, set()
     for c in clients:
-        for ip in [c.get("ip"), *c.get("ipv6_addresses", [])]:
+        # The controller sends "ipv6_addresses": null for some clients, not a list.
+        for ip in [c.get("ip"), *(c.get("ipv6_addresses") or [])]:
             if ip:
                 by_ip[ip] = client_name(c)
                 if ":" in ip:
