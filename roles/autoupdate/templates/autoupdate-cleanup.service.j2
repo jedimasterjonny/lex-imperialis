@@ -1,9 +1,9 @@
 # {{ ansible_managed }}
 [Unit]
 Description=Count the packages the last update left behind
-# MicroOS only, in place of autoupdate.service's pre-reboot hook: what the dup
-# removed is still installed in the snapshot it ran from, and counted there it
-# reads as orphaned for a week. At boot the count reads the snapshot the host is
+# MicroOS only, the count autoupdate.service's pre-reboot hook takes elsewhere:
+# what the dup removed is still installed in the snapshot it ran from, and
+# counted there it reads as orphaned for a week. At boot the count reads the snapshot the host is
 # running. After the network because zypper may refresh its metadata first, and
 # a repository that fails to load turns every package it carries into an orphan.
 Wants=network-online.target

@@ -530,9 +530,88 @@
         fail_msg: "the cleanup hook does not uninstall unneeded packages and publish what it left"
         quiet: true
 
-    # No tier boots MicroOS. This pins the selector's transactional branch and
-    # nothing else — the defaults template lazily, so shadowing the facts they
-    # read resolves them as a MicroOS host would. No role task runs here.
+    # No tier boots MicroOS, so its removal is driven here instead: the hook
+    # rendered as that arm, with transactional-update stood in for by a stub that
+    # records its arguments and runs what follows `run` in place. That proves the
+    # half this role owns — the functions arrive in the transaction as text, parse
+    # and uninstall there — and leaves unproven only what --continue and
+    # --drop-if-no-change do with a real snapshot, which every Ansible package
+    # task on a MicroOS host already exercises with the same flags.
+    - name: The MicroOS arm removes through a continued transaction
+      when: "'debian' not in group_names"
+      become: true
+      block:
+        - name: Install the package for what it pulls in again
+          ansible.builtin.package:
+            name: "{{ autoupdate_cruft_parent }}"
+            state: present
+
+        - name: Drop it again, leaving its dependency unneeded
+          ansible.builtin.package:
+            name: "{{ autoupdate_cruft_parent }}"
+            state: absent
+
+        - name: Stand a stub in for transactional-update
+          ansible.builtin.copy:
+            content: |
+              #!/bin/sh
+              printf '%s\n' "$@" > /var/tmp/molecule-transactional-update.args
+              while [ "$1" != run ]; do shift; done
+              shift
+              exec "$@"
+            dest: /usr/sbin/transactional-update
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Render the cleanup hook as a MicroOS host renders it
+          ansible.builtin.copy:
+            content: >-
+              {{ lookup('ansible.builtin.template',
+                        playbook_dir ~ '/../../templates/autoupdate-cleanup.sh.j2') }}
+            dest: /var/tmp/molecule-autoupdate-cleanup.sh
+            owner: root
+            group: root
+            mode: "0755"
+          vars:
+            autoupdate_transactional: true
+
+        - name: Run the MicroOS hook the way the update does
+          ansible.builtin.command: /var/tmp/molecule-autoupdate-cleanup.sh remove
+          changed_when: false
+
+        - name: Read what the stub was called with
+          ansible.builtin.slurp:
+            src: /var/tmp/molecule-transactional-update.args
+          register: autoupdate_transactional_args
+
+        - name: Read the installed packages after the MicroOS removal
+          ansible.builtin.package_facts:
+
+        - name: The MicroOS arm uninstalls the unneeded package in a continued transaction
+          ansible.builtin.assert:
+            that:
+              - autoupdate_cruft_package not in ansible_facts.packages
+              - "'--continue' in (autoupdate_transactional_args.content | b64decode).splitlines()"
+              - "'--drop-if-no-change' in (autoupdate_transactional_args.content | b64decode).splitlines()"
+              # Not chained onto the update: a run command's exit status replaces
+              # the transaction's, so `dup run` would boot a failed update.
+              - "'dup' not in (autoupdate_transactional_args.content | b64decode).splitlines()"
+            fail_msg: "the MicroOS arm does not remove unneeded packages in a transaction of its own"
+            quiet: true
+      always:
+        - name: Remove the stub, its record and the rendered hook
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - /usr/sbin/transactional-update
+            - /var/tmp/molecule-transactional-update.args
+            - /var/tmp/molecule-autoupdate-cleanup.sh
+
+    # This pins the selector's transactional branch and nothing else — the
+    # defaults template lazily, so shadowing the facts they read resolves them as
+    # a MicroOS host would. No role task runs here.
     - name: The defaults update transactionally on MicroOS
       ansible.builtin.assert:
         that:
@@ -546,14 +625,15 @@
           os_family: Suse
 
     # The same shadowing, through the unit template: the dup's snapshot is not
-    # booted until the reboot, so the cleanup count leaves the hooks and the holds
-    # hook alone of the metric ones stays ahead of the reboot.
-    - name: The MicroOS update unit leaves the cleanup count to the boot
+    # booted until the reboot, so the hook is called to remove and never bare,
+    # which would count the old snapshot; the holds hook stays ahead of the reboot.
+    - name: The MicroOS update unit removes ahead of the reboot and leaves the count to the boot
       ansible.builtin.assert:
         that:
-          - "'ExecStartPost=-/usr/local/sbin/autoupdate-cleanup.sh' not in autoupdate_microos_unit"
-          - "'ExecStartPost=-/usr/local/sbin/autoupdate-holds.sh' in autoupdate_microos_unit"
-        fail_msg: "the MicroOS update unit counts leftover packages before the reboot"
+          - "'ExecStartPost=-/usr/local/sbin/autoupdate-cleanup.sh remove' in autoupdate_microos_unit.splitlines()"
+          - "'ExecStartPost=-/usr/local/sbin/autoupdate-cleanup.sh' not in autoupdate_microos_unit.splitlines()"
+          - "'ExecStartPost=-/usr/local/sbin/autoupdate-holds.sh' in autoupdate_microos_unit.splitlines()"
+        fail_msg: "the MicroOS update unit does not remove leftover packages, or counts them before the reboot"
         quiet: true
       vars:
         ansible_facts:

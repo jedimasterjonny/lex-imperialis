@@ -1311,7 +1311,7 @@ groups:
             {{ $labels.class }} package(s) installed. `orphaned` means no repository offers
             them and nothing has made them unneeded, so the cleanup never takes them —
             decide those one at a time, and in the role if a role installs them. `unneeded`
-            means its removal failed, or the host is MicroOS, where it does not run: clear
+            means its removal failed: on MicroOS clear
             that with `transactional-update run zypper remove --clean-deps <names>`, which
             shows here only after the reboot. List them with
             `zypper packages --{{ $labels.class }}`, or on Debian with
