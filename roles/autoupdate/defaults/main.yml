@@ -21,8 +21,14 @@ autoupdate_masked_timers: >-
 # metadata refreshed first: `zypper dup` refreshes its own, `apt-get
 # dist-upgrade` does not. The confold/confdef pair keeps a changed conffile from
 # turning into a prompt no one is there to answer.
+#
+# `cleanup` rides ahead of the MicroOS dup, as it does in the stock unit this
+# role masks: since transactional-update 6.2.0 a snapshot is given its snapper
+# cleanup algorithm only when `cleanup` is called, no longer when it is created,
+# so without it every weekly snapshot is kept for ever. It marks the old ones and
+# opens no snapshot of its own, so the dup still builds on the running system.
 autoupdate_update_command: >-
-  {{ ['/usr/sbin/transactional-update --non-interactive dup']
+  {{ ['/usr/sbin/transactional-update --non-interactive cleanup dup']
      if autoupdate_transactional | bool
      else ['/usr/bin/apt-get update',
            '/usr/bin/apt-get --yes -o Dpkg::Options::=--force-confold'
