@@ -5,7 +5,7 @@
 grafana_datasource_uid: prometheus
 
 # renovate's image manager bumps the tag.
-grafana_image: docker.io/grafana/grafana-oss:13.0.2@sha256:5dad0df181cb644a14e13617b913b261a54f7d4fd4510721dba420929f35bea2
+grafana_image: docker.io/grafana/grafana:13.3.2@sha256:81556409ba48b2b922e0adb69a2511337d8ba7578f11962eefa6149a2d815101
 
 # Dashboards fetched from grafana.com at each pinned revision rather than
 # vendored; a custom renovate manager bumps the revisions (see renovate.json).
