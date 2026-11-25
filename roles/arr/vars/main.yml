@@ -58,7 +58,7 @@ arr_apps:
     healthcheck:
       cmd: curl -fsS http://127.0.0.1:8989/ping
   lidarr:
-    image: lscr.io/linuxserver/lidarr:3.1.6@sha256:8fb40ada166dd1880cb1b166df5bcbb081107523f20ab60df05c313e2052a467
+    image: lscr.io/linuxserver/lidarr:3.1.6@sha256:c4285344c994b34e1ae7db8d57c1702dcfe88b8e10c98a0cdf0f74aba8b58b9c
     uid: 1037
     caps: [CHOWN, KILL, SETGID, SETUID]
     port: 8686
@@ -149,7 +149,7 @@ arr_apps:
   # Shares the wireguard netns, so every peer connection rides the tunnel;
   # caddy reaches the webui at the wireguard container's transmission alias.
   transmission:
-    image: lscr.io/linuxserver/transmission:4.1.4@sha256:5baf08cd73a566699f35baad3c4a84ba7d7057220566c5fb29969bf2292dc2ff
+    image: lscr.io/linuxserver/transmission:4.1.4@sha256:3a8ecd4ebbc9ec657ccddba674a067db20eb28a25d61146698580d724599c7cb
     uid: 1041
     caps: [CHOWN, DAC_OVERRIDE, KILL, SETGID, SETUID]
     port: 9091
