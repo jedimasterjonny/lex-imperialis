@@ -536,7 +536,7 @@
     - name: The defaults update transactionally on MicroOS
       ansible.builtin.assert:
         that:
-          - autoupdate_update_command == ['/usr/sbin/transactional-update --non-interactive dup']
+          - autoupdate_update_command == ['/usr/sbin/transactional-update --non-interactive cleanup dup']
           - autoupdate_masked_timers == ['transactional-update.timer']
         fail_msg: "the defaults do not run transactional-update on MicroOS"
         quiet: true

@@ -3,8 +3,9 @@
 Unattended weekly updates. A oneshot service runs `autoupdate_update_command` on
 a per-host schedule (`autoupdate_oncalendar`, default `Mon *-*-* 03:00:00` plus a
 0–2 h jitter) and reboots after a successful run so a new kernel takes effect —
-`zypper dup` on Tumbleweed, `transactional-update dup` on MicroOS, whose root is
-read-only, and `apt-get update` then `apt-get dist-upgrade` on Debian. The fleet
+`zypper dup` on Tumbleweed, `transactional-update cleanup dup` on MicroOS, whose
+root is read-only and whose old snapshots snapper prunes only once `cleanup` has
+marked them, and `apt-get update` then `apt-get dist-upgrade` on Debian. The fleet
 sets the schedule per host to different days so one bad update cannot brick every
 host in a single night. `zypper`'s 102/103 "reboot/restart recommended" codes
 count as success; a real failure skips the reboot, leaving the system up for
