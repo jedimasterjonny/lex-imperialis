@@ -237,6 +237,12 @@ notices filtered out.
 ### GitHub
 
 - Open PRs: a green Renovate PR waiting on review is worth a line.
+- Renovate's cadence: its PRs created per day across the window, and the
+  Dependency Dashboard issue's `updated_at`, the size of its Rate-Limited list and
+  whether its Open list still names a merged PR. A day with no run is a finding:
+  a stalled Renovate looks exactly like a repo with nothing to update, and every
+  image pin then ages unseen. A pin whose upstream stopped publishing looks the
+  same, so compare any image untouched for months with its upstream's latest.
 - Run failures in the window, grouped by workflow and branch.
 - When scheduled runs actually started; GitHub's cron can lag by hours.
 - Dependabot and code scanning return 403; that's expected.
