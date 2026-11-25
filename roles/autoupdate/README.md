@@ -99,20 +99,28 @@ the role, since removing them only invites the next converge to put them back.
 
 Both counts are recomputed after the removal rather than assumed, so a healthy
 host publishes `unneeded` 0 and the alert reads exactly what the pass could not
-clear: a removal that failed, an orphan awaiting a decision, or MicroOS, where
-the removal does not run at all. A second `transactional-update` after the dup
-bases its snapshot on the running system — silently discarding the very update
-the hook was called from — unless given `--continue`, which then fails outright
-when the dup changed nothing and deleted its own snapshot. rogue-trader is
-minimal by construction, so it reports, and the operator clears it by hand with
+clear: a removal that failed, or an orphan awaiting a decision.
+
+MicroOS removes too, but in a transaction of its own: the hook runs
+`transactional-update --continue --drop-if-no-change run` over the same removal,
+which builds on the snapshot the dup just closed, so the update's one reboot
+lands on a root already clear of what it stranded. It is not folded into the dup
+as `dup run ...`, because `transactional-update` takes the run command's exit
+status as the whole transaction's — a removal that succeeded would close, and
+the host would boot, a snapshot whose dup or initrd build had failed. Kept
+apart, a removal that fails is discarded and leaves the dup's snapshot the
+default, and a week with nothing to remove drops its empty snapshot. A bare
+second `transactional-update`, without `--continue`, would instead base itself
+on the running system and silently discard the update. What a failed removal
+leaves is still cleared by hand, with
 `transactional-update run zypper remove --clean-deps <names>` over what
-`zypper packages --unneeded` lists — then reboots, because that removal lands in
-a new snapshot while the running system's RPM database is unchanged. For the same
-reason the MicroOS count is not an `ExecStartPost` hook at all: before the reboot
-the running snapshot still carries everything the dup removed, which counted
-there reads as orphaned for a week. `autoupdate-cleanup.service` runs the script
-at boot instead, so the count describes the snapshot the host is running — after
-the update's reboot and after a hand removal's alike. A count that fails there
+`zypper packages --unneeded` lists and then a reboot, because that removal lands
+in a new snapshot while the running system's RPM database is unchanged. For the
+same reason the MicroOS count is not taken ahead of the reboot: the running
+snapshot still carries everything the dup removed, which counted there reads as
+orphaned for a week. `autoupdate-cleanup.service` runs the script at boot
+instead, so the count describes the snapshot the host is running — after the
+update's reboot and after a hand removal's alike. A count that fails there
 leaves the unit failed, which `SystemdUnitFailed` reports.
 
 The hook is `-`-prefixed for more than the metric's sake: a solver problem in the
