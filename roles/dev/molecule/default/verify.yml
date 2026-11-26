@@ -174,6 +174,19 @@
           - dev_claude_stat.stat.executable
         fail_msg: "claude binary missing or not executable at {{ dev_claude_bin }}"
 
+    # Run, not just stat: only the binary answering proves the archive member the
+    # role renamed is the CLI, and one this host can execute.
+    - name: The Antigravity CLI runs for the owner
+      ansible.builtin.command:
+        argv:
+          - "{{ dev_agy_bin }}"
+          - --version
+      become: true
+      become_user: "{{ dev_user }}"
+      environment:
+        HOME: "{{ dev_user_home }}"
+      changed_when: false
+
     - name: Read the owner's Claude settings
       ansible.builtin.slurp:
         src: "{{ dev_user_home }}/.claude/settings.json"

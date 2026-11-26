@@ -13,6 +13,27 @@ published checksum or datasource, so a hand-bumped hash would break converge on
 every upstream tweak (YAGNI); the trust anchor is `claude.ai` over TLS, accepted
 knowingly on the host that holds `.vault_pass` and fleet-wide NOPASSWD root.
 
+## Antigravity CLI
+
+`agy` installs into `~/.local/bin` once, when the binary is absent — like Claude
+Code it self-updates in the background, so there is no pin. The role does not run
+Google's `install.sh`. That script ends with `agy install`, which appends a PATH
+line to `~/.bashrc` and `~/.profile` whether or not `~/.local/bin` is already on
+PATH; both are stow symlinks, so the edit lands in the dots checkout, and the
+script offers no way to pass the `--skip-path` that would stop it.
+
+So the role does what the script does before that step: read the release
+manifest, download the archive it names, check it against the manifest's sha512,
+and install its `antigravity` member as `agy`. The manifest URL is the one
+`install.sh` hardcodes, a Cloud Run hostname rather than `antigravity.google`. If
+upstream moves it, a host without `agy` fails loudly at the manifest read and an
+installed host never notices; `curl -fsSL https://antigravity.google/cli/install.sh`
+shows the current one. The manifest and the archive both come over TLS with no
+signature, so those two Google hosts are the trust anchor.
+
+The one-time Google sign-in (`agy`, then the device-code prompt) stays manual;
+the role touches no credentials.
+
 ## herdr
 
 herdr installs from upstream's `install.sh` into `~/.local/bin`, once behind
