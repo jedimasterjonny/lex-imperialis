@@ -211,6 +211,61 @@
   environment:
     HOME: "{{ dev_user_home }}"
 
+# Fetched straight from the release manifest, not through Google's install.sh:
+# that script ends by appending a PATH line to ~/.bashrc and ~/.profile, which
+# are stow symlinks, so the edit would land in the dots checkout. Installed once
+# -- agy self-updates in the background, so only its absence drives this, and an
+# installed host never asks the manifest anything. See README.
+- name: Check for the owner's Antigravity CLI
+  ansible.builtin.stat:
+    path: "{{ dev_agy_bin }}"
+  register: dev_agy_installed
+  become: true
+
+- name: Install the Antigravity CLI from its release manifest
+  become: true
+  become_user: "{{ dev_user }}"
+  when: not dev_agy_installed.stat.exists
+  block:
+    # check_mode: false because the download below reads this result, and a
+    # manifest GET changes nothing.
+    - name: Read the Antigravity CLI release manifest
+      ansible.builtin.uri:
+        url: https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/linux_amd64.json
+      register: dev_agy_manifest
+      check_mode: false
+
+    - name: Download the Antigravity CLI release archive
+      ansible.builtin.get_url:
+        url: "{{ dev_agy_manifest.json.url }}"
+        checksum: "sha512:{{ dev_agy_manifest.json.sha512 }}"
+        dest: /tmp/agy_linux_amd64.tar.gz
+        mode: "0600"
+
+    - name: Unpack the Antigravity CLI binary
+      ansible.builtin.unarchive:
+        src: /tmp/agy_linux_amd64.tar.gz
+        remote_src: true
+        dest: /tmp
+        include: [antigravity]
+
+    # The archive names the binary antigravity; agy is the name upstream's
+    # installer gives it.
+    - name: Install the Antigravity CLI binary as agy
+      ansible.builtin.copy:
+        src: /tmp/antigravity
+        remote_src: true
+        dest: "{{ dev_agy_bin }}"
+        mode: "0755"
+
+    - name: Remove the Antigravity CLI download
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /tmp/agy_linux_amd64.tar.gz
+        - /tmp/antigravity
+
 # Both run once, like the Claude installer: herdr owns what they write from then
 # on. The integration refuses without ~/.claude, which the Claude installer creates.
 - name: Install herdr for the owner

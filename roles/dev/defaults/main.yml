@@ -33,11 +33,13 @@ dev_packages:
   # The xterm-ghostty terminfo herdr needs when attached from Ghostty.
   - terminfo-ghostty
 
-# Claude Code and herdr install per-user via their upstream installers; the
-# owner is the target and the binaries land under their ~/.local.
+# Claude Code and herdr install per-user via their upstream installers, the
+# Antigravity CLI from its release manifest; the owner is the target and the
+# binaries land under their ~/.local.
 dev_user: jonny
 dev_user_home: "/home/{{ dev_user }}"
 dev_claude_bin: "{{ dev_user_home }}/.local/bin/claude"
+dev_agy_bin: "{{ dev_user_home }}/.local/bin/agy"
 dev_herdr_bin: "{{ dev_user_home }}/.local/bin/herdr"
 
 # npm's global prefix and the file it is read from. See README.
