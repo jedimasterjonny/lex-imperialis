@@ -248,7 +248,9 @@
       ansible.builtin.assert:
         that:
           - podman_health_journal.stdout_lines | length == 1
-          - "' container start ' in podman_health_journal.stdout"
+          # No leading space: podman 6.2 dropped the timestamp its event lines used
+          # to open with, so the event name is now the first word.
+          - "'container start ' in podman_health_journal.stdout"
         fail_msg: "expected only the probe's start event: {{ podman_health_journal.stdout_lines }}"
         quiet: true
 
