@@ -207,9 +207,9 @@ through — the coupling that matters, since renovate automerges minor/patch bum
 with no human reading the plan. The weekly run plans `main` against live infra
 and fails on any drift.
 
-The Cloudflare/Hetzner provider tokens split by privilege: a PR plans with
-read-only counterparts held as plain repo secrets (a PR that grabbed them still
-can't mutate), while the write tokens live in the main-only `Segmentum Obscurus`
+The provider tokens split by privilege: a PR plans with read-only counterparts
+held as plain repo secrets (a PR that grabbed them still can't mutate — except
+Vercel's, which has no read-only scope), while the write tokens live in the main-only `Segmentum Obscurus`
 environment, reached only on a push — the push plan bakes them into the saved plan
 the apply replays, so no PR can read one. No workflow holds a vault password: the
 Ansible vault is operator-only. State (GCS) and GCP are keyless via Workload Identity Federation —

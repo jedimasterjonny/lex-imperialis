@@ -5,10 +5,11 @@ name: terraform
 # read-only tofu-plan SA) and comments the plan; a merge to main applies (as the
 # write tofu-apply SA). State lives in a GCS bucket in the infra-shared project,
 # so the backend authenticates keylessly via WIF alongside the google provider —
-# the plan SA can read state, only the apply SA can write it. The Cloudflare and
-# Hetzner provider tokens split by privilege: a PR plans with read-only counterparts
-# held as plain repo secrets (safe for any same-repo PR — they can't mutate); the
-# write tokens live in the main-only `Segmentum Obscurus` environment, so only a
+# the plan SA can read state, only the apply SA can write it. The provider tokens
+# split by privilege: a PR plans with read-only counterparts held as plain repo
+# secrets (safe for any same-repo PR — they can't mutate, bar Vercel's, which has
+# no read-only scope to give); the write tokens live in the main-only
+# `Segmentum Obscurus` environment, so only a
 # push can read them, and its plan bakes them into the saved plan the apply runs. So a
 # same-repo PR that edits this workflow can plan but never apply or read a write
 # token. CI holds no Ansible vault secret at all — the vault is operator-only.
@@ -164,6 +165,10 @@ jobs:
           HCLOUD_PLAN_TOKEN: ${{ secrets.HCLOUD_PLAN_TOKEN }}
           CF_APPLY_TOKEN: ${{ secrets.CLOUDFLARE_APPLY_API_TOKEN }}
           HCLOUD_APPLY_TOKEN: ${{ secrets.HCLOUD_APPLY_TOKEN }}
+          VERCEL_PLAN_TOKEN: ${{ secrets.VERCEL_PLAN_API_TOKEN }}
+          GH_PLAN_TOKEN: ${{ secrets.GH_PLAN_TOKEN }}
+          VERCEL_APPLY_TOKEN: ${{ secrets.VERCEL_APPLY_API_TOKEN }}
+          GH_APPLY_TOKEN: ${{ secrets.GH_APPLY_TOKEN }}
         run: |
           set +e
           # Scheduled runs only: -detailed-exitcode makes plan exit 2 on any diff,
@@ -178,13 +183,19 @@ jobs:
           if [ "$EVENT" = "push" ]; then
             : "${CF_APPLY_TOKEN:?not set — add it to the Segmentum Obscurus environment}"
             : "${HCLOUD_APPLY_TOKEN:?not set — add it to the Segmentum Obscurus environment}"
+            : "${VERCEL_APPLY_TOKEN:?not set — add it to the Segmentum Obscurus environment}"
+            : "${GH_APPLY_TOKEN:?not set — add it to the Segmentum Obscurus environment}"
             TF_VAR_cloudflare_api_token="$CF_APPLY_TOKEN"
             TF_VAR_hcloud_token="$HCLOUD_APPLY_TOKEN"
+            TF_VAR_vercel_api_token="$VERCEL_APPLY_TOKEN"
+            TF_VAR_github_token="$GH_APPLY_TOKEN"
           else
             TF_VAR_cloudflare_api_token="$CF_PLAN_TOKEN"
             TF_VAR_hcloud_token="$HCLOUD_PLAN_TOKEN"
+            TF_VAR_vercel_api_token="$VERCEL_PLAN_TOKEN"
+            TF_VAR_github_token="$GH_PLAN_TOKEN"
           fi
-          export TF_VAR_cloudflare_api_token TF_VAR_hcloud_token
+          export TF_VAR_cloudflare_api_token TF_VAR_hcloud_token TF_VAR_vercel_api_token TF_VAR_github_token
           # -no-color on both: the combined output is teed into the PR comment.
           { tofu -chdir=terraform init -input=false -no-color \
             && tofu -chdir=terraform plan -input=false -no-color -lock=false $detail -out=tfplan; } 2>&1 | tee plan.txt

@@ -165,10 +165,13 @@ in the same pass or the next run authenticates with the revoked token.
 | --- | --- | --- | --- |
 | `terraform_cloudflare_api_token` | Cloudflare token over jonnyoc.uk, jonnyoc.co.uk and emmasedit.com — Zone: DNS Edit, Zone Settings Edit, Single Redirect Edit, Zone WAF Edit, Cache Rules Edit, SSL and Certificates Edit, and Account: Workers R2 Storage Edit | `gh secret set CLOUDFLARE_APPLY_API_TOKEN --env 'Segmentum Obscurus'` | `make tofu-plan`, then a real apply |
 | `hcloud_token_emmas_edit` | Hetzner Read&Write token, **emmas-edit** project | `gh secret set HCLOUD_APPLY_TOKEN --env 'Segmentum Obscurus'` | `make tofu-plan` |
+| `terraform_vercel_api_token` | Vercel token, personal account scope | `gh secret set VERCEL_APPLY_API_TOKEN --env 'Segmentum Obscurus'` | `make tofu-plan` |
+| `terraform_github_token` | Fine-grained PAT on `jedimasterjonny/exactis` only — Administration: Read and write | `gh secret set GH_APPLY_TOKEN --env 'Segmentum Obscurus'` | `make tofu-plan` |
 | `hcloud_token` | Hetzner Read&Write token, **molecule test** project | `gh secret set MOLECULE_HCLOUD_TOKEN` | `make test-hetzner ROLE=motd` |
 
-The read-only `CLOUDFLARE_PLAN_API_TOKEN` and `HCLOUD_PLAN_TOKEN` repo secrets
-have no vault copy — mint and `gh secret set` them alone. They serve every
+The read-only `CLOUDFLARE_PLAN_API_TOKEN`, `HCLOUD_PLAN_TOKEN` and `GH_PLAN_TOKEN`
+(Administration: Read) repo secrets, and `VERCEL_PLAN_API_TOKEN` — a second
+account-scope token, Vercel having no read-only scope — have no vault copy — mint and `gh secret set` them alone. They serve every
 non-push event, not just PR plans: `workflow_dispatch` and the weekly drift check
 too. They must mirror the write tokens' scope in *read* form, because a plan
 refreshes rulesets, zone settings, DNSSEC, the R2 bucket and the Hetzner firewall
@@ -176,9 +179,9 @@ refreshes rulesets, zone settings, DNSSEC, the R2 bucket and the Hetzner firewal
 an open PR: `discover` skips the plan job for any PR whose non-`.md` diff misses
 `terraform/`, and the gate still reports green.
 
-The two `--env 'Segmentum Obscurus'` rows need Environments: write on the workstation PAT —
+The `--env 'Segmentum Obscurus'` rows need Environments: write on the workstation PAT —
 without it `gh secret set --env` 403s on the public-key fetch it must make first.
-Grant it, or set those two in Settings → Environments → Segmentum Obscurus.
+Grant it, or set those in Settings → Environments → Segmentum Obscurus.
 
 `hcloud_token_emmas_edit` has the widest reach — every OpenTofu run (including the
 `hcloud_server` data source behind the emmasedit apex, and rogue-trader's
