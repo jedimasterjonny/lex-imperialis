@@ -64,24 +64,32 @@ scrape_configs:
     static_configs:
       - targets: {{ prometheus_cadvisor_targets | to_json }}
     # The Docker-monitoring dashboard (grafana 15798) groups container series by a
-    # `container` label and selects them with image!="". Both are rebuilt from the
-    # cgroup id: a quadlet container's leaf cgroup is
-    # /system.slice/<name>.service/libpod-payload-<id>, so the unit name is the
-    # container name, and matching that path at all is what marks a series as a
-    # real container — the parent .service and .service/runtime cgroups do not
-    # match, so exactly one series per container is labelled.
-    # image is a constant, not a ref: the dashboard only ever tests it for
-    # emptiness and never displays it, and the image is not recoverable from a
-    # cgroup path. Anything keying on a real image ref must not use this label.
+    # `container` label, rebuilt here from the cgroup id: a quadlet container's
+    # leaf cgroup is /system.slice/<name>.service/libpod-payload-<id>, so the unit
+    # name is the container name, and matching that path at all is what marks a
+    # series as a real container — the parent .service and .service/runtime
+    # cgroups do not match, so exactly one series per container is labelled.
+    #
+    # The drop then discards every container_* series that regex did not label:
+    # the cgroup hierarchy (id="/", /system.slice, /user.slice, and each unit's
+    # own .service and .service/runtime). Revision 13 excluded those per-panel
+    # with image!="", so this job synthesised a constant `image` to satisfy it;
+    # 16 drops that selector, and the three aggregate panels sum with no `by`
+    # clause, which unfiltered counts this fleet's 29 containers as ~170 and
+    # inflates its container memory ninefold. Filtering at ingest holds whatever
+    # the dashboard selects on, and nothing else reads the hierarchy series — no
+    # rule in alerts.yml touches a cadvisor metric. Keyed on __name__ so
+    # cadvisor's own machine_*, cadvisor_*, go_* and process_* families, which
+    # carry no id at all, survive it; the empty second element is the container
+    # label the rule above did not set.
     metric_relabel_configs:
       - source_labels: [id]
         regex: '/system\.slice/(.+)\.service/libpod-payload-[0-9a-f]+'
         target_label: container
         replacement: $1
-      - source_labels: [id]
-        regex: '/system\.slice/(.+)\.service/libpod-payload-[0-9a-f]+'
-        target_label: image
-        replacement: podman
+      - source_labels: [__name__, container]
+        regex: 'container_.*;'
+        action: drop
 {% if prometheus_unpoller_targets %}
 
   # UniFi metrics, via unpoller. It polls the controller on its own schedule and

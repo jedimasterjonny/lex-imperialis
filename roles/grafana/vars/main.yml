@@ -18,7 +18,7 @@ grafana_dashboards:
     file: node-exporter-full.json
   - id: 15798
     # renovate: datasource=custom.grafana-dashboards depName=docker-monitoring packageName=15798
-    revision: 13
+    revision: 16
     file: cadvisor.json
   - id: 16124
     # renovate: datasource=custom.grafana-dashboards depName=blackbox-exporter packageName=16124
