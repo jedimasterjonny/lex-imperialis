@@ -235,8 +235,11 @@
     #
     # The relabels are copied from the agent this role absorbed and the Grafana
     # 15798 dashboard depends on them, so dropping either fails here rather than
-    # silently as empty panels.
-    - name: The cadvisor job stamps at scrape time and rebuilds the container labels
+    # silently as empty panels. The drop is asserted beside the rebuild because
+    # it is what keeps the dashboard's unaggregated panels honest: without it
+    # they sum the cgroup hierarchy in with the containers, which reads as a
+    # plausible number rather than as a break.
+    - name: The cadvisor job stamps at scrape time, rebuilds container and drops the hierarchy
       vars:
         prometheus_cadvisor_job: "{{ prometheus_loaded_jobs | selectattr('job_name', 'eq', 'cadvisor') | first }}"
         prometheus_node_job: "{{ prometheus_loaded_jobs | selectattr('job_name', 'eq', 'node') | first }}"
@@ -247,16 +250,21 @@
           - prometheus_node_job.honor_timestamps
           - >-
             prometheus_cadvisor_job.metric_relabel_configs
-            | map(attribute='target_label') | sort == ['container', 'image']
+            | selectattr('target_label', 'defined')
+            | selectattr('target_label', 'eq', 'container')
+            | selectattr('regex', 'search', 'libpod-payload-') | list | length == 1
           - >-
             prometheus_cadvisor_job.metric_relabel_configs
-            | selectattr('regex', 'search', 'libpod-payload-') | list | length == 2
+            | selectattr('action', 'defined')
+            | selectattr('action', 'eq', 'drop')
+            | selectattr('source_labels', 'contains', '__name__') | list | length == 1
         fail_msg: >-
           The cadvisor job honours cadvisor's own timestamps, so every idle
           container's repeated sample is dropped as out-of-order and the series
           gains no point — or the override leaked to the other jobs, or the
-          metric_relabel_configs that rebuild the dashboard's container and image
-          labels from the cgroup id did not reach the loaded config.
+          metric_relabel_configs that rebuild the dashboard's container label
+          from the cgroup id and drop the unlabelled hierarchy series did not
+          reach the loaded config.
 
     # Asserted on the config the PROCESS loaded, not the rendered file. Without
     # this filter every device that has ever associated to the WiFi keeps a series
