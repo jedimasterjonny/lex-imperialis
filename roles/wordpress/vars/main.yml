@@ -1,7 +1,7 @@
 ---
 # renovate's image manager bumps the tags; the quadlet templates render them.
 wordpress_image: docker.io/library/wordpress:7.1.5@sha256:9b46af6a41fd0dcb2e5cf85033a6350d05010356847ede1cfcac5cf94292eb26
-wordpress_db_image: docker.io/library/mariadb:13.0.2@sha256:54f493ea0d60b621a5bff84e5b20100f8b86b6efa6b79158e04756c5194a5e4d
+wordpress_db_image: docker.io/library/mariadb:13.1.2@sha256:b7738e01f283ab4d79d96777a587bb8dc2ad057554a11231e7c8d363a5892e6d
 wordpress_valkey_image: docker.io/valkey/valkey:9.2.1-alpine@sha256:3ad5a213cb1bc2fd4a113c89b6248a88655a6bf1dda69519d04e03cd3e3d2742
 # Tag stays bare 'cli' (not semver) so renovate digest-pins it to current wp-cli.
 wordpress_cli_image: docker.io/library/wordpress:cli@sha256:fc50189ac8d3256891d0d964f8d80cf62189eb6262f53c7fd8bfc40debd71029
