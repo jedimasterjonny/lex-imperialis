@@ -226,15 +226,17 @@
       loop:
         - configs/movies.yml
         - configs/tv.yml
+        - settings.yml
       become: true
       register: arr_recyclarr_cfg
       changed_when: false
 
-    - name: The recyclarr configs carry the instances and !secret key references
+    - name: The recyclarr configs carry the instances, !secret keys and the schedule
       ansible.builtin.assert:
         that:
           - "'!secret radarr_api_key' in arr_recyclarr_cfg.results[0].stdout"
           - "'!secret sonarr_api_key' in arr_recyclarr_cfg.results[1].stdout"
+          - arr_recyclarr_cron_schedule in arr_recyclarr_cfg.results[2].stdout
         quiet: true
 
     # secrets.yml renders 0600 owned by the recyclarr uid; test -r as the container
@@ -259,20 +261,30 @@
         fail_msg: "secrets.yml is missing or not 0600 recyclarr"
         quiet: true
 
-    # The image's entrypoint writes CRON_SCHEDULE into the crontab supercronic
-    # runs, so read that rather than the unit: a renamed variable would leave the
-    # image's midnight @daily in force and the unit still looking right.
-    - name: Read the crontab recyclarr's cron runs
-      ansible.builtin.command: podman exec recyclarr cat /tmp/crontab
+    # Reading the file back proves the bind and the perms, not that the server
+    # accepted it — and since v9 that is the whole risk: the server validates every
+    # config file, the settings and the API key before it listens, and exits on any
+    # one of them, so the unit crash-loops where v8 would have failed one sync. A
+    # 200 from /livez is proof it got through all of that. It answers on the
+    # management port, which takes no API key; the API port itself is unproxied and
+    # has no caddy snippet, so this is the one way in. The wait is generous because
+    # a first start downloads the TRaSH guides before it opens either port.
+    - name: Read recyclarr's container address
+      ansible.builtin.command: podman inspect recyclarr
       become: true
-      register: arr_recyclarr_crontab
+      register: arr_recyclarr_inspect
       changed_when: false
 
-    - name: Recyclarr syncs on the configured schedule
-      ansible.builtin.assert:
-        that: arr_recyclarr_crontab.stdout == arr_recyclarr_cron_schedule ~ ' /cron.sh'
-        fail_msg: "recyclarr's crontab reads {{ arr_recyclarr_crontab.stdout }}"
-        quiet: true
+    - name: Wait for recyclarr's server to report itself live
+      ansible.builtin.uri:
+        url: http://{{ arr_recyclarr_ip }}:7983/livez
+      vars:
+        arr_recyclarr_ip: >-
+          {{ (arr_recyclarr_inspect.stdout | from_json | first).NetworkSettings.Networks.caddy.IPAddress }}
+      register: arr_recyclarr_livez
+      until: arr_recyclarr_livez.status == 200
+      retries: 60
+      delay: 5
 
     # exec defaults to container root, which bypasses file perms — drop to the
     # service account so the write exercises the shared group.

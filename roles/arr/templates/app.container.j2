@@ -60,7 +60,10 @@ EnvironmentFile=/etc/arr/{{ item.key }}.env
 EnvironmentFile=/etc/arr/transmission.env
 {% endif %}
 {% if item.key == 'recyclarr' %}
-Environment="CRON_SCHEDULE={{ arr_recyclarr_cron_schedule }}"
+{# The server will not start without an API key for its HTTP API, so it reads the #}
+{# host-generated one from a 0600 EnvironmentFile rather than the world-readable #}
+{# unit. The sync schedule moved to settings.yml with v9. #}
+EnvironmentFile=/etc/arr/recyclarr.env
 {% endif %}
 {% if item.key == 'transmission' %}
 {# The finish script's flush outlasts podman's 10 s default grace; see the default. #}

@@ -1,0 +1,7 @@
+server:
+  schedule:
+    cron: "{{ arr_recyclarr_cron_schedule }}"
+  logging:
+    # Unset, the server writes JSON whenever its console is not a terminal — which
+    # under systemd is always, leaving journald a wall of objects to read.
+    format: text
