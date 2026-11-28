@@ -49,7 +49,7 @@ arr_apps:
     healthcheck:
       cmd: curl -fsS http://127.0.0.1:7878/ping
   sonarr:
-    image: lscr.io/linuxserver/sonarr:4.0.20@sha256:339814bbf50599ac3b59077c252f29833d0138b59a062d0e82ce37bdc7f04f86
+    image: lscr.io/linuxserver/sonarr:4.0.20@sha256:5c943771636f8f13b833efc0eae81b9373737435a262503a29157842c052ed0b
     uid: 1039
     caps: [CHOWN, KILL, SETGID, SETUID]
     port: 8989
@@ -89,7 +89,7 @@ arr_apps:
     healthcheck:
       cmd: curl -fsS http://127.0.0.1:8191/health
   beets:
-    image: lscr.io/linuxserver/beets:2.14.1@sha256:94c3689c43f4ef99ccfe6b117c62c4d779734f8f773b53736b1223cc5c36901e
+    image: lscr.io/linuxserver/beets:2.14.1@sha256:83c8d4ca229bca37714dd67b6c8bf3adfa7dc1763fc0c97de51bb84162dbe8d7
     uid: 1040
     caps: [CHOWN, DAC_OVERRIDE, KILL, SETGID, SETUID]
     port: 8337
