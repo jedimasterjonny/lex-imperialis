@@ -379,9 +379,10 @@
 
 # Recyclarr's config renders to /etc/arr/recyclarr and bind-mounts read-only into
 # the container, so the host dir must exist before the unit starts — podman won't
-# auto-create a :ro bind source. Only a secrets.yml change restarts recyclarr: it's
-# a single-file bind, and template's atomic rename swaps the inode the running
-# container holds open. The configs/ directory bind serves re-rendered files live.
+# auto-create a :ro bind source. Only a secrets.yml or settings.yml change restarts
+# recyclarr: they're single-file binds, and template's atomic rename swaps the inode
+# the running container holds open. The configs/ directory bind serves re-rendered
+# files live.
 - name: Set up the recyclarr config
   when: "'recyclarr' in arr_enabled"
   become: true
@@ -405,6 +406,18 @@
         - movies
         - tv
 
+    # The schedule the server syncs on, which in v8 was the image's own cron. The
+    # server reads this file once, at startup, so a change has to restart the
+    # container whatever the bind does.
+    - name: Render the recyclarr settings
+      ansible.builtin.template:
+        src: recyclarr-settings.yml.j2
+        dest: "{{ arr_recyclarr_config_dir }}/settings.yml"
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart recyclarr for arr
+
     # secrets.yml carries the radarr/sonarr api keys the configs reference via
     # !secret, so it renders 0600 owned by the recyclarr uid — the in-container
     # process (User=3007) reads the ro bind, which a root-only file would deny.
@@ -414,6 +427,28 @@
         dest: "{{ arr_recyclarr_config_dir }}/secrets.yml"
         owner: recyclarr
         group: recyclarr
+        mode: "0600"
+      no_log: true
+      notify: Restart recyclarr for arr
+
+    # The server refuses to start without an API key of at least 32 characters for
+    # its HTTP API. Nothing outside the container calls that API, so the host
+    # generates its own key instead of the vault carrying a secret only this
+    # container ever sees — and writes it once, since a fresh key every converge
+    # would bounce recyclarr on every apply. Losing it costs nothing: nothing else
+    # holds it, and the next converge writes another.
+    - name: Check for the recyclarr server API key
+      ansible.builtin.stat:
+        path: /etc/arr/recyclarr.env
+      register: arr_recyclarr_env
+
+    - name: Generate the recyclarr server API key
+      when: not arr_recyclarr_env.stat.exists
+      ansible.builtin.copy:
+        content: "RECYCLARR_API_KEY={{ lookup('community.general.random_string', length=48, special=false) }}\n"
+        dest: /etc/arr/recyclarr.env
+        owner: root
+        group: root
         mode: "0600"
       no_log: true
       notify: Restart recyclarr for arr

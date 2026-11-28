@@ -25,7 +25,7 @@ carries none at all — the two columns below are not independent.
 | beets | probe via caddy | **none** — never kill a running import |
 | plex | probe of `:32400/identity` (host-networked, not proxied) | **none** — never kill a running transcode |
 | tautulli | probe of `/status` via caddy | yes |
-| recyclarr | nothing — no endpoint | none |
+| recyclarr | nothing — its `/livez` is unprobed; `QuadletNotRunning` catches a server that will not start | none |
 
 transmission is the one restarting app with state to lose: a `SIGKILL` forces a
 re-verify of active torrents. The kill only fires after ~15m of a dead RPC, by which
@@ -205,15 +205,28 @@ key.
 
 recyclarr's config renders from the repo to `arr_recyclarr_config_dir` and
 bind-mounts read-only over its `/config` volume (which keeps the TRaSH-guide
-cache). `configs/movies.yml` (radarr) and `configs/tv.yml` (sonarr) hold the
-quality profiles, custom-format scores and the local deviations (x265 neutral,
-SDR-no-WEBDL on UHD, DV/HDR10+ boosts); `secrets.yml` renders the `!secret` API
-keys from `arr_api_keys`, 0600 and owned by the recyclarr uid so the container
-user reads it over the bind. A `secrets.yml` change restarts recyclarr (a
-single-file bind, so the recreate picks up the new inode); the config edits ride
-the directory bind and apply on the next scheduled sync, which the image's own
-cron runs at `arr_recyclarr_cron_schedule`. arbites re-renders it,
-so the repo owns recyclarr's config, not the volume.
+cache and the server's sync state). `configs/movies.yml` (radarr) and
+`configs/tv.yml` (sonarr) hold the quality profiles, custom-format scores and the
+local deviations (x265 neutral, SDR-no-WEBDL on UHD, DV/HDR10+ boosts);
+`secrets.yml` renders the `!secret` API keys from `arr_api_keys`, 0600 and owned
+by the recyclarr uid so the container user reads it over the bind; `settings.yml`
+carries the sync schedule and pins text logging, which the server otherwise drops
+for JSON whenever its console is not a terminal. A `secrets.yml` or
+`settings.yml` change restarts recyclarr (single-file binds, so the recreate picks
+up the new inode — and the settings are read only at startup); the config edits
+ride the directory bind and apply on the next scheduled sync, which the server
+itself runs at `arr_recyclarr_cron_schedule`. arbites re-renders it, so the repo
+owns recyclarr's config, not the volume.
+
+v9 made recyclarr a server rather than a container cron, which costs three
+things. It runs the schedule itself, from `settings.yml` — there is no crontab in
+the image any more. It validates every config file before it listens and exits on
+any error, so a bad config crash-loops the unit instead of failing one sync. And
+it will not start without an API key for its HTTP API; nothing outside the
+container calls that API, so the role generates a key into a 0600
+`/etc/arr/recyclarr.env` on first converge and leaves it alone thereafter. A sync
+by hand is `podman exec recyclarr recyclarr sync` — container arguments no longer
+run CLI commands.
 
 ## Apps behind WireGuard
 
